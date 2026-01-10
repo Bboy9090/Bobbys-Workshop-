@@ -714,6 +714,12 @@ function broadcastCorrelation(message) {
 function safeExec(cmd) {
   try {
     // Use spawnSync with shell: false to prevent console windows on Windows
+    // NOTE: This uses simple space-based splitting which does NOT handle:
+    // - Arguments with spaces (e.g., "C:\Program Files\tool.exe")
+    // - Quoted arguments
+    // - Complex shell syntax
+    // This is intentional to avoid shell injection vulnerabilities.
+    // Callers should pass simple commands without spaces in paths.
     const { spawnSync } = require('child_process');
     const parts = cmd.split(' ');
     const command = parts[0];
