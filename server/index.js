@@ -5,6 +5,7 @@ import path from 'path';
 import { existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
+import { commandExistsInPath } from './utils/safe-exec.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

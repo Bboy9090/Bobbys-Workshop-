@@ -14,7 +14,7 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { execSync, spawnSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import { commandExistsInPath } from '../utils/safe-exec.js';
 import os from 'os';
 import {

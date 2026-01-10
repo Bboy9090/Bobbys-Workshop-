@@ -5,7 +5,7 @@
  */
 
 import express from 'express';
-import { execSync, spawnSync } from 'child_process';
+import { execSync } from 'child_process';
 import { commandExistsInPath } from '../../utils/safe-exec.js';
 import { getToolPath } from '../../tools-manager.js';
 import { existsSync } from 'fs';

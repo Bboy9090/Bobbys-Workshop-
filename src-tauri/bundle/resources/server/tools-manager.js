@@ -10,9 +10,9 @@
 import { execSync, spawnSync } from 'child_process';
 import { existsSync, statSync } from 'fs';
 import { join, dirname } from 'path';
+import { commandExistsInPath } from './utils/safe-exec.js';
 import { fileURLToPath } from 'url';
 import os from 'os';
-import { commandExistsInPath as checkCommandInPath } from './utils/safe-exec.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -136,14 +136,6 @@ function toolExists(path) {
 }
 
 /**
- * Check if a command exists in PATH
- * Uses the safe helper from utils/safe-exec.js to avoid console windows
- */
-function commandExistsInPath(command) {
-  return checkCommandInPath(command);
-}
-
-/**
  * Get tool path - checks bundled location, then system PATH
  */
 export function getToolPath(toolName) {
@@ -206,8 +198,7 @@ export function getToolInfo(toolName) {
       version = execSync(fullCommand, { 
         encoding: 'utf-8', 
         timeout: 5000,
-        windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe']
+        windowsHide: true
       }).trim();
     } catch {
       // Version check failed, ignore
@@ -250,26 +241,23 @@ export function executeTool(toolName, args = [], options = {}) {
     throw new Error(`Tool ${toolName} is not available`);
   }
   
-  const fullCommand = path.includes('/') || path.includes('\\')
-    ? `"${path}" ${args.join(' ')}`
-    : `${path} ${args.join(' ')}`;
-  
+  // Use spawnSync instead of execSync to prevent console windows on Windows
   const defaultOptions = {
     encoding: 'utf-8',
     timeout: 300000, // 5 minutes default
-    maxBuffer: 50 * 1024 * 1024, // 50MB
     windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: false, // Don't use shell to prevent console windows
+    stdio: ['ignore', 'pipe', 'pipe'], // Prevent console window, but capture output
     ...options
   };
   
   try {
-    const result = execSync(fullCommand, defaultOptions);
+    const result = spawnSync(path, args, defaultOptions);
     return {
-      success: true,
-      stdout: result,
-      stderr: '',
-      exitCode: 0
+      success: result.status === 0,
+      stdout: result.stdout?.toString() || '',
+      stderr: result.stderr?.toString() || '',
+      exitCode: result.status || 0
     };
   } catch (error) {
     return {

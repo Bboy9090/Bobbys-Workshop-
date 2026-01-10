@@ -3,20 +3,30 @@
  * Replaces Tauri Rust code with JavaScript/Node.js
  */
 
-const { app, BrowserWindow, ipcMain, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 
 // No localhost! Always use bundled files (file:// protocol)
-// Required for file:// protocol to work with modules
-app.commandLine.appendSwitch('allow-file-access-from-files');
-app.commandLine.appendSwitch('disable-site-isolation-trials'); // Allow ES modules in file://
+// Development-only compatibility flags to make file:// + ES modules easier.
+// In production (app.isPackaged === true) we rely on Electron's default-secure settings.
+if (!app.isPackaged) {
+  // Required for file:// protocol to work with modules in development
+  app.commandLine.appendSwitch('allow-file-access-from-files');
+  app.commandLine.appendSwitch('disable-site-isolation-trials'); // Allow ES modules in file://
+}
 
 // Keep a global reference of the window object
 let mainWindow = null;
 let backendProcess = null;
+
+// Backend restart tracking
+let backendRestartCount = 0;
+let backendRestartResetTimer = null;
+const MAX_RESTART_ATTEMPTS = 5;
+const RESTART_RESET_INTERVAL = 60000; // Reset counter after 1 minute
 
 // Backend server configuration
 const BACKEND_PORT = 3001;
@@ -132,12 +142,35 @@ function startBackendServer() {
     
     // Attempt to restart if it crashed (but not on app quit)
     if (mainWindow && !mainWindow.isDestroyed()) {
-      console.log('[Electron] Attempting to restart backend server...');
+      // Increment restart counter
+      backendRestartCount++;
+      
+      // Check if we've exceeded max restart attempts
+      if (backendRestartCount > MAX_RESTART_ATTEMPTS) {
+        console.error(`[Electron] Backend server failed ${MAX_RESTART_ATTEMPTS} times. Giving up.`);
+        console.error('[Electron] Please restart the application manually.');
+        return;
+      }
+      
+      // Clear existing reset timer
+      if (backendRestartResetTimer) {
+        clearTimeout(backendRestartResetTimer);
+      }
+      
+      // Set timer to reset counter after successful uptime
+      backendRestartResetTimer = setTimeout(() => {
+        console.log('[Electron] Resetting backend restart counter after successful uptime');
+        backendRestartCount = 0;
+      }, RESTART_RESET_INTERVAL);
+      
+      const delay = Math.min(2000 * Math.pow(2, backendRestartCount - 1), 30000); // Exponential backoff, max 30s
+      console.log(`[Electron] Attempting to restart backend server (attempt ${backendRestartCount}/${MAX_RESTART_ATTEMPTS}) in ${delay}ms...`);
+      
       setTimeout(() => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           startBackendServer();
         }
-      }, 2000);
+      }, delay);
     }
   });
   

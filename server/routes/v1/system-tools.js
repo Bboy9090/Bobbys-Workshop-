@@ -88,33 +88,15 @@ function getAndroidToolDiagnostics(toolName) {
         if (path) break;
       }
     } else {
-      if (process.platform === 'win32') {
-        // Use native PATH check
-        const pathEnv = process.env.PATH || '';
-        const pathDirs = pathEnv.split(';');
-        const extensions = process.env.PATHEXT ? process.env.PATHEXT.split(';') : ['.exe', '.cmd', '.bat', '.com'];
-        for (const dir of pathDirs) {
-          if (!dir) continue;
-          for (const ext of extensions) {
-            const fullPath = join(dir, toolName + ext);
-            if (existsSync(fullPath)) {
-              path = fullPath;
-              break;
-            }
-          }
-          if (path) break;
-        }
-      } else {
-        const result = spawnSync('which', [toolName], { 
-          encoding: "utf-8", 
-          timeout: 2000,
-          windowsHide: true,
-          shell: false,
-          stdio: ['ignore', 'pipe', 'pipe']
-        });
-        if (result.status === 0) {
-          path = (result.stdout || '').trim();
-        }
+      const result = spawnSync('which', [toolName], { 
+        encoding: "utf-8", 
+        timeout: 2000,
+        windowsHide: true,
+        shell: false,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      if (result.status === 0) {
+        path = (result.stdout || '').trim();
       }
     }
   } catch {

@@ -1,5 +1,5 @@
-import { exec, execSync, spawnSync } from 'child_process';
-import { commandExistsInPath } from '../utils/safe-exec.js';
+import { exec, spawnSync } from 'child_process';
+import { commandExistsInPath } from './utils/safe-exec.js';
 import { promisify } from 'util';
 import fs from 'fs';
 import os from 'os';
