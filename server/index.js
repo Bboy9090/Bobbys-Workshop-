@@ -58,6 +58,11 @@ import { getCircuitBreakerStatus, resetCircuitBreaker, getHealthStatus } from '.
 import { getResourceStatus, canExecuteOperation, acquireOperationSlot, releaseOperationSlot, forceCleanup } from './utils/resource-limits.js';
 import { performStartupValidation, getValidationResults, isValidationPassed } from './utils/startup-validation.js';
 import { performanceMiddleware, getPerformanceMetrics, OperationTimer } from './utils/performance-monitor.js';
+import { observabilityMiddleware } from './middleware/observability.js';
+import metricsRouter from './routes/v1/observability/metrics.js';
+import tracesRouter from './routes/v1/observability/traces.js';
+import metricsCollector from './utils/observability/metrics-collector.js';
+import structuredLogger from './utils/observability/structured-logger.js';
 
 // Initialize logging first
 const LOG_DIR = process.env.BW_LOG_DIR || (process.platform === 'win32' 
@@ -251,6 +256,15 @@ logger.info(`Process PID: ${process.pid}`);
 logger.info(`Node.js version: ${process.version}`);
 logger.info(`Platform: ${process.platform} ${process.arch}`);
 
+// Initialize Universal Legend Status Observability
+logger.info('🌟 Initializing Universal Legend Status Observability System...');
+structuredLogger.info('Observability system initialized', {
+  metrics: 'enabled',
+  tracing: 'enabled',
+  structuredLogging: 'enabled'
+});
+logger.info('✅ Observability system ready - metrics, tracing, and structured logging active');
+
 // Perform startup validation
 logger.info('🚀 Performing startup validation...');
 try {
@@ -277,7 +291,8 @@ try {
 app.use(cors());
 app.use(express.json());
 
-// Apply middleware in order: correlation ID, envelope, audit logging, performance
+// Apply middleware in order: observability (first for full coverage), correlation ID, envelope, audit logging, performance
+app.use(observabilityMiddleware);
 app.use(correlationIdMiddleware);
 app.use(envelopeMiddleware);
 app.use(auditLogMiddleware);
@@ -369,6 +384,20 @@ v1Router.use('/authorization', rateLimiter('authorization'), authorizationRouter
 
 // Trapdoor router with rate limiting and authentication
 v1Router.use('/trapdoor', rateLimiter('trapdoor'), requireTrapdoorPasscode, trapdoorRouter);
+
+// Observability routes (Universal Legend Status)
+v1Router.use('/observability', metricsRouter);
+v1Router.use('/observability', tracesRouter);
+
+// Universal compatibility routes (Universal Legend Status)
+import platformRouter from './routes/v1/universal/platform.js';
+import universalDevicesRouter from './routes/v1/universal/devices.js';
+v1Router.use('/universal', platformRouter);
+v1Router.use('/universal', universalDevicesRouter);
+
+// Reliability routes (Universal Legend Status)
+import reliabilityHealthRouter from './routes/v1/reliability/health.js';
+v1Router.use('/reliability', reliabilityHealthRouter);
 
 // Mount v1 router
 app.use('/api/v1', v1Router);
