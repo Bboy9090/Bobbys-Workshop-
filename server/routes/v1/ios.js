@@ -5,7 +5,7 @@
  */
 
 import express from 'express';
-import IOSLibrary from '../../../core/lib/ios.js';
+import IOSLibrary from '../../utils/ios-library-wrapper.js';
 
 const router = express.Router();
 
@@ -23,7 +23,7 @@ router.get('/scan', async (req, res) => {
       }, 503);
     }
 
-    const devices = IOSLibrary.listDevices(); // This is synchronous
+    const devices = await IOSLibrary.listDevices(); // Now async
     
     if (!devices.success) {
       return res.sendError('INTERNAL_ERROR', 'Failed to list iOS devices', {

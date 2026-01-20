@@ -4,7 +4,7 @@
  */
 
 import express from 'express';
-import tracer from '../../utils/observability/tracing.js';
+import tracer from '../../../utils/observability/tracing.js';
 
 const router = express.Router();
 

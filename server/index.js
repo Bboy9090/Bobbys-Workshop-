@@ -2294,10 +2294,6 @@ app.post('/api/bootforgeusb/build', async (req, res) => {
     if (installResult.error || installResult.status !== 0) {
       throw new Error(installResult.error?.message || `cargo install failed with exit code ${installResult.status}`);
     }
-        encoding: 'utf-8',
-        timeout: 60000
-      }
-    );
 
     res.write(JSON.stringify({
       status: 'complete',

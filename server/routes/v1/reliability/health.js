@@ -4,11 +4,11 @@
  */
 
 import express from 'express';
-import { getHealthStatus, getEnhancedCircuitBreakerStatus } from '../../utils/retry-circuit-breaker.js';
-import autoRecovery from '../../utils/reliability/auto-recovery.js';
-import gracefulDegradation from '../../utils/reliability/graceful-degradation.js';
-import { getResourceStatus } from '../../utils/resource-limits.js';
-import { getValidationResults } from '../../utils/startup-validation.js';
+import { getHealthStatus, getEnhancedCircuitBreakerStatus } from '../../../utils/retry-circuit-breaker.js';
+import autoRecovery from '../../../utils/reliability/auto-recovery.js';
+import gracefulDegradation from '../../../utils/reliability/graceful-degradation.js';
+import { getResourceStatus } from '../../../utils/resource-limits.js';
+import { getValidationResults } from '../../../utils/startup-validation.js';
 
 const router = express.Router();
 

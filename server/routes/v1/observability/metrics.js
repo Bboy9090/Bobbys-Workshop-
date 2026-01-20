@@ -4,7 +4,7 @@
  */
 
 import express from 'express';
-import metricsCollector from '../../utils/observability/metrics-collector.js';
+import metricsCollector from '../../../utils/observability/metrics-collector.js';
 
 const router = express.Router();
 

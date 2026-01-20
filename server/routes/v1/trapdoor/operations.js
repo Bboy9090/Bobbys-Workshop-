@@ -16,7 +16,8 @@ import {
   createErrorEnvelope,
   createSimulateEnvelope 
 } from '../../../../core/lib/operation-envelope.js';
-import { logShadow } from '../../../../core/lib/shadow-logger.js';
+import ShadowLogger from '../../../../core/lib/shadow-logger.js';
+const shadowLogger = new ShadowLogger();
 import { loadOperationSpec, listOperationsForRole } from '../../../../core/catalog/operation-loader.js';
 
 /**
@@ -88,7 +89,7 @@ export async function executeHandler(req, res) {
 
     // Log operation request
     try {
-      await logShadow({
+      await shadowLogger.logShadow({
         operation: `${operation}_requested`,
         userId: req.secretRoomAuth?.clientId || req.ip || 'unknown',
         ipAddress: req.ip,
@@ -120,7 +121,7 @@ export async function executeHandler(req, res) {
       });
 
       try {
-        await logShadow({
+        await shadowLogger.logShadow({
           operation: `${operation}_denied`,
           userId: req.secretRoomAuth?.clientId || req.ip || 'unknown',
           ipAddress: req.ip,
@@ -176,7 +177,7 @@ export async function executeHandler(req, res) {
 
     // Log completion
     try {
-      await logShadow({
+      await shadowLogger.logShadow({
         operation: `${operation}_completed`,
         userId: req.secretRoomAuth?.clientId || req.ip || 'unknown',
         ipAddress: req.ip,

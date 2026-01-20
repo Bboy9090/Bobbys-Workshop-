@@ -12,7 +12,7 @@
  */
 
 import express from 'express';
-import IOSLibrary from '../../../../core/lib/ios.js';
+import IOSLibrary from '../../../utils/ios-library-wrapper.js';
 import { safeSpawn, commandExistsSafe } from '../../../utils/safe-exec.js';
 import fs from 'fs';
 import path from 'path';

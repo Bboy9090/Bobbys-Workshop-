@@ -4,7 +4,7 @@
  */
 
 import express from 'express';
-import deviceManager from '../../utils/universal/device-abstraction.js';
+import deviceManager from '../../../utils/universal/device-abstraction.js';
 
 const router = express.Router();
 

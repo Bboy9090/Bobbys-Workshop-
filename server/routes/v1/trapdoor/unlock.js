@@ -12,7 +12,7 @@
 
 import express from 'express';
 import ShadowLogger from '../../../../core/lib/shadow-logger.js';
-import ADBLibrary from '../../../../core/lib/adb.js';
+import ADBLibrary from '../../../utils/adb-library-wrapper.js';
 import { safeSpawn, commandExistsSafe } from '../../../utils/safe-exec.js';
 import { acquireDeviceLock, releaseDeviceLock } from '../../../locks.js';
 

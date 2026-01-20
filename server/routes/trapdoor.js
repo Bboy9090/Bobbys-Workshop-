@@ -16,7 +16,8 @@ import {
   createErrorEnvelope,
   createSimulateEnvelope 
 } from '../../core/lib/operation-envelope.js';
-import { logShadow } from '../../core/lib/shadow-logger.js';
+import ShadowLogger from '../../core/lib/shadow-logger.js';
+const shadowLogger = new ShadowLogger();
 import rateLimit from 'express-rate-limit';
 
 const router = express.Router();
@@ -77,7 +78,7 @@ router.post('/execute', async (req, res) => {
     }
 
     // Log operation request
-    await logShadow({
+    await shadowLogger.logShadow({
       operation: `${operation}_requested`,
       userId: req.user?.role || 'unknown',
       ipAddress: req.ip,
@@ -105,7 +106,7 @@ router.post('/execute', async (req, res) => {
         correlationId
       });
 
-      await logShadow({
+      await shadowLogger.logShadow({
         operation: `${operation}_denied`,
         userId: req.user?.role || 'unknown',
         ipAddress: req.ip,
@@ -156,7 +157,7 @@ router.post('/execute', async (req, res) => {
     const result = await executeOperation(operation, params, operationSpec);
 
     // Log completion
-    await logShadow({
+    await shadowLogger.logShadow({
       operation: `${operation}_completed`,
       userId: req.user?.role || 'unknown',
       ipAddress: req.ip,

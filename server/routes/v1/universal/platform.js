@@ -4,7 +4,7 @@
  */
 
 import express from 'express';
-import platformDetector from '../../utils/universal/platform-detector.js';
+import platformDetector from '../../../utils/universal/platform-detector.js';
 
 const router = express.Router();
 
