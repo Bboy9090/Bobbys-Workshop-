@@ -9,11 +9,16 @@
  * - In-memory storage with optional persistence
  */
 
+import os from 'os';
+import { monitorEventLoopDelay } from 'perf_hooks';
+
 class MetricsCollector {
   constructor() {
     this.metrics = new Map();
     this.startTime = Date.now();
     this.initialized = false;
+    this.lastCpuSample = null;
+    this.eventLoopDelayMonitor = null;
   }
 
   /**
@@ -27,12 +32,15 @@ class MetricsCollector {
     this.registerCounter('operations_total', 'Total operations executed', ['operation', 'status']);
     this.registerCounter('device_connections_total', 'Total device connections', ['type', 'status']);
     this.registerCounter('errors_total', 'Total errors', ['type', 'severity']);
+    this.registerCounter('recovery_attempts_total', 'Total auto-recovery attempts', ['type', 'status']);
+    this.registerCounter('fallback_used_total', 'Total fallback usage', ['operation']);
     
     this.registerGauge('http_requests_active', 'Active HTTP requests');
     this.registerGauge('operations_active', 'Active operations');
     this.registerGauge('devices_connected', 'Connected devices');
     this.registerGauge('system_memory_usage_bytes', 'System memory usage in bytes');
     this.registerGauge('system_cpu_usage_percent', 'System CPU usage percentage');
+    this.registerGauge('event_loop_lag_ms', 'Event loop lag in milliseconds', ['stat']);
     
     this.registerHistogram('http_request_duration_seconds', 'HTTP request duration', [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5]);
     this.registerHistogram('operation_duration_seconds', 'Operation duration', [0.01, 0.1, 0.5, 1, 5, 10, 30, 60]);
@@ -153,9 +161,49 @@ class MetricsCollector {
   }
 
   /**
+   * Sample CPU usage using os.cpus deltas
+   */
+  sampleCpuUsage() {
+    const cpus = os.cpus();
+    const totals = cpus.reduce(
+      (acc, cpu) => {
+        const cpuTotal = Object.values(cpu.times).reduce((sum, val) => sum + val, 0);
+        acc.idle += cpu.times.idle;
+        acc.total += cpuTotal;
+        return acc;
+      },
+      { idle: 0, total: 0 }
+    );
+
+    if (!this.lastCpuSample) {
+      this.lastCpuSample = totals;
+      return null;
+    }
+
+    const idleDelta = totals.idle - this.lastCpuSample.idle;
+    const totalDelta = totals.total - this.lastCpuSample.total;
+    this.lastCpuSample = totals;
+
+    if (totalDelta <= 0) return null;
+    return 1 - idleDelta / totalDelta;
+  }
+
+  /**
+   * Convert nanoseconds to rounded milliseconds
+   */
+  toMilliseconds(value) {
+    return Math.round((value / 1e6) * 1000) / 1000;
+  }
+
+  /**
    * Start periodic system metrics collection
    */
   startSystemMetricsCollection() {
+    if (!this.eventLoopDelayMonitor && typeof monitorEventLoopDelay === 'function') {
+      this.eventLoopDelayMonitor = monitorEventLoopDelay({ resolution: 20 });
+      this.eventLoopDelayMonitor.enable();
+    }
+
     setInterval(() => {
       try {
         // Memory usage
@@ -165,8 +213,18 @@ class MetricsCollector {
         this.setGauge('system_memory_usage_bytes', { type: 'external' }, memUsage.external);
         this.setGauge('system_memory_usage_bytes', { type: 'rss' }, memUsage.rss);
 
-        // CPU usage (simplified - Node.js doesn't have built-in CPU usage)
-        // This would need os-utils or similar for real CPU metrics
+        // CPU usage (sampled from os.cpus deltas)
+        const cpuUsage = this.sampleCpuUsage();
+        if (cpuUsage !== null) {
+          this.setGauge('system_cpu_usage_percent', {}, Math.round(cpuUsage * 1000) / 10);
+        }
+
+        if (this.eventLoopDelayMonitor) {
+          this.setGauge('event_loop_lag_ms', { stat: 'mean' }, this.toMilliseconds(this.eventLoopDelayMonitor.mean));
+          this.setGauge('event_loop_lag_ms', { stat: 'p95' }, this.toMilliseconds(this.eventLoopDelayMonitor.percentile(95)));
+          this.setGauge('event_loop_lag_ms', { stat: 'max' }, this.toMilliseconds(this.eventLoopDelayMonitor.max));
+          this.eventLoopDelayMonitor.reset();
+        }
       } catch (error) {
         console.error('[Metrics] Error collecting system metrics:', error);
       }
@@ -190,13 +248,16 @@ class MetricsCollector {
           const labels = this.formatLabels(data.labels);
           lines.push(`${name}${labels} ${data.value}`);
         } else if (metric.type === 'histogram') {
-          const labels = this.formatLabels(data.labels);
+          const labels = data.labels || {};
           // Add bucket values
           for (const [bucket, count] of data.buckets.entries()) {
-            lines.push(`${name}_bucket${labels},${bucket} ${count}`);
+            const match = String(bucket).match(/^le="(.+)"$/);
+            const bucketValue = match ? match[1] : String(bucket);
+            const bucketLabels = { ...labels, le: bucketValue };
+            lines.push(`${name}_bucket${this.formatLabels(bucketLabels)} ${count}`);
           }
-          lines.push(`${name}_sum${labels} ${data.sum}`);
-          lines.push(`${name}_count${labels} ${data.count}`);
+          lines.push(`${name}_sum${this.formatLabels(labels)} ${data.sum}`);
+          lines.push(`${name}_count${this.formatLabels(labels)} ${data.count}`);
         }
       }
       

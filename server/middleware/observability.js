@@ -7,6 +7,8 @@ import metricsCollector from '../utils/observability/metrics-collector.js';
 import structuredLogger from '../utils/observability/structured-logger.js';
 import tracer from '../utils/observability/tracing.js';
 
+let activeRequests = 0;
+
 /**
  * Observability middleware - collects metrics, logs, and traces
  */
@@ -37,16 +39,17 @@ export function observabilityMiddleware(req, res, next) {
   }, correlationId);
   
   // Increment active requests
-  metricsCollector.incrementCounter('http_requests_total', {
-    method: req.method,
-    route: req.route?.path || req.path,
-    status: 'pending'
-  });
-  metricsCollector.setGauge('http_requests_active', {}, 1);
+  activeRequests += 1;
+  metricsCollector.setGauge('http_requests_active', {}, activeRequests);
   
   // Override res.end to capture response
+  let finished = false;
   const originalEnd = res.end.bind(res);
   res.end = function(chunk, encoding) {
+    if (finished) {
+      return originalEnd(chunk, encoding);
+    }
+    finished = true;
     const duration = Date.now() - startTime;
     const statusCode = res.statusCode;
     
@@ -59,7 +62,8 @@ export function observabilityMiddleware(req, res, next) {
       route: req.route?.path || req.path,
       status: statusCode
     });
-    metricsCollector.setGauge('http_requests_active', {}, -1);
+    activeRequests = Math.max(activeRequests - 1, 0);
+    metricsCollector.setGauge('http_requests_active', {}, activeRequests);
     metricsCollector.observeHistogram('http_request_duration_seconds', {
       method: req.method,
       route: req.route?.path || req.path,
