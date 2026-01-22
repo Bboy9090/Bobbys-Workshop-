@@ -24,7 +24,6 @@ jobs:
       
       - name: Run ESLint
         run: npm run lint
-        continue-on-error: true
 
   test-server:
     name: Test Server APIs
@@ -46,7 +45,6 @@ jobs:
       
       - name: Run server tests
         run: cd server && npm test
-        continue-on-error: true
         env:
           SHADOW_LOG_KEY: test-encryption-key-for-ci
 
@@ -76,7 +74,6 @@ jobs:
       
       - name: Test workflow engine
         run: npm test -- tests/workflow-engine.test.js
-        continue-on-error: true
 
   test-shadow-logger:
     name: Test Shadow Logger
@@ -97,7 +94,6 @@ jobs:
         run: npm test -- tests/shadow-logger.test.js
         env:
           SHADOW_LOG_KEY: test-encryption-key-for-ci
-        continue-on-error: true
 
   build-frontend:
     name: Build Frontend
@@ -161,7 +157,6 @@ jobs:
             cargo build --release
             cargo test
           fi
-        continue-on-error: true
 
   security-scan:
     name: Security Scan
@@ -171,11 +166,9 @@ jobs:
       
       - name: Run npm audit
         run: npm audit --audit-level=moderate
-        continue-on-error: true
       
       - name: Run npm audit for server
         run: cd server && npm audit --audit-level=moderate
-        continue-on-error: true
 
   integration-test:
     name: Integration Tests

@@ -32,11 +32,9 @@ jobs:
       
       - name: Run ESLint
         run: npm run lint
-        continue-on-error: true
       
       - name: Check TypeScript
         run: npx tsc --noEmit
-        continue-on-error: true
 
   format-check:
     name: Check Code Formatting
@@ -58,10 +56,7 @@ jobs:
         run: npm ci
       
       - name: Check code formatting
-        run: |
-          echo "Code formatting check placeholder"
-          echo "Add prettier or similar formatter if needed"
-        continue-on-error: true
+        run: npm run format:md:check
 
   validate-workflows:
     name: Validate Workflow Definitions

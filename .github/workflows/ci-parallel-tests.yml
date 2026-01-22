@@ -88,7 +88,6 @@ jobs:
       
       - name: Run ESLint
         run: npm run lint
-        continue-on-error: true
       
       - name: Build frontend
         run: npm run build
@@ -116,7 +115,6 @@ jobs:
         run: |
           cd server
           timeout 10 npm start || code=$?; if [ $code -ne 124 ]; then exit $code; fi
-        continue-on-error: true
 
   # Job 5: Security Audit
   security-audit:
@@ -136,11 +134,9 @@ jobs:
       
       - name: Run npm audit
         run: npm audit --audit-level=moderate
-        continue-on-error: true
       
       - name: Check for security vulnerabilities in server
         run: cd server && npm audit --audit-level=moderate
-        continue-on-error: true
 
   # Job 6: Code Quality Checks
   code-quality:
@@ -163,7 +159,6 @@ jobs:
       
       - name: Check TypeScript compilation
         run: npx tsc --noEmit
-        continue-on-error: true
       
       - name: Validate workflow JSON schemas
         run: |

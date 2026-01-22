@@ -32,11 +32,9 @@ jobs:
       
       - name: Run linter
         run: npm run lint
-        continue-on-error: true
       
       - name: Run tests
         run: npm test
-        continue-on-error: true
         
       - name: Upload test results
         if: always()
@@ -69,7 +67,6 @@ jobs:
       - name: Run backend tests
         working-directory: ./server
         run: npm test
-        continue-on-error: true
 
   test-workflows:
     name: Workflow Engine Tests
