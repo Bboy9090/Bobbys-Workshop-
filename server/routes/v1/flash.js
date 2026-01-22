@@ -10,7 +10,7 @@ import { commandExistsInPath } from '../../utils/safe-exec.js';
 import { getToolPath } from '../../tools-manager.js';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { flashHistory, activeFlashJobs, jobCounter as sharedJobCounter, broadcastFlashProgress, simulateFlashOperation } from './flash-shared.js';
+import { flashHistory, activeFlashJobs, jobCounter as sharedJobCounter, broadcastFlashProgress, isFlashSimulationAllowed, simulateFlashOperation } from './flash-shared.js';
 
 const router = express.Router();
 
@@ -307,6 +307,12 @@ router.post('/start', async (req, res) => {
     return res.sendError('VALIDATION_ERROR', 'Missing required fields: deviceSerial, flashMethod, partitions', null, 400);
   }
   
+  if (!isFlashSimulationAllowed(config)) {
+    return res.sendError('NOT_IMPLEMENTED', 'Real flash execution is not wired for /api/v1/flash/start', {
+      hint: 'Use /api/v1/trapdoor/flash for destructive operations or enable FLASH_SIMULATION=true for demo runs.'
+    }, 501);
+  }
+
   const jobId = `flash-job-${flashJobCounter++}-${Date.now()}`;
   
   const jobStatus = {
@@ -327,7 +333,12 @@ router.post('/start', async (req, res) => {
   
   activeFlashJobs.set(jobId, { config, status: jobStatus });
   
-  simulateFlashOperation(jobId, config);
+  try {
+    simulateFlashOperation(jobId, config);
+  } catch (error) {
+    activeFlashJobs.delete(jobId);
+    return res.sendError('SIMULATION_DISABLED', error.message, null, 400);
+  }
   
   res.sendEnvelope({
     success: true,

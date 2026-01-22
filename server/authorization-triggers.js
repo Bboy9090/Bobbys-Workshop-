@@ -824,18 +824,67 @@ export class AuthorizationTriggers {
       return result;
     }
     
+    if (!apkPath || typeof apkPath !== 'string') {
+      const result = {
+        success: false,
+        message: 'APK path required to trigger install authorization',
+        triggered: false,
+        requiresUserAction: true,
+        authorizationType: authType,
+        deviceSerial: sanitizedSerial,
+        error: 'Missing apkPath',
+        note: 'Provide a local APK path to initiate install prompt.'
+      };
+      logAuthorizationTrigger({ action: 'trigger_adb_install_auth', serial: sanitizedSerial, ...result });
+      return result;
+    }
+
+    const resolvedApkPath = path.resolve(apkPath);
+    if (!fs.existsSync(resolvedApkPath)) {
+      const result = {
+        success: false,
+        message: 'APK file not found',
+        triggered: false,
+        requiresUserAction: false,
+        authorizationType: authType,
+        deviceSerial: sanitizedSerial,
+        error: `APK not found at ${resolvedApkPath}`
+      };
+      logAuthorizationTrigger({ action: 'trigger_adb_install_auth', serial: sanitizedSerial, ...result });
+      return result;
+    }
+
     const adbCmd = getToolCommand('adb');
+    const command = `${quoteForShell(adbCmd)} -s ${sanitizedSerial} install ${quoteForShell(resolvedApkPath)}`;
+    const execResult = await executeCommand(command, 60000);
+
+    if (execResult.success) {
+      const result = {
+        success: true,
+        message: 'APK install initiated - check device for install prompt',
+        triggered: true,
+        requiresUserAction: true,
+        authorizationType: authType,
+        deviceSerial: sanitizedSerial,
+        commandOutput: execResult.stdout,
+        stderr: execResult.stderr,
+        exitCode: execResult.exitCode
+      };
+      logAuthorizationTrigger({ action: 'trigger_adb_install_auth', serial: sanitizedSerial, ...result });
+      return result;
+    }
+
     const result = {
       success: false,
-      message: 'Install authorization test not implemented',
+      message: 'APK install failed to start',
       triggered: false,
-      requiresUserAction: true,
+      requiresUserAction: false,
       authorizationType: authType,
       deviceSerial: sanitizedSerial,
-      note: 'Requires actual APK file to trigger installation prompt',
-      manualCommand: `${adbCmd} -s ${sanitizedSerial} install <path_to_apk>`
+      error: execResult.stderr || execResult.error,
+      commandOutput: execResult.stdout,
+      exitCode: execResult.exitCode
     };
-    
     logAuthorizationTrigger({ action: 'trigger_adb_install_auth', serial: sanitizedSerial, ...result });
     return result;
   }

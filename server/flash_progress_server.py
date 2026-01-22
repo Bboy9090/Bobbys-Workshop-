@@ -12,6 +12,7 @@ import asyncio
 import json
 import time
 from typing import Dict, List, Optional
+import os
 from datetime import datetime
 import uvicorn
 
@@ -180,6 +181,10 @@ async def perform_flash(job_id: str, device_id: str, device_name: str,
     """
     Simulate a flash operation with progress updates
     """
+    if os.getenv("FLASH_SIMULATION", "false").lower() != "true":
+        await manager.flash_failed(job_id, device_id, "Flash simulation is disabled (set FLASH_SIMULATION=true).")
+        return
+
     print(f"[FLASH] Starting job {job_id} for device {device_id}")
     
     total_bytes = image_size

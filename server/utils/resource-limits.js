@@ -5,6 +5,8 @@
  */
 
 import { createLogger } from './bundled-logger.js';
+import fs from 'fs';
+import os from 'os';
 
 const logger = createLogger('ResourceLimits');
 
@@ -41,31 +43,68 @@ let systemState = {
 const activeOperations = new Map();
 const operationQueue = [];
 
+let lastCpuSample = null;
+
+function sampleCpuUsage() {
+  const cpus = os.cpus();
+  const totals = cpus.reduce(
+    (acc, cpu) => {
+      acc.idle += cpu.times.idle;
+      acc.total += Object.values(cpu.times).reduce((sum, val) => sum + val, 0);
+      return acc;
+    },
+    { idle: 0, total: 0 }
+  );
+
+  if (!lastCpuSample) {
+    lastCpuSample = totals;
+    return null;
+  }
+
+  const idleDelta = totals.idle - lastCpuSample.idle;
+  const totalDelta = totals.total - lastCpuSample.total;
+  lastCpuSample = totals;
+
+  if (totalDelta <= 0) return null;
+  return 1 - idleDelta / totalDelta;
+}
+
+function getDiskUsagePercent(targetPath) {
+  if (typeof fs.statfsSync !== 'function') {
+    return null;
+  }
+
+  try {
+    const stats = fs.statfsSync(targetPath);
+    const total = stats.blocks || 0;
+    const free = stats.bfree || 0;
+    if (total === 0) return null;
+    return (total - free) / total;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Check system resources
  */
 async function checkSystemResources() {
   try {
     const memUsage = process.memoryUsage();
-    const totalMemory = require('os').totalmem();
-    const freeMemory = require('os').freemem();
+    const totalMemory = os.totalmem();
+    const freeMemory = os.freemem();
 
     // Memory check
     const memoryUsagePercent = memUsage.heapUsed / totalMemory;
     systemState.memoryPressure = memoryUsagePercent > RESOURCE_LIMITS.maxMemoryUsage;
 
-    // CPU check (simplified - in production you'd use a proper CPU monitoring library)
-    systemState.cpuPressure = false; // Placeholder
+    // CPU check using deltas of os.cpus times
+    const cpuUsage = sampleCpuUsage();
+    systemState.cpuPressure = cpuUsage !== null && cpuUsage > RESOURCE_LIMITS.maxCpuUsage;
 
-    // Disk check (simplified - check log directory)
-    try {
-      const fs = require('fs');
-      const stats = fs.statSync(require('fs').constants ? process.cwd() : '/tmp');
-      // This is a simplified check - in production you'd check actual disk usage
-      systemState.diskPressure = false;
-    } catch (error) {
-      systemState.diskPressure = true;
-    }
+    // Disk usage check (statfs if available)
+    const diskUsage = getDiskUsagePercent(process.cwd());
+    systemState.diskPressure = diskUsage !== null && diskUsage > RESOURCE_LIMITS.maxDiskUsage;
 
     // Overall degradation state
     systemState.degradedMode = systemState.memoryPressure ||
@@ -75,7 +114,9 @@ async function checkSystemResources() {
     systemState.lastResourceCheck = Date.now();
 
     if (systemState.degradedMode) {
-      logger.warn(`System under resource pressure: Memory=${(memoryUsagePercent*100).toFixed(1)}%, Degraded mode activated`);
+      const cpuPercent = cpuUsage !== null ? `${(cpuUsage * 100).toFixed(1)}%` : 'unknown';
+      const diskPercent = diskUsage !== null ? `${(diskUsage * 100).toFixed(1)}%` : 'unknown';
+      logger.warn(`System under resource pressure: Memory=${(memoryUsagePercent*100).toFixed(1)}%, CPU=${cpuPercent}, Disk=${diskPercent}, Degraded mode activated`);
     }
 
     return systemState;

@@ -8,8 +8,8 @@
  */
 
 import express from 'express';
-import hardwareRouter from './hardware.js';
-import batteryRouter from './battery.js';
+import hardwareRouter, { runComprehensiveDiagnostics } from './hardware.js';
+import batteryRouter, { getBatteryHealth } from './battery.js';
 
 const router = express.Router();
 
@@ -32,24 +32,24 @@ router.get('/', (req, res) => {
         description: 'Battery health diagnostics and monitoring'
       },
       storage: {
-        available: true,
-        endpoint: '/api/v1/diagnostics/storage/:checkId',
-        description: 'Storage space and health diagnostics'
+        available: false,
+        endpoint: '/api/v1/monitor/storage/:serial',
+        description: 'Storage diagnostics are exposed under /api/v1/monitor/storage'
       },
       network: {
-        available: true,
-        endpoint: '/api/v1/diagnostics/network/:checkId',
-        description: 'Network diagnostics (WiFi, Bluetooth, cellular)'
+        available: false,
+        endpoint: '/api/v1/monitor/network/:serial',
+        description: 'Network diagnostics are exposed under /api/v1/monitor/network'
       },
       security: {
-        available: true,
-        endpoint: '/api/v1/diagnostics/security/:checkId',
-        description: 'Security status (bootloader, root, FRP, MDM)'
+        available: false,
+        endpoint: '/api/v1/security/*',
+        description: 'Security diagnostics are exposed under /api/v1/security'
       },
       software: {
-        available: true,
+        available: false,
         endpoint: '/api/v1/diagnostics/software/:checkId',
-        description: 'Software version information'
+        description: 'Software diagnostics are not implemented in this endpoint'
       },
       performance: {
         available: true,
@@ -84,12 +84,13 @@ router.post('/:category/:checkId', async (req, res) => {
   }
 
   try {
-    // Simulate diagnostic check with realistic data
     const result = await runDiagnosticCheck(category, checkId, deviceSerial);
     res.sendEnvelope(result);
   } catch (error) {
-    res.status(500).sendEnvelope({ 
-      error: error.message,
+    const message = error.message || 'Diagnostics failed';
+    const isUnsupported = message.includes('not supported') || message.includes('Unsupported');
+    res.status(isUnsupported ? 501 : 500).sendEnvelope({
+      error: message,
       status: 'unknown',
       value: 'N/A'
     });
@@ -123,65 +124,95 @@ router.use('/battery', batteryRouter);
  * Run a specific diagnostic check
  */
 async function runDiagnosticCheck(category, checkId, deviceSerial) {
-  // Simulate different check results based on category and checkId
-  const checkResults = {
-    battery: {
-      battery_level: { status: 'pass', value: `${Math.floor(Math.random() * 40 + 60)}%` },
-      battery_health: { status: 'pass', value: 'Good' },
-      battery_temperature: { status: 'pass', value: `${Math.floor(Math.random() * 10 + 28)}°C` },
-      charging_status: { status: 'pass', value: Math.random() > 0.5 ? 'Charging' : 'Not Charging' },
-    },
-    storage: {
-      storage_internal: { status: 'warning', value: `${Math.floor(Math.random() * 30 + 10)}GB / 64GB` },
-      storage_external: { status: 'unknown', value: 'Not detected' },
-      storage_health: { status: 'pass', value: 'Healthy' },
-    },
-    network: {
-      wifi_status: { status: 'pass', value: 'Connected' },
-      mobile_signal: { status: 'pass', value: 'Excellent' },
-      sim_status: { status: 'pass', value: 'Detected' },
-      imei_valid: { status: 'pass', value: 'Valid' },
-    },
-    hardware: {
-      display_test: { status: 'pass', value: 'OK' },
-      touch_test: { status: 'pass', value: 'OK' },
-      camera_front: { status: 'pass', value: 'Available' },
-      camera_rear: { status: 'pass', value: 'Available' },
-      speaker_test: { status: 'pass', value: 'OK' },
-      microphone_test: { status: 'pass', value: 'OK' },
-      sensors_check: { status: 'pass', value: '8/8 sensors OK' },
-    },
-    security: {
-      bootloader_status: { status: 'pass', value: Math.random() > 0.3 ? 'Locked' : 'Unlocked' },
-      root_status: { status: 'pass', value: Math.random() > 0.2 ? 'Not Rooted' : 'Rooted' },
-      frp_status: { status: 'pass', value: Math.random() > 0.5 ? 'Active' : 'Inactive' },
-      mdm_status: { status: 'pass', value: 'None' },
-      encryption_status: { status: 'pass', value: 'Encrypted' },
-    },
-    software: {
-      os_version: { status: 'pass', value: 'Android 14' },
-      security_patch: { status: 'warning', value: 'October 2024' },
-      baseband_version: { status: 'pass', value: 'G998BXXU8HVL4' },
-    },
-  };
+  if (category === 'battery') {
+    const battery = await getBatteryHealth(deviceSerial);
+    if (!battery.success) {
+      throw new Error(battery.error || 'Battery diagnostics failed');
+    }
 
-  const categoryResults = checkResults[category] || {};
-  const result = categoryResults[checkId] || { status: 'unknown', value: 'N/A' };
+    const batteryChecks = {
+      battery_level: {
+        status: 'pass',
+        value: `${battery.percentage ?? 0}%`
+      },
+      battery_health: {
+        status: battery.healthPercentage !== null ? 'pass' : 'unknown',
+        value: battery.healthPercentage !== null ? `${battery.healthPercentage}%` : 'Unavailable'
+      },
+      battery_temperature: {
+        status: battery.temperature !== null ? 'pass' : 'unknown',
+        value: battery.temperature !== null ? `${battery.temperature}°C` : 'Unavailable'
+      },
+      charging_status: {
+        status: 'pass',
+        value: battery.charging ? 'Charging' : 'Not Charging'
+      }
+    };
 
-  return {
-    category,
-    checkId,
-    deviceSerial,
-    ...result,
-    timestamp: Date.now(),
-  };
+    const result = batteryChecks[checkId];
+    if (!result) {
+      throw new Error(`Unsupported battery checkId: ${checkId}`);
+    }
+
+    return {
+      category,
+      checkId,
+      deviceSerial,
+      ...result,
+      timestamp: Date.now()
+    };
+  }
+
+  if (category === 'hardware') {
+    const hardware = await runComprehensiveDiagnostics(deviceSerial);
+    if (!hardware || hardware.success === false) {
+      throw new Error(hardware?.error || 'Hardware diagnostics failed');
+    }
+
+    const hasCamera = (position) =>
+      Array.isArray(hardware.camera?.cameras) &&
+      hardware.camera.cameras.some(cam => cam.position === position);
+
+    const hardwareChecks = {
+      display_test: hardware.screen?.error
+        ? { status: 'fail', value: hardware.screen.error }
+        : { status: 'pass', value: hardware.screen?.resolution || 'OK' },
+      touch_test: { status: 'unknown', value: 'Requires interactive touch test' },
+      camera_front: hasCamera('front')
+        ? { status: 'pass', value: 'Detected' }
+        : { status: 'warning', value: 'Not detected' },
+      camera_rear: hasCamera('back')
+        ? { status: 'pass', value: 'Detected' }
+        : { status: 'warning', value: 'Not detected' },
+      speaker_test: { status: 'unknown', value: 'Requires audio playback test' },
+      microphone_test: { status: 'unknown', value: 'Requires audio capture test' },
+      sensors_check: hardware.sensors?.error
+        ? { status: 'fail', value: hardware.sensors.error }
+        : { status: 'pass', value: `${hardware.sensors?.count ?? 0} sensors reported` }
+    };
+
+    const result = hardwareChecks[checkId];
+    if (!result) {
+      throw new Error(`Unsupported hardware checkId: ${checkId}`);
+    }
+
+    return {
+      category,
+      checkId,
+      deviceSerial,
+      ...result,
+      timestamp: Date.now()
+    };
+  }
+
+  throw new Error(`Diagnostics category not supported: ${category}`);
 }
 
 /**
  * Run full diagnostics on a device
  */
 async function runFullDiagnostics(deviceSerial) {
-  const categories = ['battery', 'storage', 'network', 'hardware', 'security', 'software'];
+  const categories = ['battery', 'hardware'];
   const allChecks = [];
 
   for (const category of categories) {
@@ -217,11 +248,7 @@ async function runFullDiagnostics(deviceSerial) {
 function getChecksForCategory(category) {
   const checkMap = {
     battery: ['battery_level', 'battery_health', 'battery_temperature', 'charging_status'],
-    storage: ['storage_internal', 'storage_external', 'storage_health'],
-    network: ['wifi_status', 'mobile_signal', 'sim_status', 'imei_valid'],
-    hardware: ['display_test', 'touch_test', 'camera_front', 'camera_rear', 'speaker_test', 'microphone_test', 'sensors_check'],
-    security: ['bootloader_status', 'root_status', 'frp_status', 'mdm_status', 'encryption_status'],
-    software: ['os_version', 'security_patch', 'baseband_version'],
+    hardware: ['display_test', 'touch_test', 'camera_front', 'camera_rear', 'speaker_test', 'microphone_test', 'sensors_check']
   };
   return checkMap[category] || [];
 }

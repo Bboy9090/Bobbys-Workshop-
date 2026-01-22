@@ -74,7 +74,7 @@ class ADBLibrary {
   }
 
   /**
-   * Check FRP status (placeholder - needs implementation)
+   * Check FRP status (heuristic based on Android ID and FRP property)
    */
   async checkFRPStatus(serial) {
     try {

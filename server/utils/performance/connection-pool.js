@@ -16,6 +16,8 @@ class ConnectionPool {
     this.minSize = options.minSize || 2;
     this.idleTimeout = options.idleTimeout || 30000; // 30 seconds
     this.maxLifetime = options.maxLifetime || 300000; // 5 minutes
+    this.createConnectionFn = options.createConnection || null;
+    this.isConnectionHealthyFn = options.isConnectionHealthy || null;
     
     this.pool = [];
     this.active = new Set();
@@ -36,16 +38,23 @@ class ConnectionPool {
    * Create new connection
    */
   async createConnection() {
-    // This would create actual connections (ADB, Fastboot, etc.)
-    // For now, return a mock connection
-    const connection = {
-      id: `${this.name}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      createdAt: Date.now(),
-      lastUsed: Date.now(),
-      state: 'idle',
-      metadata: {}
-    };
-    
+    if (!this.createConnectionFn) {
+      throw new Error(`Connection pool "${this.name}" requires a createConnection function`);
+    }
+
+    const connection = await this.createConnectionFn();
+    if (!connection) {
+      throw new Error(`Connection pool "${this.name}" failed to create a connection`);
+    }
+
+    if (!connection.id) {
+      connection.id = `${this.name}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    }
+    connection.createdAt = connection.createdAt || Date.now();
+    connection.lastUsed = connection.lastUsed || Date.now();
+    connection.state = connection.state || 'idle';
+    connection.metadata = connection.metadata || {};
+
     this.stats.created++;
     return connection;
   }
@@ -116,6 +125,15 @@ class ConnectionPool {
    * Check if connection is healthy
    */
   isConnectionHealthy(connection) {
+    if (this.isConnectionHealthyFn) {
+      try {
+        return this.isConnectionHealthyFn(connection);
+      } catch {
+        this.stats.errors++;
+        return false;
+      }
+    }
+
     const age = Date.now() - connection.createdAt;
     const idleTime = Date.now() - connection.lastUsed;
     

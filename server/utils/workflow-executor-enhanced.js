@@ -11,6 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'url';
 import { getAuditLogger } from './audit-logger.js';
 import { mapActionToOperation, getOperationParams, requiresDeviceAuthorization, requiresOwnershipAttestation } from './action-operation-mapper.js';
+import { checkForBannedKeywords, evaluateRequiredGates } from './policy-gate-evaluator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -293,8 +294,64 @@ export async function executeWorkflow(workflowId, context) {
   const policies = await getPolicies();
   const requiredGates = workflow.required_gates || [];
   
-  // TODO: Evaluate policy gates
-  // For now, log workflow start
+  // Check for banned keywords in workflow content (GATE_NO_CIRCUMVENTION)
+  const workflowContent = `${workflow.name} ${workflow.description || ''}`;
+  const keywordCheck = checkForBannedKeywords(workflowContent, policies);
+
+  if (keywordCheck.found) {
+    await auditLogger.logEvent({
+      caseId,
+      userId,
+      workflowId: jobId,
+      actionId: 'workflow.execute',
+      action: 'workflow_blocked_by_policy',
+      args: { workflowId, bannedKeywords: keywordCheck.keywords },
+      policyGates: [{
+        gateId: 'GATE_NO_CIRCUMVENTION',
+        passed: false,
+        reason: `Banned keywords found: ${keywordCheck.keywords.join(', ')}`
+      }],
+      exitCode: 1
+    });
+
+    return {
+      success: false,
+      error: `Workflow blocked: Contains banned keywords (${keywordCheck.keywords.join(', ')})`,
+      policyResult: {
+        blocked: true,
+        reason: 'Banned keywords detected',
+        keywords: keywordCheck.keywords
+      }
+    };
+  }
+
+  const gateEvaluation = await evaluateRequiredGates(requiredGates, policies, {
+    parameters,
+    ownershipAttestation: context.ownershipAttestation,
+    deviceAuthorization: context.deviceAuthorization,
+    destructiveConfirm: context.destructiveConfirm
+  });
+
+  if (!gateEvaluation.allPassed) {
+    await auditLogger.logEvent({
+      caseId,
+      userId,
+      workflowId: jobId,
+      actionId: 'workflow.execute',
+      action: 'workflow_blocked_by_policy',
+      args: { workflowId, requiredGates, failedGates: gateEvaluation.failedGates.map(g => g.gateId) },
+      policyGates: gateEvaluation.gates,
+      exitCode: 1
+    });
+
+    return {
+      success: false,
+      error: gateEvaluation.blockedReason || 'Workflow blocked by policy gates',
+      policyResult: gateEvaluation
+    };
+  }
+
+  // Log workflow start
   
   await auditLogger.logEvent({
     caseId,

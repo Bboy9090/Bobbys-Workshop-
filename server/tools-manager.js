@@ -57,9 +57,8 @@ const TOOL_DEFINITIONS = {
     description: 'Samsung firmware flashing tool',
     platforms: ['win32'],
     executable: 'Odin3.exe',
-    downloadUrl: {
-      win32: 'https://samsungodin.com/download/' // Placeholder - need real source
-    },
+    downloadUrl: {},
+    downloadNote: 'Manual install required. Provide a verified source for Odin before enabling downloads.',
     bundled: true,
     requiresDriver: true,
     driverName: 'Samsung USB Driver'
@@ -84,9 +83,8 @@ const TOOL_DEFINITIONS = {
     description: 'MediaTek device firmware flashing tool',
     platforms: ['win32'],
     executable: 'flash_tool.exe',
-    downloadUrl: {
-      win32: 'https://spflashtool.com/download/' // Placeholder
-    },
+    downloadUrl: {},
+    downloadNote: 'Manual install required. Provide a verified MediaTek SP Flash Tool source before enabling downloads.',
     bundled: true,
     requiresDriver: true,
     driverName: 'MediaTek USB Driver'
@@ -111,9 +109,8 @@ const TOOL_DEFINITIONS = {
     description: 'Qualcomm Flash Image Loader (official tool)',
     platforms: ['win32'],
     executable: 'QFIL.exe',
-    downloadUrl: {
-      win32: 'https://www.qualcomm.com/developer/software/flash-image-loader' // Placeholder
-    },
+    downloadUrl: {},
+    downloadNote: 'Manual install required. Provide a verified Qualcomm QFIL source before enabling downloads.',
     bundled: true,
     requiresDriver: true,
     driverName: 'Qualcomm USB Driver'
@@ -216,7 +213,8 @@ export function getToolInfo(toolName) {
     version,
     requiresDriver: tool.requiresDriver || false,
     driverName: tool.driverName || null,
-    downloadUrl: tool.downloadUrl[os.platform()] || null,
+    downloadUrl: tool.downloadUrl?.[os.platform()] || null,
+    downloadNote: tool.downloadNote || null,
     bundled: tool.bundled || false
   };
 }

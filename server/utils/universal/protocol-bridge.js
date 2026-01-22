@@ -14,6 +14,7 @@ import deviceManager from './device-abstraction.js';
 class ProtocolBridge {
   constructor() {
     this.operationMappings = new Map();
+    this.adapters = new Map();
     this.initializeMappings();
   }
 
@@ -146,20 +147,17 @@ class ProtocolBridge {
    * Get protocol adapter
    */
   getProtocolAdapter(protocol) {
-    // This would integrate with actual protocol implementations
-    // For now, return a mock adapter
-    return {
-      execute: async (command) => {
-        return {
-          success: true,
-          protocol: command.protocol,
-          operation: command.operation,
-          command: command.command,
-          device: command.device,
-          result: 'Operation executed successfully'
-        };
-      }
-    };
+    return this.adapters.get(protocol) || null;
+  }
+
+  /**
+   * Register a protocol adapter
+   */
+  registerAdapter(protocol, adapter) {
+    if (!adapter || typeof adapter.execute !== 'function') {
+      throw new Error(`Adapter for ${protocol} must expose an execute(command) function`);
+    }
+    this.adapters.set(protocol, adapter);
   }
 
   /**

@@ -8,6 +8,10 @@ export let flashHistory = [];
 export let activeFlashJobs = new Map();
 export let jobCounter = 1;
 
+export function isFlashSimulationAllowed(config = {}) {
+  return config?.simulate === true || process.env.FLASH_SIMULATION === 'true';
+}
+
 /**
  * Broadcast flash progress to WebSocket clients
  */
@@ -24,6 +28,10 @@ export function broadcastFlashProgress(jobId, data) {
  * In production, this would execute actual flash commands
  */
 export function simulateFlashOperation(jobId, config) {
+  if (!isFlashSimulationAllowed(config)) {
+    throw new Error('Flash simulation is disabled. Set FLASH_SIMULATION=true or pass simulate=true.');
+  }
+
   const job = activeFlashJobs.get(jobId);
   if (!job) return;
   

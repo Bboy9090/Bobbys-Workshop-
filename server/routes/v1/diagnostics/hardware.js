@@ -359,5 +359,6 @@ router.get('/:serial/audio', async (req, res) => {
   }
 });
 
+export { runComprehensiveDiagnostics, testScreen, testSensors, testCamera, testAudio };
 export default router;
 

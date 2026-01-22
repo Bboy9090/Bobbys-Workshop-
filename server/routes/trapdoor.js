@@ -19,6 +19,7 @@ import {
 import ShadowLogger from '../../core/lib/shadow-logger.js';
 const shadowLogger = new ShadowLogger();
 import rateLimit from 'express-rate-limit';
+import { executeOperation as executeTrapdoorOperation } from './v1/trapdoor/operations.js';
 
 const router = express.Router();
 
@@ -62,7 +63,6 @@ router.post('/execute', async (req, res) => {
     }
 
     // Load operation specification from catalog
-    // TODO: Load from core/catalog/operations/{operation}.json
     const operationSpec = await loadOperationSpec(operation);
     
     if (!operationSpec) {
@@ -153,7 +153,6 @@ router.post('/execute', async (req, res) => {
     }
 
     // Execute operation
-    // TODO: Route to appropriate operation handler
     const result = await executeOperation(operation, params, operationSpec);
 
     // Log completion
@@ -280,7 +279,6 @@ router.get('/operations', async (req, res) => {
   try {
     const role = getUserRole(req);
     
-    // TODO: Load all operations from catalog and filter by role
     const operations = await listAvailableOperations(role);
 
     return res.json({
@@ -330,15 +328,7 @@ import { loadOperationSpec, listOperationsForRole } from '../../core/catalog/ope
  * @returns {Promise<Object>} Execute envelope
  */
 async function executeOperation(operation, params, operationSpec) {
-  // TODO: Route to appropriate handler based on operation type
-  // This will call workflow engine or direct provider methods
-  
-  return createErrorEnvelope(
-    operation,
-    'NOT_IMPLEMENTED',
-    'Operation execution not yet implemented',
-    { operation, params }
-  );
+  return executeTrapdoorOperation(operation, params, operationSpec);
 }
 
 /**

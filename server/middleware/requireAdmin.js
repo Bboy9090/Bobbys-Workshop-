@@ -7,6 +7,8 @@
  * @module server/middleware/requireAdmin
  */
 
+import jwt from 'jsonwebtoken';
+
 /**
  * Require admin authentication middleware
  * 
@@ -52,16 +54,43 @@ export function requireAdmin(req, res, next) {
   // Check JWT token (production mode)
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
-    
-    // TODO: Implement JWT verification
-    // For now, we'll use a simple check
-    // In production, use: jsonwebtoken.verify(token, process.env.JWT_SECRET)
-    
-    // Placeholder: In production, implement proper JWT verification
-    if (process.env.NODE_ENV === 'production') {
+
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      return res.status(503).json({
+        error: 'JWT_SECRET_NOT_CONFIGURED',
+        message: 'JWT authentication requires JWT_SECRET to be set.'
+      });
+    }
+
+    const algorithms = process.env.JWT_ALGORITHMS
+      ? process.env.JWT_ALGORITHMS.split(',').map(a => a.trim()).filter(Boolean)
+      : ['HS256'];
+
+    try {
+      const payload = jwt.verify(token, jwtSecret, { algorithms });
+      const role = extractRoleFromToken(payload);
+      const isAdmin = role === 'admin' || role === 'owner' || payload?.admin === true;
+
+      if (!isAdmin) {
+        return res.status(403).json({
+          error: 'FORBIDDEN',
+          message: 'JWT does not grant admin access'
+        });
+      }
+
+      req.user = {
+        role: role || 'admin',
+        authMethod: 'jwt',
+        authenticated: true,
+        subject: payload?.sub || null,
+        tokenId: payload?.jti || null
+      };
+      return next();
+    } catch (error) {
       return res.status(401).json({
-        error: 'JWT authentication not yet implemented',
-        message: 'Please use X-API-Key or X-Secret-Room-Passcode header'
+        error: 'JWT_INVALID',
+        message: error.message
       });
     }
   }
@@ -87,6 +116,7 @@ export function requireAdmin(req, res, next) {
 export function optionalAdmin(req, res, next) {
   const apiKey = req.headers['x-api-key'];
   const passcode = req.headers['x-secret-room-passcode'];
+  const authHeader = req.headers.authorization;
   const expectedApiKey = process.env.TRAPDOOR_API_KEY || process.env.ADMIN_API_KEY;
   const expectedPasscode = process.env.SECRET_ROOM_PASSCODE;
 
@@ -96,6 +126,27 @@ export function optionalAdmin(req, res, next) {
       role: 'admin',
       authenticated: true
     };
+  } else if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    const jwtSecret = process.env.JWT_SECRET;
+    const algorithms = process.env.JWT_ALGORITHMS
+      ? process.env.JWT_ALGORITHMS.split(',').map(a => a.trim()).filter(Boolean)
+      : ['HS256'];
+
+    if (jwtSecret) {
+      try {
+        const payload = jwt.verify(token, jwtSecret, { algorithms });
+        const role = extractRoleFromToken(payload);
+        req.user = {
+          role: role || 'viewer',
+          authenticated: true
+        };
+      } catch {
+        req.user = { role: 'viewer', authenticated: false };
+      }
+    } else {
+      req.user = { role: 'viewer', authenticated: false };
+    }
   } else {
     req.user = {
       role: 'viewer',
@@ -117,4 +168,16 @@ export function getUserRole(req) {
     return req.user.role;
   }
   return 'viewer';
+}
+
+function extractRoleFromToken(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  if (typeof payload.role === 'string') return payload.role;
+  if (Array.isArray(payload.roles) && payload.roles.length > 0) return payload.roles[0];
+  if (typeof payload.scope === 'string') {
+    const scopes = payload.scope.split(' ').map(s => s.trim());
+    if (scopes.includes('admin')) return 'admin';
+    if (scopes.includes('owner')) return 'owner';
+  }
+  return null;
 }

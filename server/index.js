@@ -1326,23 +1326,86 @@ app.get('/api/android/devices', (req, res) => {
   app._router.handle(req, res, () => {});
 });
 
-// Plugins API stub (for plugin marketplace)
-app.get('/api/plugins', (req, res) => {
-  res.json({
-    success: true,
-    plugins: [],
-    count: 0,
-    message: 'Plugin marketplace is available. No plugins installed.',
-    timestamp: new Date().toISOString()
-  });
+// Plugins API (proxy to registry when configured)
+const pluginRegistryUrl = process.env.PLUGIN_REGISTRY_API_URL || process.env.VITE_REGISTRY_API_URL || null;
+
+app.get('/api/plugins', async (req, res) => {
+  if (!pluginRegistryUrl) {
+    return res.status(503).json({
+      success: false,
+      error: 'PLUGIN_REGISTRY_NOT_CONFIGURED',
+      message: 'Plugin registry not configured. Set PLUGIN_REGISTRY_API_URL.',
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  try {
+    const manifestUrl = new URL('/manifest', pluginRegistryUrl).toString();
+    const response = await fetch(manifestUrl);
+    if (!response.ok) {
+      return res.status(502).json({
+        success: false,
+        error: 'PLUGIN_REGISTRY_UNAVAILABLE',
+        message: `Registry manifest unavailable: HTTP ${response.status}`,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const manifest = await response.json();
+    const plugins = Array.isArray(manifest.plugins) ? manifest.plugins : [];
+
+    return res.json({
+      success: true,
+      plugins,
+      count: plugins.length,
+      registry: pluginRegistryUrl,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: 'PLUGIN_REGISTRY_ERROR',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
-app.get('/api/plugins/:id', (req, res) => {
-  res.status(404).json({
-    success: false,
-    error: 'Plugin not found',
-    pluginId: req.params.id
-  });
+app.get('/api/plugins/:id', async (req, res) => {
+  if (!pluginRegistryUrl) {
+    return res.status(503).json({
+      success: false,
+      error: 'PLUGIN_REGISTRY_NOT_CONFIGURED',
+      message: 'Plugin registry not configured. Set PLUGIN_REGISTRY_API_URL.',
+      pluginId: req.params.id
+    });
+  }
+
+  try {
+    const pluginUrl = new URL(`/plugins/${encodeURIComponent(req.params.id)}`, pluginRegistryUrl).toString();
+    const response = await fetch(pluginUrl);
+    if (!response.ok) {
+      return res.status(response.status).json({
+        success: false,
+        error: 'PLUGIN_NOT_FOUND',
+        message: `Plugin ${req.params.id} not found in registry`,
+        pluginId: req.params.id
+      });
+    }
+
+    const plugin = await response.json();
+    return res.json({
+      success: true,
+      plugin
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: 'PLUGIN_REGISTRY_ERROR',
+      message: error.message,
+      pluginId: req.params.id
+    });
+  }
 });
 
 app.get('/api/devices/scan', (req, res) => {
@@ -2605,6 +2668,15 @@ app.post('/api/flash/start', async (req, res) => {
     });
   }
   
+  if (!isFlashSimulationAllowedShared(config)) {
+    return res.status(501).json({
+      success: false,
+      error: 'NOT_IMPLEMENTED',
+      message: 'Real flash execution is not wired for /api/flash/start',
+      hint: 'Use /api/v1/trapdoor/flash for destructive operations or enable FLASH_SIMULATION=true for demo runs.'
+    });
+  }
+
   const jobId = `flash-job-${jobCounter++}-${Date.now()}`;
   
   const jobStatus = {
@@ -2625,7 +2697,16 @@ app.post('/api/flash/start', async (req, res) => {
   
   activeFlashJobs.set(jobId, { config, status: jobStatus });
   
-  simulateFlashOperation(jobId, config);
+  try {
+    sharedSimulateFlashOperation(jobId, config);
+  } catch (error) {
+    activeFlashJobs.delete(jobId);
+    return res.status(400).json({
+      success: false,
+      error: 'SIMULATION_DISABLED',
+      message: error.message
+    });
+  }
   
   res.json({
     success: true,
@@ -2638,77 +2719,7 @@ app.post('/api/flash/start', async (req, res) => {
 });
 
 // Import shared simulate function
-import { simulateFlashOperation as sharedSimulateFlashOperation } from './routes/v1/flash-shared.js';
-
-function simulateFlashOperation(jobId, config) {
-  const job = activeFlashJobs.get(jobId);
-  if (!job) return;
-  
-  job.status.status = 'running';
-  job.status.logs.push(`[${new Date().toISOString()}] Starting flash operation`);
-  job.status.currentStep = `Flashing ${config.partitions[0].name}`;
-  
-  broadcastFlashProgress(jobId, {
-    type: 'progress',
-    status: job.status
-  });
-  
-  let stepIndex = 0;
-  const stepInterval = setInterval(() => {
-    const job = activeFlashJobs.get(jobId);
-    if (!job) {
-      clearInterval(stepInterval);
-      return;
-    }
-    
-    job.status.progress += 10;
-    job.status.timeElapsed = Math.floor((Date.now() - job.status.startTime) / 1000);
-    job.status.speed = Math.floor(Math.random() * 20 + 10);
-    
-    if (job.status.progress >= 100) {
-      job.status.progress = 100;
-      job.status.status = 'completed';
-      job.status.currentStep = 'Completed';
-      job.status.logs.push(`[${new Date().toISOString()}] Flash operation completed successfully`);
-      
-      flashHistory.unshift({
-        jobId,
-        deviceSerial: config.deviceSerial,
-        deviceBrand: config.deviceBrand,
-        flashMethod: config.flashMethod,
-        partitions: config.partitions.map(p => p.name),
-        status: 'completed',
-        startTime: job.status.startTime,
-        endTime: Date.now(),
-        duration: Math.floor((Date.now() - job.status.startTime) / 1000),
-        bytesWritten: job.status.totalBytes,
-        averageSpeed: Math.floor(Math.random() * 20 + 10)
-      });
-      
-      if (flashHistory.length > 50) {
-        flashHistory = flashHistory.slice(0, 50);
-      }
-      
-      broadcastFlashProgress(jobId, {
-        type: 'completed',
-        status: job.status
-      });
-      
-      clearInterval(stepInterval);
-      setTimeout(() => activeFlashJobs.delete(jobId), 5000);
-    } else if (job.status.progress % 30 === 0 && stepIndex < config.partitions.length - 1) {
-      stepIndex++;
-      job.status.completedSteps = stepIndex;
-      job.status.currentStep = `Flashing ${config.partitions[stepIndex].name}`;
-      job.status.logs.push(`[${new Date().toISOString()}] Flashing partition: ${config.partitions[stepIndex].name}`);
-    }
-    
-    broadcastFlashProgress(jobId, {
-      type: 'progress',
-      status: job.status
-    });
-  }, 1000);
-}
+import { simulateFlashOperation as sharedSimulateFlashOperation, isFlashSimulationAllowed as isFlashSimulationAllowedShared } from './routes/v1/flash-shared.js';
 
 app.post('/api/flash/pause/:jobId', async (req, res) => {
   const { jobId } = req.params;

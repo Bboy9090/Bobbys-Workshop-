@@ -260,5 +260,6 @@ router.post('/:serial/monitor', async (req, res) => {
   }
 });
 
+export { getBatteryHealth, monitorBattery };
 export default router;
 
