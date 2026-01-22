@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from typing import Optional
 import uuid
 import os
+import json
 
 from .shredder import shred_metadata
 from .canary import generate_canary_token, check_canary_alert
@@ -18,6 +19,24 @@ router = APIRouter()
 # Storage directories
 GHOST_DIR = os.path.join(os.path.dirname(__file__), "../../../ghost_data")
 os.makedirs(GHOST_DIR, exist_ok=True)
+ALERTS_DIR = os.path.join(GHOST_DIR, "alerts")
+os.makedirs(ALERTS_DIR, exist_ok=True)
+PERSONAS_PATH = os.path.join(GHOST_DIR, "personas.json")
+
+
+def load_personas():
+    if not os.path.exists(PERSONAS_PATH):
+        return []
+    try:
+        with open(PERSONAS_PATH, "r") as f:
+            return json.load(f) or []
+    except Exception:
+        return []
+
+
+def save_personas(personas):
+    with open(PERSONAS_PATH, "w") as f:
+        json.dump(personas, f, indent=2)
 
 
 @router.post("/shred")
@@ -117,11 +136,31 @@ async def check_trap(token_id: str):
 @router.get("/alerts")
 async def list_alerts():
     """List all canary token alerts."""
-    # Placeholder - would read from database/storage
+    alerts = []
+    try:
+        for filename in os.listdir(ALERTS_DIR):
+            if not filename.endswith(".json"):
+                continue
+            file_path = os.path.join(ALERTS_DIR, filename)
+            try:
+                with open(file_path, "r") as f:
+                    alert = json.load(f)
+                    alerts.append(alert)
+            except Exception:
+                continue
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": {"code": "ALERTS_READ_FAILED", "message": str(e)}
+            }
+        )
+
     return JSONResponse({
         "ok": True,
         "data": {
-            "alerts": []
+            "alerts": alerts
         }
     })
 
@@ -134,7 +173,10 @@ async def create_persona(
     """Create a burner persona."""
     try:
         persona = create_burner_persona(name, email_domain)
-        
+        personas = load_personas()
+        personas.insert(0, persona)
+        save_personas(personas)
+
         return JSONResponse({
             "ok": True,
             "data": persona
@@ -152,10 +194,10 @@ async def create_persona(
 @router.get("/personas")
 async def list_personas():
     """List all burner personas."""
-    # Placeholder
+    personas = load_personas()
     return JSONResponse({
         "ok": True,
         "data": {
-            "personas": []
+            "personas": personas
         }
     })

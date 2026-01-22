@@ -21,28 +21,15 @@ class InspectHandler:
         device_id = data.get('device_id', '')
         platform = data.get('platform', 'unknown')
         
-        # Basic inspection (read-only, no mutation)
-        # This is a placeholder - implement actual device inspection logic
-        response_data = {
-            "activation_locked": None,
-            "mdm_enrolled": None,
-            "frp_locked": None,
-            "efi_locked": None
-        }
-        
-        # TODO: Implement actual device inspection
-        # - Use libimobiledevice for iOS
-        # - Use ADB for Android
-        # - Parse device state
-        # - Return observations only
-        
         response = {
-            "ok": True,
-            "data": response_data,
-            "warnings": []
+            "ok": False,
+            "error": {
+                "code": "NOT_IMPLEMENTED",
+                "message": "Device inspection is not implemented in this service."
+            }
         }
         
-        request_handler.send_response(200)
+        request_handler.send_response(501)
         request_handler.send_header('Content-Type', 'application/json')
         request_handler.end_headers()
         request_handler.wfile.write(json.dumps(response).encode('utf-8'))
@@ -56,25 +43,15 @@ class InspectHandler:
         device_id = data.get('device_id', '')
         platform = data.get('platform', 'unknown')
         
-        # Deep inspection (more detailed, still read-only)
-        response_data = {
-            "signals": [],
-            "notes": "deep probe completed"
-        }
-        
-        # TODO: Implement deep inspection
-        # - Battery state
-        # - Storage health
-        # - Thermal state
-        # - System logs
-        
         response = {
-            "ok": True,
-            "data": response_data,
-            "warnings": ["partial_data"]
+            "ok": False,
+            "error": {
+                "code": "NOT_IMPLEMENTED",
+                "message": "Deep inspection is not implemented in this service."
+            }
         }
         
-        request_handler.send_response(200)
+        request_handler.send_response(501)
         request_handler.send_header('Content-Type', 'application/json')
         request_handler.end_headers()
         request_handler.wfile.write(json.dumps(response).encode('utf-8'))

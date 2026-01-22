@@ -17,23 +17,15 @@ class ReportHandler:
         report_id = data.get('report_id', '')
         format_type = data.get('format', 'json')
         
-        # Report formatting (read-only, no device mutation)
-        # TODO: Implement actual report formatting
-        # - Load report data
-        # - Format as PDF/JSON/HTML
-        # - Return artifact path
-        
-        response_data = {
-            "artifact": f"report.{format_type}"
-        }
-        
         response = {
-            "ok": True,
-            "data": response_data,
-            "warnings": []
+            "ok": False,
+            "error": {
+                "code": "NOT_IMPLEMENTED",
+                "message": "Report formatting is not implemented in this service."
+            }
         }
         
-        request_handler.send_response(200)
+        request_handler.send_response(501)
         request_handler.send_header('Content-Type', 'application/json')
         request_handler.end_headers()
         request_handler.wfile.write(json.dumps(response).encode('utf-8'))

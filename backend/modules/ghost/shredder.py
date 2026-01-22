@@ -110,8 +110,24 @@ def shred_audio_metadata(input_path: str, output_path: str) -> bool:
 
 def shred_pdf_metadata(input_path: str, output_path: str) -> bool:
     """Remove metadata from PDF."""
-    # Placeholder - would use PyPDF2 or similar
-    # For now, just copy
-    import shutil
-    shutil.copy2(input_path, output_path)
-    return True
+    try:
+        try:
+            from pypdf import PdfReader, PdfWriter
+        except ImportError:
+            from PyPDF2 import PdfReader, PdfWriter
+    except ImportError:
+        print("PyPDF2/pypdf not installed")
+        return False
+
+    try:
+        reader = PdfReader(input_path)
+        writer = PdfWriter()
+        for page in reader.pages:
+            writer.add_page(page)
+        writer.add_metadata({})
+        with open(output_path, "wb") as output_file:
+            writer.write(output_file)
+        return os.path.exists(output_path)
+    except Exception as e:
+        print(f"PDF metadata shredding error: {e}")
+        return False

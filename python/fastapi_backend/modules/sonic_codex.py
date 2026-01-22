@@ -105,14 +105,25 @@ def enhance_audio(audio_path: Path, output_path: Optional[Path] = None) -> Dict:
     
     if not check_ffmpeg():
         raise Exception("ffmpeg is required for audio processing. Install ffmpeg first.")
-    
-    # This is a placeholder - full implementation would:
-    # 1. Load audio file
-    # 2. Apply noise reduction
-    # 3. Normalize audio levels
-    # 4. Save enhanced audio
-    
+
     output_path = output_path or audio_path.with_name(f"{audio_path.stem}_enhanced{audio_path.suffix}")
+
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-i", str(audio_path),
+                "-af", "afftdn,volume=1.2",
+                str(output_path)
+            ],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            raise Exception(result.stderr.strip() or "ffmpeg enhancement failed")
+    except Exception as e:
+        raise Exception(f"Audio enhancement failed: {str(e)}")
     
     return {
         "success": True,

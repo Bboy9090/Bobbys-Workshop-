@@ -210,21 +210,14 @@ def detect_dfu_mode(device_serial: Optional[str] = None, user_initiated: bool = 
 
 def execute_jailbreak(device_serial: str, method: str, ios_version: Optional[str] = None) -> Dict:
     """Execute jailbreak operation"""
-    # This is a placeholder - real implementation would:
-    # 1. Detect device and iOS version
-    # 2. Select appropriate jailbreak tool (checkra1n, palera1n, etc.)
-    # 3. Execute jailbreak process
-    # 4. Monitor progress
-    # 5. Return result
-    
     return {
-        "success": True,
+        "success": False,
         "deviceSerial": device_serial,
         "method": method,
-        "status": "pending",
-        "message": f"Jailbreak operation initiated using {method}",
-        "estimatedTime": "2-10 minutes",
-        "note": "Full jailbreak implementation requires system tools (checkra1n, palera1n, etc.)"
+        "status": "not_implemented",
+        "message": "Jailbreak automation is not implemented in this backend.",
+        "requiredTools": ["checkra1n", "palera1n"],
+        "note": "Install approved tools and use trapdoor workflows for authorized operations."
     }
 
 

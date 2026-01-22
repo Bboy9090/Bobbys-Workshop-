@@ -31,9 +31,16 @@ def generate_canary_token(token_id: str, file_type: str = "pdf", metadata: Dict 
             f.write(b"%PDF-1.4\n")  # Minimal PDF header
     elif file_type == "docx":
         file_path = os.path.join(token_dir, f"{token_id}.docx")
-        # Placeholder - would create actual DOCX
-        with open(file_path, "wb") as f:
-            f.write(b"DOCX_TOKEN")
+        try:
+            from docx import Document
+        except ImportError as exc:
+            raise RuntimeError("python-docx is required to generate DOCX canary files.") from exc
+
+        doc = Document()
+        doc.add_heading("Document", level=1)
+        doc.add_paragraph("This document contains sensitive information.")
+        doc.add_paragraph(f"Tracking URL: {callback_url}")
+        doc.save(file_path)
     elif file_type == "html":
         file_path = os.path.join(token_dir, f"{token_id}.html")
         # Create HTML file with hidden image beacon

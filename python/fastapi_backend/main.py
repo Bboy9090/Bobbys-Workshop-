@@ -246,9 +246,9 @@ async def sonic_capture_start(
     with open(job_file, 'w') as f:
         json.dump(job_data, f, indent=2)
     
-    # TODO: Start actual audio capture/transcription in background
-    # For now, simulate completion
-    job_data["status"] = "processing"
+    # Audio capture worker is not running in this backend.
+    # Keep job queued until a worker updates status.
+    job_data["status"] = "queued"
     with open(job_file, 'w') as f:
         json.dump(job_data, f, indent=2)
     
@@ -256,8 +256,8 @@ async def sonic_capture_start(
         "ok": True,
         "data": {
             "jobId": job_id,
-            "status": "processing",
-            "message": "Audio capture job created"
+            "status": "queued",
+            "message": "Audio capture job queued. Start a capture worker to process it."
         }
     }
 
@@ -724,19 +724,10 @@ async def pandora_chainbreaker(
 ):
     verify_passcode(x_secret_room_passcode)
     
-    # TODO: Implement actual Chain-Breaker logic
-    # This would interface with checkm8, SSHRD, or activation bypass tools
-    
-    return {
-        "ok": True,
-        "data": {
-            "message": "Chain-Breaker operation initiated",
-            "deviceSerial": request.deviceSerial,
-            "operation": request.operation,
-            "status": "pending",
-            "estimatedTime": "5-15 minutes"
-        }
-    }
+    raise HTTPException(
+        status_code=501,
+        detail="Chain-Breaker automation is not implemented in this backend."
+    )
 
 class DFUDetectRequest(BaseModel):
     deviceSerial: Optional[str] = "auto"
@@ -774,11 +765,10 @@ async def pandora_dfu_enter(
     x_secret_room_passcode: Optional[str] = Header(None)
 ):
     verify_passcode(x_secret_room_passcode)
-    # TODO: Implement DFU entry
-    return {
-        "ok": True,
-        "message": "DFU entry initiated"
-    }
+    raise HTTPException(
+        status_code=501,
+        detail="DFU entry automation is not implemented in this backend."
+    )
 
 @app.get("/api/v1/trapdoor/pandora/devices")
 async def pandora_devices(
@@ -814,11 +804,10 @@ async def pandora_manipulate(
     x_secret_room_passcode: Optional[str] = Header(None)
 ):
     verify_passcode(x_secret_room_passcode)
-    # TODO: Implement hardware manipulation
-    return {
-        "ok": True,
-        "message": "Hardware manipulation initiated"
-    }
+    raise HTTPException(
+        status_code=501,
+        detail="Hardware manipulation is not implemented in this backend."
+    )
 
 class JailbreakRequest(BaseModel):
     deviceSerial: str
@@ -835,22 +824,17 @@ async def pandora_jailbreak_execute(
     
     if MODULES_AVAILABLE:
         result = pandora_codex.execute_jailbreak(request.deviceSerial, request.method, request.iosVersion)
+        if not result.get("success"):
+            raise HTTPException(status_code=501, detail=result.get("message", "Jailbreak not implemented"))
         return {
             "ok": True,
             "data": result
         }
     else:
-        return {
-            "ok": True,
-            "data": {
-                "message": "Jailbreak operation initiated",
-                "deviceSerial": request.deviceSerial,
-                "method": request.method,
-                "status": "pending",
-                "estimatedTime": "2-10 minutes",
-                "note": "Full jailbreak implementation requires system tools (checkra1n, palera1n, etc.)"
-            }
-        }
+        raise HTTPException(
+            status_code=501,
+            detail="Jailbreak automation requires system tools and is not available in this backend."
+        )
 
 @app.get("/api/v1/trapdoor/pandora/jailbreak/methods")
 async def pandora_jailbreak_methods(x_secret_room_passcode: Optional[str] = Header(None)):

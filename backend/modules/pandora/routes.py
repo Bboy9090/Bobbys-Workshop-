@@ -55,24 +55,24 @@ async def enter_dfu_mode(device_id: str):
             }
         )
     
-    try:
-        # Placeholder - would use libimobiledevice or similar
-        return JSONResponse({
-            "ok": True,
+    return JSONResponse(
+        status_code=501,
+        content={
+            "ok": False,
+            "error": {
+                "code": "DFU_NOT_IMPLEMENTED",
+                "message": "DFU entry automation is not available in this backend."
+            },
             "data": {
                 "device_id": device_id,
-                "status": "dfu_mode_entered",
-                "message": "Device entered DFU mode"
+                "instructions": [
+                    "Use device-specific DFU instructions in the UI.",
+                    "Connect via USB and follow timed button sequences.",
+                    "Verify DFU mode using libimobiledevice tools when available."
+                ]
             }
-        })
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "ok": False,
-                "error": {"code": "DFU_FAILED", "message": str(e)}
-            }
-        )
+        }
+    )
 
 
 @router.post("/jailbreak")
@@ -89,49 +89,41 @@ async def execute_jailbreak(device_id: str, exploit: str = "checkra1n"):
             }
         )
     
-    try:
-        # Placeholder - would integrate with actual jailbreak tools
-        return JSONResponse({
-            "ok": True,
+    return JSONResponse(
+        status_code=501,
+        content={
+            "ok": False,
+            "error": {
+                "code": "JAILBREAK_NOT_IMPLEMENTED",
+                "message": "Jailbreak automation is not available in this backend."
+            },
             "data": {
                 "device_id": device_id,
                 "exploit": exploit,
-                "status": "jailbreak_initiated",
-                "message": "Jailbreak process started"
+                "note": "Use supported jailbreak tooling via the trapdoor workflow if authorized."
             }
-        })
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "ok": False,
-                "error": {"code": "JAILBREAK_FAILED", "message": str(e)}
-            }
-        )
+        }
+    )
 
 
 @router.post("/flash")
 async def flash_device(device_id: str, firmware_path: str):
     """Flash firmware to device."""
-    try:
-        # Placeholder - would use actual flashing tools
-        return JSONResponse({
-            "ok": True,
+    return JSONResponse(
+        status_code=501,
+        content={
+            "ok": False,
+            "error": {
+                "code": "FLASH_NOT_IMPLEMENTED",
+                "message": "Firmware flashing is not implemented in this backend."
+            },
             "data": {
                 "device_id": device_id,
                 "firmware": firmware_path,
-                "status": "flashing",
-                "message": "Firmware flash initiated"
+                "note": "Use the trapdoor flash workflows for authorized flashing."
             }
-        })
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "ok": False,
-                "error": {"code": "FLASH_FAILED", "message": str(e)}
-            }
-        )
+        }
+    )
 
 
 @router.websocket("/hardware/stream")
