@@ -16,6 +16,8 @@ import ShadowLogger from '../../../../core/lib/shadow-logger.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { randomUUID } from 'node:crypto';
+import { executeWorkflow } from '../../../utils/workflow-executor-enhanced.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,55 +30,44 @@ const shadowLogger = new ShadowLogger();
  * Execute a workflow (from trapdoor API)
  */
 router.post('/execute', async (req, res) => {
-  const { workflowId, devices, parameters } = req.body;
+  const { workflowId, parameters, caseId, ownershipAttestation, deviceAuthorization, destructiveConfirm } = req.body;
 
   if (!workflowId) {
     return res.sendError('VALIDATION_ERROR', 'Workflow ID is required', null, 400);
   }
 
   try {
-    // Load workflow from workflows directory
-    const workflowPath = path.join(__dirname, '../../../../workflows', `${workflowId}.json`);
-    
-    if (!fs.existsSync(workflowPath)) {
-      return res.sendError('WORKFLOW_NOT_FOUND', 'Workflow not found', {
-        workflowId,
-        availableWorkflows: 'Check /api/v1/catalog/workflows for available workflows'
-      }, 404);
-    }
-
-    const workflow = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
-
     // Log to shadow
     await shadowLogger.logShadow({
       operation: 'workflow_execute',
-      deviceSerial: devices ? devices.join(',') : 'multiple',
+      deviceSerial: 'multiple',
       userId: req.ip,
       authorization: 'TRAPDOOR',
       success: false,
       metadata: {
         workflowId,
-        deviceCount: devices ? devices.length : 0,
         parameters
       }
     });
 
-    // Execute workflow (simplified - full implementation would use workflow engine)
-    const executionResult = {
-      workflowId,
-      status: 'executing',
-      devices: devices || [],
-      steps: workflow.steps || [],
-      startTime: new Date().toISOString()
-    };
+    const jobId = randomUUID();
+    const executionResult = await executeWorkflow(workflowId, {
+      caseId: caseId || `trapdoor-${workflowId}`,
+      userId: req.ip,
+      jobId,
+      parameters: parameters || {},
+      ownershipAttestation,
+      deviceAuthorization,
+      destructiveConfirm
+    });
 
     // Log success
     await shadowLogger.logShadow({
       operation: 'workflow_execute',
-      deviceSerial: devices ? devices.join(',') : 'multiple',
+      deviceSerial: 'multiple',
       userId: req.ip,
       authorization: 'TRAPDOOR',
-      success: true,
+      success: executionResult.success === true,
       metadata: {
         workflowId,
         executionResult
@@ -84,10 +75,9 @@ router.post('/execute', async (req, res) => {
     });
 
     res.sendEnvelope({
-      success: true,
-      message: 'Workflow execution started',
+      success: executionResult.success === true,
+      message: executionResult.success ? 'Workflow executed' : 'Workflow execution failed',
       execution: executionResult,
-      note: 'Full workflow execution engine implementation pending. This is a structure for future enhancement.',
       timestamp: new Date().toISOString()
     });
   } catch (error) {

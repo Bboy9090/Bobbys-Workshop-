@@ -54,6 +54,7 @@ import diagnosticsRouter from './routes/v1/diagnostics/index.js';
 import trapdoorRouter from './routes/v1/trapdoor/index.js';
 import casesRouter from './routes/v1/cases.js';
 import jobsRouter from './routes/v1/jobs.js';
+import workflowsRouter from './routes/v1/workflows.js';
 import { getAllMetrics, estimateUsbUtilization } from './utils/system-metrics.js';
 import { getCircuitBreakerStatus, resetCircuitBreaker, getHealthStatus } from './utils/retry-circuit-breaker.js';
 import { getResourceStatus, canExecuteOperation, acquireOperationSlot, releaseOperationSlot, forceCleanup } from './utils/resource-limits.js';
@@ -382,6 +383,9 @@ v1Router.use('/flash/odin', rateLimiter('flash'), odinRouter);
 v1Router.use('/flash/mtk', rateLimiter('flash'), mtkRouter);
 v1Router.use('/flash/edl', rateLimiter('flash'), edlRouter);
 v1Router.use('/authorization', rateLimiter('authorization'), authorizationRouter);
+v1Router.use('/cases', casesRouter);
+v1Router.use('/jobs', jobsRouter);
+v1Router.use('/workflows', workflowsRouter);
 
 // Trapdoor router with rate limiting and authentication
 v1Router.use('/trapdoor', rateLimiter('trapdoor'), requireTrapdoorPasscode, trapdoorRouter);

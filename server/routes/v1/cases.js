@@ -14,6 +14,22 @@ const router = express.Router();
 const cases = new Map();
 
 /**
+ * GET /api/v1/cases
+ * List all cases
+ */
+router.get('/', async (req, res) => {
+  try {
+    const list = Array.from(cases.values()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    res.sendEnvelope({
+      cases: list,
+      count: list.length
+    });
+  } catch (error) {
+    res.sendError('INTERNAL_ERROR', 'Failed to list cases', { error: error.message }, 500);
+  }
+});
+
+/**
  * POST /api/v1/cases
  * Create a new device case
  */
@@ -74,6 +90,38 @@ router.get('/:id', async (req, res) => {
     });
   } catch (error) {
     res.sendError('INTERNAL_ERROR', 'Failed to get case', {
+      error: error.message,
+      caseId: req.params.id
+    }, 500);
+  }
+});
+
+/**
+ * GET /api/v1/cases/:id/report
+ * Export case report (JSON)
+ */
+router.get('/:id/report', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const caseData = cases.get(id);
+
+    if (!caseData) {
+      return res.sendError('CASE_NOT_FOUND', 'Case not found', { caseId: id }, 404);
+    }
+
+    const auditLogger = getAuditLogger();
+    const events = await auditLogger.getCaseEvents(id);
+    const statistics = await auditLogger.getCaseStatistics(id);
+
+    res.sendEnvelope({
+      case: caseData,
+      audit: {
+        events,
+        statistics
+      }
+    });
+  } catch (error) {
+    res.sendError('INTERNAL_ERROR', 'Failed to build case report', {
       error: error.message,
       caseId: req.params.id
     }, 500);
