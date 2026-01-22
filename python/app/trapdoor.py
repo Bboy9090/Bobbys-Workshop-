@@ -101,14 +101,14 @@ TOOLS: Dict[str, Dict[str, Any]] = {
         "desc": "Android Debug Bridge (Platform Specific)",
         "args": ["devices", "-l"],
         "type": "bin",
-        "sha256": None  # TODO: Add official SHA256 hash
+        "sha256": None
     },
     "fastboot": {
         "path": os.path.join(PRIVATE_BASE, get_platform_binary("fastboot")),
         "desc": "Android Fastboot Tool (Platform Specific)",
         "args": ["devices"],
         "type": "bin",
-        "sha256": None  # TODO: Add official SHA256 hash
+        "sha256": None
     },
 
     # --- EXPLOITS (ROOT) ---
@@ -117,14 +117,14 @@ TOOLS: Dict[str, Dict[str, Any]] = {
         "desc": "CVE-2016-5195 Root Exploit (DirtyCOW)",
         "args": [],  # Usually takes arguments like /system/bin/applypatch
         "type": "exploit",
-        "sha256": None  # TODO: Add official SHA256 hash
+        "sha256": None
     },
     "recowvery": {
         "path": os.path.join(PRIVATE_BASE, "recowvery-app_process32"),
         "desc": "Recowvery Root Payload (app_process32)",
         "args": [],
         "type": "exploit",
-        "sha256": None  # TODO: Add official SHA256 hash
+        "sha256": None
     },
 
     # --- JAILBREAKS ---
@@ -133,28 +133,28 @@ TOOLS: Dict[str, Dict[str, Any]] = {
         "desc": "Palera1n (Source Folder - Needs Compilation)",
         "args": ["-v"],
         "type": "source_check",  # Special check needed
-        "sha256": None  # TODO: Add official SHA256 hash for compiled binary
+        "sha256": None
     },
     "ira1n": {
         "path": os.path.join(PRIVATE_BASE, "ira1n", "iRa1n.exe"),
         "desc": "iRa1n Checkra1n Wrapper (Windows Only)",
         "args": [],
         "type": "win_exe",
-        "sha256": None  # TODO: Add official SHA256 hash
+        "sha256": None
     },
     "checkra1n": {
         "path": os.path.join(PRIVATE_BASE, "checkra1n"),
         "desc": "Checkra1n Jailbreak Tool",
         "args": ["-v"],
         "type": "bin",
-        "sha256": None  # TODO: Add official SHA256 hash
+        "sha256": None
     },
     "gaster": {
         "path": os.path.join(PRIVATE_BASE, "gaster"),
         "desc": "Gaster - checkm8-based DFU helper",
         "args": [],
         "type": "bin",
-        "sha256": None  # TODO: Add official SHA256 hash
+        "sha256": None
     },
 
     # --- ANDROID TOOLS ---
@@ -163,14 +163,14 @@ TOOLS: Dict[str, Dict[str, Any]] = {
         "desc": "MediaTek Boot/Flash Utility",
         "args": [],
         "type": "bin",
-        "sha256": None  # TODO: Add official SHA256 hash
+        "sha256": None
     },
     "heimdall": {
         "path": os.path.join(PRIVATE_BASE, "heimdall", "heimdall"),
         "desc": "Samsung Odin Alternative (Linux/Mac)",
         "args": ["detect"],
         "type": "bin",
-        "sha256": None  # TODO: Add official SHA256 hash
+        "sha256": None
     },
 
     # --- PACKAGES / ZIPS ---
@@ -179,14 +179,14 @@ TOOLS: Dict[str, Dict[str, Any]] = {
         "desc": "Legacy SuperSU Root Zip (Flash via TWRP)",
         "args": [],
         "type": "file",
-        "sha256": None  # TODO: Add official SHA256 hash
+        "sha256": None
     },
     "blu_debloat": {
         "path": os.path.join(PRIVATE_BASE, "bluR1-MTK_BLU-debloat_v2.zip"),
         "desc": "MediaTek Debloat Script (Zip)",
         "args": [],
         "type": "file",
-        "sha256": None  # TODO: Add official SHA256 hash
+        "sha256": None
     }
 }
 
@@ -222,11 +222,19 @@ def verify_tool_hash(tool_key: str) -> tuple[bool, Optional[str]]:
     
     expected_hash = tool.get("sha256")
     
-    # If no hash is configured, skip verification (but warn)
-    if expected_hash is None:
-        log(f"[WARNING] No SHA256 hash configured for {tool_key}. Skipping verification.")
-        log(f"[WARNING] To add verification, run: shasum -a 256 {tool['path']}")
-        return True, None  # Allow execution but warn
+    # If no hash is configured, block unless explicitly allowed
+    if expected_hash is None or expected_hash == "":
+        allow_unverified = os.getenv("ALLOW_UNVERIFIED_TOOLS", "0") == "1"
+        if allow_unverified:
+            log(f"[WARNING] No SHA256 hash configured for {tool_key}.")
+            log(f"[WARNING] Allowed by ALLOW_UNVERIFIED_TOOLS=1.")
+            log(f"[WARNING] To add verification, run: shasum -a 256 {tool['path']}")
+            return True, None
+
+        return False, (
+            "SHA256 hash not configured for this tool. "
+            "Set ALLOW_UNVERIFIED_TOOLS=1 to override, or configure the official hash."
+        )
     
     path = tool["path"]
     
