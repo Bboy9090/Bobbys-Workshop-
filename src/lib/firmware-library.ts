@@ -92,113 +92,8 @@ export const MANUFACTURERS = [
   'Apple',
 ] as const;
 
-// Sample firmware database (in production, this would come from the backend)
-const SAMPLE_FIRMWARE: FirmwareEntry[] = [
-  {
-    id: 'samsung-s23-ultra-stock-one-ui-6',
-    name: 'One UI 6.0 Stock ROM',
-    version: 'S918BXXU4CWK1',
-    type: 'stock_rom',
-    platform: 'android',
-    manufacturer: 'Samsung',
-    device: 'Galaxy S23 Ultra',
-    model: 'SM-S918B',
-    region: 'Global',
-    buildNumber: 'S918BXXU4CWK1',
-    androidVersion: '14',
-    securityPatch: '2024-11-01',
-    size: 6_800_000_000, // ~6.8 GB
-    checksum: 'a1b2c3d4e5f6...',
-    checksumType: 'sha256',
-    releaseDate: '2024-11-15',
-    changelog: 'One UI 6.0 update with Android 14',
-    tags: ['official', 'stable', 'android-14'],
-  },
-  {
-    id: 'pixel-8-pro-factory-image',
-    name: 'Android 14 Factory Image',
-    version: 'AP2A.240905.003',
-    type: 'factory_image',
-    platform: 'android',
-    manufacturer: 'Google',
-    device: 'Pixel 8 Pro',
-    model: 'husky',
-    region: 'Global',
-    buildNumber: 'AP2A.240905.003',
-    androidVersion: '14',
-    securityPatch: '2024-09-05',
-    size: 2_100_000_000, // ~2.1 GB
-    checksum: 'f1e2d3c4b5a6...',
-    checksumType: 'sha256',
-    releaseDate: '2024-09-05',
-    tags: ['official', 'factory', 'android-14'],
-  },
-  {
-    id: 'twrp-3-7-0-universal',
-    name: 'TWRP Recovery 3.7.0',
-    version: '3.7.0_12-0',
-    type: 'twrp',
-    platform: 'android',
-    manufacturer: 'TeamWin',
-    device: 'Universal',
-    model: 'Various',
-    size: 35_000_000, // ~35 MB
-    checksum: 'abc123def456...',
-    checksumType: 'md5',
-    releaseDate: '2023-02-15',
-    changelog: 'TWRP 3.7.0 with Android 12 support',
-    tags: ['recovery', 'twrp', 'universal'],
-  },
-  {
-    id: 'magisk-27-0',
-    name: 'Magisk v27.0',
-    version: '27.0',
-    type: 'magisk',
-    platform: 'android',
-    manufacturer: 'topjohnwu',
-    device: 'Universal',
-    model: 'Various',
-    size: 12_000_000, // ~12 MB
-    checksum: 'magisk27checksum...',
-    checksumType: 'sha256',
-    releaseDate: '2024-03-01',
-    changelog: 'Magisk 27.0 with improved Zygisk',
-    tags: ['root', 'magisk', 'universal'],
-  },
-  {
-    id: 'gapps-android-14',
-    name: 'OpenGApps Android 14',
-    version: '14.0-pico',
-    type: 'gapps',
-    platform: 'android',
-    manufacturer: 'OpenGApps',
-    device: 'Universal',
-    model: 'ARM64',
-    size: 150_000_000, // ~150 MB
-    checksum: 'gappschecksum...',
-    checksumType: 'md5',
-    releaseDate: '2024-01-15',
-    changelog: 'Minimal GApps package for Android 14',
-    tags: ['gapps', 'pico', 'android-14'],
-  },
-  {
-    id: 'iphone-15-pro-ios-17-2',
-    name: 'iOS 17.2 IPSW',
-    version: '17.2',
-    type: 'ipsw',
-    platform: 'ios',
-    manufacturer: 'Apple',
-    device: 'iPhone 15 Pro',
-    model: 'iPhone16,1',
-    iosVersion: '17.2',
-    size: 7_500_000_000, // ~7.5 GB
-    checksum: 'ioschecksum...',
-    checksumType: 'sha256',
-    releaseDate: '2023-12-11',
-    changelog: 'iOS 17.2 with Journal app',
-    tags: ['official', 'ipsw', 'ios-17'],
-  },
-];
+// Firmware data is loaded from the backend. No local mock data.
+const SAMPLE_FIRMWARE: FirmwareEntry[] = [];
 
 /**
  * Firmware Library Manager
@@ -239,31 +134,17 @@ class FirmwareLibraryManager {
       return data.data?.results || [];
     });
 
-    if (apiResult.success && apiResult.data.length > 0) {
+    if (apiResult.success) {
       return apiResult.data;
     }
 
-    // Fall back to local cache
-    return this.cache.filter(fw => {
-      if (query && !fw.name.toLowerCase().includes(query.toLowerCase()) &&
-          !fw.device.toLowerCase().includes(query.toLowerCase())) {
-        return false;
-      }
-      if (manufacturer && fw.manufacturer !== manufacturer) return false;
-      if (device && !fw.device.toLowerCase().includes(device.toLowerCase())) return false;
-      if (type && fw.type !== type) return false;
-      if (platform && fw.platform !== platform) return false;
-      return true;
-    });
+    return [];
   }
 
   /**
    * Get firmware by ID
    */
   async getById(id: string): Promise<FirmwareEntry | null> {
-    const cached = this.cache.find(fw => fw.id === id);
-    if (cached) return cached;
-
     const apiResult = await safeAsync(async () => {
       const response = await fetch(`/api/v1/firmware/library/${id}`);
       if (!response.ok) throw new Error('Not found');

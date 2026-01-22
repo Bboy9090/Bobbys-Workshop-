@@ -61,9 +61,15 @@ export interface RunWorkflowResponse {
  * For now, we'll define the workflows inline or load from an API endpoint
  */
 export async function loadWorkflows(): Promise<Workflow[]> {
-  // TODO: Load from /api/v1/workflows endpoint or workflows-v2.json
-  // For now, return empty array - workflows should be loaded from API
-  return [];
+  const response = await fetch('/api/v1/workflows');
+  if (!response.ok) {
+    throw new Error('Failed to load workflows');
+  }
+  const payload = await response.json();
+  if (!payload.ok) {
+    throw new Error(payload.error?.message || 'Failed to load workflows');
+  }
+  return payload.data.workflows || [];
 }
 
 export function useWorkflows() {
@@ -80,33 +86,16 @@ export function useWorkflows() {
     setError(null);
 
     try {
-      // TODO: Replace with actual API endpoint when available
-      // For now, return empty array
-      // const response = await get<{ workflows: Workflow[] }>('/api/v1/workflows');
-      
-      // Placeholder: Load from workflows-v2.json or define inline
-      // This should be replaced with an API endpoint
-      const workflows: Workflow[] = [
-        {
-          id: 'universal_device_scan_v1',
-          name: 'Universal Device Scan',
-          description: 'Scan for all connected devices (Android ADB, Fastboot, iOS)',
-          tags: ['scan', 'detection'],
-          required_gates: [],
-          steps: []
-        },
-        {
-          id: 'apple_access_recovery_v1',
-          name: 'Orchard Gate — Apple Access & Recovery',
-          description: 'Diagnostics + ownership verification + official Apple recovery hand-off. No bypass actions.',
-          tags: ['ios', 'recovery', 'guidance'],
-          required_gates: ['GATE_OWNERSHIP_ATTESTATION', 'GATE_NO_CIRCUMVENTION', 'GATE_TOOL_ALLOWLIST'],
-          steps: []
-        },
-      ];
+      const response = await get<{ workflows: Workflow[] }>('/api/v1/workflows');
 
-      setWorkflows(workflows);
-      return workflows;
+      if (!response.ok || 'error' in response) {
+        const errorMessage = 'error' in response ? response.error.message : 'Failed to load workflows';
+        setError(errorMessage);
+        return [];
+      }
+
+      setWorkflows(response.data.workflows || []);
+      return response.data.workflows || [];
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load workflows';
       setError(errorMessage);

@@ -4,7 +4,7 @@
  * Displays a list of cases with create case functionality
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -20,7 +20,7 @@ interface CaseListProps {
 }
 
 export function CaseList({ onCaseSelect }: CaseListProps) {
-  const { getCase, loading } = useCases();
+  const { listCases, loading } = useCases();
   const [cases, setCases] = useState<Case[]>([]);
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -39,8 +39,19 @@ export function CaseList({ onCaseSelect }: CaseListProps) {
     setShowCreateDialog(false);
   };
 
-  // TODO: Load cases from API (when list endpoint is available)
-  // For now, show empty state or create button
+  useEffect(() => {
+    let isMounted = true;
+    const load = async () => {
+      const result = await listCases();
+      if (isMounted) {
+        setCases(result);
+      }
+    };
+    load();
+    return () => {
+      isMounted = false;
+    };
+  }, [listCases]);
 
   if (loading && cases.length === 0) {
     return <LoadingState message="Loading cases..." />;

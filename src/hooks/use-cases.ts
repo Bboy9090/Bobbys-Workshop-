@@ -60,6 +60,32 @@ export function useCases() {
   const [error, setError] = useState<string | null>(null);
 
   /**
+   * List all cases
+   */
+  const listCases = useCallback(async (): Promise<Case[]> => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await get<{ cases: Case[] }>('/api/v1/cases');
+
+      if (!response.ok || 'error' in response) {
+        const errorMessage = 'error' in response ? response.error.message : 'Failed to list cases';
+        setError(errorMessage);
+        return [];
+      }
+
+      return response.data.cases || [];
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to list cases';
+      setError(errorMessage);
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  }, [get]);
+
+  /**
    * Create a new case
    */
   const createCase = useCallback(async (request: CreateCaseRequest): Promise<Case | null> => {
@@ -208,6 +234,7 @@ export function useCases() {
   return {
     loading,
     error,
+    listCases,
     createCase,
     getCase,
     createDeviceIntake,

@@ -9,7 +9,45 @@ import type {
   FirmwareVersion 
 } from '../types/firmware';
 
-const API_BASE = 'http://localhost:3001/api/firmware';
+const API_BASE = '/api/v1/firmware/library';
+
+function groupFirmwareEntries(entries: any[]): FirmwareDatabase[] {
+  const grouped = new Map<string, FirmwareDatabase>();
+
+  entries.forEach((entry) => {
+    const brand = entry.brand || 'Unknown';
+    const model = entry.model || 'Unknown';
+    const key = `${brand}::${model}`;
+    const version: FirmwareVersion = {
+      version: entry.version || 'unknown',
+      buildDate: entry.releaseDate || entry.updatedAt || null,
+      securityPatch: entry.securityPatch || null,
+      buildNumber: entry.filename || null
+    };
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        brand,
+        model,
+        versions: [],
+        latestVersion: version.version,
+        latestBuildDate: version.buildDate || undefined,
+        officialDownloadUrl: entry.downloadUrl || undefined,
+        notes: entry.description || undefined
+      });
+    }
+
+    const record = grouped.get(key)!;
+    record.versions.push(version);
+    if (version.buildDate && (!record.latestBuildDate || version.buildDate > record.latestBuildDate)) {
+      record.latestBuildDate = version.buildDate;
+      record.latestVersion = version.version;
+      record.officialDownloadUrl = entry.downloadUrl || record.officialDownloadUrl;
+    }
+  });
+
+  return Array.from(grouped.values());
+}
 
 export async function getAllBrandsWithFirmware(): Promise<string[]> {
   try {
@@ -17,7 +55,11 @@ export async function getAllBrandsWithFirmware(): Promise<string[]> {
     if (!response.ok) {
       throw new Error('Firmware service unavailable');
     }
-    return await response.json();
+    const payload = await response.json();
+    if (!payload.ok) {
+      throw new Error(payload.error?.message || 'Firmware service unavailable');
+    }
+    return payload.data.brands || [];
   } catch (err) {
     throw new Error('Firmware service unavailable');
   }
@@ -25,11 +67,28 @@ export async function getAllBrandsWithFirmware(): Promise<string[]> {
 
 export async function getBrandFirmwareList(brand: string): Promise<BrandFirmwareList> {
   try {
-    const response = await fetch(`${API_BASE}/brands/${encodeURIComponent(brand)}`);
+    const response = await fetch(`${API_BASE}/search?brand=${encodeURIComponent(brand)}`);
     if (!response.ok) {
       throw new Error('Firmware service unavailable');
     }
-    return await response.json();
+    const payload = await response.json();
+    if (!payload.ok) {
+      throw new Error(payload.error?.message || 'Firmware service unavailable');
+    }
+
+    const entries = payload.data.results || [];
+    const grouped = groupFirmwareEntries(entries);
+    const models = grouped.map((entry) => ({
+      model: entry.model,
+      versions: entry.versions,
+      latestVersion: entry.latestVersion,
+      downloadUrls: entry.officialDownloadUrl ? [entry.officialDownloadUrl] : []
+    }));
+
+    return {
+      brand,
+      models
+    };
   } catch (err) {
     throw new Error('Firmware service unavailable');
   }
@@ -37,26 +96,39 @@ export async function getBrandFirmwareList(brand: string): Promise<BrandFirmware
 
 export async function searchFirmware(query: string): Promise<FirmwareDatabase[]> {
   try {
-    const response = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`);
+    const response = await fetch(`${API_BASE}/search`);
     if (!response.ok) {
       throw new Error('Firmware service unavailable');
     }
-    return await response.json();
+    const payload = await response.json();
+    if (!payload.ok) {
+      throw new Error(payload.error?.message || 'Firmware service unavailable');
+    }
+
+    const entries = payload.data.results || [];
+    const grouped = groupFirmwareEntries(entries);
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) {
+      return grouped;
+    }
+
+    return grouped.filter((entry) =>
+      entry.brand.toLowerCase().includes(normalized) ||
+      entry.model.toLowerCase().includes(normalized) ||
+      entry.versions.some((version) => version.version.toLowerCase().includes(normalized))
+    );
   } catch (err) {
     throw new Error('Firmware service unavailable');
   }
 }
 
 export async function checkDeviceFirmware(deviceSerial: string): Promise<FirmwareCheckResult> {
-  try {
-    const response = await fetch(`${API_BASE}/check/${encodeURIComponent(deviceSerial)}`);
-    if (!response.ok) {
-      throw new Error('Firmware check service unavailable');
-    }
-    return await response.json();
-  } catch (err) {
-    throw new Error('Firmware check service unavailable');
-  }
+  return {
+    deviceSerial,
+    success: false,
+    error: 'Firmware check endpoint not available',
+    timestamp: Date.now()
+  };
 }
 
 export async function checkMultipleDevicesFirmware(
@@ -75,12 +147,18 @@ export async function checkMultipleDevicesFirmware(
 export async function getFirmwareInfo(brand: string, model: string): Promise<FirmwareDatabase | null> {
   try {
     const response = await fetch(
-      `${API_BASE}/info/${encodeURIComponent(brand)}/${encodeURIComponent(model)}`
+      `${API_BASE}/search?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}`
     );
     if (!response.ok) {
       throw new Error('Firmware info service unavailable');
     }
-    return await response.json();
+    const payload = await response.json();
+    if (!payload.ok) {
+      throw new Error(payload.error?.message || 'Firmware info service unavailable');
+    }
+    const entries = payload.data.results || [];
+    const grouped = groupFirmwareEntries(entries);
+    return grouped[0] || null;
   } catch (err) {
     throw new Error('Firmware info service unavailable');
   }
@@ -92,5 +170,17 @@ export async function downloadFirmware(
   version: string,
   onProgress?: (progress: number) => void
 ): Promise<Blob | null> {
-  throw new Error('Firmware downloads are disabled. Configure the firmware service to enable downloads.');
+  const response = await fetch(`${API_BASE}/download`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ brand, model, version })
+  });
+
+  const payload = await response.json();
+  if (!response.ok || !payload.ok) {
+    throw new Error(payload.error?.message || 'Firmware download failed');
+  }
+
+  // Downloads are handled server-side; return null to indicate async completion.
+  return null;
 }

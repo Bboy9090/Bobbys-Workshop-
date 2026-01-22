@@ -11,6 +11,7 @@ import { useWorkflows, type Workflow } from '@/hooks/use-workflows';
 import { LoadingState } from '@/components/LoadingState';
 import { EmptyState } from '@/components/EmptyState';
 import { Play, FileText, Shield } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface WorkflowListProps {
   caseId?: string;
@@ -22,7 +23,7 @@ export function WorkflowList({ caseId, onWorkflowRun }: WorkflowListProps) {
 
   const handleRunWorkflow = async (workflowId: string) => {
     if (!caseId) {
-      // TODO: Show error or prompt for case selection
+      toast.error('Select a case before running a workflow.');
       return;
     }
 

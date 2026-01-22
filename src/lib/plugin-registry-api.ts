@@ -59,9 +59,6 @@ const pluginRegistry: PluginRegistryAPI = {
     currentSyncStatus = { ...currentSyncStatus, status: 'syncing' };
 
     try {
-      // In production, this would fetch from the actual registry API
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
-
       const manifest = await this.fetchManifest();
       
       currentSyncStatus = {

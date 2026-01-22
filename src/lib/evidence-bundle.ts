@@ -1,5 +1,5 @@
 /**
- * Evidence Bundle - Stub implementation for evidence management
+ * Evidence Bundle - Client-side evidence management
  */
 
 export interface EvidenceBundle {
@@ -7,6 +7,7 @@ export interface EvidenceBundle {
   name: string;
   timestamp: number;
   items: EvidenceBundleItem[];
+  metadata?: Record<string, any>;
 }
 
 export interface EvidenceBundleItem {
@@ -60,9 +61,39 @@ export interface EvidenceBundleAPI {
   delete(bundleId: string): Promise<boolean>;
 }
 
-// In-memory storage
-const bundles: Map<string, EvidenceBundle> = new Map();
-const signatures: Map<string, string> = new Map();
+const BUNDLES_KEY = 'phoenix.evidenceBundles';
+const SIGNATURES_KEY = 'phoenix.evidenceSignatures';
+
+function getStorage() {
+  if (typeof localStorage === 'undefined') {
+    throw new Error('localStorage is not available');
+  }
+  return localStorage;
+}
+
+function loadBundles(): EvidenceBundle[] {
+  const storage = getStorage();
+  const raw = storage.getItem(BUNDLES_KEY);
+  if (!raw) return [];
+  return JSON.parse(raw);
+}
+
+function saveBundles(list: EvidenceBundle[]) {
+  const storage = getStorage();
+  storage.setItem(BUNDLES_KEY, JSON.stringify(list));
+}
+
+function loadSignatures(): Record<string, string> {
+  const storage = getStorage();
+  const raw = storage.getItem(SIGNATURES_KEY);
+  if (!raw) return {};
+  return JSON.parse(raw);
+}
+
+function saveSignatures(signatures: Record<string, string>) {
+  const storage = getStorage();
+  storage.setItem(SIGNATURES_KEY, JSON.stringify(signatures));
+}
 
 export const evidenceBundle: EvidenceBundleAPI = {
   async create(name: string, deviceSerial: string): Promise<EvidenceBundle> {
@@ -76,33 +107,38 @@ export const evidenceBundle: EvidenceBundleAPI = {
         timestamp: Date.now()
       }]
     };
-    
-    bundles.set(bundle.id, bundle);
+    const list = loadBundles();
+    list.unshift(bundle);
+    saveBundles(list);
     return bundle;
   },
 
   async get(id: string): Promise<EvidenceBundle | null> {
-    return bundles.get(id) || null;
+    const list = loadBundles();
+    return list.find(bundle => bundle.id === id) || null;
   },
 
   async list(): Promise<EvidenceBundle[]> {
-    return Array.from(bundles.values()).sort((a, b) => b.timestamp - a.timestamp);
+    const list = loadBundles();
+    return list.sort((a, b) => b.timestamp - a.timestamp);
   },
 
   async addItem(bundleId: string, item: Omit<EvidenceBundleItem, 'timestamp'>): Promise<boolean> {
-    const bundle = bundles.get(bundleId);
+    const list = loadBundles();
+    const bundle = list.find(b => b.id === bundleId);
     if (!bundle) return false;
-    
+
     bundle.items.push({
       ...item,
       timestamp: Date.now()
     });
-    
+
+    saveBundles(list);
     return true;
   },
 
   async sign(bundleId: string): Promise<string> {
-    const bundle = bundles.get(bundleId);
+    const bundle = await this.get(bundleId);
     if (!bundle) {
       throw new Error('Bundle not found');
     }
@@ -129,7 +165,9 @@ export const evidenceBundle: EvidenceBundleAPI = {
       }
 
       const signature = data.data.signature;
-      signatures.set(bundleId, signature);
+      const signatureMap = loadSignatures();
+      signatureMap[bundleId] = signature;
+      saveSignatures(signatureMap);
       return signature;
     } catch (error) {
       throw new Error(`Failed to sign bundle: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -137,7 +175,8 @@ export const evidenceBundle: EvidenceBundleAPI = {
   },
 
   async verify(bundleId: string): Promise<SignatureVerification> {
-    const signature = signatures.get(bundleId);
+    const signatureMap = loadSignatures();
+    const signature = signatureMap[bundleId];
     
     if (!signature) {
       return {
@@ -184,12 +223,13 @@ export const evidenceBundle: EvidenceBundleAPI = {
   },
 
   async export(bundleId: string): Promise<Blob> {
-    const bundle = bundles.get(bundleId);
+    const bundle = await this.get(bundleId);
     if (!bundle) {
       throw new Error('Bundle not found');
     }
     
-    const signature = signatures.get(bundleId);
+    const signatureMap = loadSignatures();
+    const signature = signatureMap[bundleId];
     const exportData = {
       bundle,
       signature,
@@ -205,17 +245,28 @@ export const evidenceBundle: EvidenceBundleAPI = {
     
     const bundle = data.bundle || data;
     bundle.id = `bundle-${Date.now()}-imported`;
-    
-    bundles.set(bundle.id, bundle);
+
+    const list = loadBundles();
+    list.unshift(bundle);
+    saveBundles(list);
+
     if (data.signature) {
-      signatures.set(bundle.id, data.signature);
+      const signatureMap = loadSignatures();
+      signatureMap[bundle.id] = data.signature;
+      saveSignatures(signatureMap);
     }
-    
+
     return bundle;
   },
 
   async delete(bundleId: string): Promise<boolean> {
-    signatures.delete(bundleId);
-    return bundles.delete(bundleId);
+    const signatureMap = loadSignatures();
+    delete signatureMap[bundleId];
+    saveSignatures(signatureMap);
+
+    const list = loadBundles();
+    const filtered = list.filter(bundle => bundle.id !== bundleId);
+    saveBundles(filtered);
+    return filtered.length !== list.length;
   }
 };

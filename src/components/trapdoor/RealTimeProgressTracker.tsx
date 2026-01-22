@@ -35,6 +35,52 @@ export const RealTimeProgressTracker: React.FC<RealTimeProgressTrackerProps> = (
   const [isComplete, setIsComplete] = useState(false);
 
   useEffect(() => {
+    const updateFromJob = (job: any) => {
+      const status = job?.status;
+      const jobSteps = job?.result?.steps || [];
+
+      const firstIncompleteIndex = jobSteps.findIndex((step: any) => {
+        const results = step.results || [];
+        const allSuccess = results.length > 0 && results.every((r: any) => r.success === true);
+        return !allSuccess;
+      });
+
+      const mappedSteps: OperationStep[] = jobSteps.map((step: any, index: number) => {
+        const results = step.results || [];
+        const hasFailure = results.some((r: any) => r.success === false);
+        const allSuccess = results.length > 0 && results.every((r: any) => r.success === true);
+
+        let stepStatus: OperationStep['status'] = 'pending';
+        if (allSuccess) stepStatus = 'success';
+        else if (hasFailure) stepStatus = 'failed';
+        else if (status === 'running' && index === firstIncompleteIndex) stepStatus = 'running';
+
+        return {
+          id: step.stepId || `step-${index}`,
+          name: step.stepName || step.stepId || `Step ${index + 1}`,
+          status: stepStatus,
+          output: allSuccess ? 'Completed' : undefined,
+          error: hasFailure ? 'One or more actions failed' : undefined
+        };
+      });
+
+      if (mappedSteps.length > 0) {
+        const firstRunning = mappedSteps.find(s => s.status === 'running');
+        setCurrentStep(firstRunning ? firstRunning.id : null);
+      }
+
+      setSteps(mappedSteps);
+      const completed = mappedSteps.filter(step => step.status === 'success').length;
+      const total = mappedSteps.length || 0;
+      const computedProgress = total > 0 ? Math.round((completed / total) * 100) : 0;
+      setProgress(job?.progress ?? computedProgress);
+
+      if (status === 'completed' || status === 'failed') {
+        setIsComplete(true);
+        onComplete?.(status === 'completed');
+      }
+    };
+
     // Poll for progress updates
     const interval = setInterval(async () => {
       if (isComplete) {
@@ -43,17 +89,25 @@ export const RealTimeProgressTracker: React.FC<RealTimeProgressTrackerProps> = (
       }
 
       try {
-        // TODO: Implement progress polling endpoint
-        // const response = await fetch(`/api/v1/trapdoor/operations/${operationId}/progress`);
-        // const data = await response.json();
-        // updateProgress(data);
+        const response = await fetch(`/api/v1/jobs/${operationId}`);
+        if (!response.ok) {
+          return;
+        }
+        const payload = await response.json();
+        if (!payload.ok) {
+          return;
+        }
+        const job = payload.data?.job;
+        if (job) {
+          updateFromJob(job);
+        }
       } catch (error) {
         console.error('Progress polling error:', error);
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [operationId, isComplete]);
+  }, [operationId, isComplete, onComplete]);
 
   const getStepIcon = (status: OperationStep['status']) => {
     switch (status) {
