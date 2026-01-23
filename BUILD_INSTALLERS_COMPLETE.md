@@ -58,7 +58,10 @@ Located in: `dist-artifacts/windows/`
    ```
 3. **Rust Toolchain:**
    ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   # Download the Rust installer
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh
+   # Inspect the script if needed, then run
+   sh rustup-init.sh
    ```
 4. **Tauri CLI:**
    ```bash
