@@ -17,6 +17,12 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.0.2",
     "uuid": "^9.0.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "@tensorflow/tfjs": "^4.21.0",
+    "@tensorflow/tfjs-node": "^4.21.0",
+    "qiskit": "^0.45.0",
+    "jsqubits": "^2.0.0",
+    "ml-matrix": "^6.10.6",
+    "simple-statistics": "^7.8.2"
   }
 }
