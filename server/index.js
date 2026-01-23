@@ -399,6 +399,10 @@ v1Router.use('/universal', universalDevicesRouter);
 import reliabilityHealthRouter from './routes/v1/reliability/health.js';
 v1Router.use('/reliability', reliabilityHealthRouter);
 
+// License routes (Phoenix Core integration)
+import licenseRouter from './routes/v1/license.js';
+v1Router.use('/license', licenseRouter);
+
 // Mount v1 router
 app.use('/api/v1', v1Router);
 
