@@ -68,14 +68,35 @@ def run_interactive(cmd: List[str]) -> bool:
         return False
 
 
-def check_device() -> bool:
-    """Check if device is connected via ADB."""
-    output = run_cmd(["adb", "devices"]).strip()
-    lines = output.split("\n")
-    if len(lines) > 1:
-        for line in lines[1:]:
-            if line.strip() and "offline" not in line and "device" in line:
+def check_device(platform: Optional[str] = None) -> bool:
+    """
+    Check if device is connected (platform-agnostic).
+    
+    Args:
+        platform: 'android', 'ios', or None (auto-detect)
+    
+    Returns:
+        True if device is connected
+    """
+    if platform == 'ios' or platform is None:
+        # Try iOS first if platform is None
+        try:
+            from .platform import detect_ios_devices
+            ios_devices = detect_ios_devices()
+            if ios_devices:
                 return True
+        except Exception:
+            pass
+    
+    if platform == 'android' or platform is None:
+        # Check Android
+        output = run_cmd(["adb", "devices"]).strip()
+        lines = output.split("\n")
+        if len(lines) > 1:
+            for line in lines[1:]:
+                if line.strip() and "offline" not in line and "device" in line:
+                    return True
+    
     return False
 
 
