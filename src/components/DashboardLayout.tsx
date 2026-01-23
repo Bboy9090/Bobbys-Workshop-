@@ -36,6 +36,7 @@ import {
     Settings,
     FileText,
     Flame,
+    Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -70,6 +71,7 @@ export function DashboardLayout() {
         { id: 'monitoring', label: 'Monitoring', icon: Activity },
         { id: 'firmware', label: 'Firmware', icon: Package },
         { id: 'workflows', label: 'Workflows', icon: Workflow },
+        { id: 'transcendent', label: 'Transcendent', icon: Sparkles, special: true },
         { id: 'secret-rooms', label: 'The Forge', icon: Flame, special: true },
         { id: 'settings', label: 'Settings', icon: Settings },
     ];
@@ -195,6 +197,9 @@ export function DashboardLayout() {
                                 </TabsContent>
                                 <TabsContent value="workflows" className="mt-0">
                                     <WorkbenchWorkflows />
+                                </TabsContent>
+                                <TabsContent value="transcendent" className="mt-0">
+                                    <WorkbenchTranscendent />
                                 </TabsContent>
                                 <TabsContent value="secret-rooms" className="mt-0 p-0">
                                     <WorkbenchSecretRooms />
