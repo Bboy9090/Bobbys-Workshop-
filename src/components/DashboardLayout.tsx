@@ -1,27 +1,32 @@
 /**
- * DashboardLayout - Main application layout
+ * 🏀 HARE JORDAN'S NYC PLAYGROUND WORKSHOP - Main Dashboard Layout
  * 
- * Migrated to new design system:
- * - Design tokens (midnight-room, workbench-steel, etc.)
- * - "What's up, doc?" greeting
- * - WorkbenchSystemStatus
- * - New navigation structure
+ * "Space Jam • Trap House • Legendary"
+ * 
+ * Super Legendary Trap House Makeover featuring:
+ * - Space Jam (1996) color palette - Purple & Orange
+ * - Hare Jordan - Bugs Bunny as Michael Jordan
+ * - NYC Playground Basketball Courts - Concrete, graffiti, street art
+ * - 90s Hip-Hop Culture - Bold, energetic, legendary
+ * - Trap House Workshop - Underground lab vibes
+ * - Bronx Grit - Street authenticity
  */
 
 import { useState } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
 import { DeviceSidebar } from "./DeviceSidebar";
 import { BackendStatusIndicator } from "./BackendStatusIndicator";
 import { WorkbenchSystemStatus } from "./workbench/WorkbenchSystemStatus";
 import { OrnamentBugsGreeting } from "./ornaments/OrnamentBugsGreeting";
 import { useApp } from "@/lib/app-context";
 import { useBugsGreeting } from "@/hooks/useBugsGreeting";
+import { SpaceJamHeader } from "./space-jam/SpaceJamHeader";
+import { SpaceJamNav } from "./space-jam/SpaceJamNav";
 import { 
     LayoutDashboard,
     Smartphone,
-    Flashlight,
+    Zap,
     Apple,
     Shield,
     Activity,
@@ -30,6 +35,8 @@ import {
     Lock,
     Settings,
     FileText,
+    Flame,
+    Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -46,6 +53,7 @@ import { WorkbenchCases } from './screens/WorkbenchCases';
 import { useBackendHealth } from '@/hooks/use-backend-health';
 import { WorkbenchSecretRooms } from './screens/WorkbenchSecretRooms';
 import { WorkbenchSettings } from './screens/WorkbenchSettings';
+import { WorkbenchTranscendent } from './screens/WorkbenchTranscendent';
 
 export function DashboardLayout() {
     const [activeTab, setActiveTab] = useState('dashboard');
@@ -58,74 +66,69 @@ export function DashboardLayout() {
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { id: 'devices', label: 'Devices', icon: Smartphone },
         { id: 'cases', label: 'Cases', icon: FileText },
-        { id: 'flashing', label: 'Flashing', icon: Flashlight },
+        { id: 'flashing', label: 'Flash Forge', icon: Zap },
         { id: 'ios', label: 'iOS', icon: Apple },
         { id: 'security', label: 'Security', icon: Shield },
         { id: 'monitoring', label: 'Monitoring', icon: Activity },
         { id: 'firmware', label: 'Firmware', icon: Package },
         { id: 'workflows', label: 'Workflows', icon: Workflow },
-        { id: 'secret-rooms', label: 'Secret Rooms', icon: Lock, locked: true },
+        { id: 'transcendent', label: 'Transcendent', icon: Sparkles, special: true },
+        { id: 'secret-rooms', label: 'The Forge', icon: Flame, special: true },
         { id: 'settings', label: 'Settings', icon: Settings },
     ];
 
     return (
-        <div className="h-screen flex flex-col bg-midnight-room">
-            {/* Header */}
-            <header className="h-14 border-b border-panel bg-workbench-steel flex items-center px-4 gap-4">
-                <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg border border-spray-cyan/30 bg-spray-cyan/10 flex items-center justify-center">
-                        <span className="text-spray-cyan font-mono font-bold text-sm">BW</span>
-                    </div>
-                    <div>
-                        <h1 className="text-lg font-bold text-ink-primary font-mono">
-                            BOBBY'S WORKSHOP
-                        </h1>
-                        <p className="text-xs text-ink-muted font-mono">
-                            & His World of Secrets and Traps
-                        </p>
-                    </div>
-                </div>
-                
+        <div className="h-screen flex flex-col bg-playground bg-trap-basement">
+            {/* Header - Space Jam / Hare Jordan Style */}
+            <SpaceJamHeader />
+            
+            {/* Status Bar - Below Header */}
+            <div className="h-10 bg-trap-walls border-b-2 border-space-jam flex items-center px-6 gap-4">
                 <div className="flex-1" />
                 
                 {/* Greeting - Only show once per session */}
                 {showGreeting && (
-                    <OrnamentBugsGreeting 
-                        variant={backendAvailable ? 'devices' : 'warning'}
-                        onDismiss={dismiss}
-                        autoHide={true}
-                        autoHideDuration={4000}
-                    />
+                    <div className="px-4 py-1.5 bg-trap-basement border-2 border-neon-cyan rounded-lg glow-cyan">
+                        <OrnamentBugsGreeting 
+                            variant={backendAvailable ? 'devices' : 'warning'}
+                            onDismiss={dismiss}
+                            autoHide={true}
+                            autoHideDuration={4000}
+                        />
+                    </div>
                 )}
                 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-4">
                     <BackendStatusIndicator />
                     {backendHealth.status === 'booting' && (
-                        <div className="text-xs font-mono text-ink-muted animate-pulse">
-                            Initializing...
+                        <div className="flex items-center gap-2 text-xs font-mono font-bold text-spray-neon-yellow">
+                            <div className="w-2 h-2 rounded-full bg-spray-neon-yellow animate-pulse glow-cyan" />
+                            <span className="uppercase tracking-wider">Initializing...</span>
                         </div>
                     )}
                     {backendHealth.status === 'failed' && (
-                        <div className="text-xs font-mono text-state-danger">
-                            Backend Error
+                        <div className="flex items-center gap-2 text-xs font-mono font-bold text-spray-neon-pink">
+                            <div className="w-2 h-2 rounded-full bg-spray-neon-pink" />
+                            <span className="uppercase tracking-wider">Backend Error</span>
                         </div>
                     )}
-                    <div className="text-xs font-mono text-ink-muted">
-                        v3.0.0
+                    <div className="h-6 w-px bg-trap-border" />
+                    <div className="px-3 py-1 rounded-md bg-trap-basement border border-trap-border text-xs font-mono text-graffiti uppercase tracking-wider">
+                        v5.0.0
                     </div>
                 </div>
-            </header>
+            </div>
 
             <div className="flex-1 flex overflow-hidden">
                 {/* Device Sidebar */}
                 <DeviceSidebar collapsed={sidebarCollapsed} onToggle={setSidebarCollapsed} />
 
                 {/* Main Content */}
-                <main className="flex-1 flex flex-col overflow-hidden min-h-0">
+                <main className="flex-1 flex flex-col overflow-hidden min-h-0 bg-playground">
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-                        {/* Navigation Tabs */}
-                        <div className="border-b border-panel bg-workbench-steel">
-                            <TabsList className="h-12 bg-transparent w-full justify-start rounded-none border-0 px-3 gap-1 overflow-x-auto">
+                        {/* Navigation Tabs - Space Jam Playground Style */}
+                        <div className="border-b-2 border-space-jam bg-trap-walls">
+                            <TabsList className="h-14 bg-transparent w-full justify-start rounded-none border-0 px-4 gap-2 overflow-x-auto">
                                 {navItems.map((item) => {
                                     const Icon = item.icon;
                                     const isActive = activeTab === item.id;
@@ -135,17 +138,30 @@ export function DashboardLayout() {
                                             key={item.id}
                                             value={item.id}
                                             className={cn(
-                                                "gap-2 px-4 h-10 rounded-md transition-all motion-snap",
-                                                "data-[state=active]:bg-spray-cyan/20 data-[state=active]:text-spray-cyan",
-                                                "data-[state=active]:border-spray-cyan/50 data-[state=active]:border",
-                                                "data-[state=inactive]:text-ink-muted data-[state=inactive]:hover:text-ink-primary",
-                                                item.locked && !isActive && "opacity-50"
+                                                "gap-2 px-5 h-10 rounded-xl transition-all duration-300 font-display font-bold text-sm uppercase tracking-wider relative overflow-hidden",
+                                                isActive
+                                                    ? item.special 
+                                                        ? "btn-space-jam text-legendary shadow-lg glow-purple"
+                                                        : "btn-jordan text-legendary shadow-lg glow-jordan"
+                                                    : item.special
+                                                    ? "bg-trap-basement border-2 border-trap-border text-ink-primary hover:border-neon-cyan hover:text-graffiti hover:glow-cyan"
+                                                    : "bg-trap-walls border-2 border-trap-border text-ink-secondary hover:border-space-jam hover:text-legendary hover:bg-space-jam-purple/10"
                                             )}
                                         >
-                                            <Icon className="w-4 h-4" />
-                                            <span className="font-medium text-sm">{item.label}</span>
-                                            {item.locked && (
-                                                <Lock className="w-3 h-3" />
+                                            {/* Active Gradient Overlay */}
+                                            {isActive && (
+                                                <div className="absolute inset-0 bg-gradient-space-jam opacity-20 animate-pulse" />
+                                            )}
+                                            
+                                            <Icon className={cn(
+                                                "w-5 h-5 relative z-10",
+                                                isActive && "animate-bounce-jordan scale-110"
+                                            )} />
+                                            <span className="relative z-10">{item.label}</span>
+                                            
+                                            {/* Hover Glow Effect */}
+                                            {!isActive && (
+                                                <div className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity duration-300 bg-gradient-to-r from-spray-neon-cyan/10 to-transparent" />
                                             )}
                                         </TabsTrigger>
                                     );
@@ -153,9 +169,9 @@ export function DashboardLayout() {
                             </TabsList>
                         </div>
 
-                        {/* Content Area */}
-                        <ScrollArea className="flex-1 min-h-0">
-                            <div className="p-6 min-h-0">
+                        {/* Content Area - Playground Background */}
+                        <ScrollArea className="flex-1 min-h-0 bg-playground">
+                            <div className="p-6 min-h-0 bg-playground">
                                 <TabsContent value="dashboard" className="mt-0">
                                     <WorkbenchDashboard />
                                 </TabsContent>
@@ -182,6 +198,9 @@ export function DashboardLayout() {
                                 </TabsContent>
                                 <TabsContent value="workflows" className="mt-0">
                                     <WorkbenchWorkflows />
+                                </TabsContent>
+                                <TabsContent value="transcendent" className="mt-0">
+                                    <WorkbenchTranscendent />
                                 </TabsContent>
                                 <TabsContent value="secret-rooms" className="mt-0 p-0">
                                     <WorkbenchSecretRooms />

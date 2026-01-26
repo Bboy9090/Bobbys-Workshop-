@@ -8,7 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { Unlock, Smartphone, Cpu, Zap, AlertTriangle } from 'lucide-react';
+import { Unlock, Smartphone, Cpu, Zap, AlertTriangle, Search, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Badge } from '../ui/badge';
 import { Alert, AlertDescription } from '../ui/alert';
 
@@ -19,31 +20,41 @@ export const PandoraCodexPanel: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [dfuMode, setDfuMode] = useState(false);
 
+  // Compliance: No auto-scanning - user must initiate
   useEffect(() => {
-    loadDevices();
     loadJailbreakMethods();
-    const interval = setInterval(() => {
-      loadDevices();
-    }, 5000);
-    return () => clearInterval(interval);
+    // Removed auto-scanning - user must click "Scan for Devices" button
   }, []);
 
+  // Compliance: User-initiated device scanning only
   const loadDevices = async () => {
+    setIsLoading(true);
     try {
       const passcode = localStorage.getItem('trapdoor-passcode') || localStorage.getItem('bobbysWorkshop.secretRoomPasscode') || '';
-      const response = await fetch('/api/v1/trapdoor/pandora/devices', {
+      const response = await fetch('/api/v1/trapdoor/pandora/devices?user_initiated=true', {
         headers: {
           'X-Secret-Room-Passcode': passcode
         }
       });
       if (response.ok) {
         const data = await response.json();
-        if (data.data && data.data.devices) {
+        if (data.ok && data.data && data.data.devices) {
           setDevices(data.data.devices);
+          if (data.data.devices.length === 0) {
+            toast.info('No iOS devices detected. Connect a device via USB and try again.');
+          } else {
+            toast.success(`Found ${data.data.devices.length} device(s)`);
+          }
         }
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.error || 'Device scan failed');
       }
     } catch (error) {
       console.error('Failed to load devices:', error);
+      toast.error('Device scan failed');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -289,23 +300,67 @@ export const PandoraCodexPanel: React.FC = () => {
         <TabsContent value="devices" className="space-y-4">
           <Card className="bg-[#141922] border-[#FF6B9D]/20">
             <CardHeader>
-              <CardTitle className="text-white">Detected Devices</CardTitle>
-              <CardDescription className="text-gray-400">
-                List of devices available for manipulation
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-white">Detected Devices</CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Compliance: User-initiated scanning only. Click "Scan for Devices" to detect connected iOS devices.
+                  </CardDescription>
+                </div>
+                <Button
+                  onClick={loadDevices}
+                  disabled={isLoading}
+                  variant="outline"
+                  size="sm"
+                  className="bg-[#0B0F14] border-[#2FD3FF]/50 text-[#2FD3FF] hover:bg-[#2FD3FF]/10"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Scanning...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="mr-2 h-4 w-4" />
+                      Scan for Devices
+                    </>
+                  )}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {devices.length === 0 ? (
-                <p className="text-gray-400 text-center py-8">No devices detected</p>
+                <div className="text-center py-8">
+                  <p className="text-gray-400 mb-2">No devices detected</p>
+                  <p className="text-xs text-gray-500">
+                    Connect an iOS device via USB and click "Scan for Devices" above
+                  </p>
+                </div>
               ) : (
                 <div className="space-y-2">
                   {devices.map((device) => (
-                    <div key={device.serial} className="p-3 bg-[#0B0F14] rounded">
-                      <div className="flex items-center gap-2">
-                        <Smartphone className="text-[#2FD3FF]" />
-                        <p className="text-white">{device.name}</p>
+                    <div key={device.serial || device.udid} className="p-3 bg-[#0B0F14] rounded border border-[#2FD3FF]/20">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Smartphone className="text-[#2FD3FF]" />
+                          <div>
+                            <p className="text-white font-medium">{device.model || device.name || 'iOS Device'}</p>
+                            <p className="text-sm text-gray-400">{device.serial || device.udid}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {device.chip && (
+                            <Badge variant="outline" className="text-xs">
+                              {device.chip}
+                            </Badge>
+                          )}
+                          {device.ios_version && (
+                            <Badge variant="outline" className="text-xs">
+                              iOS {device.ios_version}
+                            </Badge>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-sm text-gray-400">{device.serial}</p>
                     </div>
                   ))}
                 </div>

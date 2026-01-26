@@ -9,22 +9,61 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Surfaces
+        // Space Jam Colors
+        'space-jam-purple': '#6B2C91',
+        'space-jam-purple-dark': '#4A1A65',
+        'space-jam-purple-light': '#8B4CB8',
+        'space-jam-orange': '#FF6B35',
+        'space-jam-orange-dark': '#CC5529',
+        'space-jam-orange-light': '#FF8C5A',
+        'basketball-court': '#FFD700',
+        'basketball-lines': '#FFFFFF',
+        
+        // NYC Playground
+        'nyc-concrete': '#2C2C2C',
+        'nyc-concrete-dark': '#1A1A1A',
+        'nyc-concrete-light': '#3A3A3A',
+        'nyc-asphalt': '#1F1F1F',
+        'nyc-sidewalk': '#3D3D3D',
+        
+        // Graffiti Spray
+        'spray-neon-cyan': '#00FFFF',
+        'spray-neon-pink': '#FF00FF',
+        'spray-neon-yellow': '#FFFF00',
+        'spray-neon-green': '#00FF00',
+        'spray-neon-orange': '#FF6600',
+        'spray-neon-purple': '#9932CC',
+        
+        // Hare Jordan
+        'hare-jordan-red': '#CE1141',
+        'hare-jordan-black': '#000000',
+        'hare-jordan-white': '#FFFFFF',
+        'hare-jordan-gold': '#FFD700',
+        
+        // Trap House
+        'trap-basement': '#0D0D0D',
+        'trap-walls': '#1A1A1A',
+        'trap-ceiling': '#0F0F0F',
+        'trap-floor': '#151515',
+        'trap-border': '#2A2A2A',
+        
+        // Legacy Colors (kept for compatibility)
         'midnight-room': '#0F1114',
         'workbench-steel': '#161A1F',
         'basement-concrete': '#1C2127',
         'drawer-hidden': '#12161A',
         
         // Ink
-        'ink-primary': '#E8EAED',
-        'ink-muted': '#9AA0A6',
+        'ink-primary': '#E8E8E8',
+        'ink-muted': '#B0B0B0',
         'ink-inverse': '#0B0D10',
-        'ink-graffiti': '#2DD4FF',
+        'ink-graffiti': '#00FFFF',
         'ink-lyric': '#FF3DBB',
         'ink-tape': '#141414',
+        'ink-legendary': '#FFFFFF',
         
         // Accents
-        'spray-cyan': '#2DD4FF',
+        'spray-cyan': '#00FFFF',
         'spray-magenta': '#FF3DBB',
         'tape-yellow': '#FFD400',
         'chrome-steel': '#8B949E',

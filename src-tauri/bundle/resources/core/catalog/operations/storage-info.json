@@ -1,0 +1,21 @@
+{
+  "operation": "storage_info",
+  "displayName": "Get Storage Information",
+  "description": "Retrieve storage usage and capacity",
+  "category": "diagnostics",
+  "riskLevel": "low",
+  "requiresConfirmation": false,
+  "allowedRoles": ["owner", "admin", "technician", "viewer"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    }
+  },
+  "auditLogging": "standard",
+  "rateLimitPerMinute": 20,
+  "estimatedDuration": 3000
+}

@@ -242,11 +242,73 @@ export async function withReliability(operation, circuitName, options = {}, ...a
 export function getHealthStatus() {
   const breakers = getCircuitBreakerStatus();
   const unhealthy = Object.values(breakers).filter(b => b.state === CIRCUIT_STATES.OPEN);
+  const halfOpen = Object.values(breakers).filter(b => b.state === CIRCUIT_STATES.HALF_OPEN);
 
   return {
     overall: unhealthy.length === 0 ? 'healthy' : 'degraded',
     circuitBreakers: breakers,
     unhealthyCount: unhealthy.length,
+    halfOpenCount: halfOpen.length,
+    healthyCount: Object.values(breakers).filter(b => b.state === CIRCUIT_STATES.CLOSED).length,
     timestamp: new Date().toISOString()
   };
+}
+
+/**
+ * Enhanced circuit breaker with metrics
+ */
+export function getEnhancedCircuitBreakerStatus() {
+  const breakers = getCircuitBreakerStatus();
+  const health = getHealthStatus();
+  
+  // Calculate statistics
+  const stats = {
+    total: Object.keys(breakers).length,
+    healthy: health.healthyCount,
+    halfOpen: health.halfOpenCount,
+    unhealthy: health.unhealthyCount,
+    healthPercentage: (health.healthyCount / Object.keys(breakers).length) * 100
+  };
+  
+  return {
+    ...health,
+    statistics: stats,
+    recommendations: generateRecommendations(breakers)
+  };
+}
+
+/**
+ * Generate recommendations based on circuit breaker state
+ */
+function generateRecommendations(breakers) {
+  const recommendations = [];
+  
+  for (const [name, breaker] of Object.entries(breakers)) {
+    if (breaker.state === CIRCUIT_STATES.OPEN) {
+      recommendations.push({
+        service: name,
+        issue: 'Circuit breaker is OPEN',
+        action: `Service ${name} is failing. Check service health and dependencies.`,
+        priority: 'high'
+      });
+    } else if (breaker.state === CIRCUIT_STATES.HALF_OPEN) {
+      recommendations.push({
+        service: name,
+        issue: 'Circuit breaker is HALF_OPEN',
+        action: `Service ${name} is recovering. Monitor closely.`,
+        priority: 'medium'
+      });
+    }
+    
+    if (breaker.failureCount > 0) {
+      recommendations.push({
+        service: name,
+        issue: `High failure count: ${breaker.failureCount}`,
+        action: `Investigate recent failures for ${name}`,
+        priority: breaker.failureCount > 3 ? 'high' : 'low'
+      });
+    }
+  }
+  
+  return recommendations;
 }

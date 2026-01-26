@@ -27,7 +27,13 @@ interface BackendService {
   lastChecked?: Date;
 }
 
-const TRAPDOOR_API_URL = process.env.TRAPDOOR_API_URL || 'http://localhost:5001';
+// Browser-safe env handling (Vite):
+// - override with VITE_TRAPDOOR_API_URL
+const TRAPDOOR_API_URL =
+  (import.meta as any).env?.VITE_TRAPDOOR_API_URL ||
+  (globalThis as any).process?.env?.TRAPDOOR_API_URL ||
+  // Default Trapdoor Flask API port (avoid clashing with Vite)
+  'http://127.0.0.1:5002';
 
 export function BackendServicesPanel() {
   const [services, setServices] = useState<BackendService[]>([
@@ -35,7 +41,7 @@ export function BackendServicesPanel() {
       id: 'trapdoor-api',
       name: 'Trapdoor Tools API',
       description: 'Python Flask API for trapdoor tool management and hash verification',
-      defaultPort: 5001,
+      defaultPort: 5002,
       url: TRAPDOOR_API_URL,
       status: 'unknown',
     },
@@ -240,7 +246,7 @@ export function BackendServicesPanel() {
         <CardContent className="space-y-2 text-sm text-ink-muted">
           <p><strong>Trapdoor Tools API:</strong></p>
           <code className="block bg-workbench-steel p-2 rounded font-mono text-xs mt-1">
-            cd python/app && python trapdoor_api.py
+            cd python && set TRAPDOOR_API_PORT=5002 && python -m app.trapdoor_api
           </code>
           <p className="mt-3 text-xs">
             Or set <code className="bg-workbench-steel px-1 rounded">TRAPDOOR_API_PORT</code> environment variable for custom port.

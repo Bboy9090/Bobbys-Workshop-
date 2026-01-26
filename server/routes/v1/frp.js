@@ -1,11 +1,11 @@
 /**
  * FRP Detection API endpoints
  * 
- * Factory Reset Protection (FRP) lock detection and bypass (owner devices only)
+ * Factory Reset Protection (FRP) lock **detection only** (read-only).
  */
 
 import express from 'express';
-import ADBLibrary from '../../../core/lib/adb.js';
+import ADBLibrary from '../../utils/adb-library-wrapper.js';
 
 const router = express.Router();
 
@@ -20,54 +20,38 @@ router.post('/detect', async (req, res) => {
     return res.sendError('VALIDATION_ERROR', 'Device serial is required', null, 400);
   }
 
-  const adbInstalled = await ADBLibrary.isInstalled();
-  if (!adbInstalled) {
-    return res.sendError('TOOL_NOT_AVAILABLE', 'ADB is required for FRP detection', {
-      tool: 'adb',
-      installInstructions: 'Install Android SDK Platform Tools'
-    }, 503);
-  }
-
   try {
-    const frpStatus = await ADBLibrary.checkFRPStatus(serial);
-    
-    if (!frpStatus.success) {
-      return res.sendError('INTERNAL_ERROR', 'Failed to determine FRP status', {
-        error: frpStatus.error
-      }, 500);
+    const adbInstalled = await ADBLibrary.isInstalled();
+    if (!adbInstalled) {
+      return res.sendError('TOOL_NOT_AVAILABLE', 'ADB is required for FRP detection', null, 503);
     }
 
-    const indicators = [];
-    if (frpStatus.hasFRP) {
-      indicators.push('Android ID is short (common FRP indicator)');
-    }
-    if (frpStatus.properties && frpStatus.properties['ro.frp.pst']) {
-      indicators.push(`FRP partition property found: ${frpStatus.properties['ro.frp.pst']}`);
+    const devicesResult = await ADBLibrary.listDevices();
+    const device = devicesResult.devices?.find(d => d.serial === serial);
+    if (!device) {
+      return res.sendError('DEVICE_NOT_FOUND', 'Device not found via ADB', { serial }, 404);
     }
 
-    res.sendEnvelope({
+    const status = await ADBLibrary.checkFRPStatus(serial);
+    return res.sendEnvelope({
       serial,
-      detected: frpStatus.hasFRP,
-      confidence: frpStatus.confidence,
-      androidId: frpStatus.androidId,
-      indicators,
-      properties: frpStatus.properties
+      status,
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
-    res.sendError('INTERNAL_ERROR', 'FRP detection failed', { error: error.message }, 500);
+    return res.sendError('INTERNAL_ERROR', 'FRP detection failed', { error: error.message, serial }, 500);
   }
 });
 
 /**
  * POST /api/v1/frp/bypass
- * Bypass FRP lock (owner devices only - must be in trapdoor/secret room)
- * This endpoint should only be accessible via trapdoor API
+ * FRP bypass is not supported.
  */
 router.post('/bypass', async (req, res) => {
-  // This should be handled by trapdoor router, but included here for completeness
-  return res.sendError('FORBIDDEN', 'FRP bypass must be performed through trapdoor API', {
-    redirect: '/api/v1/trapdoor/frp/bypass'
-  }, 403);
+  return res.sendPolicyBlocked(
+    'FRP bypass is not supported. Use official vendor recovery flows and ownership verification.',
+    { operation: 'frp_bypass' }
+  );
 });
 
 export default router;

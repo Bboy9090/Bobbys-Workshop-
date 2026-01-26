@@ -1,65 +1,79 @@
 /**
- * LoadingPage - "The System Is Waking Up"
+ * PHOENIX FORGE - Loading Page
  * 
- * Concept A: Wires & Pulse
- * Vibe: The apartment is alive before the UI is.
+ * A minimal, elegant loading state with:
+ * - Pulsing phoenix ember
+ * - Subtle fire glow
+ * - System initialization text
  */
 
-import React from 'react';
 import { cn } from '@/lib/utils';
+import { Flame } from 'lucide-react';
 
 export function LoadingPage() {
   return (
-    <div className="fixed inset-0 bg-midnight-room flex items-center justify-center overflow-hidden">
-      {/* Exposed Wires */}
-      <svg className="absolute inset-0 w-full h-full opacity-30" viewBox="0 0 1200 800">
-        {/* Wire 1 - Horizontal */}
-        <path
-          d="M 0 200 Q 300 180, 600 200 T 1200 200"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className="text-spray-cyan"
-        />
-        
-        {/* Wire 2 - Diagonal */}
-        <path
-          d="M 200 0 Q 400 200, 600 400 T 1000 800"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className="text-spray-magenta"
-        />
-        
-        {/* Wire 3 - Pulse Wire (animated) */}
-        <path
-          d="M 0 400 Q 400 380, 800 400 T 1200 400"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="3"
-          className="text-tape-yellow animate-pulse"
-          strokeDasharray="10 5"
-        />
-      </svg>
-      
-      {/* CRT Scanlines */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="w-full h-full" style={{
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.03) 2px, rgba(255,255,255,0.03) 4px)',
-        }} />
+    <div className="fixed inset-0 flex items-center justify-center overflow-hidden"
+      style={{
+        background: 'radial-gradient(ellipse at 50% 50%, #0F0F1A 0%, #0A0A12 50%, #050508 100%)'
+      }}
+    >
+      {/* Subtle ambient glow */}
+      <div className="absolute w-96 h-96 opacity-20"
+        style={{
+          background: 'radial-gradient(circle, rgba(255, 77, 0, 0.3) 0%, transparent 70%)',
+          filter: 'blur(80px)',
+        }}
+      />
+
+      {/* Central loader */}
+      <div className="relative z-10 flex flex-col items-center">
+        {/* Pulsing ring */}
+        <div className="relative">
+          <div className="w-16 h-16 rounded-xl flex items-center justify-center"
+            style={{
+              background: 'linear-gradient(135deg, rgba(255, 77, 0, 0.15) 0%, rgba(255, 215, 0, 0.1) 100%)',
+              border: '1px solid rgba(255, 77, 0, 0.2)',
+            }}
+          >
+            <Flame className="w-7 h-7 text-phoenix-fire-core animate-pulse" />
+          </div>
+          
+          {/* Orbiting dot */}
+          <div className="absolute inset-0">
+            <div className="w-full h-full animate-spin" style={{ animationDuration: '3s' }}>
+              <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-phoenix-fire-core"
+                style={{ boxShadow: '0 0 8px rgba(255, 77, 0, 0.6)' }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Loading text */}
+        <div className="mt-6 flex items-center gap-2">
+          <span className="text-xs font-mono text-phoenix-ink-muted tracking-wider">
+            INITIALIZING FORGE
+          </span>
+          <div className="flex gap-0.5">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="w-1 h-1 rounded-full bg-phoenix-ink-muted animate-pulse"
+                style={{ animationDelay: `${i * 0.3}s` }}
+              />
+            ))}
+          </div>
+        </div>
       </div>
-      
-      {/* Pulsing Dot (Heartbeat) */}
-      <div className="relative z-10">
-        <div className="w-3 h-3 rounded-full bg-spray-cyan animate-pulse glow-cyan" />
+
+      {/* Bottom system info */}
+      <div className="absolute bottom-6 left-6 font-mono text-[10px] text-phoenix-ink-subtle">
+        <span>PHOENIX FORGE v5.0.0</span>
       </div>
-      
-      {/* Boot Text */}
-      <div className="absolute bottom-8 left-8 font-mono text-xs text-ink-muted">
-        <span className="animate-pulse">BOOTING WORKSHOP</span>
-        <span className="inline-block w-2 h-4 ml-1 bg-spray-cyan animate-pulse" />
+
+      <div className="absolute bottom-6 right-6 font-mono text-[10px] text-phoenix-ink-subtle flex items-center gap-2">
+        <div className="w-1.5 h-1.5 rounded-full bg-phoenix-success-core animate-pulse" />
+        <span>SYSTEMS ONLINE</span>
       </div>
     </div>
   );
 }
-

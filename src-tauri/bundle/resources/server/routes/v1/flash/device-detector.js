@@ -8,7 +8,7 @@
  */
 
 import { safeSpawn, commandExistsSafe } from '../../../utils/safe-exec.js';
-import ADBLibrary from '../../../../core/lib/adb.js';
+import ADBLibrary from '../../../utils/adb-library-wrapper.js';
 
 /**
  * Device brand detection results

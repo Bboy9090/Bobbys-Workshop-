@@ -1,4 +1,4 @@
-# AGENTS.md — Bobby's Workshop AI Operating System
+# AGENTS.md — Phoenix Forge AI Operating System
 
 ## Workshop Discipline: The "No Illusion" Rule
 

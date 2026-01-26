@@ -327,9 +327,8 @@ class FirmwareLibraryManager {
     logger.info(`Starting download: ${firmware.name}`);
 
     try {
-      // In production, this would actually download the file
-      // For now, simulate download progress
-      await this.simulateDownload(item);
+      // Real download via backend API
+      await this.executeRealDownload(item);
       
       item.progress.status = 'downloaded';
       item.progress.progress = 100;
@@ -384,25 +383,81 @@ class FirmwareLibraryManager {
   }
 
   /**
-   * Simulate download for demo purposes
+   * Execute real firmware download via backend API
+   * NO SIMULATION - Real file download with progress tracking
    */
-  private async simulateDownload(item: DownloadQueueItem): Promise<void> {
-    const chunkSize = item.firmware.size / 20;
-    const chunkDelay = 200;
-
-    for (let i = 0; i <= 20; i++) {
-      if (item.abortController?.signal.aborted) {
-        throw new DOMException('Aborted', 'AbortError');
-      }
-
-      item.progress.bytesDownloaded = Math.min(chunkSize * i, item.firmware.size);
-      item.progress.progress = Math.round((item.progress.bytesDownloaded / item.firmware.size) * 100);
-      item.progress.speed = chunkSize / (chunkDelay / 1000);
-      item.progress.eta = Math.round((item.firmware.size - item.progress.bytesDownloaded) / item.progress.speed);
-
-      this.notifyListeners();
-      await new Promise(r => setTimeout(r, chunkDelay));
+  private async executeRealDownload(item: DownloadQueueItem): Promise<void> {
+    const downloadUrl = item.firmware.downloadUrl;
+    
+    if (!downloadUrl) {
+      throw new Error('No download URL available for this firmware');
     }
+
+    // Use backend download endpoint for proxied/managed downloads
+    const apiUrl = `/api/v1/firmware/download/${item.firmware.id}`;
+    
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        firmwareId: item.firmware.id,
+        url: downloadUrl,
+      }),
+      signal: item.abortController?.signal,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error?.message || `Download failed: HTTP ${response.status}`);
+    }
+
+    // If backend returns a stream, track progress
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body for download');
+    }
+
+    const contentLength = parseInt(response.headers.get('Content-Length') || '0', 10);
+    const totalBytes = contentLength || item.firmware.size;
+    let receivedBytes = 0;
+    let lastTime = Date.now();
+    let lastBytes = 0;
+
+    const chunks: Uint8Array[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      
+      if (done) break;
+
+      if (value) {
+        chunks.push(value);
+        receivedBytes += value.length;
+
+        // Calculate speed
+        const now = Date.now();
+        const timeDelta = (now - lastTime) / 1000;
+        if (timeDelta >= 0.5) {
+          const bytesDelta = receivedBytes - lastBytes;
+          item.progress.speed = bytesDelta / timeDelta;
+          lastTime = now;
+          lastBytes = receivedBytes;
+        }
+
+        // Update progress
+        item.progress.bytesDownloaded = receivedBytes;
+        item.progress.progress = totalBytes > 0 
+          ? Math.round((receivedBytes / totalBytes) * 100) 
+          : 0;
+        item.progress.eta = item.progress.speed > 0 
+          ? Math.round((totalBytes - receivedBytes) / item.progress.speed) 
+          : 0;
+
+        this.notifyListeners();
+      }
+    }
+
+    logger.info(`Downloaded ${receivedBytes} bytes for ${item.firmware.name}`);
   }
 
   private notifyListeners(): void {

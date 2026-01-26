@@ -57,7 +57,8 @@ export async function executeAdbCommand(serial, command, args = [], options = {}
     // Spawn ADB process (no shell)
     const adb = spawn('adb', adbArgs, {
       shell: false, // Critical: no shell execution
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
     });
     
     // Collect stdout
@@ -107,7 +108,8 @@ export async function getDevices() {
     
     const adb = spawn('adb', ['devices', '-l'], {
       shell: false,
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
     });
     
     adb.stdout.on('data', (data) => {
@@ -166,3 +168,75 @@ export async function isAdbAvailable() {
     });
   });
 }
+
+/**
+ * Execute a raw ADB subcommand string.
+ *
+ * This is a small compatibility layer for older workflow code that stores
+ * ADB steps as strings like: "shell getprop" or "reboot".
+ *
+ * @param {string} serial
+ * @param {string} commandString e.g. "shell getprop"
+ * @param {object} options
+ * @returns {Promise<{success: boolean, stdout: string, stderr: string, exitCode: number, error?: string}>}
+ */
+export async function executeCommand(serial, commandString, options = {}) {
+  try {
+    const parts = (commandString || '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) {
+      return { success: false, stdout: '', stderr: 'Empty ADB command', exitCode: 1, error: 'Empty ADB command' };
+    }
+
+    const [cmd, ...args] = parts;
+    const fullArgs = cmd === 'devices'
+      ? [cmd, ...args]
+      : ['-s', serial, cmd, ...args];
+
+    // Spawn directly (no shell)
+    return await new Promise((resolve) => {
+      let stdout = '';
+      let stderr = '';
+
+      const child = spawn('adb', fullArgs, {
+        shell: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true
+      });
+
+      child.stdout?.on('data', (d) => { stdout += d.toString(); });
+      child.stderr?.on('data', (d) => { stderr += d.toString(); });
+
+      const timeout = options?.timeout ?? 30000;
+      const t = setTimeout(() => {
+        try { child.kill(); } catch { /* ignore */ }
+        resolve({ success: false, stdout: stdout.trim(), stderr: `Timeout after ${timeout}ms`, exitCode: 124, error: 'timeout' });
+      }, timeout);
+
+      child.on('close', (code) => {
+        clearTimeout(t);
+        resolve({
+          success: code === 0,
+          stdout: stdout.trim(),
+          stderr: stderr.trim(),
+          exitCode: code ?? 1,
+          ...(code === 0 ? {} : { error: stderr.trim() || stdout.trim() || `exit ${code}` })
+        });
+      });
+
+      child.on('error', (err) => {
+        clearTimeout(t);
+        resolve({ success: false, stdout: stdout.trim(), stderr: err.message, exitCode: 1, error: err.message });
+      });
+    });
+  } catch (error) {
+    return { success: false, stdout: '', stderr: error.message, exitCode: 1, error: error.message };
+  }
+}
+
+export default {
+  validateDeviceSerial,
+  executeAdbCommand,
+  getDevices,
+  isAdbAvailable,
+  executeCommand
+};

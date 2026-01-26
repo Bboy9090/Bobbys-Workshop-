@@ -1,84 +1,170 @@
-// ADB Library - Android Debug Bridge operations
-// Provides safe wrappers around ADB commands
+/**
+ * ADB Provider
+ * 
+ * Safe ADB command execution with validation and timeout enforcement
+ * 
+ * @module core/lib/adb
+ */
 
-import { exec } from 'child_process';
+import { spawn } from 'child_process';
 import { promisify } from 'util';
-import { commandExists } from 'command-exists';
-import { logger } from '../logger'; // eslint-disable-line no-unused-vars
-const execAsync = promisify(exec);
 
-async function safeExec(cmd, options = {}) {
-  try {
-    const { stdout, stderr } = await execAsync(cmd, {
-      timeout: options.timeout ?? 10000,
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      ...options,
-    });
-    return {
-      success: true,
-      stdout: (stdout ?? '').toString().trim(),
-      stderr: (stderr ?? '').toString().trim(),
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error?.message || String(error),
-      stdout: (error?.stdout ?? '').toString().trim(),
-      stderr: (error?.stderr ?? '').toString().trim(),
-    };
+// Serial number validation regex
+const SERIAL_REGEX = /^[A-Za-z0-9]{6,20}$/;
+
+/**
+ * Validate device serial number format
+ * 
+ * @param {string} serial - Device serial number
+ * @throws {Error} If serial is invalid
+ */
+export function validateDeviceSerial(serial) {
+  if (!serial || typeof serial !== 'string') {
+    throw new Error('Device serial is required and must be a string');
   }
+  
+  if (!SERIAL_REGEX.test(serial)) {
+    throw new Error(`Invalid device serial format: ${serial}. Must be 6-20 alphanumeric characters.`);
+  }
+  
+  return true;
 }
 
-const ADBLibrary = {
-  /**
-   * Check if ADB is available
-   */
-  async isAvailable() {
-    try {
-      const { stdout, stderr } = await execAsync('adb version', {
-        windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
-      const version = (stdout || stderr || '').toString().trim();
-      return { success: true, version };
-    } catch (error) {
-      const message = error?.message ? `: ${error.message}` : '';
-      return { success: false, error: `ADB not found${message}` };
-    }
-  },
+/**
+ * Execute ADB command safely
+ * 
+ * @param {string} serial - Device serial number
+ * @param {string} command - ADB command (shell, pull, push, etc.)
+ * @param {Array<string>} args - Command arguments
+ * @param {Object} options - Execution options
+ * @param {number} options.timeout - Timeout in milliseconds (default: 30000)
+ * @returns {Promise<string>} Command output
+ */
+export async function executeAdbCommand(serial, command, args = [], options = {}) {
+  const { timeout = 30000 } = options;
+  
+  // Validate serial
+  validateDeviceSerial(serial);
+  
+  // Build command array (no shell execution)
+  const adbArgs = ['-s', serial, command, ...args];
+  
+  return new Promise((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    let timeoutId;
+    
+    // Spawn ADB process (no shell)
+    const adb = spawn('adb', adbArgs, {
+      shell: false, // Critical: no shell execution
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
+    });
+    
+    // Collect stdout
+    adb.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+    
+    // Collect stderr
+    adb.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    
+    // Set timeout
+    timeoutId = setTimeout(() => {
+      adb.kill();
+      reject(new Error(`ADB command timeout after ${timeout}ms`));
+    }, timeout);
+    
+    // Handle process completion
+    adb.on('close', (code) => {
+      clearTimeout(timeoutId);
+      
+      if (code === 0) {
+        resolve(stdout);
+      } else {
+        reject(new Error(`ADB command failed with code ${code}: ${stderr || stdout}`));
+      }
+    });
+    
+    // Handle process errors
+    adb.on('error', (error) => {
+      clearTimeout(timeoutId);
+      reject(new Error(`ADB process error: ${error.message}`));
+    });
+  });
+}
 
-  /**
-   * Check if ADB is installed
-   */
-  async isInstalled() {
-    return await safeExec('adb --version');
-    if (!result.success || !result.stdout) return { success: false, error: result.error };
-    return true;
-  },
-  async listDevices() {
-    const result = await safeExec('adb devices -l');
-    if (!result.success || !result.stdout) return { success: false, error: result.error, devices: [] };
-    return { success: true, devices: result.stdout.split('\n').slice(1).filter((line) => line.trim()) };
-  },
-  async executeCommand(serial, command) {
-    const adbCommand = serial ? `adb -s ${serial} ${command}` : `adb ${command}`;
-    return await safeExec(adbCommand, { timeout: 30000 });
-  },
-  async shell(serial, shellCommand) {
-    return await this.executeCommand(serial, `shell ${shellCommand}`);
-  },
-  async getProperties(serial) {
-    if (!serial) return { success: false, error: 'Device serial is required' };
-    return (await this.shell(serial, 'getprop')).stdout.split('\n').reduce((acc,line) => {
-      const match = line.match(/\[(.*?)\]:\s*\[(.*?)\]/);
-      if (match) acc[match[1]] = match[2];
-      return acc;
-    }, {})), success: true, properties: properties };,
-  }
-  async checkFRPStatus(serial) {
-    return (await this.executeCommand(serial, 'shell settings get secure android_id')).stdout || '';
-  }
+/**
+ * Get list of connected devices
+ * 
+ * @returns {Promise<Array>} Array of device objects
+ */
+export async function getDevices() {
+  return new Promise((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    
+    const adb = spawn('adb', ['devices', '-l'], {
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
+    });
+    
+    adb.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+    
+    adb.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    
+    adb.on('close', (code) => {
+      if (code === 0) {
+        // Parse devices
+        const devices = [];
+        const lines = stdout.split('\n').filter(line => line.trim() && !line.startsWith('List'));
+        
+        for (const line of lines) {
+          const parts = line.trim().split(/\s+/);
+          if (parts.length >= 2) {
+            devices.push({
+              serial: parts[0],
+              state: parts[1],
+              info: parts.slice(2).join(' ')
+            });
+          }
+        }
+        
+        resolve(devices);
+      } else {
+        reject(new Error(`Failed to get devices: ${stderr}`));
+      }
+    });
+    
+    adb.on('error', reject);
+  });
+}
 
-export default ADBLibrary;
-,,
+/**
+ * Check if ADB is available
+ * 
+ * @returns {Promise<boolean>} True if ADB is available
+ */
+export async function isAdbAvailable() {
+  return new Promise((resolve) => {
+    const adb = spawn('adb', ['version'], {
+      shell: false,
+      stdio: 'ignore'
+    });
+    
+    adb.on('close', (code) => {
+      resolve(code === 0);
+    });
+    
+    adb.on('error', () => {
+      resolve(false);
+    });
+  });
+}

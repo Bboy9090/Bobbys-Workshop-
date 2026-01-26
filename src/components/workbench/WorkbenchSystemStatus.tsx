@@ -1,17 +1,19 @@
 /**
- * WorkbenchSystemStatus
+ * PHOENIX FORGE - System Status Panel
  * 
- * System status indicators: backend health, catalog loaded, device locks, active operations.
- * Status strip style - always visible, never intrusive.
- * 
- * NO MOCKS - connects to real state/API only.
+ * Real-time system status indicators:
+ * - Backend health
+ * - Catalog loaded
+ * - Device locks
+ * - Active operations
  */
 
-import React, { useEffect, useState } from 'react';
-import { CheckCircle2, XCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CheckCircle2, XCircle, AlertCircle, Loader2, Shield, Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/lib/app-context';
 import { useBackendHealth } from '@/lib/backend-health';
+import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
 
 interface StatusItem {
   id: string;
@@ -38,7 +40,7 @@ export function WorkbenchSystemStatus({
   showActiveOps = true,
 }: WorkbenchSystemStatusProps) {
   const { backendAvailable } = useApp();
-  const backendHealth = useBackendHealth(30000); // Check every 30s
+  const backendHealth = useBackendHealth(30000);
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus>({
     loaded: false,
     checking: true,
@@ -145,7 +147,7 @@ export function WorkbenchSystemStatus({
     }
 
     checkLocks();
-    const interval = setInterval(checkLocks, 15000); // Check every 15s
+    const interval = setInterval(checkLocks, 15000);
 
     return () => {
       cancelled = true;
@@ -192,7 +194,7 @@ export function WorkbenchSystemStatus({
     }
 
     checkOps();
-    const interval = setInterval(checkOps, 10000); // Check every 10s
+    const interval = setInterval(checkOps, 10000);
 
     return () => {
       cancelled = true;
@@ -203,13 +205,13 @@ export function WorkbenchSystemStatus({
   const statusItems: StatusItem[] = [
     {
       id: 'backend',
-      label: 'Backend',
+      label: 'Backend Forge',
       status: backendHealth.isHealthy ? 'ready' : 'error',
       message: backendHealth.isHealthy ? 'Connected' : 'Offline',
     },
     ...(showCatalog ? [{
       id: 'catalog',
-      label: 'Catalog',
+      label: 'Firmware Catalog',
       status: catalogStatus.checking
         ? 'checking'
         : catalogStatus.loaded
@@ -218,14 +220,14 @@ export function WorkbenchSystemStatus({
         ? 'error'
         : 'warning',
       message: catalogStatus.checking
-        ? 'Checking...'
+        ? 'Loading...'
         : catalogStatus.loaded
         ? 'Loaded'
         : catalogStatus.error || 'Unavailable',
     }] : []),
     ...(showLocks ? [{
       id: 'locks',
-      label: 'Locks',
+      label: 'Device Locks',
       status: activeLocks === null ? 'checking' : activeLocks > 0 ? 'warning' : 'ready',
       message: activeLocks === null ? 'Unknown' : activeLocks > 0 ? `${activeLocks} active` : 'None',
     }] : []),
@@ -240,46 +242,60 @@ export function WorkbenchSystemStatus({
   const getStatusIcon = (status: StatusItem['status']) => {
     switch (status) {
       case 'ready':
-        return <CheckCircle2 className="w-3.5 h-3.5 text-state-ready" />;
+        return <CheckCircle2 className="w-4 h-4 text-[#10B981]" />;
       case 'warning':
-        return <AlertCircle className="w-3.5 h-3.5 text-state-warning" />;
+        return <AlertCircle className="w-4 h-4 text-[#F59E0B]" />;
       case 'error':
-        return <XCircle className="w-3.5 h-3.5 text-state-danger" />;
+        return <XCircle className="w-4 h-4 text-[#F43F5E]" />;
       case 'checking':
-        return <Loader2 className="w-3.5 h-3.5 text-ink-muted animate-spin" />;
+        return <Loader2 className="w-4 h-4 text-[#64748B] animate-spin" />;
+    }
+  };
+
+  const getStatusColor = (status: StatusItem['status']) => {
+    switch (status) {
+      case 'ready':
+        return 'text-[#34D399]';
+      case 'warning':
+        return 'text-[#FCD34D]';
+      case 'error':
+        return 'text-[#FB7185]';
+      case 'checking':
+        return 'text-[#64748B]';
     }
   };
 
   return (
-    <div className="p-4 rounded-lg bg-workbench-steel border border-panel">
-      <h3 className="text-xs font-mono uppercase tracking-wider text-ink-muted mb-3">
-        System Status
-      </h3>
-      
-      <div className="space-y-2">
-        {statusItems.map((item) => (
-          <div
-            key={item.id}
-            className="flex items-center justify-between py-1.5"
-          >
-            <div className="flex items-center gap-2">
-              {getStatusIcon(item.status)}
-              <span className="text-sm text-ink-primary">{item.label}</span>
+    <Card variant="cosmic">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Activity className="w-4 h-4 text-[#A78BFA]" />
+          System Status
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          {statusItems.map((item) => (
+            <div
+              key={item.id}
+              className="flex items-center justify-between py-2 px-3 rounded-lg bg-white/[0.02] border border-white/[0.05]"
+            >
+              <div className="flex items-center gap-2.5">
+                {getStatusIcon(item.status)}
+                <span className="text-sm text-[#F1F5F9]">{item.label}</span>
+              </div>
+              {item.message && (
+                <span className={cn(
+                  "text-xs font-mono",
+                  getStatusColor(item.status)
+                )}>
+                  {item.message}
+                </span>
+              )}
             </div>
-            {item.message && (
-              <span className={cn(
-                "text-xs font-mono",
-                item.status === 'ready' && "text-ink-muted",
-                item.status === 'warning' && "text-tape-yellow",
-                item.status === 'error' && "text-state-danger",
-                item.status === 'checking' && "text-ink-muted"
-              )}>
-                {item.message}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

@@ -1,0 +1,37 @@
+{
+  "operation": "tap_event",
+  "displayName": "Send Tap Event",
+  "description": "Send a tap/touch event to the device",
+  "category": "input",
+  "riskLevel": "low",
+  "requiresConfirmation": false,
+  "allowedRoles": ["owner", "admin", "technician"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    },
+    "x": {
+      "type": "integer",
+      "required": true,
+      "description": "X coordinate"
+    },
+    "y": {
+      "type": "integer",
+      "required": true,
+      "description": "Y coordinate"
+    },
+    "duration": {
+      "type": "integer",
+      "required": false,
+      "default": 100,
+      "description": "Touch duration in milliseconds"
+    }
+  },
+  "auditLogging": "standard",
+  "rateLimitPerMinute": 60,
+  "estimatedDuration": 1000
+}

@@ -16,6 +16,13 @@ import { OperationExecutor } from '../trapdoor/OperationExecutor';
 import { SonicCodexPanel } from './SonicCodexPanel';
 import { GhostCodexPanel } from './GhostCodexPanel';
 import { PandoraCodexPanel } from './PandoraCodexPanel';
+import { UnlockChamberPanel } from './UnlockChamberPanel';
+import { FlashForgePanel } from './FlashForgePanel';
+import { JailbreakSanctumPanel } from './JailbreakSanctumPanel';
+import { RootVaultPanel } from './RootVaultPanel';
+import { BypassLaboratoryPanel } from './BypassLaboratoryPanel';
+import { WorkflowEnginePanel } from './WorkflowEnginePanel';
+import { ShadowArchivePanel } from './ShadowArchivePanel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 
 interface Device {
@@ -64,10 +71,12 @@ export const PandorasRoom: React.FC = () => {
             </h1>
           </div>
           <p className="text-gray-400">
-            Bobby's Secret Room - Advanced device management, diagnostics, and trapdoor tool execution
+            <strong>Bobby's Secret Rooms</strong> - The Hidden Power Behind Bobby's Workshop. 
+            Ultra-secure, authenticated access points to the most advanced device manipulation capabilities ever built.
           </p>
-          <p className="text-sm text-gray-500 mt-1">
-            Merged from The-Pandora-Codex Control Room (TITAN 2)
+          <p className="text-sm text-gray-500 mt-1 italic">
+            "Not everything should be accessible to everyone. Some operations are so powerful, so dangerous, 
+            so LEGENDARY that they require a special key. That key is Bobby's Secret Rooms."
           </p>
         </header>
 
@@ -197,101 +206,31 @@ export const PandorasRoom: React.FC = () => {
                 </TabsContent>
 
                 <TabsContent value="unlock">
-                  <Card className="bg-[#141922] border-[#2FD3FF]/20">
-                    <CardHeader>
-                      <CardTitle className="text-white">Unlock Chamber</CardTitle>
-                      <CardDescription className="text-gray-400">
-                        Complete device unlock automation
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-gray-400">Unlock Chamber interface coming soon</p>
-                    </CardContent>
-                  </Card>
+                  <UnlockChamberPanel />
                 </TabsContent>
 
                 <TabsContent value="flash">
-                  <Card className="bg-[#141922] border-[#2FD3FF]/20">
-                    <CardHeader>
-                      <CardTitle className="text-white">Flash Forge</CardTitle>
-                      <CardDescription className="text-gray-400">
-                        Multi-brand flash operations
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-gray-400">Flash Forge interface coming soon</p>
-                    </CardContent>
-                  </Card>
+                  <FlashForgePanel />
                 </TabsContent>
 
                 <TabsContent value="ios">
-                  <Card className="bg-[#141922] border-[#2FD3FF]/20">
-                    <CardHeader>
-                      <CardTitle className="text-white">Jailbreak Sanctum</CardTitle>
-                      <CardDescription className="text-gray-400">
-                        iOS device manipulation
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-gray-400">Jailbreak Sanctum interface coming soon</p>
-                    </CardContent>
-                  </Card>
+                  <JailbreakSanctumPanel />
                 </TabsContent>
 
                 <TabsContent value="root">
-                  <Card className="bg-[#141922] border-[#2FD3FF]/20">
-                    <CardHeader>
-                      <CardTitle className="text-white">Root Vault</CardTitle>
-                      <CardDescription className="text-gray-400">
-                        Root installation and management
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-gray-400">Root Vault interface coming soon</p>
-                    </CardContent>
-                  </Card>
+                  <RootVaultPanel />
                 </TabsContent>
 
                 <TabsContent value="bypass">
-                  <Card className="bg-[#141922] border-[#2FD3FF]/20">
-                    <CardHeader>
-                      <CardTitle className="text-white">Bypass Laboratory</CardTitle>
-                      <CardDescription className="text-gray-400">
-                        Security bypass automation
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-gray-400">Bypass Laboratory interface coming soon</p>
-                    </CardContent>
-                  </Card>
+                  <BypassLaboratoryPanel />
                 </TabsContent>
 
                 <TabsContent value="workflows">
-                  <Card className="bg-[#141922] border-[#2FD3FF]/20">
-                    <CardHeader>
-                      <CardTitle className="text-white">Workflow Engine</CardTitle>
-                      <CardDescription className="text-gray-400">
-                        Automated workflow execution
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <WorkflowExecutionConsole />
-                    </CardContent>
-                  </Card>
+                  <WorkflowEnginePanel />
                 </TabsContent>
 
                 <TabsContent value="logs">
-                  <Card className="bg-[#141922] border-[#2FD3FF]/20">
-                    <CardHeader>
-                      <CardTitle className="text-white">Shadow Archive</CardTitle>
-                      <CardDescription className="text-gray-400">
-                        Complete operation history
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <ShadowLogsViewer />
-                    </CardContent>
-                  </Card>
+                  <ShadowArchivePanel />
                 </TabsContent>
               </Tabs>
             </div>

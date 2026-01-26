@@ -5,8 +5,8 @@
  * Night-Ops theme: jet black #050505, neon amber #FFB000, matrix green #00FF41
  */
 
-import React, { useState, useEffect } from 'react';
-import { Box, Zap, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Box } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/lib/app-context';
@@ -14,6 +14,7 @@ import { DevicePulse } from './DevicePulse';
 import { ConsoleLog } from './ConsoleLog';
 import { ExploitSelector } from './ExploitSelector';
 import { SafetyInterlock } from './SafetyInterlock';
+import { RigHealthDashboard } from '../RigHealthDashboard';
 
 interface ChainBreakerDashboardProps {
   passcode?: string;
@@ -30,17 +31,22 @@ export function ChainBreakerDashboard({
   const [logs, setLogs] = useState<Array<{ id: string; timestamp: string; level: string; message: string }>>([]);
   const [wsConnected, setWsConnected] = useState(false);
 
-  const FASTAPI_URL = process.env.VITE_FASTAPI_URL || 'http://127.0.0.1:8000';
+  const FASTAPI_URL =
+    (import.meta as any).env?.VITE_FASTAPI_URL ||
+    (globalThis as any).process?.env?.VITE_FASTAPI_URL ||
+    'http://127.0.0.1:8000';
   const WS_URL = FASTAPI_URL.replace('http', 'ws');
 
-  useEffect(() => {
-    if (passcode && backendAvailable) {
-      scanDevices();
-      connectWebSocket();
-    }
-  }, [passcode, backendAvailable]);
+  const addLog = useCallback((level: string, message: string) => {
+    setLogs(prev => [...prev, {
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      level,
+      message
+    }]);
+  }, []);
 
-  const scanDevices = async () => {
+  const scanDevices = useCallback(async () => {
     if (!passcode) return;
 
     try {
@@ -62,52 +68,59 @@ export function ChainBreakerDashboard({
         description: error instanceof Error ? error.message : 'Failed to scan for devices'
       });
     }
-  };
+  }, [FASTAPI_URL, passcode]);
 
-  const connectWebSocket = () => {
-    if (!passcode) return;
+  useEffect(() => {
+    if (!passcode || !backendAvailable) return;
 
-    const ws = new WebSocket(`${WS_URL}/api/v1/trapdoor/pandora/hardware/stream`);
-    
-    ws.onopen = () => {
-      setWsConnected(true);
-      addLog('info', 'Connected to hardware stream');
-      ws.send(JSON.stringify({ type: 'auth', passcode }));
-    };
-    
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'devices' || data.type === 'update') {
-        setDevices(data.data || []);
-      }
-    };
-    
-    ws.onerror = () => {
-      setWsConnected(false);
-      addLog('error', 'WebSocket connection error');
-    };
-    
-    ws.onclose = () => {
-      setWsConnected(false);
-      addLog('warn', 'WebSocket disconnected');
-      // Reconnect after 3 seconds
-      setTimeout(connectWebSocket, 3000);
-    };
-  };
+    let ws: WebSocket | null = null;
+    let closed = false;
 
-  const addLog = (level: string, message: string) => {
-    setLogs(prev => [...prev, {
-      id: Date.now().toString(),
-      timestamp: new Date().toISOString(),
-      level,
-      message
-    }]);
-  };
+    const connect = () => {
+      if (closed) return;
+      ws = new WebSocket(`${WS_URL}/api/v1/trapdoor/pandora/hardware/stream`);
+
+      ws.onopen = () => {
+        setWsConnected(true);
+        addLog('info', 'Connected to hardware stream');
+        ws?.send(JSON.stringify({ type: 'auth', passcode }));
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'devices' || data.type === 'update') {
+            setDevices(data.data || []);
+          }
+        } catch {
+          // ignore
+        }
+      };
+
+      ws.onerror = () => {
+        setWsConnected(false);
+        addLog('error', 'WebSocket connection error');
+      };
+
+      ws.onclose = () => {
+        setWsConnected(false);
+        addLog('warn', 'WebSocket disconnected');
+        if (!closed) setTimeout(connect, 3000);
+      };
+    };
+
+    connect();
+
+    return () => {
+      closed = true;
+      try { ws?.close(); } catch { /* ignore */ }
+    };
+  }, [passcode, backendAvailable, WS_URL, scanDevices, addLog]);
 
   const handleEnterDFU = async () => {
     if (!selectedDevice || !passcode) return;
 
-    addLog('info', `Attempting to enter DFU mode on ${selectedDevice.id}...`);
+    addLog('info', `DFU mode entry is manual. Pulling instructions for ${selectedDevice.id}...`);
 
     try {
       const response = await fetch(`${FASTAPI_URL}/api/v1/trapdoor/pandora/enter-dfu`, {
@@ -123,7 +136,13 @@ export function ChainBreakerDashboard({
 
       const data = await response.json();
       if (data.ok) {
-        addLog('success', 'Device entered DFU mode');
+        addLog('success', 'DFU instructions ready. Follow steps, then re-scan to confirm DFU mode.');
+        const instructions: string[] = data.data?.instructions || [];
+        if (instructions.length) {
+          addLog('info', '--- DFU Instructions ---');
+          for (const step of instructions) addLog('info', step);
+          addLog('info', '--- End Instructions ---');
+        }
         scanDevices();
       } else {
         addLog('error', `DFU entry failed: ${data.error?.message || 'Unknown error'}`);
@@ -134,36 +153,14 @@ export function ChainBreakerDashboard({
   };
 
   const handleJailbreak = async (exploit: string) => {
-    if (!selectedDevice || !passcode) return;
-
-    addLog('info', `Starting ${exploit} jailbreak on ${selectedDevice.id}...`);
-
-    try {
-      const response = await fetch(`${FASTAPI_URL}/api/v1/trapdoor/pandora/jailbreak`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Secret-Room-Passcode': passcode,
-        },
-        body: JSON.stringify({
-          device_id: selectedDevice.id,
-          exploit,
-        }),
-      });
-
-      const data = await response.json();
-      if (data.ok) {
-        addLog('success', `Jailbreak initiated: ${exploit}`);
-      } else {
-        addLog('error', `Jailbreak failed: ${data.error?.message || 'Unknown error'}`);
-      }
-    } catch (error) {
-      addLog('error', `Jailbreak error: ${(error as Error).message}`);
-    }
+    addLog('warn', `Operation disabled in this build: ${exploit}`);
+    toast.error('Operation disabled', {
+      description: 'This build focuses on DFU detection + safety telemetry.'
+    });
   };
 
   return (
-    <div className={cn("flex h-full bg-[#050505] text-[#00FF41]", className)}>
+    <div className={cn("flex h-full bg-[#050505] text-[#00FF41] pb-16", className)}>
       {/* Left Sidebar - Device Info */}
       <div className="w-80 border-r border-[#FFB000]/30 bg-[#0a0a0a]">
         <div className="p-4 border-b border-[#FFB000]/30">
@@ -197,7 +194,7 @@ export function ChainBreakerDashboard({
       {/* Right Sidebar - Exploit Menu */}
       <div className="w-80 border-l border-[#FFB000]/30 bg-[#0a0a0a]">
         <div className="p-4 border-b border-[#FFB000]/30">
-          <h2 className="text-lg font-bold text-[#00FF41]">Exploit Menu</h2>
+          <h2 className="text-lg font-bold text-[#00FF41]">DFU Tools</h2>
         </div>
 
         <div className="p-4 space-y-4">
@@ -210,12 +207,17 @@ export function ChainBreakerDashboard({
             <div className="space-y-2">
               <SafetyInterlock
                 onConfirm={handleEnterDFU}
-                label="Enter DFU Mode"
-                warning="This will reboot the device into DFU mode"
+                label="Show DFU Instructions"
+                warning="DFU entry is manual (hardware buttons). Hold to reveal steps, then re-scan to confirm DFU mode."
               />
             </div>
           )}
         </div>
+      </div>
+
+      {/* Rig health cockpit */}
+      <div className="fixed bottom-0 left-0 right-0">
+        <RigHealthDashboard passcode={passcode} className="border-t border-[#FFB000]/30" />
       </div>
     </div>
   );

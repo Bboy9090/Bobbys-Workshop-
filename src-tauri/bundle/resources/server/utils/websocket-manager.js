@@ -110,34 +110,45 @@ export class LegendaryWebSocketManager {
 
   startHeartbeat() {
     this.heartbeatTimer = setInterval(() => {
-      this.clients.forEach((info, ws) => {
-        if (ws.readyState === ws.OPEN) {
-          // Check if client is still responding
-          const timeSinceLastPong = Date.now() - info.lastPong;
-          
-          if (timeSinceLastPong > this.heartbeatTimeout * this.maxMissedHeartbeats) {
-            console.warn(`[WS:${this.path}] Client ${info.id} not responding, closing connection`);
-            ws.terminate();
-            this.clients.delete(ws);
-            this.stats.activeConnections = this.clients.size;
-            return;
-          }
+      const now = Date.now();
+      const toDelete = [];
 
-          // Send ping
-          try {
-            ws.ping();
-            info.missedHeartbeats++;
-          } catch (error) {
-            console.error(`[WS:${this.path}] Failed to ping client ${info.id}:`, error);
-            this.clients.delete(ws);
-            this.stats.activeConnections = this.clients.size;
-          }
-        } else {
-          // Remove dead connections
-          this.clients.delete(ws);
-          this.stats.activeConnections = this.clients.size;
+      // Iterate through clients once, collecting dead connections
+      for (const [ws, info] of this.clients.entries()) {
+        // Check connection state first
+        if (ws.readyState !== ws.OPEN) {
+          toDelete.push(ws);
+          continue;
         }
-      });
+
+        // Check if client is still responding to pings
+        const timeSinceLastPong = now - info.lastPong;
+        
+        if (timeSinceLastPong > this.heartbeatTimeout * this.maxMissedHeartbeats) {
+          console.warn(`[WS:${this.path}] Client ${info.id} not responding (last pong: ${Math.round(timeSinceLastPong / 1000)}s ago), closing connection`);
+          ws.terminate();
+          toDelete.push(ws);
+          continue;
+        }
+
+        // Send ping to active, responsive client
+        try {
+          ws.ping();
+          // Note: missedHeartbeats will be reset when pong is received
+        } catch (error) {
+          console.error(`[WS:${this.path}] Failed to ping client ${info.id}:`, error);
+          toDelete.push(ws);
+        }
+      }
+
+      // Delete dead connections after iteration to avoid modification during iteration
+      if (toDelete.length > 0) {
+        for (const ws of toDelete) {
+          this.clients.delete(ws);
+        }
+        this.stats.activeConnections = this.clients.size;
+        console.log(`[WS:${this.path}] Cleaned up ${toDelete.length} dead connection(s), ${this.clients.size} active`);
+      }
     }, this.heartbeatInterval);
   }
 

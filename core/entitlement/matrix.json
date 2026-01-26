@@ -1,0 +1,19 @@
+{
+  "free": [
+    "boot",
+    "basic_recovery",
+    "list_devices",
+    "view_logs"
+  ],
+  "pro": [
+    "*"
+  ],
+  "enterprise": [
+    "*",
+    "audit_export",
+    "bulk_ops",
+    "org_management",
+    "seat_management",
+    "custom_capabilities"
+  ]
+}

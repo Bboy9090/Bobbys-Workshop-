@@ -1,5 +1,5 @@
-appId: com.bboy9090.bobbysworkshop
-productName: Bobbys Workshop
+appId: com.phoenixforge.app
+productName: Phoenix Forge
 directories:
   buildResources: build
   output: dist-electron
@@ -37,6 +37,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
+  shortcutName: Phoenix Forge
 mac:
   target:
     - dmg

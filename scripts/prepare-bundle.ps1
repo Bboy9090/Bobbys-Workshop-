@@ -39,5 +39,13 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "Warning: execSync fix script failed, but continuing..." -ForegroundColor Yellow
 }
 
+# Bundle Python runtime
+Write-Host ""
+Write-Host "Step 5: Bundling Python runtime" -ForegroundColor Cyan
+& "$ScriptDir\bundle-python-complete.ps1"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Warning: Python runtime bundling failed, but continuing..." -ForegroundColor Yellow
+}
+
 Write-Host ""
 Write-Host "Bundle preparation complete!" -ForegroundColor Green

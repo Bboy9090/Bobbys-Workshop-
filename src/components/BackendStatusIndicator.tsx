@@ -1,8 +1,17 @@
+/**
+ * PHOENIX FORGE - Backend Status Indicator
+ * 
+ * Real-time connectivity monitoring with:
+ * - REST API health check
+ * - WebSocket connection status
+ * - BootForge USB backend status
+ */
+
 import { useState, useEffect, useRef } from 'react';
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, Warning, XCircle, CircleNotch } from '@phosphor-icons/react';
+import { CheckCircle, Warning, XCircle, CircleNotch, Lightning } from '@phosphor-icons/react';
 import { useBackendHealth } from '@/lib/backend-health';
 import { useAudioNotifications } from '@/hooks/use-audio-notifications';
 import { API_CONFIG, getWSUrl } from '@/lib/apiConfig';
@@ -19,23 +28,22 @@ interface ServiceStatus {
 const WS_DEVICE_EVENTS_URL = getWSUrl('/ws/device-events');
 
 export function BackendStatusIndicator() {
-  const health = useBackendHealth(30000); // Check every 30 seconds (reduced noise)
+  const health = useBackendHealth(30000);
   const audio = useAudioNotifications();
   const [wsStatus, setWsStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
   const [bootforgeStatus, setBootforgeStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
   const previousWsStatusRef = useRef<'connected' | 'disconnected' | 'checking'>('checking');
   const audioRef = useRef(audio);
-  const shouldReconnectRef = useRef(true);
 
   useEffect(() => {
     audioRef.current = audio;
   }, [audio]);
   
-  // 🔱 LEGENDARY WebSocket Connection - Bulletproof reconnection
+  // WebSocket Connection
   useEffect(() => {
     const connectionManager = new LegendaryConnectionManager({
       url: WS_DEVICE_EVENTS_URL,
-      maxReconnectAttempts: Infinity, // Never give up!
+      maxReconnectAttempts: Infinity,
       initialReconnectDelay: 1000,
       maxReconnectDelay: 60000,
       jitter: true,
@@ -59,10 +67,8 @@ export function BackendStatusIndicator() {
       }
     });
 
-    // Start connection
     connectionManager.connect();
 
-    // Update status based on connection state
     const statusInterval = setInterval(() => {
       const stats = connectionManager.getStats();
       if (stats.isConnected) {
@@ -88,13 +94,13 @@ export function BackendStatusIndicator() {
           signal: AbortSignal.timeout(5000),
         });
         setBootforgeStatus(response.ok ? 'connected' : 'disconnected');
-      } catch (error) {
+      } catch {
         setBootforgeStatus('disconnected');
       }
     };
 
     checkBootforge();
-    const interval = setInterval(checkBootforge, 30000); // Check every 30 seconds (reduced noise)
+    const interval = setInterval(checkBootforge, 30000);
 
     return () => clearInterval(interval);
   }, []);
@@ -137,14 +143,14 @@ export function BackendStatusIndicator() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'connected':
-        return <CheckCircle weight="fill" className="text-success" size={16} />;
+        return <CheckCircle weight="fill" className="text-[#10B981]" size={16} />;
       case 'checking':
-        return <CircleNotch className="text-muted-foreground animate-spin" size={16} />;
+        return <CircleNotch className="text-[#64748B] animate-spin" size={16} />;
       case 'disconnected':
       case 'error':
-        return <XCircle weight="fill" className="text-destructive" size={16} />;
+        return <XCircle weight="fill" className="text-[#F43F5E]" size={16} />;
       default:
-        return <Warning weight="fill" className="text-warning" size={16} />;
+        return <Warning weight="fill" className="text-[#F59E0B]" size={16} />;
     }
   };
 
@@ -152,30 +158,30 @@ export function BackendStatusIndicator() {
     switch (overallStatus) {
       case 'connected':
         return (
-          <Badge className="text-xs font-mono candy-shimmer bg-success hover:bg-success/90">
-            <div className="status-led connected mr-1.5" />
-            🟢 All Services Online
+          <Badge variant="success" className="gap-1.5">
+            <Lightning weight="fill" size={12} />
+            Forge Online
           </Badge>
         );
       case 'partial':
         return (
-          <Badge className="text-xs font-mono candy-shimmer" variant="outline">
-            <div className="status-led error mr-1.5" />
-            ⚠️ Partial Connectivity
+          <Badge variant="warning" className="gap-1.5">
+            <Warning weight="fill" size={12} />
+            Partial
           </Badge>
         );
       case 'checking':
         return (
-          <Badge className="text-xs font-mono" variant="secondary">
-            <CircleNotch className="animate-spin mr-1.5" size={14} />
-            Checking...
+          <Badge variant="secondary" className="gap-1.5">
+            <CircleNotch className="animate-spin" size={12} />
+            Connecting...
           </Badge>
         );
       default:
         return (
-          <Badge className="text-xs font-mono" variant="destructive">
-            <div className="status-led disconnected mr-1.5" />
-            ⚠️ Offline Mode
+          <Badge variant="error" className="gap-1.5">
+            <XCircle weight="fill" size={12} />
+            Offline
           </Badge>
         );
     }
@@ -188,19 +194,16 @@ export function BackendStatusIndicator() {
           variant="ghost" 
           size="sm" 
           className="h-auto p-0 hover:bg-transparent"
-          onClick={(e) => {
-            // Prevent any accidental auto-opening
-            e.stopPropagation();
-          }}
+          onClick={(e) => e.stopPropagation()}
         >
           {getOverallBadge()}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 sneaker-box-card" align="end">
+      <PopoverContent className="w-80 bg-[#14142B] border-white/10" align="end">
         <div className="space-y-3">
-          <div className="graffiti-tag">
-            <h3 className="font-semibold text-sm">Backend Services Status</h3>
-            <p className="text-xs text-muted-foreground mt-1">
+          <div>
+            <h3 className="font-semibold text-sm text-[#F1F5F9]">Forge Services</h3>
+            <p className="text-xs text-[#64748B] mt-1">
               Real-time connectivity monitoring
             </p>
           </div>
@@ -209,46 +212,41 @@ export function BackendStatusIndicator() {
             {services.map((service) => (
               <div
                 key={service.name}
-                className="flex items-center justify-between p-2 rounded-md bg-secondary/20 device-card-console"
+                className="flex items-center justify-between p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.05]"
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   {getStatusIcon(service.status)}
                   <div>
-                    <p className="text-sm font-medium">{service.name}</p>
-                    <p className="text-xs font-mono text-muted-foreground console-text">
+                    <p className="text-sm font-medium text-[#F1F5F9]">{service.name}</p>
+                    <p className="text-[10px] font-mono text-[#64748B] truncate max-w-[140px]">
                       {service.endpoint}
                     </p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <Badge
-                    variant={service.status === 'connected' ? 'default' : 'outline'}
-                    className="text-xs"
-                  >
-                    {service.status}
-                  </Badge>
-                  {service.error && (
-                    <p className="text-xs text-destructive mt-1">{service.error}</p>
-                  )}
-                </div>
+                <Badge
+                  variant={service.status === 'connected' ? 'online' : 'offline'}
+                  size="sm"
+                >
+                  {service.status}
+                </Badge>
               </div>
             ))}
           </div>
 
-          <div className="pt-2 border-t border-border">
+          <div className="pt-2 border-t border-white/[0.05]">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Last Updated</span>
-              <span className="font-mono console-text">
+              <span className="text-[#64748B]">Last Updated</span>
+              <span className="font-mono text-[#94A3B8]">
                 {new Date().toLocaleTimeString()}
               </span>
             </div>
           </div>
 
           {!allConnected && (
-            <div className="p-2 rounded-md bg-error/10 border border-error/20">
-              <p className="text-xs text-error">
-                <strong>Backend Offline:</strong> Backend server is not responding. 
-                Please check the server connection. Some features may be unavailable.
+            <div className="p-2.5 rounded-lg bg-[#F43F5E]/10 border border-[#F43F5E]/20">
+              <p className="text-xs text-[#FB7185]">
+                <strong>Limited Mode:</strong> Some backend services are unavailable. 
+                Certain features may not function properly.
               </p>
             </div>
           )}

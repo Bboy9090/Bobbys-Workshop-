@@ -336,54 +336,12 @@ async function runSingleCheck(
     };
   }
   
-  // Fallback for missing API endpoints - simulate results
-  return simulateCheckResult(checkDef, timestamp);
-}
-
-/**
- * Simulate check results when API unavailable
- */
-function simulateCheckResult(
-  checkDef: Omit<DiagnosticCheck, 'status' | 'value' | 'details' | 'timestamp'>,
-  timestamp: number
-): DiagnosticCheck {
-  // Simulate realistic values
-  const simulations: Record<string, Partial<DiagnosticCheck>> = {
-    battery_level: { status: 'pass', value: '78%' },
-    battery_health: { status: 'pass', value: 'Good' },
-    battery_temperature: { status: 'pass', value: '32°C' },
-    charging_status: { status: 'pass', value: 'Not Charging' },
-    storage_internal: { status: 'warning', value: '12GB / 64GB (81% used)' },
-    storage_external: { status: 'unknown', value: 'Not detected' },
-    storage_health: { status: 'pass', value: 'Healthy' },
-    wifi_status: { status: 'pass', value: 'Connected' },
-    mobile_signal: { status: 'pass', value: 'Excellent' },
-    sim_status: { status: 'pass', value: 'Detected' },
-    imei_valid: { status: 'pass', value: 'Valid' },
-    display_test: { status: 'pass', value: 'OK' },
-    touch_test: { status: 'pass', value: 'OK' },
-    camera_front: { status: 'pass', value: 'Available' },
-    camera_rear: { status: 'pass', value: 'Available' },
-    speaker_test: { status: 'pass', value: 'OK' },
-    microphone_test: { status: 'pass', value: 'OK' },
-    sensors_check: { status: 'pass', value: '8/8 sensors OK' },
-    bootloader_status: { status: 'pass', value: 'Locked' },
-    root_status: { status: 'pass', value: 'Not Rooted' },
-    frp_status: { status: 'pass', value: 'Active' },
-    mdm_status: { status: 'pass', value: 'None' },
-    encryption_status: { status: 'pass', value: 'Encrypted' },
-    os_version: { status: 'pass', value: 'Android 14' },
-    security_patch: { status: 'warning', value: 'October 2024' },
-    baseband_version: { status: 'pass', value: 'G998BXXU8HVL4' },
-  };
-  
-  const sim = simulations[checkDef.id] || { status: 'unknown' as const, value: 'N/A' };
-  
+  // API endpoint unavailable - return unknown status (NO FAKE DATA)
   return {
     ...checkDef,
-    status: sim.status || 'unknown',
-    value: sim.value,
-    details: sim.details,
+    status: 'unknown',
+    value: 'API unavailable',
+    details: result.error || 'Diagnostic endpoint not responding',
     timestamp,
   };
 }

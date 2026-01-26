@@ -56,16 +56,32 @@ export function unwrapEnvelope<T>(response: ApiResponse<T>): T {
 }
 
 /**
- * Parse fetch response as envelope
+ * Parse fetch response as envelope.
+ * Detects HTML (e.g. 404/SPA fallback) and throws a clear error instead of "Unexpected token '<'".
  */
 export async function parseEnvelope<T>(response: Response): Promise<ApiResponse<T>> {
-  const data = await response.json();
-  
+  const text = await response.text();
+  const ct = response.headers.get('content-type') ?? '';
+  if (
+    !ct.includes('application/json') &&
+    (text.trimStart().startsWith('<') || /^\s*<!DOCTYPE/i.test(text))
+  ) {
+    throw new Error(
+      'Backend returned HTML instead of JSON. Is the API server running at http://localhost:3001? Start it with "npm run server:start" or ensure the desktop app started the backend.'
+    );
+  }
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`Invalid JSON from API: ${text.slice(0, 80)}${text.length > 80 ? '...' : ''}`);
+  }
+
   // Check if it's already an envelope (has 'ok' property)
   if (typeof data === 'object' && data !== null && 'ok' in data) {
     return data as ApiResponse<T>;
   }
-  
+
   // Legacy format - wrap it
   return {
     ok: response.ok as true,

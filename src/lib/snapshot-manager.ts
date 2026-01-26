@@ -145,9 +145,29 @@ export const snapshotManager: SnapshotManager = {
       return snapshot;
     }
 
-    // In production, use actual compression
-    snapshot.compressed = true;
-    snapshot.sizeBytes = Math.floor(snapshot.sizeBytes * 0.4); // Simulate 60% compression
+    // Compress via backend API - NO SIMULATION
+    try {
+      const response = await fetch(`/api/v1/snapshots/${id}/compress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Compression failed: HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.ok && data.data) {
+        snapshot.compressed = true;
+        snapshot.sizeBytes = data.data.compressedSize ?? snapshot.sizeBytes;
+      } else {
+        throw new Error(data.error?.message || 'Compression failed');
+      }
+    } catch (error) {
+      console.error('[SnapshotManager] Compression failed:', error);
+      // Mark as attempted but don't fake the size
+      throw error;
+    }
     
     retentionActions.push({
       action: 'compress',

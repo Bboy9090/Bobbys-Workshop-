@@ -4,7 +4,6 @@
  */
 
 import { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 
 export interface BackendHealth {
   status: 'booting' | 'ready' | 'failed';
@@ -30,19 +29,36 @@ export function useBackendHealth() {
 
     const checkHealth = async () => {
       try {
-        // Check Node backend status
-        const nodeStatus = await invoke<string>('get_backend_status');
-        
-        // TODO: Add Python backend health check via Tauri command
-        // For now, assume Python backend is optional
-        
-        if (mounted) {
-          setHealth({
-            status: 'ready',
-            nodeBackend: {
-              status: nodeStatus
+        // Check if Tauri is available
+        if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+          // Dynamic import for Tauri API (only when in Tauri runtime)
+          const { invoke } = await import('@tauri-apps/api/core');
+          const nodeStatus = await invoke<string>('get_backend_status');
+          
+          if (mounted) {
+            setHealth({
+              status: 'ready',
+              nodeBackend: {
+                status: nodeStatus
+              }
+            });
+          }
+        } else {
+          // Web mode: Check backend via HTTP
+          const response = await fetch('/api/v1/health');
+          if (response.ok) {
+            const data = await response.json();
+            if (mounted) {
+              setHealth({
+                status: 'ready',
+                nodeBackend: {
+                  status: data.status || 'ok'
+                }
+              });
             }
-          });
+          } else {
+            throw new Error('Backend not available');
+          }
         }
       } catch (error) {
         if (mounted) {

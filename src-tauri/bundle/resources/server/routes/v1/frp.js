@@ -5,13 +5,14 @@
  */
 
 import express from 'express';
-import ADBLibrary from '../../../core/lib/adb.js';
+// import { executeAdbCommand, validateDeviceSerial } from '../../../core/lib/adb.js';
 
 const router = express.Router();
 
 /**
  * POST /api/v1/frp/detect
  * Detect FRP lock status on Android device
+ * NOTE: Temporarily disabled - ADBLibrary methods need to be implemented
  */
 router.post('/detect', async (req, res) => {
   const { serial } = req.body;
@@ -20,42 +21,10 @@ router.post('/detect', async (req, res) => {
     return res.sendError('VALIDATION_ERROR', 'Device serial is required', null, 400);
   }
 
-  const adbInstalled = await ADBLibrary.isInstalled();
-  if (!adbInstalled) {
-    return res.sendError('TOOL_NOT_AVAILABLE', 'ADB is required for FRP detection', {
-      tool: 'adb',
-      installInstructions: 'Install Android SDK Platform Tools'
-    }, 503);
-  }
-
-  try {
-    const frpStatus = await ADBLibrary.checkFRPStatus(serial);
-    
-    if (!frpStatus.success) {
-      return res.sendError('INTERNAL_ERROR', 'Failed to determine FRP status', {
-        error: frpStatus.error
-      }, 500);
-    }
-
-    const indicators = [];
-    if (frpStatus.hasFRP) {
-      indicators.push('Android ID is short (common FRP indicator)');
-    }
-    if (frpStatus.properties && frpStatus.properties['ro.frp.pst']) {
-      indicators.push(`FRP partition property found: ${frpStatus.properties['ro.frp.pst']}`);
-    }
-
-    res.sendEnvelope({
-      serial,
-      detected: frpStatus.hasFRP,
-      confidence: frpStatus.confidence,
-      androidId: frpStatus.androidId,
-      indicators,
-      properties: frpStatus.properties
-    });
-  } catch (error) {
-    res.sendError('INTERNAL_ERROR', 'FRP detection failed', { error: error.message }, 500);
-  }
+  // TODO: Implement FRP detection using executeAdbCommand
+  return res.sendError('NOT_IMPLEMENTED', 'FRP detection is temporarily disabled', {
+    note: 'This feature needs to be reimplemented with the new ADB library'
+  }, 501);
 });
 
 /**

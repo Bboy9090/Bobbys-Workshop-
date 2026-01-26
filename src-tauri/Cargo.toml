@@ -1,8 +1,8 @@
 [package]
-name = "bobbys-workshop"
-version = "3.0.1"
-description = "Bobby's Workshop - Professional Device Repair Toolkit"
-authors = ["Bobby's Workshop Team"]
+name = "bobbys-secret-workshop"
+version = "4.0.1"
+description = "Bobby's Secret Workshop - Secrets & Traps - Ultimate Device Manipulation Toolkit"
+authors = ["Bobby's Secret Workshop Team"]
 license = "MIT"
 repository = ""
 edition = "2021"

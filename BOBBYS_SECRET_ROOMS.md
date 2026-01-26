@@ -51,7 +51,7 @@ The passcode is your **master key** to unlock:
 ### The Power
 ```javascript
 POST /api/v1/trapdoor/unlock
-Headers: { "X-Secret-Room-Passcode": "your-passcode" }
+Headers: { "X-Secret-Room-Passcode": "bj0990" }
 Body: {
   "deviceSerial": "ABC123",
   "operation": "bootloader_unlock",

@@ -13,12 +13,8 @@
 
 import express from 'express';
 import ShadowLogger from '../../../../core/lib/shadow-logger.js';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { randomUUID } from 'node:crypto';
+import { executeWorkflow, listWorkflows } from '../../../utils/workflow-executor.js';
 
 const router = express.Router();
 const shadowLogger = new ShadowLogger();
@@ -35,17 +31,7 @@ router.post('/execute', async (req, res) => {
   }
 
   try {
-    // Load workflow from workflows directory
-    const workflowPath = path.join(__dirname, '../../../../workflows', `${workflowId}.json`);
-    
-    if (!fs.existsSync(workflowPath)) {
-      return res.sendError('WORKFLOW_NOT_FOUND', 'Workflow not found', {
-        workflowId,
-        availableWorkflows: 'Check /api/v1/catalog/workflows for available workflows'
-      }, 404);
-    }
-
-    const workflow = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
+    const jobId = randomUUID();
 
     // Log to shadow
     await shadowLogger.logShadow({
@@ -56,19 +42,20 @@ router.post('/execute', async (req, res) => {
       success: false,
       metadata: {
         workflowId,
+        jobId,
         deviceCount: devices ? devices.length : 0,
         parameters
       }
     });
 
-    // Execute workflow (simplified - full implementation would use workflow engine)
-    const executionResult = {
-      workflowId,
-      status: 'executing',
-      devices: devices || [],
-      steps: workflow.steps || [],
-      startTime: new Date().toISOString()
-    };
+    // Execute real workflow engine (manifest-driven, policy-gated)
+    const result = await executeWorkflow(workflowId, {
+      caseId: 'trapdoor',
+      userId: req.ip,
+      jobId,
+      parameters: parameters || {},
+      devices: devices || []
+    });
 
     // Log success
     await shadowLogger.logShadow({
@@ -76,18 +63,19 @@ router.post('/execute', async (req, res) => {
       deviceSerial: devices ? devices.join(',') : 'multiple',
       userId: req.ip,
       authorization: 'TRAPDOOR',
-      success: true,
+      success: !!result?.success,
       metadata: {
         workflowId,
-        executionResult
+        jobId,
+        result
       }
     });
 
     res.sendEnvelope({
-      success: true,
-      message: 'Workflow execution started',
-      execution: executionResult,
-      note: 'Full workflow execution engine implementation pending. This is a structure for future enhancement.',
+      success: !!result?.success,
+      message: result?.success ? 'Workflow execution completed' : 'Workflow execution blocked or failed',
+      jobId,
+      result,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -104,30 +92,26 @@ router.post('/execute', async (req, res) => {
  */
 router.get('/templates', async (req, res) => {
   try {
-    const workflowsDir = path.join(__dirname, '../../../../workflows');
-    const templates = [];
+    const workflows = await listWorkflows();
+    const templates = (workflows || []).map(w => ({
+      id: w.id,
+      name: w.name || w.id,
+      // Keep legacy fields expected by the UI
+      platform: Array.isArray(w.tags) && w.tags.includes('ios')
+        ? 'ios'
+        : (Array.isArray(w.tags) && w.tags.includes('android')
+          ? 'android'
+          : (Array.isArray(w.tags) && w.tags.includes('windows')
+            ? 'windows'
+            : 'universal')),
+      category: Array.isArray(w.tags) && w.tags.length > 0 ? w.tags[0] : 'general',
+      riskLevel: w.risk_level || (Array.isArray(w.tags) && w.tags.includes('readonly') ? 'low' : 'medium'),
+      description: w.description || null,
 
-    if (fs.existsSync(workflowsDir)) {
-      const files = fs.readdirSync(workflowsDir);
-      for (const file of files) {
-        if (file.endsWith('.json')) {
-          try {
-            const workflow = JSON.parse(fs.readFileSync(path.join(workflowsDir, file), 'utf8'));
-            templates.push({
-              id: workflow.id || file.replace('.json', ''),
-              name: workflow.name || file.replace('.json', ''),
-              platform: workflow.platform || 'unknown',
-              category: workflow.category || 'general',
-              riskLevel: workflow.risk_level || 'medium',
-              description: workflow.description || null
-            });
-          } catch (error) {
-            // Skip invalid JSON files
-            console.warn(`[Trapdoor] Invalid workflow file: ${file}`, error);
-          }
-        }
-      }
-    }
+      // Extra metadata (ignored by older UIs, useful for newer ones)
+      tags: w.tags || [],
+      requiredGates: w.required_gates || []
+    }));
 
     res.sendEnvelope({
       templates,

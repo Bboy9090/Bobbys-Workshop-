@@ -1,7 +1,7 @@
 // Flash API - Backend client for flash operations.
 // Truth-first: no mock fallbacks, no fabricated IDs.
 
-import { API_CONFIG, getAPIUrl } from '@/lib/apiConfig';
+import { API_CONFIG, getAPIUrl, safeJsonFetch } from '@/lib/apiConfig';
 import { connectFlashProgress, type RealtimeConnection } from '@/lib/realtime';
 import type { FlashJobConfig as CanonicalFlashJobConfig } from '@/types/flash-operations';
 
@@ -71,26 +71,23 @@ async function readErrorBody(response: Response): Promise<string> {
 
 export const flashAPI = {
   async scanDevices(): Promise<FlashDevice[]> {
-    const response = await fetch(getAPIUrl(API_CONFIG.ENDPOINTS.FLASH_DEVICES));
-    if (!response.ok) {
-      throw new Error(`Device scan failed: ${await readErrorBody(response)}`);
+    const { data, ok, status } = await safeJsonFetch<{ devices?: FlashDevice[] }>(API_CONFIG.ENDPOINTS.FLASH_DEVICES);
+    if (!ok) {
+      throw new Error(`Device scan failed: HTTP ${status}`);
     }
-    const data: any = await response.json();
     return Array.isArray(data?.devices) ? data.devices : [];
   },
 
   async startFlash(config: FlashJobConfig): Promise<FlashStartResponse> {
-    const response = await fetch(getAPIUrl(API_CONFIG.ENDPOINTS.FLASH_START), {
+    const { data, ok, status } = await safeJsonFetch<{ jobId?: string }>(API_CONFIG.ENDPOINTS.FLASH_START, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
     });
 
-    if (!response.ok) {
-      throw new Error(`Flash start failed: ${await readErrorBody(response)}`);
+    if (!ok) {
+      throw new Error(`Flash start failed: HTTP ${status}`);
     }
-
-    const data: any = await response.json();
     if (!data?.jobId || typeof data.jobId !== 'string') {
       throw new Error('Flash start failed: missing jobId in response');
     }

@@ -26,7 +26,7 @@ function AppContent() {
             try {
                 setIsLoading(true);
                 setInitError(null);
-                logger.info('Initializing Bobby\'s Workshop...');
+                logger.info('Initializing Phoenix Forge...');
                 
                 // Setup global error handler
                 setupGlobalErrorHandler();
@@ -67,7 +67,7 @@ function AppContent() {
                 });
                 
                 setIsLoading(false);
-                logger.info('Initialization complete - Workshop ready!');
+                logger.info('Initialization complete - Forge ready!');
             } catch (error) {
                 logger.error('Initialization error:', error);
                 setInitError(error instanceof Error ? error : new Error(String(error)));
@@ -99,18 +99,18 @@ function AppContent() {
     // Show error if initialization failed
     if (initError) {
         return (
-            <div className="min-h-screen bg-midnight-room flex items-center justify-center p-4">
-                <div className="max-w-md w-full bg-workbench-steel border border-panel rounded-lg p-6">
-                    <h1 className="text-xl font-bold text-ink-primary mb-2 font-mono">Initialization Error</h1>
-                    <p className="text-sm text-ink-muted mb-4">Failed to initialize the application.</p>
-                    <pre className="text-xs text-state-danger bg-midnight-room p-3 rounded border overflow-auto max-h-32 font-mono">
+            <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#0A0A12' }}>
+                <div className="max-w-md w-full bg-[#14142B] border border-white/10 rounded-xl p-6 shadow-xl">
+                    <h1 className="text-xl font-bold text-[#F1F5F9] mb-2">Initialization Error</h1>
+                    <p className="text-sm text-[#64748B] mb-4">Failed to initialize Phoenix Forge.</p>
+                    <pre className="text-xs text-[#FB7185] bg-[#0A0A12] p-3 rounded-lg border border-white/5 overflow-auto max-h-32 font-mono">
                         {initError.message}
                     </pre>
                     <button
                         onClick={() => window.location.reload()}
-                        className="mt-4 px-4 py-2 bg-spray-cyan/20 text-spray-cyan border border-spray-cyan/50 rounded hover:bg-spray-cyan/30 transition-colors"
+                        className="mt-4 px-4 py-2 bg-gradient-to-r from-[#FF4D00] to-[#FF6B2C] text-white rounded-lg hover:shadow-lg hover:shadow-[rgba(255,77,0,0.3)] transition-all"
                     >
-                        Reload App
+                        Restart Forge
                     </button>
                 </div>
             </div>
@@ -131,15 +131,18 @@ function AppContent() {
     return (
         <>
             {!backendConnected && (
-                <div className="fixed top-0 left-0 right-0 z-50 bg-amber-900/90 border-b border-amber-600 px-4 py-2 flex items-center justify-between">
-                    <span className="text-amber-100 text-sm font-medium">
-                        ⚠️ Backend server not connected. Some features may be unavailable.
-                    </span>
+                <div className="fixed top-0 left-0 right-0 z-50 bg-[#1A1A38]/95 backdrop-blur-md border-b border-[#F59E0B]/30 px-4 py-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[#F59E0B] animate-pulse" />
+                        <span className="text-[#FCD34D] text-sm font-medium">
+                            Backend forge not connected. Some features may be unavailable.
+                        </span>
+                    </div>
                     <button
                         onClick={handleRetryConnection}
-                        className="px-3 py-1 bg-amber-600 text-white text-xs rounded hover:bg-amber-500 transition-colors"
+                        className="px-3 py-1.5 bg-[#F59E0B] text-[#0A0A12] text-xs font-semibold rounded-lg hover:bg-[#FCD34D] transition-colors"
                     >
-                        Retry Connection
+                        Reconnect
                     </button>
                 </div>
             )}

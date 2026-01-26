@@ -7,7 +7,7 @@
 
 import express from 'express';
 import { execSync, spawnSync } from 'child_process';
-import { commandExistsInPath } from '../utils/safe-exec.js';
+import { commandExistsInPath } from './utils/safe-exec.js';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import os from 'os';

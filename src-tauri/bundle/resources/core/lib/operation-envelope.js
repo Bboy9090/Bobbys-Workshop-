@@ -1,260 +1,263 @@
 /**
- * Operation Envelope System
+ * Operation Envelope Utilities
  * 
- * Standardized response format for all operations:
- * - inspect: Tool/device detection results
- * - execute: Operation execution results
- * - simulate: Dry-run/policy evaluation results
- * - policy-deny: Policy rejection results
+ * Standardized response format for all Trapdoor operations.
+ * Provides envelope creation, validation, and audit log conversion.
  * 
- * Core Design:
- * - One consistent shape across all operation types
- * - Built-in audit trail support
- * - Explicit error handling
- * - No placeholders or fake success
+ * @module core/lib/operation-envelope
  */
+
+import { randomUUID } from 'crypto';
 
 /**
- * Envelope types
- */
-export const EnvelopeType = {
-  INSPECT: 'inspect',
-  EXECUTE: 'execute',
-  SIMULATE: 'simulate',
-  POLICY_DENY: 'policy-deny'
-};
-
-/**
- * Operation result statuses
- */
-export const OperationStatus = {
-  SUCCESS: 'success',
-  FAILURE: 'failure',
-  DENIED: 'denied',
-  PARTIAL: 'partial'
-};
-
-/**
- * Create a standardized operation envelope
+ * Create a correlation ID for request tracking
  * 
- * @param {Object} params
- * @param {string} params.type - Envelope type (inspect|execute|simulate|policy-deny)
- * @param {string} params.operation - Operation identifier (e.g., 'detect_android_adb')
- * @param {string} params.status - Operation status
- * @param {Object} params.data - Operation-specific data
- * @param {Error|string} [params.error] - Error if operation failed
- * @param {Object} [params.metadata] - Additional metadata
- * @param {string} [params.correlationId] - Correlation ID for tracking
- * @returns {Object} Standardized envelope
+ * @returns {string} Unique correlation ID
  */
-export function createEnvelope({
-  type,
-  operation,
-  status,
-  data = null,
-  error = null,
-  metadata = {},
-  correlationId = null
-}) {
-  // Validate required fields
-  if (!type || !Object.values(EnvelopeType).includes(type)) {
-    throw new Error(`Invalid envelope type: ${type}. Must be one of: ${Object.values(EnvelopeType).join(', ')}`);
-  }
+export function createCorrelationId() {
+  return randomUUID();
+}
 
-  if (!operation || typeof operation !== 'string') {
-    throw new Error('Operation identifier is required and must be a string');
-  }
-
-  if (!status || !Object.values(OperationStatus).includes(status)) {
-    throw new Error(`Invalid status: ${status}. Must be one of: ${Object.values(OperationStatus).join(', ')}`);
-  }
-
-  const envelope = {
+/**
+ * Create an inspect envelope
+ * 
+ * @param {Object} options
+ * @param {string} options.operationId - Operation identifier
+ * @param {boolean} options.available - Whether tool/device is available
+ * @param {Object} options.details - Inspection details
+ * @param {string} [options.correlationId] - Optional correlation ID
+ * @returns {Object} Inspect envelope
+ */
+export function createInspectEnvelope({ operationId, available, details, correlationId }) {
+  return {
     envelope: {
-      type,
+      type: 'inspect',
       version: '1.0',
       timestamp: new Date().toISOString(),
-      correlationId: correlationId || generateCorrelationId()
+      correlationId: correlationId || createCorrelationId()
+    },
+    operation: {
+      id: operationId,
+      status: available ? 'success' : 'failure'
+    },
+    data: {
+      available,
+      details: details || {}
+    },
+    metadata: {
+      processedAt: new Date().toISOString(),
+      inspectionType: 'availability_check'
+    }
+  };
+}
+
+/**
+ * Create an execute envelope
+ * 
+ * @param {Object} options
+ * @param {string} options.operation - Operation identifier
+ * @param {boolean} options.success - Whether operation succeeded
+ * @param {Object} [options.result] - Operation result data
+ * @param {Object} [options.error] - Error details if failed
+ * @param {Object} [options.metadata] - Additional metadata
+ * @param {string} [options.correlationId] - Optional correlation ID
+ * @returns {Object} Execute envelope
+ */
+export function createExecuteEnvelope({ operation, success, result, error, metadata, correlationId }) {
+  const envelope = {
+    envelope: {
+      type: 'execute',
+      version: '1.0',
+      timestamp: new Date().toISOString(),
+      correlationId: correlationId || createCorrelationId()
     },
     operation: {
       id: operation,
-      status
+      status: success ? 'success' : 'failure'
     },
-    data,
+    data: {
+      success
+    },
     metadata: {
-      ...metadata,
-      processedAt: new Date().toISOString()
+      processedAt: new Date().toISOString(),
+      executionType: 'real_operation',
+      ...metadata
     }
   };
 
-  // Add error information if present
-  if (error) {
-    envelope.operation.error = {
-      message: error.message || String(error),
-      code: error.code || 'UNKNOWN_ERROR',
-      details: error.details || null
+  if (success && result) {
+    envelope.data.result = result;
+  }
+
+  if (!success) {
+    envelope.operation.error = error || {
+      message: 'Operation failed',
+      code: 'OPERATION_FAILED'
     };
+    envelope.data.result = null;
   }
 
   return envelope;
 }
 
 /**
- * Create an inspect envelope (for tool/device detection)
+ * Create a simulate envelope (dry-run)
  * 
- * @param {Object} params
- * @param {string} params.operation - Operation identifier
- * @param {boolean} params.available - Whether tool/device is available
- * @param {Object} params.details - Detection details
- * @param {Object} [params.metadata] - Additional metadata
- * @returns {Object} Inspect envelope
- */
-export function createInspectEnvelope({ operation, available, details, metadata = {} }) {
-  return createEnvelope({
-    type: EnvelopeType.INSPECT,
-    operation,
-    status: available ? OperationStatus.SUCCESS : OperationStatus.FAILURE,
-    data: {
-      available,
-      details
-    },
-    metadata: {
-      ...metadata,
-      inspectionType: 'availability_check'
-    }
-  });
-}
-
-/**
- * Create an execute envelope (for operation execution results)
- * 
- * @param {Object} params
- * @param {string} params.operation - Operation identifier
- * @param {boolean} params.success - Whether operation succeeded
- * @param {Object} params.result - Execution result data
- * @param {Error} [params.error] - Error if operation failed
- * @param {Object} [params.metadata] - Additional metadata
- * @returns {Object} Execute envelope
- */
-export function createExecuteEnvelope({ operation, success, result, error = null, metadata = {} }) {
-  return createEnvelope({
-    type: EnvelopeType.EXECUTE,
-    operation,
-    status: success ? OperationStatus.SUCCESS : OperationStatus.FAILURE,
-    data: {
-      success,
-      result
-    },
-    error,
-    metadata: {
-      ...metadata,
-      executionType: 'real_operation'
-    }
-  });
-}
-
-/**
- * Create a simulate envelope (for dry-run/policy evaluation)
- * 
- * @param {Object} params
- * @param {string} params.operation - Operation identifier
- * @param {boolean} params.wouldSucceed - Whether operation would succeed if executed
- * @param {Object} params.simulation - Simulation results
- * @param {Object} [params.metadata] - Additional metadata
+ * @param {Object} options
+ * @param {string} options.operation - Operation identifier
+ * @param {boolean} options.wouldSucceed - Whether operation would succeed
+ * @param {Object} options.simulation - Simulation details (checks, requirements, warnings)
+ * @param {Object} [options.metadata] - Additional metadata
+ * @param {string} [options.correlationId] - Optional correlation ID
  * @returns {Object} Simulate envelope
  */
-export function createSimulateEnvelope({ operation, wouldSucceed, simulation, metadata = {} }) {
-  return createEnvelope({
-    type: EnvelopeType.SIMULATE,
-    operation,
-    status: wouldSucceed ? OperationStatus.SUCCESS : OperationStatus.FAILURE,
+export function createSimulateEnvelope({ operation, wouldSucceed, simulation, metadata, correlationId }) {
+  return {
+    envelope: {
+      type: 'simulate',
+      version: '1.0',
+      timestamp: new Date().toISOString(),
+      correlationId: correlationId || createCorrelationId()
+    },
+    operation: {
+      id: operation,
+      status: wouldSucceed ? 'success' : 'failure'
+    },
     data: {
       wouldSucceed,
-      simulation,
+      simulation: simulation || {
+        checks: [],
+        requirements: [],
+        warnings: []
+      },
       dryRun: true
     },
     metadata: {
-      ...metadata,
-      executionType: 'simulation'
+      processedAt: new Date().toISOString(),
+      executionType: 'simulation',
+      simulationType: 'dry_run',
+      ...metadata
     }
-  });
+  };
 }
 
 /**
- * Create a policy-deny envelope (for policy rejections)
+ * Create a policy-deny envelope
  * 
- * @param {Object} params
- * @param {string} params.operation - Operation identifier
- * @param {string} params.reason - Denial reason
- * @param {Object} params.policy - Policy details
- * @param {Object} [params.metadata] - Additional metadata
+ * @param {Object} options
+ * @param {string} options.operation - Operation identifier
+ * @param {string} options.reason - Denial reason
+ * @param {Object} options.policy - Policy details (matchedRule, allowedRoles, etc.)
+ * @param {Object} [options.metadata] - Additional metadata
+ * @param {string} [options.correlationId] - Optional correlation ID
  * @returns {Object} Policy-deny envelope
  */
-export function createPolicyDenyEnvelope({ operation, reason, policy, metadata = {} }) {
-  return createEnvelope({
-    type: EnvelopeType.POLICY_DENY,
-    operation,
-    status: OperationStatus.DENIED,
+export function createPolicyDenyEnvelope({ operation, reason, policy, metadata, correlationId }) {
+  return {
+    envelope: {
+      type: 'policy-deny',
+      version: '1.0',
+      timestamp: new Date().toISOString(),
+      correlationId: correlationId || createCorrelationId()
+    },
+    operation: {
+      id: operation,
+      status: 'denied'
+    },
     data: {
       denied: true,
       reason,
-      policy
+      policy: policy || {}
     },
     metadata: {
-      ...metadata,
-      denialType: 'policy_enforcement'
+      processedAt: new Date().toISOString(),
+      denialType: 'policy_enforcement',
+      ...metadata
     }
+  };
+}
+
+/**
+ * Create an error envelope
+ * 
+ * @param {string} operation - Operation identifier
+ * @param {string} errorCode - Error code
+ * @param {string} errorMessage - Error message
+ * @param {Object} [errorDetails] - Additional error details
+ * @param {string} [correlationId] - Optional correlation ID
+ * @returns {Object} Execute envelope with error
+ */
+export function createErrorEnvelope(operation, errorCode, errorMessage, errorDetails, correlationId) {
+  return createExecuteEnvelope({
+    operation,
+    success: false,
+    error: {
+      message: errorMessage,
+      code: errorCode,
+      details: errorDetails || {}
+    },
+    correlationId
   });
 }
 
 /**
- * Validate an envelope structure
+ * Validate envelope structure
  * 
  * @param {Object} envelope - Envelope to validate
- * @returns {Object} Validation result { valid: boolean, errors: string[] }
+ * @returns {Object} Validation result
  */
 export function validateEnvelope(envelope) {
   const errors = [];
 
-  if (!envelope || typeof envelope !== 'object') {
-    return { valid: false, errors: ['Envelope must be an object'] };
-  }
-
   // Check required top-level fields
   if (!envelope.envelope) {
-    errors.push('Missing required field: envelope');
+    errors.push('Missing envelope field');
   } else {
-    if (!envelope.envelope.type || !Object.values(EnvelopeType).includes(envelope.envelope.type)) {
-      errors.push('Invalid envelope.type');
+    if (!envelope.envelope.type) {
+      errors.push('Missing envelope.type');
+    } else {
+      const validTypes = ['inspect', 'execute', 'simulate', 'policy-deny'];
+      if (!validTypes.includes(envelope.envelope.type)) {
+        errors.push(`Invalid envelope.type: ${envelope.envelope.type}. Must be one of: ${validTypes.join(', ')}`);
+      }
     }
+
     if (!envelope.envelope.version) {
       errors.push('Missing envelope.version');
     }
+
     if (!envelope.envelope.timestamp) {
       errors.push('Missing envelope.timestamp');
     }
+
     if (!envelope.envelope.correlationId) {
       errors.push('Missing envelope.correlationId');
     }
   }
 
   if (!envelope.operation) {
-    errors.push('Missing required field: operation');
+    errors.push('Missing operation field');
   } else {
     if (!envelope.operation.id) {
       errors.push('Missing operation.id');
     }
-    if (!envelope.operation.status || !Object.values(OperationStatus).includes(envelope.operation.status)) {
-      errors.push('Invalid operation.status');
+
+    if (!envelope.operation.status) {
+      errors.push('Missing operation.status');
+    } else {
+      const validStatuses = ['success', 'failure', 'denied', 'partial'];
+      if (!validStatuses.includes(envelope.operation.status)) {
+        errors.push(`Invalid operation.status: ${envelope.operation.status}. Must be one of: ${validStatuses.join(', ')}`);
+      }
     }
   }
 
-  if (envelope.data === undefined) {
-    errors.push('Missing required field: data');
+  if (!envelope.data) {
+    errors.push('Missing data field');
   }
 
   if (!envelope.metadata) {
-    errors.push('Missing required field: metadata');
+    errors.push('Missing metadata field');
   }
 
   return {
@@ -264,80 +267,25 @@ export function validateEnvelope(envelope) {
 }
 
 /**
- * Generate a correlation ID for tracking
- * 
- * @returns {string} Correlation ID
- */
-function generateCorrelationId() {
-  const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substring(2, 9);
-  return `${timestamp}-${random}`;
-}
-
-/**
- * Create audit log entry from envelope
+ * Convert envelope to audit log entry
  * 
  * @param {Object} envelope - Operation envelope
- * @param {Object} [additionalContext] - Additional audit context
+ * @param {Object} context - Additional context (userId, ipAddress, etc.)
  * @returns {Object} Audit log entry
  */
-export function createAuditLogFromEnvelope(envelope, additionalContext = {}) {
-  const validation = validateEnvelope(envelope);
-  if (!validation.valid) {
-    throw new Error(`Cannot create audit log from invalid envelope: ${validation.errors.join(', ')}`);
-  }
-
+export function createAuditLogFromEnvelope(envelope, context = {}) {
   return {
     auditId: `audit-${envelope.envelope.correlationId}`,
     timestamp: envelope.envelope.timestamp,
     envelopeType: envelope.envelope.type,
     operation: envelope.operation.id,
     status: envelope.operation.status,
-    success: envelope.operation.status === OperationStatus.SUCCESS,
+    success: envelope.operation.status === 'success',
     data: envelope.data,
     metadata: {
       ...envelope.metadata,
-      ...additionalContext
+      ...context
     },
     correlationId: envelope.envelope.correlationId
-  };
-}
-
-/**
- * Wrap multiple envelopes in a batch response
- * 
- * @param {Object[]} envelopes - Array of envelopes
- * @param {Object} [metadata] - Batch metadata
- * @returns {Object} Batch envelope
- */
-export function createBatchEnvelope(envelopes, metadata = {}) {
-  if (!Array.isArray(envelopes)) {
-    throw new Error('Envelopes must be an array');
-  }
-
-  // Validate all envelopes
-  const validationResults = envelopes.map(validateEnvelope);
-  const invalidEnvelopes = validationResults.filter(r => !r.valid);
-  
-  if (invalidEnvelopes.length > 0) {
-    throw new Error(`Batch contains ${invalidEnvelopes.length} invalid envelopes`);
-  }
-
-  return {
-    envelope: {
-      type: 'batch',
-      version: '1.0',
-      timestamp: new Date().toISOString(),
-      correlationId: generateCorrelationId(),
-      count: envelopes.length
-    },
-    data: {
-      envelopes
-    },
-    metadata: {
-      ...metadata,
-      batchType: 'multiple_operations',
-      processedAt: new Date().toISOString()
-    }
   };
 }

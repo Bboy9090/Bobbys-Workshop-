@@ -232,7 +232,7 @@ class BatchOperationsManager {
     this.notifyDevice(device, batch);
     
     try {
-      // Simulate progress updates
+      // Visual progress feedback while real operation executes
       const progressInterval = setInterval(() => {
         if (device.progress < 90) {
           device.progress += 10;

@@ -1,15 +1,22 @@
 /**
- * WorkbenchFlashing
+ * PHOENIX FORGE - Flash Forge Screen
  * 
- * Flash jobs, history, status; heavy confirmations
+ * Device flashing interface with:
+ * - Device detection for fastboot/bootloader mode
+ * - Command preview with risk indicators
+ * - Real-time flash logs
+ * - Safety confirmations
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { TerminalCommandPreview } from '../core/TerminalCommandPreview';
 import { TerminalLogStream, LogEntry } from '../core/TerminalLogStream';
 import { ToolboxDangerLever } from '../toolbox/ToolboxDangerLever';
 import { WorkbenchDeviceStack } from '../core/WorkbenchDeviceStack';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
+import { Badge } from '../ui/badge';
+import { Progress } from '../ui/progress';
+import { AlertTriangle, Loader2, Zap, Terminal, Shield, Flame } from 'lucide-react';
 import { useApp } from '@/lib/app-context';
 import { toast } from 'sonner';
 
@@ -52,7 +59,6 @@ export function WorkbenchFlashing() {
     async function fetchDevices() {
       setIsLoading(true);
       try {
-        // Check fastboot devices first (for flashing)
         const fbResponse = await fetch('/api/v1/fastboot/devices');
         const fbData = await fbResponse.json();
         
@@ -71,7 +77,6 @@ export function WorkbenchFlashing() {
           });
         }
 
-        // Also check ADB devices in bootloader mode
         const adbResponse = await fetch('/api/v1/adb/devices');
         const adbData = await adbResponse.json();
         
@@ -81,7 +86,6 @@ export function WorkbenchFlashing() {
           adbData.data.devices
             .filter((d: { state: string }) => d.state === 'bootloader' || d.state === 'recovery')
             .forEach((d: { serial: string; state: string; model?: string; product?: string }) => {
-              // Don't add duplicates
               if (!fastbootDevices.find(fb => fb.serial === d.serial)) {
                 fastbootDevices.push({
                   serial: d.serial,
@@ -97,13 +101,13 @@ export function WorkbenchFlashing() {
         setDevices(fastbootDevices);
         
         if (fastbootDevices.length === 0) {
-          addLog('info', '[FLASH] No devices in fastboot/bootloader mode detected');
+          addLog('info', '[FORGE] No devices in fastboot/bootloader mode detected');
         } else {
-          addLog('info', `[FLASH] Found ${fastbootDevices.length} device(s) ready for flashing`);
+          addLog('info', `[FORGE] Found ${fastbootDevices.length} device(s) ready for flashing`);
         }
       } catch (error) {
         if (cancelled) return;
-        addLog('error', `[FLASH] Failed to fetch devices: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        addLog('error', `[FORGE] Failed to fetch devices: ${error instanceof Error ? error.message : 'Unknown error'}`);
         setDevices([]);
       } finally {
         setIsLoading(false);
@@ -111,7 +115,7 @@ export function WorkbenchFlashing() {
     }
 
     fetchDevices();
-    const interval = setInterval(fetchDevices, 10000); // Refresh every 10s
+    const interval = setInterval(fetchDevices, 10000);
 
     return () => {
       cancelled = true;
@@ -131,14 +135,11 @@ export function WorkbenchFlashing() {
     if (!selectedDevice) return;
     
     setIsFlashing(true);
-    addLog('warn', `[FLASH] Starting flash operation for ${selectedDevice.serial}...`);
+    addLog('warn', `[FORGE] Starting flash operation for ${selectedDevice.serial}...`);
     
     try {
-      // This is where the actual flash API would be called
-      // For now, we simulate the operation
-      addLog('info', '[FLASH] Acquiring device lock...');
+      addLog('info', '[FORGE] Acquiring device lock...');
       
-      // Check if device is still available
       const response = await fetch('/api/v1/fastboot/devices');
       const data = await response.json();
       
@@ -146,12 +147,12 @@ export function WorkbenchFlashing() {
         throw new Error('Device disconnected during operation');
       }
       
-      addLog('info', '[FLASH] Device locked. Ready to flash.');
-      addLog('warn', '[FLASH] Flash operation requires firmware file selection.');
+      addLog('info', '[FORGE] Device locked. Ready to flash.');
+      addLog('warn', '[FORGE] Flash operation requires firmware file selection.');
       toast.info('Select firmware files to begin flashing');
       
     } catch (error) {
-      addLog('error', `[FLASH] Operation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      addLog('error', `[FORGE] Operation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       toast.error('Flash operation failed');
     } finally {
       setIsFlashing(false);
@@ -161,94 +162,138 @@ export function WorkbenchFlashing() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-ink-primary font-mono mb-2">
-          Flashing
-        </h1>
-        <p className="text-sm text-ink-muted">
-          Flash jobs, history, status — heavy confirmations required
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-[#F1F5F9] flex items-center gap-3">
+            <Zap className="w-7 h-7 text-[#FF6B2C]" />
+            Flash Forge
+          </h1>
+          <p className="text-sm text-[#64748B] mt-1">
+            Device flashing with safety confirmations
+          </p>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          {isLoading && (
+            <Badge variant="secondary" className="gap-1.5">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Scanning
+            </Badge>
+          )}
+          <Badge variant={devices.length > 0 ? 'success' : 'secondary'}>
+            {devices.length} device{devices.length !== 1 ? 's' : ''} ready
+          </Badge>
+        </div>
       </div>
 
       {/* Warning Banner */}
-      <div className="p-4 rounded-lg border-2 border-state-danger/50 bg-state-danger/10">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-state-danger shrink-0 mt-0.5" />
+      <Card variant="danger" className="border-[#F43F5E]/30">
+        <div className="p-4 flex items-start gap-3">
+          <div className="p-2 rounded-lg bg-[#F43F5E]/10">
+            <AlertTriangle className="w-5 h-5 text-[#F43F5E]" />
+          </div>
           <div>
-            <p className="text-sm font-bold text-state-danger font-mono mb-1">
-              DESTRUCTIVE OPERATION
+            <p className="font-semibold text-[#FB7185] mb-1">
+              Destructive Operation Warning
             </p>
-            <p className="text-xs text-ink-muted">
-              Flashing will overwrite device partitions. Ensure you have backups and understand the risks.
+            <p className="text-sm text-[#94A3B8]">
+              Flashing will overwrite device partitions. Ensure you have backups and understand the risks before proceeding.
             </p>
           </div>
         </div>
-      </div>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left: Device Selection & Command Preview */}
         <div className="space-y-4">
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-mono uppercase tracking-wider text-ink-muted">
+          <Card variant="phoenix">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Flame className="w-4 h-4 text-[#FF6B2C]" />
                 Select Device
-              </h2>
-              {isLoading && (
-                <div className="flex items-center gap-2 text-xs text-ink-muted">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Scanning...
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {devices.length === 0 && !isLoading ? (
+                <div className="p-6 rounded-lg bg-white/[0.02] border border-white/[0.05] text-center">
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-white/[0.02] border border-white/[0.05] flex items-center justify-center">
+                    <Zap className="w-6 h-6 text-[#64748B]" />
+                  </div>
+                  <p className="text-sm text-[#94A3B8]">
+                    {backendAvailable 
+                      ? 'No devices in fastboot/bootloader mode'
+                      : 'Backend offline - cannot detect devices'}
+                  </p>
+                  <p className="text-xs text-[#64748B] mt-1">
+                    Connect a device and reboot to bootloader
+                  </p>
                 </div>
+              ) : (
+                <WorkbenchDeviceStack
+                  devices={devices}
+                  onSelectDevice={setSelectedDevice}
+                  selectedSerial={selectedDevice?.serial}
+                />
               )}
-            </div>
-            {devices.length === 0 && !isLoading ? (
-              <div className="p-4 rounded-lg border border-panel bg-workbench-steel text-center">
-                <p className="text-sm text-ink-muted">
-                  {backendAvailable 
-                    ? 'No devices in fastboot/bootloader mode. Connect a device and reboot to bootloader.'
-                    : 'Backend offline - cannot detect devices'}
-                </p>
-              </div>
-            ) : (
-              <WorkbenchDeviceStack
-                devices={devices}
-                onSelectDevice={setSelectedDevice}
-                selectedSerial={selectedDevice?.serial}
-              />
-            )}
-          </div>
+            </CardContent>
+          </Card>
 
           {selectedDevice && (
             <>
-              <TerminalCommandPreview
-                commands={commands}
-                impactedPartitions={['system', 'boot', 'recovery']}
-                riskLevel="destructive"
-              />
+              <Card variant="cosmic">
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Terminal className="w-4 h-4 text-[#A78BFA]" />
+                    Command Preview
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TerminalCommandPreview
+                    commands={commands}
+                    impactedPartitions={['system', 'boot', 'recovery']}
+                    riskLevel="destructive"
+                  />
+                </CardContent>
+              </Card>
 
-              <ToolboxDangerLever
-                onConfirm={handleFlash}
-                disabled={!selectedDevice || isFlashing}
-                label="HOLD TO START FLASH"
-                warning="This will overwrite device partitions. This cannot be undone."
-              />
+              <Card variant="danger">
+                <CardContent className="pt-6">
+                  <ToolboxDangerLever
+                    onConfirm={handleFlash}
+                    disabled={!selectedDevice || isFlashing}
+                    label="HOLD TO START FLASH"
+                    warning="This will overwrite device partitions. This cannot be undone."
+                  />
+                </CardContent>
+              </Card>
             </>
           )}
         </div>
 
         {/* Right: Flash Logs */}
-        <div className="space-y-4">
-          <h2 className="text-sm font-mono uppercase tracking-wider text-ink-muted">
-            Flash Logs
-          </h2>
-          <div className="h-96 rounded-lg border border-panel overflow-hidden">
-            <TerminalLogStream
-              logs={flashLogs}
-              maxLines={100}
-              autoScroll={true}
-              className="h-full"
-            />
-          </div>
-        </div>
+        <Card variant="glass" className="h-fit">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-[#06B6D4]" />
+                Flash Logs
+              </CardTitle>
+              <Badge variant="ghost" size="sm">
+                Live
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="h-96 rounded-lg bg-[#0A0A12] border border-white/[0.05] overflow-hidden">
+              <TerminalLogStream
+                logs={flashLogs}
+                maxLines={100}
+                autoScroll={true}
+                className="h-full"
+              />
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

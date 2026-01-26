@@ -15,7 +15,15 @@ export interface ToolOutputMessage {
 
 export type ToolOutputCallback = (message: ToolOutputMessage) => void;
 
-const TRAPDOOR_API_URL = process.env.TRAPDOOR_API_URL || 'http://localhost:5001';
+// Browser-safe env handling:
+// - In Vite, use import.meta.env (process.env is undefined in the browser)
+// - Allow overriding via VITE_TRAPDOOR_API_URL
+const TRAPDOOR_API_URL =
+  (import.meta as any).env?.VITE_TRAPDOOR_API_URL ||
+  // Fallback for non-Vite contexts, if a polyfilled process exists
+  (globalThis as any).process?.env?.TRAPDOOR_API_URL ||
+  // Default to Trapdoor Flask API (Vite typically uses 5001, so avoid that port)
+  'http://127.0.0.1:5002';
 
 export class TrapdoorToolsWebSocket {
   private socket: Socket | null = null;

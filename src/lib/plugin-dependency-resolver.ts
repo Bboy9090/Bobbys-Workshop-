@@ -228,61 +228,108 @@ export const dependencyResolver = {
     installedPlugins = [...plugins];
   },
 
+  /**
+   * Resolve plugin dependencies via backend API
+   * NO SIMULATION - Real API call required
+   */
   async resolveDependencies(pluginId: string, version?: string): Promise<DependencyResolution> {
-    // Simulate resolution
-    return {
-      pluginId,
-      version: version || '1.0.0',
-      dependencies: [],
-      installOrder: [pluginId],
-      hasConflicts: false,
-      hasMissing: false,
-      conflicts: [],
-      missing: []
-    };
+    try {
+      const response = await fetch('/api/v1/plugins/resolve-dependencies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pluginId, version }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.ok && data.data) {
+        return data.data;
+      }
+
+      throw new Error(data.error?.message || 'Failed to resolve dependencies');
+    } catch (error) {
+      // Return error state instead of fake success
+      return {
+        pluginId,
+        version: version || 'unknown',
+        dependencies: [],
+        installOrder: [],
+        hasConflicts: false,
+        hasMissing: true,
+        conflicts: [],
+        missing: [{ id: pluginId, reason: error instanceof Error ? error.message : 'API unavailable' }]
+      };
+    }
   },
 
+  /**
+   * Install plugin with dependencies via backend API
+   * NO SIMULATION - Real installation with WebSocket progress
+   */
   async installWithDependencies(
     pluginId: string,
     version?: string,
     onProgress?: (progress: InstallProgress) => void
   ): Promise<InstallResult> {
-    // Simulate installation progress
     onProgress?.({
       currentPlugin: pluginId,
       currentIndex: 0,
       totalPlugins: 1,
       percentage: 0,
       status: 'downloading',
-      message: 'Starting download...'
+      message: 'Initiating installation...'
     });
 
-    await new Promise(resolve => setTimeout(resolve, 500));
+    try {
+      const response = await fetch('/api/v1/plugins/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pluginId, version }),
+      });
 
-    onProgress?.({
-      currentPlugin: pluginId,
-      currentIndex: 0,
-      totalPlugins: 1,
-      percentage: 50,
-      status: 'installing',
-      message: 'Installing plugin...'
-    });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+      }
 
-    await new Promise(resolve => setTimeout(resolve, 500));
+      const data = await response.json();
+      
+      if (!data.ok) {
+        throw new Error(data.error?.message || 'Installation failed');
+      }
 
-    onProgress?.({
-      currentPlugin: pluginId,
-      currentIndex: 0,
-      totalPlugins: 1,
-      percentage: 100,
-      status: 'complete',
-      message: 'Installation complete'
-    });
+      onProgress?.({
+        currentPlugin: pluginId,
+        currentIndex: 0,
+        totalPlugins: 1,
+        percentage: 100,
+        status: 'complete',
+        message: 'Installation complete'
+      });
 
-    return {
-      success: true,
-      installed: [pluginId],
-      errors: []
-    };
+      return {
+        success: true,
+        installed: data.data?.installed || [pluginId],
+        errors: []
+      };
+    } catch (error) {
+      onProgress?.({
+        currentPlugin: pluginId,
+        currentIndex: 0,
+        totalPlugins: 1,
+        percentage: 0,
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Installation failed'
+      });
+
+      return {
+        success: false,
+        installed: [],
+        errors: [{ pluginId, error: error instanceof Error ? error.message : 'Unknown error' }]
+      };
+    }
   }
 };

@@ -5,7 +5,7 @@
  */
 
 import express from 'express';
-import IOSLibrary from '../../../core/lib/ios.js';
+import IOSLibrary from '../../utils/ios-library-wrapper.js';
 
 const router = express.Router();
 
@@ -18,12 +18,14 @@ router.get('/scan', async (req, res) => {
     if (!IOSLibrary.isInstalled()) {
       return res.sendError('TOOL_NOT_AVAILABLE', 'libimobiledevice tools not installed', {
         tool: 'idevice_id',
-        installInstructions: 'Install libimobiledevice tools (e.g., brew install libimobiledevice on macOS)',
+        installInstructions: process.platform === 'win32'
+          ? 'Windows: install iTunes (Apple Mobile Device Support) and install libimobiledevice (idevice_id/ideviceinfo). Then reopen the app and re-scan.'
+          : 'Install libimobiledevice tools (e.g., brew install libimobiledevice on macOS)',
         platform: process.platform
       }, 503);
     }
 
-    const devices = IOSLibrary.listDevices(); // This is synchronous
+    const devices = await IOSLibrary.listDevices(); // Now async
     
     if (!devices.success) {
       return res.sendError('INTERNAL_ERROR', 'Failed to list iOS devices', {

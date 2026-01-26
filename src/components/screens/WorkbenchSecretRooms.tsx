@@ -1,10 +1,16 @@
 /**
- * WorkbenchSecretRooms
+ * PHOENIX FORGE - The Forge (Secret Rooms)
  * 
- * Trapdoor entry gate + room navigation + room workbenches
+ * Advanced operations area featuring:
+ * - Unlock Chamber
+ * - Flash Forge (Deep)
+ * - Root Vault
+ * - Bypass Laboratory
+ * - Jailbreak Sanctum
+ * - Codex Modules (Sonic, Ghost, Pandora)
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { TrapdoorEntryGate } from '../trapdoor/TrapdoorEntryGate';
 import { TrapdoorRoomNavigation, type SecretRoomId } from '../trapdoor/TrapdoorRoomNavigation';
 import { TrapdoorUnlockChamber } from '../trapdoor/TrapdoorUnlockChamber';
@@ -20,6 +26,7 @@ import { TrapdoorGhostCodex } from '../trapdoor/TrapdoorGhostCodex';
 import { TrapdoorPandoraCodex } from '../trapdoor/TrapdoorPandoraCodex';
 import { RoomTransition } from '../trapdoor/RoomTransition';
 import { useApp } from '@/lib/app-context';
+import { Flame } from 'lucide-react';
 
 interface TrapdoorDevice {
   serial: string;
@@ -77,7 +84,6 @@ export function WorkbenchSecretRooms() {
 
   const handleUnlock = (enteredPasscode: string) => {
     setPasscode(enteredPasscode);
-    // Default to Unlock Chamber
     setActiveRoom('unlock-chamber');
   };
 
@@ -129,7 +135,7 @@ export function WorkbenchSecretRooms() {
 
   // Show rooms interface
   return (
-    <div className="h-full flex bg-basement-concrete">
+    <div className="h-full flex bg-[#0A0A12]">
       <TrapdoorRoomNavigation
         activeRoom={activeRoom || undefined}
         onSelectRoom={handleRoomChange}
@@ -182,10 +188,15 @@ export function WorkbenchSecretRooms() {
           <TrapdoorPandoraCodex passcode={passcode} />
         )}
         {!activeRoom && (
-          <div className="h-full flex items-center justify-center text-ink-muted">
-            <p className="text-sm font-mono">
-              Select a room from the navigation
-            </p>
+          <div className="h-full flex items-center justify-center">
+            <div className="text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-[#FF4D00]/20 to-[#FFD700]/10 border border-[#FF4D00]/20 flex items-center justify-center">
+                <Flame className="w-8 h-8 text-[#FF6B2C]" />
+              </div>
+              <p className="text-sm text-[#64748B]">
+                Select a room from the navigation
+              </p>
+            </div>
           </div>
         )}
       </div>

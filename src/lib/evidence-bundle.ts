@@ -107,10 +107,33 @@ export const evidenceBundle: EvidenceBundleAPI = {
       throw new Error('Bundle not found');
     }
     
-    // Generate mock signature
-    const signature = 'sig-' + Math.random().toString(36).slice(2, 34);
-    signatures.set(bundleId, signature);
-    return signature;
+    // Sign via backend API - NO MOCK SIGNATURES
+    try {
+      const response = await fetch('/api/v1/evidence/sign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bundleId,
+          items: bundle.items,
+          metadata: bundle.metadata,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Signing failed: HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data.ok || !data.data?.signature) {
+        throw new Error(data.error?.message || 'Signing failed');
+      }
+
+      const signature = data.data.signature;
+      signatures.set(bundleId, signature);
+      return signature;
+    } catch (error) {
+      throw new Error(`Failed to sign bundle: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   },
 
   async verify(bundleId: string): Promise<SignatureVerification> {
@@ -123,12 +146,41 @@ export const evidenceBundle: EvidenceBundleAPI = {
       };
     }
     
-    return {
-      valid: true,
-      signedBy: 'Bobby\'s Workshop',
-      timestamp: Date.now(),
-      algorithm: 'RSA-SHA256'
-    };
+    // Verify via backend API - NO FAKE VERIFICATION
+    try {
+      const response = await fetch('/api/v1/evidence/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bundleId, signature }),
+      });
+
+      if (!response.ok) {
+        return {
+          valid: false,
+          error: `Verification failed: HTTP ${response.status}`
+        };
+      }
+
+      const data = await response.json();
+      if (!data.ok) {
+        return {
+          valid: false,
+          error: data.error?.message || 'Verification failed'
+        };
+      }
+
+      return {
+        valid: data.data?.valid ?? false,
+        signedBy: data.data?.signedBy ?? 'Unknown',
+        timestamp: data.data?.timestamp ?? Date.now(),
+        algorithm: data.data?.algorithm ?? 'Unknown'
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        error: `Verification error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
   },
 
   async export(bundleId: string): Promise<Blob> {

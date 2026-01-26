@@ -1,0 +1,21 @@
+{
+  "operation": "network_info",
+  "displayName": "Get Network Information",
+  "description": "Retrieve network configuration and status",
+  "category": "diagnostics",
+  "riskLevel": "low",
+  "requiresConfirmation": false,
+  "allowedRoles": ["owner", "admin", "technician", "viewer"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    }
+  },
+  "auditLogging": "standard",
+  "rateLimitPerMinute": 20,
+  "estimatedDuration": 3000
+}

@@ -51,18 +51,26 @@ function getClientId(req) {
 
 /**
  * Clean up expired entries
+ * Called periodically by interval timer, not per-request
  */
 function cleanupExpiredEntries() {
   const now = Date.now();
+  let deletedCount = 0;
+  
   for (const [key, value] of rateLimitStore.entries()) {
     if (now > value.resetTime) {
       rateLimitStore.delete(key);
+      deletedCount++;
     }
+  }
+  
+  if (deletedCount > 0) {
+    console.log(`[RateLimit] Cleaned up ${deletedCount} expired entries`);
   }
 }
 
-// Clean up expired entries every 5 minutes
-setInterval(cleanupExpiredEntries, 5 * 60 * 1000);
+// Clean up expired entries every minute (more frequent than before)
+setInterval(cleanupExpiredEntries, 60 * 1000);
 
 /**
  * Create rate limiting middleware
@@ -71,15 +79,21 @@ export function rateLimiter(limitType = 'default') {
   const config = RATE_LIMITS[limitType] || RATE_LIMITS.default;
 
   return (req, res, next) => {
-    cleanupExpiredEntries();
+    // Removed per-request cleanup - rely on interval timer instead
 
     const clientId = getClientId(req);
     const key = `${limitType}:${clientId}`;
     const now = Date.now();
 
-    const record = rateLimitStore.get(key);
+    let record = rateLimitStore.get(key);
 
-    if (!record || now > record.resetTime) {
+    // Lazy deletion: check if current record is expired
+    if (record && now > record.resetTime) {
+      rateLimitStore.delete(key);
+      record = null;
+    }
+
+    if (!record) {
       // Create new record
       rateLimitStore.set(key, {
         count: 1,

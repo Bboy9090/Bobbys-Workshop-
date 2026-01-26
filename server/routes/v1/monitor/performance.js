@@ -13,7 +13,7 @@
  */
 
 import express from 'express';
-import ADBLibrary from '../../../../core/lib/adb.js';
+import ADBLibrary from '../../../utils/adb-library-wrapper.js';
 import { safeSpawn, commandExistsSafe } from '../../../utils/safe-exec.js';
 
 const router = express.Router();
@@ -25,14 +25,25 @@ const router = express.Router();
  */
 async function getCPUUsage(deviceSerial) {
   try {
-    // Get CPU usage from /proc/stat (Android)
-    const result = await ADBLibrary.shell(deviceSerial, 'cat /proc/stat | head -1');
+    // Combine both commands in a single ADB shell invocation to reduce overhead
+    // Separator '---' helps us split the results
+    const combinedCommand = 'cat /proc/stat | head -1 && echo "---" && cat /proc/cpuinfo | grep processor | wc -l';
+    const result = await ADBLibrary.shell(deviceSerial, combinedCommand);
+    
     if (!result.success) {
       return { success: false, error: result.error };
     }
 
+    // Split results by separator
+    const lines = result.stdout.split('\n');
+    const separatorIndex = lines.findIndex(line => line.trim() === '---');
+    
+    if (separatorIndex === -1) {
+      return { success: false, error: 'Invalid response format from combined command' };
+    }
+
     // Parse CPU stats (user, nice, system, idle, iowait, irq, softirq)
-    const cpuLine = result.stdout.trim();
+    const cpuLine = lines[0].trim();
     const parts = cpuLine.split(/\s+/).slice(1).map(Number);
     
     if (parts.length < 4) {
@@ -43,9 +54,9 @@ async function getCPUUsage(deviceSerial) {
     const idle = parts[3];
     const usage = total > 0 ? ((total - idle) / total) * 100 : 0;
 
-    // Get CPU cores count
-    const coresResult = await ADBLibrary.shell(deviceSerial, 'cat /proc/cpuinfo | grep processor | wc -l');
-    const cores = parseInt(coresResult.stdout.trim()) || 1;
+    // Get CPU cores count from second command result
+    const coresLine = lines[separatorIndex + 1]?.trim() || '1';
+    const cores = parseInt(coresLine) || 1;
 
     return {
       success: true,

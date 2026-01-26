@@ -335,4 +335,5 @@ def _get_tool_status(exists: bool, has_hash: bool, hash_valid: Optional[bool]) -
 
 if __name__ == '__main__':
     port = int(os.environ.get('TRAPDOOR_API_PORT', 5001))
-    socketio.run(app, host='0.0.0.0', port=port, debug=True, allow_unsafe_werkzeug=True)
+    host = os.environ.get('TRAPDOOR_API_HOST', '127.0.0.1')
+    socketio.run(app, host=host, port=port, debug=True, allow_unsafe_werkzeug=True)

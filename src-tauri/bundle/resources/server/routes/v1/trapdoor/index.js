@@ -15,7 +15,10 @@ import rootRouter from './root.js';
 import bypassRouter from './bypass.js';
 import workflowsRouter from './workflows.js';
 import logsRouter from './logs.js';
-import toolsRouter from './tools.js';
+import sonicRouter from './sonic.js';
+import ghostRouter from './ghost.js';
+import pandoraRouter from './pandora.js';
+import { executeHandler, simulateHandler, listOperationsHandler } from './operations.js';
 
 const router = express.Router({ mergeParams: true });
 
@@ -119,16 +122,38 @@ router.get('/', (req, res) => {
           'Export capabilities'
         ]
       },
-      tools: {
-        name: 'The Tool Arsenal',
-        description: 'Tool inventory and hash verification',
-        endpoint: '/api/v1/trapdoor/tools',
+      sonic: {
+        name: 'Sonic Codex',
+        description: 'Audio processing and transcription',
+        endpoint: '/api/v1/trapdoor/sonic',
         features: [
-          'Tool inventory management',
-          'SHA256 hash verification',
-          'Tool execution with verification',
-          'Hash mismatch detection',
-          'Tool status monitoring'
+          'Audio capture (Live/File/URL)',
+          'Forensic enhancement',
+          'Whisper transcription',
+          'Speaker diarization',
+          'Export package'
+        ]
+      },
+      ghost: {
+        name: 'Ghost Codex',
+        description: 'Metadata shredding and privacy tools',
+        endpoint: '/api/v1/trapdoor/ghost',
+        features: [
+          'Metadata shredder',
+          'Canary tokens',
+          'Burner personas',
+          'Hidden partitions'
+        ]
+      },
+      pandora: {
+        name: 'Pandora Codex',
+        description: 'Hardware manipulation and Chain-Breaker',
+        endpoint: '/api/v1/trapdoor/pandora',
+        features: [
+          'Chain-Breaker UI',
+          'DFU detection',
+          'Hardware manipulation',
+          'Jailbreak automation'
         ]
       }
     },
@@ -163,7 +188,9 @@ router.get('/status', (req, res) => {
       bypass: { available: true, requiresAuth: true },
       workflows: { available: true, requiresAuth: true },
       logs: { available: true, requiresAuth: true },
-      tools: { available: true, requiresAuth: true }
+      sonic: { available: true, requiresAuth: true },
+      ghost: { available: true, requiresAuth: true },
+      pandora: { available: true, requiresAuth: true }
     },
     timestamp: new Date().toISOString()
   });
@@ -177,7 +204,14 @@ router.use('/root', rootRouter);
 router.use('/bypass', bypassRouter);
 router.use('/workflows', workflowsRouter);
 router.use('/logs', logsRouter);
-router.use('/tools', toolsRouter);
+router.use('/sonic', sonicRouter);
+router.use('/ghost', ghostRouter);
+router.use('/pandora', pandoraRouter);
+
+// New Trapdoor Admin Architecture endpoints
+router.post('/execute', executeHandler);
+router.post('/simulate', simulateHandler);
+router.get('/operations', listOperationsHandler);
 
 export default router;
 

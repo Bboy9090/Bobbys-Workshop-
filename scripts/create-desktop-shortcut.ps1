@@ -9,6 +9,7 @@ Write-Host ""
 # Get desktop path
 $desktop = [Environment]::GetFolderPath("Desktop")
 $shortcutPath = Join-Path $desktop "Bobbys Workshop.lnk"
+$shortcutPathTranscendent = Join-Path $desktop "Transcendent Legendary Enterprise.lnk"
 
 # Determine application path
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -16,9 +17,11 @@ $exePath = $null
 $workingDir = $projectRoot
 $arguments = ""
 
-# Check for production build
+# Check for production build (Cargo binary = bobbys-secret-workshop.exe)
 $releasePaths = @(
+    "src-tauri/target/release/bobbys-secret-workshop.exe",
     "src-tauri/target/release/bobbys-workshop.exe",
+    "src-tauri/target/x86_64-pc-windows-msvc/release/bobbys-secret-workshop.exe",
     "src-tauri/target/x86_64-pc-windows-msvc/release/bobbys-workshop.exe"
 )
 
@@ -27,15 +30,15 @@ foreach ($path in $releasePaths) {
     if (Test-Path $fullPath) {
         $exePath = (Resolve-Path $fullPath).Path
         $workingDir = Split-Path -Parent $exePath
-        Write-Host "✅ Found production build: $exePath" -ForegroundColor Green
+        Write-Host "[OK] Found production build: $exePath" -ForegroundColor Green
         break
     }
 }
 
 # If no production build, create dev shortcut
 if (-not $exePath) {
-    Write-Host "⚠️  Production build not found" -ForegroundColor Yellow
-    Write-Host "📝 Creating development shortcut..." -ForegroundColor Cyan
+    Write-Host "[!] Production build not found" -ForegroundColor Yellow
+    Write-Host "[*] Creating development shortcut..." -ForegroundColor Cyan
     
     # Find npm
     $npmPath = (Get-Command npm -ErrorAction SilentlyContinue).Source
@@ -45,7 +48,7 @@ if (-not $exePath) {
     
     $exePath = $npmPath
     $arguments = "run tauri:dev"
-    Write-Host "✅ Dev shortcut will use: npm run tauri:dev" -ForegroundColor Green
+    Write-Host "[OK] Dev shortcut will use: npm run tauri:dev" -ForegroundColor Green
 }
 
 # Create shortcut
@@ -68,8 +71,19 @@ try {
     
     $shortcut.Save()
     
-    Write-Host "`n✅ Desktop shortcut created successfully!" -ForegroundColor Green
-    Write-Host "   Location: $shortcutPath" -ForegroundColor Cyan
+    # Create second shortcut: Transcendent Legendary Enterprise (same target)
+    $shortcut2 = $shell.CreateShortcut($shortcutPathTranscendent)
+    $shortcut2.TargetPath = $exePath
+    $shortcut2.WorkingDirectory = $workingDir
+    $shortcut2.Arguments = $arguments
+    $shortcut2.Description = "Transcendent Legendary Enterprise - Autonomous AI, Neural Networks, Self-Evolution"
+    if (Test-Path $iconPath) { $shortcut2.IconLocation = $iconPath }
+    $shortcut2.WindowStyle = 1
+    $shortcut2.Save()
+    
+    Write-Host "" ; Write-Host "[OK] Desktop shortcuts created successfully!" -ForegroundColor Green
+    Write-Host "   Bobbys Workshop:       $shortcutPath" -ForegroundColor Cyan
+    Write-Host "   Transcendent Legendary: $shortcutPathTranscendent" -ForegroundColor Cyan
     Write-Host "   Target: $exePath" -ForegroundColor White
     if ($arguments) {
         Write-Host "   Arguments: $arguments" -ForegroundColor White
@@ -78,6 +92,7 @@ try {
     
 } catch {
     $errorMsg = $_.Exception.Message
-    Write-Host "`n❌ Error creating shortcut: $errorMsg" -ForegroundColor Red
+    Write-Host ""
+    Write-Host ("[ERROR] Error creating shortcut: " + $errorMsg) -ForegroundColor Red
     exit 1
 }

@@ -1,225 +1,315 @@
-// iOS Library - iOS device operations via libimobiledevice
-// Provides safe wrappers around idevice* commands
+/**
+ * iOS Provider
+ * 
+ * iOS device operations using libimobiledevice
+ * 
+ * @module core/lib/ios
+ */
 
-import { execSync } from 'child_process';
+import { spawn } from 'child_process';
 
-function safeExec(cmd, options = {}) {
-  try {
-    return {
-      success: true,
-      stdout: execSync(cmd, { 
-        encoding: 'utf-8', 
-        timeout: options.timeout || 10000,
-        ...options
-      }).trim()
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error.message,
-      stderr: error.stderr?.toString() || ''
-    };
+/**
+ * Validate iOS device UDID format
+ * 
+ * @param {string} udid - Device UDID
+ * @throws {Error} If UDID is invalid
+ */
+export function validateDeviceUDID(udid) {
+  if (!udid || typeof udid !== 'string') {
+    throw new Error('Device UDID is required and must be a string');
   }
+  
+  // iOS UDIDs are typically 40 characters (hex)
+  if (!/^[a-f0-9]{25,40}$/i.test(udid)) {
+    throw new Error(`Invalid iOS UDID format: ${udid}`);
+  }
+  
+  return true;
 }
 
-function commandExists(cmd) {
-  try {
-    execSync(`command -v ${cmd}`, { stdio: 'ignore', timeout: 2000 });
-    return true;
-  } catch {
-    return false;
+/**
+ * Execute idevice command safely
+ * 
+ * @param {string} command - idevice command (without 'idevice' prefix)
+ * @param {Array<string>} args - Command arguments
+ * @param {Object} options - Execution options
+ * @param {string} options.udid - Device UDID (optional)
+ * @param {number} options.timeout - Timeout in milliseconds (default: 30000)
+ * @returns {Promise<string>} Command output
+ */
+export async function executeIdeviceCommand(command, args = [], options = {}) {
+  const { udid, timeout = 30000 } = options;
+  
+  // Build command array
+  const ideviceArgs = [];
+  if (udid) {
+    ideviceArgs.push('-u', udid);
   }
-}
-
-const IOSLibrary = {
-  /**
-   * Check if libimobiledevice tools are installed
-   */
-  isInstalled() {
-    return commandExists('idevice_id');
-  },
-
-  /**
-   * Get available iOS tools
-   */
-  getAvailableTools() {
-    const tools = [
-      'idevice_id',
-      'ideviceinfo',
-      'idevicename',
-      'idevicepair',
-      'idevicediagnostics',
-      'idevicesyslog'
-    ];
+  ideviceArgs.push(...args);
+  
+  return new Promise((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    let timeoutId;
     
-    const available = {};
-    tools.forEach(tool => {
-      available[tool] = commandExists(tool);
+    // Spawn idevice process (no shell)
+    const idevice = spawn(`idevice${command}`, ideviceArgs, {
+      shell: false, // Critical: no shell execution
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
     });
     
-    return available;
-  },
+    // Collect stdout
+    idevice.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+    
+    // Collect stderr
+    idevice.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    
+    // Set timeout
+    timeoutId = setTimeout(() => {
+      idevice.kill();
+      reject(new Error(`idevice command timeout after ${timeout}ms`));
+    }, timeout);
+    
+    // Handle process completion
+    idevice.on('close', (code) => {
+      clearTimeout(timeoutId);
+      
+      if (code === 0) {
+        resolve(stdout);
+      } else {
+        reject(new Error(`idevice command failed with code ${code}: ${stderr || stdout}`));
+      }
+    });
+    
+    // Handle process errors
+    idevice.on('error', (error) => {
+      clearTimeout(timeoutId);
+      reject(new Error(`idevice process error: ${error.message}`));
+    });
+  });
+}
 
-  /**
-   * List connected iOS devices
-   */
-  listDevices() {
-    if (!commandExists('idevice_id')) {
-      return { success: false, error: 'idevice_id not installed', devices: [] };
-    }
+/**
+ * Get list of connected iOS devices
+ * 
+ * @returns {Promise<Array>} Array of device objects
+ */
+export async function getIOSDevices() {
+  return new Promise((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
     
-    const result = safeExec('idevice_id -l');
-    if (!result.success) {
-      return { ...result, devices: [] };
-    }
+    const idevice = spawn('idevice_id', ['-l'], {
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
+    });
     
-    const udids = result.stdout.split('\n').filter(l => l.trim());
-    const devices = udids.map(udid => ({ udid, mode: 'normal' }));
+    idevice.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
     
-    return { success: true, devices };
-  },
+    idevice.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    
+    idevice.on('close', (code) => {
+      if (code === 0 || stdout) {
+        // Parse device UDIDs
+        const devices = stdout
+          .split('\n')
+          .filter(line => line.trim())
+          .map(udid => ({
+            udid: udid.trim(),
+            name: null, // Would need ideviceinfo to get name
+            state: 'connected'
+          }));
+        
+        resolve(devices);
+      } else {
+        reject(new Error(`Failed to get iOS devices: ${stderr}`));
+      }
+    });
+    
+    idevice.on('error', reject);
+  });
+}
 
-  /**
-   * Get device information
-   * @param {string} udid - Device UDID
-   */
-  getDeviceInfo(udid) {
-    if (!commandExists('ideviceinfo')) {
-      return { success: false, error: 'ideviceinfo not installed' };
-    }
+/**
+ * Get device information
+ * 
+ * @param {string} udid - Device UDID
+ * @returns {Promise<Object>} Device information
+ */
+export async function getDeviceInfo(udid) {
+  validateDeviceUDID(udid);
+  
+  try {
+    const output = await executeIdeviceCommand('info', [], { udid });
     
-    const result = safeExec(`ideviceinfo -u ${udid}`);
-    if (!result.success) {
-      return result;
-    }
-    
+    // Parse ideviceinfo output
     const info = {};
-    result.stdout.split('\n').forEach(line => {
-      const match = line.match(/^(\w+):\s*(.+)/);
+    const lines = output.split('\n');
+    
+    for (const line of lines) {
+      const match = line.match(/^([^:]+):\s*(.+)$/);
       if (match) {
-        info[match[1]] = match[2];
+        const key = match[1].trim();
+        const value = match[2].trim();
+        info[key] = value;
       }
+    }
+    
+    return info;
+  } catch (error) {
+    throw new Error(`Failed to get device info: ${error.message}`);
+  }
+}
+
+/**
+ * Check if device is in DFU mode
+ * 
+ * @param {string} udid - Device UDID (optional, will auto-detect)
+ * @returns {Promise<boolean>} True if device is in DFU mode
+ */
+export async function isDFUMode(udid = null) {
+  try {
+    // Try to detect DFU mode using ideviceenterrecovery or similar
+    // This is a simplified check
+    const devices = await getIOSDevices();
+    
+    // If no devices found but we expect one, might be in DFU
+    // Actual DFU detection requires more sophisticated methods
+    return false; // Placeholder
+  } catch (error) {
+    // Error might indicate DFU mode
+    return true;
+  }
+}
+
+/**
+ * Check if libimobiledevice is available
+ * 
+ * @returns {Promise<boolean>} True if libimobiledevice is available
+ */
+export async function isLibimobiledeviceAvailable() {
+  return new Promise((resolve) => {
+    const idevice = spawn('idevice_id', ['-l'], {
+      shell: false,
+      stdio: 'ignore',
+      windowsHide: true
     });
     
-    return { 
-      success: true, 
-      info,
-      deviceName: info.DeviceName,
-      productType: info.ProductType,
-      productVersion: info.ProductVersion,
-      buildVersion: info.BuildVersion,
-      serialNumber: info.SerialNumber
-    };
-  },
+    idevice.on('close', (code) => {
+      resolve(code === 0 || code === 1); // Code 1 might mean no devices, but tool works
+    });
+    
+    idevice.on('error', () => {
+      resolve(false);
+    });
+  });
+}
 
-  /**
-   * Get device name
-   * @param {string} udid - Device UDID
-   */
-  getDeviceName(udid) {
-    if (!commandExists('idevicename')) {
-      return { success: false, error: 'idevicename not installed' };
-    }
-    
-    return safeExec(`idevicename -u ${udid}`);
-  },
+/**
+ * Enter recovery mode
+ * 
+ * @param {string} udid - Device UDID
+ * @returns {Promise<string>} Command output
+ */
+export async function enterRecoveryMode(udid) {
+  validateDeviceUDID(udid);
+  return executeIdeviceCommand('enterrecovery', [], { udid, timeout: 30000 });
+}
 
-  /**
-   * Check pairing status
-   * @param {string} udid - Device UDID
-   */
-  checkPairing(udid) {
-    if (!commandExists('idevicepair')) {
-      return { success: false, error: 'idevicepair not installed' };
-    }
-    
-    const result = safeExec(`idevicepair -u ${udid} validate`);
-    return {
-      success: true,
-      paired: result.success && result.stdout.includes('SUCCESS'),
-      output: result.stdout || result.stderr
-    };
-  },
+/**
+ * Exit recovery mode
+ * 
+ * @param {string} udid - Device UDID
+ * @returns {Promise<string>} Command output
+ */
+export async function exitRecoveryMode(udid) {
+  validateDeviceUDID(udid);
+  return executeIdeviceCommand('exitrecovery', [], { udid, timeout: 30000 });
+}
 
-  /**
-   * Initiate pairing with device
-   * @param {string} udid - Device UDID
-   */
-  pair(udid) {
-    if (!commandExists('idevicepair')) {
-      return { success: false, error: 'idevicepair not installed' };
+/**
+ * Execute a raw iOS tool command string (libimobiledevice family).
+ *
+ * Compatibility layer for workflow engines that store steps as strings like:
+ * "idevice_id -l" or "ideviceinfo -s -k ProductType".
+ *
+ * @param {string|null} udid
+ * @param {string} commandString
+ * @param {object} options
+ * @returns {Promise<{success: boolean, stdout: string, stderr: string, exitCode: number, error?: string}>}
+ */
+export async function executeCommand(udid, commandString, options = {}) {
+  try {
+    const parts = (commandString || '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) {
+      return { success: false, stdout: '', stderr: 'Empty iOS command', exitCode: 1, error: 'Empty iOS command' };
     }
-    
-    return safeExec(`idevicepair -u ${udid} pair`);
-  },
 
-  /**
-   * Get device mode (normal, recovery, DFU)
-   * @param {string} udid - Device UDID
-   */
-  getDeviceMode(udid) {
-    // Try normal mode tools first
-    const normalResult = safeExec(`ideviceinfo -u ${udid} -k DeviceClass 2>&1`);
-    if (normalResult.success && !normalResult.stdout.includes('ERROR')) {
-      return { success: true, mode: 'normal' };
-    }
-    
-    // Check for recovery mode
-    if (commandExists('irecovery')) {
-      const recoveryResult = safeExec('irecovery -q');
-      if (recoveryResult.success && recoveryResult.stdout.includes('PWNED')) {
-        return { success: true, mode: 'dfu' };
-      }
-      if (recoveryResult.success && recoveryResult.stdout.includes('Recovery')) {
-        return { success: true, mode: 'recovery' };
-      }
-    }
-    
-    return { success: true, mode: 'unknown' };
-  },
+    const [bin, ...args] = parts;
 
-  /**
-   * Run diagnostics on device
-   * @param {string} udid - Device UDID
-   */
-  runDiagnostics(udid) {
-    if (!commandExists('idevicediagnostics')) {
-      return { success: false, error: 'idevicediagnostics not installed' };
-    }
-    
-    // Get battery info
-    const batteryResult = safeExec(`idevicediagnostics -u ${udid} ioregentry IOPMPowerSource`);
-    
-    return {
-      success: batteryResult.success,
-      battery: batteryResult.stdout,
-      error: batteryResult.error
-    };
-  },
+    // Best-effort: inject -u <udid> if caller provided one and binary supports it.
+    const fullArgs = (udid && (bin.startsWith('idevice') || bin === 'iproxy'))
+      ? ['-u', udid, ...args]
+      : args;
 
-  /**
-   * Restart device
-   * @param {string} udid - Device UDID
-   */
-  restart(udid) {
-    if (!commandExists('idevicediagnostics')) {
-      return { success: false, error: 'idevicediagnostics not installed' };
-    }
-    
-    return safeExec(`idevicediagnostics -u ${udid} restart`);
-  },
+    return await new Promise((resolve) => {
+      let stdout = '';
+      let stderr = '';
 
-  /**
-   * Shutdown device
-   * @param {string} udid - Device UDID
-   */
-  shutdown(udid) {
-    if (!commandExists('idevicediagnostics')) {
-      return { success: false, error: 'idevicediagnostics not installed' };
-    }
-    
-    return safeExec(`idevicediagnostics -u ${udid} shutdown`);
+      const child = spawn(bin, fullArgs, {
+        shell: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true
+      });
+
+      child.stdout?.on('data', (d) => { stdout += d.toString(); });
+      child.stderr?.on('data', (d) => { stderr += d.toString(); });
+
+      const timeout = options?.timeout ?? 30000;
+      const t = setTimeout(() => {
+        try { child.kill(); } catch { /* ignore */ }
+        resolve({ success: false, stdout: stdout.trim(), stderr: `Timeout after ${timeout}ms`, exitCode: 124, error: 'timeout' });
+      }, timeout);
+
+      child.on('close', (code) => {
+        clearTimeout(t);
+        resolve({
+          success: code === 0,
+          stdout: stdout.trim(),
+          stderr: stderr.trim(),
+          exitCode: code ?? 1,
+          ...(code === 0 ? {} : { error: stderr.trim() || stdout.trim() || `exit ${code}` })
+        });
+      });
+
+      child.on('error', (err) => {
+        clearTimeout(t);
+        resolve({ success: false, stdout: stdout.trim(), stderr: err.message, exitCode: 1, error: err.message });
+      });
+    });
+  } catch (error) {
+    return { success: false, stdout: '', stderr: error.message, exitCode: 1, error: error.message };
   }
-};
+}
 
-export default IOSLibrary;
+export default {
+  validateDeviceUDID,
+  executeIdeviceCommand,
+  getIOSDevices,
+  getDeviceInfo,
+  isDFUMode,
+  isLibimobiledeviceAvailable,
+  enterRecoveryMode,
+  exitRecoveryMode,
+  executeCommand
+};

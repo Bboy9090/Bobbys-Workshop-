@@ -16,6 +16,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useApp } from '@/lib/app-context';
 import { createLogger } from '@/lib/debug-logger';
+import { getAPIUrl, getWSUrl, safeJsonFetch } from '@/lib/apiConfig';
 
 const logger = createLogger('DeviceManager');
 
@@ -234,10 +235,9 @@ export function useUltimateDeviceManager(): UseUltimateDeviceManagerReturn {
 
       // Scan ADB devices
       try {
-        const adbResponse = await fetch('/api/v1/adb/devices');
-        const adbData = await adbResponse.json();
-        if (adbData.ok && adbData.data?.devices) {
-          adbData.data.devices.forEach((d: ApiDeviceResponse) => {
+        const { data: adbData } = await safeJsonFetch<{ ok?: boolean; data?: { devices?: ApiDeviceResponse[] } }>('/api/v1/adb/devices');
+        if (adbData?.ok && adbData?.data?.devices) {
+          adbData.data!.devices!.forEach((d: ApiDeviceResponse) => {
             allDevices.push(createUnifiedDevice(d, 'android', 'adb'));
           });
         }
@@ -247,15 +247,13 @@ export function useUltimateDeviceManager(): UseUltimateDeviceManagerReturn {
 
       // Scan Fastboot devices
       try {
-        const fbResponse = await fetch('/api/v1/fastboot/devices');
-        const fbData = await fbResponse.json();
-        if (fbData.ok && fbData.data?.devices) {
-          fbData.data.devices.forEach((d: ApiDeviceResponse) => {
-            // Don't add duplicates
+        const { data: fbData } = await safeJsonFetch<{ ok?: boolean; data?: { devices?: ApiDeviceResponse[] } }>('/api/v1/fastboot/devices');
+        if (fbData?.ok && fbData?.data?.devices) {
+          fbData.data!.devices!.forEach((d: ApiDeviceResponse) => {
             if (!allDevices.find(dev => dev.serial === d.serial)) {
               allDevices.push(createUnifiedDevice(
-                { ...d, state: 'fastboot' }, 
-                'android', 
+                { ...d, state: 'fastboot' },
+                'android',
                 'fastboot'
               ));
             }
@@ -267,10 +265,9 @@ export function useUltimateDeviceManager(): UseUltimateDeviceManagerReturn {
 
       // Scan iOS devices
       try {
-        const iosResponse = await fetch('/api/v1/ios/devices');
-        const iosData = await iosResponse.json();
-        if (iosData.ok && iosData.data?.devices) {
-          iosData.data.devices.forEach((d: ApiDeviceResponse) => {
+        const { data: iosData } = await safeJsonFetch<{ ok?: boolean; data?: { devices?: ApiDeviceResponse[] } }>('/api/v1/ios/devices');
+        if (iosData?.ok && iosData?.data?.devices) {
+          iosData.data!.devices!.forEach((d: ApiDeviceResponse) => {
             allDevices.push(createUnifiedDevice(d, 'ios', 'ios'));
           });
         }
@@ -299,7 +296,7 @@ export function useUltimateDeviceManager(): UseUltimateDeviceManagerReturn {
 
     const connectWebSocket = () => {
       try {
-        const ws = new WebSocket('ws://localhost:3001/ws/device-events');
+        const ws = new WebSocket(getWSUrl('/ws/device-events'));
         
         ws.onopen = () => {
           logger.info('WebSocket connected');

@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FileText, Workflow, Activity } from 'lucide-react';
 
 export function WorkbenchCases() {
+  const [activeTab, setActiveTab] = useState<'cases' | 'workflows' | 'jobs'>('cases');
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
 

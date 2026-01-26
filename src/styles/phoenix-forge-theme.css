@@ -1,0 +1,693 @@
+/**
+ * PHOENIX FORGE - LEGENDARY THEME
+ * 
+ * The Ultimate Device Repair Platform
+ * "Rise from the Ashes. Every Device Reborn."
+ * 
+ * Design Philosophy:
+ * - Deep cosmic purple/violet base representing the forge
+ * - Phoenix fire orange/gold accents for energy and rebirth
+ * - Electric cyan highlights for tech precision
+ * - Modern glassmorphism with depth and dimension
+ * - Subtle animations that feel powerful yet refined
+ */
+
+:root {
+  /* ========================================
+     PHOENIX FORGE PRIMARY PALETTE
+     ======================================== */
+
+  /* Cosmic Void - The Forge Foundation */
+  --phoenix-void-black: #050508;
+  --phoenix-forge-deep: #0A0A12;
+  --phoenix-forge-base: #0F0F1A;
+  --phoenix-forge-surface: #14142B;
+  --phoenix-forge-elevated: #1A1A38;
+  --phoenix-forge-glass: rgba(26, 26, 56, 0.85);
+
+  /* Phoenix Fire - Energy & Rebirth */
+  --phoenix-fire-core: #FF4D00;
+  --phoenix-fire-bright: #FF6B2C;
+  --phoenix-fire-glow: #FF8C55;
+  --phoenix-fire-ember: #FFB088;
+  --phoenix-fire-spark: #FFD4BE;
+
+  /* Phoenix Gold - Victory & Mastery */
+  --phoenix-gold-deep: #B8860B;
+  --phoenix-gold-core: #FFD700;
+  --phoenix-gold-bright: #FFE55C;
+  --phoenix-gold-shimmer: #FFF2A8;
+  
+  /* Astral Violet - Tech Precision */
+  --phoenix-violet-deep: #4C1D95;
+  --phoenix-violet-core: #7C3AED;
+  --phoenix-violet-bright: #A78BFA;
+  --phoenix-violet-glow: #C4B5FD;
+
+  /* Cyber Cyan - Data & Flow */
+  --phoenix-cyan-deep: #0891B2;
+  --phoenix-cyan-core: #06B6D4;
+  --phoenix-cyan-bright: #22D3EE;
+  --phoenix-cyan-glow: #67E8F9;
+
+  /* Success States */
+  --phoenix-success-deep: #047857;
+  --phoenix-success-core: #10B981;
+  --phoenix-success-bright: #34D399;
+
+  /* Warning States */
+  --phoenix-warning-deep: #B45309;
+  --phoenix-warning-core: #F59E0B;
+  --phoenix-warning-bright: #FCD34D;
+
+  /* Danger States */
+  --phoenix-danger-deep: #BE123C;
+  --phoenix-danger-core: #F43F5E;
+  --phoenix-danger-bright: #FB7185;
+
+  /* Ink (Text) System */
+  --phoenix-ink-legendary: #FFFFFF;
+  --phoenix-ink-primary: #F1F5F9;
+  --phoenix-ink-secondary: #94A3B8;
+  --phoenix-ink-muted: #64748B;
+  --phoenix-ink-subtle: #475569;
+
+  /* ========================================
+     LEGENDARY GLOW EFFECTS
+     ======================================== */
+
+  --glow-fire: 0 0 20px rgba(255, 77, 0, 0.5),
+               0 0 40px rgba(255, 77, 0, 0.3),
+               0 0 60px rgba(255, 77, 0, 0.15);
+
+  --glow-gold: 0 0 20px rgba(255, 215, 0, 0.5),
+               0 0 40px rgba(255, 215, 0, 0.3),
+               0 0 60px rgba(255, 215, 0, 0.15);
+
+  --glow-violet: 0 0 20px rgba(124, 58, 237, 0.5),
+                 0 0 40px rgba(124, 58, 237, 0.3),
+                 0 0 60px rgba(124, 58, 237, 0.15);
+
+  --glow-cyan: 0 0 20px rgba(6, 182, 212, 0.5),
+               0 0 40px rgba(6, 182, 212, 0.3),
+               0 0 60px rgba(6, 182, 212, 0.15);
+
+  --glow-legendary: 0 0 30px rgba(255, 215, 0, 0.6),
+                    0 0 60px rgba(255, 77, 0, 0.4),
+                    0 0 90px rgba(124, 58, 237, 0.2);
+
+  /* ========================================
+     GLASSMORPHISM & DEPTH
+     ======================================== */
+
+  --glass-surface: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  
+  --glass-border: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.15) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0.1) 100%
+  );
+
+  --glass-blur: blur(12px);
+  --glass-blur-heavy: blur(24px);
+
+  /* ========================================
+     LEGENDARY GRADIENTS
+     ======================================== */
+
+  --gradient-forge: linear-gradient(135deg, 
+    var(--phoenix-forge-deep) 0%,
+    var(--phoenix-forge-base) 50%,
+    var(--phoenix-forge-surface) 100%);
+
+  --gradient-phoenix: linear-gradient(135deg,
+    var(--phoenix-fire-core) 0%,
+    var(--phoenix-gold-core) 50%,
+    var(--phoenix-fire-bright) 100%);
+
+  --gradient-cosmic: linear-gradient(135deg,
+    var(--phoenix-violet-deep) 0%,
+    var(--phoenix-violet-core) 50%,
+    var(--phoenix-cyan-core) 100%);
+
+  --gradient-legendary: linear-gradient(135deg,
+    var(--phoenix-gold-core) 0%,
+    var(--phoenix-fire-core) 25%,
+    var(--phoenix-violet-core) 50%,
+    var(--phoenix-cyan-core) 75%,
+    var(--phoenix-gold-core) 100%);
+
+  --gradient-fire-glow: radial-gradient(
+    ellipse at 50% 0%,
+    rgba(255, 77, 0, 0.15) 0%,
+    rgba(255, 215, 0, 0.08) 40%,
+    transparent 70%
+  );
+
+  /* ========================================
+     TYPOGRAPHY
+     ======================================== */
+
+  --font-display: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  --font-legendary: 'Orbitron', 'Rajdhani', var(--font-display);
+
+  /* ========================================
+     SPACING & RADII
+     ======================================== */
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
+  --radius-full: 9999px;
+
+  /* ========================================
+     TRANSITIONS
+     ======================================== */
+
+  --transition-instant: 50ms ease-out;
+  --transition-fast: 150ms ease-out;
+  --transition-normal: 250ms ease-out;
+  --transition-slow: 400ms ease-out;
+  --transition-legendary: 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ========================================
+     SHADOWS
+     ======================================== */
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.6), 0 8px 16px rgba(0, 0, 0, 0.4);
+  --shadow-legendary: 0 20px 60px rgba(0, 0, 0, 0.7),
+                      0 8px 24px rgba(255, 77, 0, 0.15),
+                      0 4px 12px rgba(255, 215, 0, 0.1);
+}
+
+/* ========================================
+   PHOENIX FORGE UTILITY CLASSES
+   ======================================== */
+
+/* Backgrounds */
+.bg-forge {
+  background: var(--phoenix-forge-base);
+}
+
+.bg-forge-deep {
+  background: var(--phoenix-forge-deep);
+}
+
+.bg-forge-surface {
+  background: var(--phoenix-forge-surface);
+}
+
+.bg-forge-elevated {
+  background: var(--phoenix-forge-elevated);
+}
+
+.bg-forge-glass {
+  background: var(--phoenix-forge-glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+.bg-gradient-forge {
+  background: var(--gradient-forge);
+}
+
+.bg-gradient-phoenix {
+  background: var(--gradient-phoenix);
+}
+
+.bg-gradient-cosmic {
+  background: var(--gradient-cosmic);
+}
+
+.bg-gradient-legendary {
+  background: var(--gradient-legendary);
+  background-size: 200% 200%;
+  animation: shimmer-legendary 4s ease-in-out infinite;
+}
+
+@keyframes shimmer-legendary {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* Glow Effects */
+.glow-fire {
+  box-shadow: var(--glow-fire);
+}
+
+.glow-gold {
+  box-shadow: var(--glow-gold);
+}
+
+.glow-violet {
+  box-shadow: var(--glow-violet);
+}
+
+.glow-cyan {
+  box-shadow: var(--glow-cyan);
+}
+
+.glow-legendary {
+  box-shadow: var(--glow-legendary);
+}
+
+/* Text Effects */
+.text-legendary {
+  color: var(--phoenix-ink-legendary);
+  font-family: var(--font-legendary);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+}
+
+.text-fire {
+  background: var(--gradient-phoenix);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 700;
+}
+
+.text-cosmic {
+  background: var(--gradient-cosmic);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Animated Border Glow */
+.border-phoenix-animated {
+  position: relative;
+  border: 2px solid transparent;
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-image: linear-gradient(var(--phoenix-forge-elevated), var(--phoenix-forge-elevated)),
+                    var(--gradient-legendary);
+  background-size: 100% 100%, 300% 300%;
+  animation: border-flow 4s linear infinite;
+}
+
+@keyframes border-flow {
+  0%, 100% { background-position: 0% 50%, 0% 50%; }
+  50% { background-position: 0% 50%, 100% 50%; }
+}
+
+/* Phoenix Cards */
+.card-phoenix {
+  background: var(--phoenix-forge-surface);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  transition: all var(--transition-normal);
+  position: relative;
+  overflow: hidden;
+}
+
+.card-phoenix::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--gradient-fire-glow);
+  opacity: 0;
+  transition: opacity var(--transition-normal);
+  pointer-events: none;
+}
+
+.card-phoenix:hover {
+  border-color: rgba(255, 77, 0, 0.3);
+  box-shadow: var(--shadow-lg), var(--glow-fire);
+  transform: translateY(-2px);
+}
+
+.card-phoenix:hover::before {
+  opacity: 1;
+}
+
+/* Legendary Cards */
+.card-legendary {
+  background: var(--phoenix-forge-elevated);
+  border: 2px solid transparent;
+  border-radius: var(--radius-xl);
+  position: relative;
+  overflow: hidden;
+}
+
+.card-legendary::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background: var(--gradient-legendary);
+  background-size: 300% 300%;
+  animation: shimmer-legendary 4s ease-in-out infinite;
+  z-index: -1;
+  border-radius: inherit;
+}
+
+.card-legendary::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  background: var(--phoenix-forge-elevated);
+  border-radius: calc(var(--radius-xl) - 4px);
+  z-index: -1;
+}
+
+/* Glass Cards */
+.card-glass {
+  background: var(--phoenix-forge-glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-lg);
+}
+
+/* Phoenix Buttons */
+.btn-phoenix {
+  background: var(--gradient-phoenix);
+  color: var(--phoenix-ink-legendary);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 0.625rem 1.25rem;
+  transition: all var(--transition-normal);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-phoenix::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.2) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.btn-phoenix:hover {
+  box-shadow: var(--glow-fire);
+  transform: translateY(-2px);
+}
+
+.btn-phoenix:hover::before {
+  opacity: 1;
+}
+
+.btn-phoenix:active {
+  transform: translateY(0);
+}
+
+/* Legendary Button */
+.btn-legendary {
+  background: var(--gradient-legendary);
+  background-size: 200% 200%;
+  animation: shimmer-legendary 4s ease-in-out infinite;
+  color: var(--phoenix-void-black);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1.5rem;
+  transition: all var(--transition-normal);
+  cursor: pointer;
+  box-shadow: var(--glow-legendary);
+}
+
+.btn-legendary:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: var(--shadow-legendary);
+}
+
+/* Cosmic Button */
+.btn-cosmic {
+  background: var(--gradient-cosmic);
+  color: var(--phoenix-ink-legendary);
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 0.625rem 1.25rem;
+  transition: all var(--transition-normal);
+  cursor: pointer;
+}
+
+.btn-cosmic:hover {
+  box-shadow: var(--glow-violet);
+  transform: translateY(-2px);
+}
+
+/* Ghost Button */
+.btn-ghost {
+  background: transparent;
+  color: var(--phoenix-ink-primary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  padding: 0.625rem 1.25rem;
+  transition: all var(--transition-normal);
+  cursor: pointer;
+}
+
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Phoenix Progress Bar */
+.progress-phoenix {
+  height: 8px;
+  background: var(--phoenix-forge-deep);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-phoenix-fill {
+  height: 100%;
+  background: var(--gradient-phoenix);
+  border-radius: var(--radius-full);
+  transition: width var(--transition-slow);
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-phoenix-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  animation: progress-shimmer 2s infinite;
+}
+
+@keyframes progress-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Status Indicators */
+.status-online {
+  background: var(--phoenix-success-core);
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.6);
+}
+
+.status-warning {
+  background: var(--phoenix-warning-core);
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.6);
+}
+
+.status-danger {
+  background: var(--phoenix-danger-core);
+  box-shadow: 0 0 12px rgba(244, 63, 94, 0.6);
+}
+
+.status-legendary {
+  background: var(--gradient-legendary);
+  background-size: 200% 200%;
+  animation: shimmer-legendary 2s ease-in-out infinite;
+}
+
+/* Phoenix Badge */
+.badge-phoenix {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-radius: var(--radius-full);
+  background: var(--phoenix-fire-core);
+  color: var(--phoenix-ink-legendary);
+}
+
+.badge-cosmic {
+  background: var(--phoenix-violet-core);
+  color: var(--phoenix-ink-legendary);
+}
+
+.badge-cyber {
+  background: var(--phoenix-cyan-core);
+  color: var(--phoenix-void-black);
+}
+
+.badge-legendary {
+  background: var(--gradient-legendary);
+  background-size: 200% 200%;
+  animation: shimmer-legendary 2s ease-in-out infinite;
+  color: var(--phoenix-void-black);
+}
+
+/* Phoenix Pulse Animation */
+.phoenix-pulse {
+  animation: phoenix-pulse 2s ease-in-out infinite;
+}
+
+@keyframes phoenix-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(255, 77, 0, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 15px rgba(255, 77, 0, 0);
+  }
+}
+
+/* Legendary Entrance Animation */
+.animate-legendary-entrance {
+  animation: legendary-entrance 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes legendary-entrance {
+  0% {
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Fire Rise Animation */
+.animate-fire-rise {
+  animation: fire-rise 1s ease-out forwards;
+}
+
+@keyframes fire-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(100px);
+    filter: blur(10px);
+  }
+  50% {
+    filter: blur(5px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* Floating Animation */
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+/* Particle Ember Effect */
+.phoenix-embers {
+  position: relative;
+  overflow: visible;
+}
+
+.phoenix-embers::before,
+.phoenix-embers::after {
+  content: '';
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--phoenix-fire-glow);
+  animation: ember-float 3s ease-in-out infinite;
+}
+
+.phoenix-embers::before {
+  top: -10px;
+  left: 20%;
+  animation-delay: 0s;
+}
+
+.phoenix-embers::after {
+  top: -15px;
+  right: 30%;
+  animation-delay: 1.5s;
+}
+
+@keyframes ember-float {
+  0%, 100% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-20px);
+  }
+}
+
+/* Input Phoenix Style */
+.input-phoenix {
+  background: var(--phoenix-forge-deep);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  padding: 0.625rem 1rem;
+  color: var(--phoenix-ink-primary);
+  font-size: 0.875rem;
+  transition: all var(--transition-normal);
+}
+
+.input-phoenix:focus {
+  outline: none;
+  border-color: var(--phoenix-fire-core);
+  box-shadow: 0 0 0 3px rgba(255, 77, 0, 0.15);
+}
+
+.input-phoenix::placeholder {
+  color: var(--phoenix-ink-muted);
+}
+
+/* Scrollbar Phoenix Style */
+.scrollbar-phoenix::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scrollbar-phoenix::-webkit-scrollbar-track {
+  background: var(--phoenix-forge-deep);
+  border-radius: var(--radius-full);
+}
+
+.scrollbar-phoenix::-webkit-scrollbar-thumb {
+  background: var(--phoenix-forge-elevated);
+  border-radius: var(--radius-full);
+  border: 2px solid var(--phoenix-forge-deep);
+}
+
+.scrollbar-phoenix::-webkit-scrollbar-thumb:hover {
+  background: var(--phoenix-violet-deep);
+}

@@ -180,7 +180,9 @@ async function main() {
     }
     
     console.log(`📁 Moving Node.js to ${NODEJS_DIR}...`);
-    fs.renameSync(extractedNodeDir, NODEJS_DIR);
+    // Use copy+delete instead of rename to avoid Windows EPERM when target is locked
+    fs.mkdirSync(NODEJS_DIR, { recursive: true });
+    fs.cpSync(extractedNodeDir, NODEJS_DIR, { recursive: true, force: true });
     fs.rmSync(tempExtractDir, { recursive: true, force: true });
     
     // Verify executable exists

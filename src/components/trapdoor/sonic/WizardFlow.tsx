@@ -42,7 +42,10 @@ export function WizardFlow({ passcode, onComplete }: WizardFlowProps) {
   const [progress, setProgress] = useState(0);
   const [transcript, setTranscript] = useState<string | null>(null);
 
-  const FASTAPI_URL = process.env.VITE_FASTAPI_URL || 'http://127.0.0.1:8000';
+  const FASTAPI_URL =
+    (import.meta as any).env?.VITE_FASTAPI_URL ||
+    (globalThis as any).process?.env?.VITE_FASTAPI_URL ||
+    'http://127.0.0.1:8000';
 
   const handleNext = async () => {
     if (currentStep === 1) {
