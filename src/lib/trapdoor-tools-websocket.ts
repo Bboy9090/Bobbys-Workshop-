@@ -23,7 +23,7 @@ const TRAPDOOR_API_URL =
   // Fallback for non-Vite contexts, if a polyfilled process exists
   (globalThis as any).process?.env?.TRAPDOOR_API_URL ||
   // Default to Trapdoor Flask API (Vite typically uses 5001, so avoid that port)
-  'http://localhost:5002';
+  'http://127.0.0.1:5002';
 
 export class TrapdoorToolsWebSocket {
   private socket: Socket | null = null;

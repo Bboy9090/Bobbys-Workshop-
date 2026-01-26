@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { getAPIUrl } from './apiConfig';
+import { safeJsonFetch } from './apiConfig';
 
 export interface BackendHealthStatus {
   isHealthy: boolean;
@@ -13,24 +13,14 @@ export interface BackendHealthStatus {
 
 export async function checkBackendHealth(): Promise<BackendHealthStatus> {
   try {
-    const response = await fetch(getAPIUrl('/api/v1/ready'), {
-      signal: AbortSignal.timeout(5000),
-    });
-    
-    if (!response.ok) {
-      return {
-        isHealthy: false,
-        lastCheck: Date.now(),
-        error: `HTTP ${response.status}`,
-      };
-    }
-    
-    const data = await response.json();
-    // Handle envelope format
-    const envelope = data.ok !== undefined ? data : { ok: true, data };
-    
+    const { data, ok } = await safeJsonFetch<{ ok?: boolean; error?: { message?: string } }>(
+      '/api/v1/ready',
+      { signal: AbortSignal.timeout(5000) }
+    );
+    const envelope = data?.ok !== undefined ? data : { ok: true, data };
+
     return {
-      isHealthy: envelope.ok === true,
+      isHealthy: ok && envelope.ok === true,
       lastCheck: Date.now(),
       error: envelope.ok === false ? envelope.error?.message : undefined,
     };
@@ -56,37 +46,20 @@ export function useBackendHealth(checkInterval: number = 30000): BackendHealthSt
 
     const checkHealth = async () => {
       try {
-        const response = await fetch(getAPIUrl('/api/v1/ready'), {
-          signal: AbortSignal.timeout(5000),
-        });
-        
+        const { data, ok } = await safeJsonFetch<{ ok?: boolean; error?: { message?: string } }>('/api/v1/ready');
         if (!isMounted) return;
-        
-        if (!response.ok) {
-          consecutiveFailures++;
-          setHealth({
-            isHealthy: false,
-            lastCheck: Date.now(),
-            error: consecutiveFailures > MAX_SILENT_FAILURES ? `HTTP ${response.status}` : undefined,
-          });
-          return;
-        }
-        
-        const data = await response.json();
-        // Handle envelope format
-        const envelope = data.ok !== undefined ? data : { ok: true, data };
-        
+        const envelope = data?.ok !== undefined ? data : { ok: true, data };
         if (envelope.ok === true) {
-          consecutiveFailures = 0; // Reset on success
+          consecutiveFailures = 0;
+        } else {
+          consecutiveFailures++;
         }
-        
         if (!isMounted) return;
-        
         setHealth({
-          isHealthy: envelope.ok === true,
+          isHealthy: ok && envelope.ok === true,
           lastCheck: Date.now(),
-          error: envelope.ok === false && consecutiveFailures > MAX_SILENT_FAILURES 
-            ? envelope.error?.message 
+          error: envelope.ok === false && consecutiveFailures > MAX_SILENT_FAILURES
+            ? (envelope as any).error?.message
             : undefined,
         });
       } catch (error) {
