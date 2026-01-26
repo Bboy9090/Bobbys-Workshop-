@@ -1,0 +1,26 @@
+{
+  "operation": "permission_list",
+  "displayName": "List App Permissions",
+  "description": "Get list of permissions for an application",
+  "category": "diagnostics",
+  "riskLevel": "low",
+  "requiresConfirmation": false,
+  "allowedRoles": ["owner", "admin", "technician", "viewer"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    },
+    "packageName": {
+      "type": "string",
+      "required": true,
+      "description": "Package name of the application"
+    }
+  },
+  "auditLogging": "standard",
+  "rateLimitPerMinute": 20,
+  "estimatedDuration": 3000
+}

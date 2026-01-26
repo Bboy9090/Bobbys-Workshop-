@@ -1,0 +1,260 @@
+{
+  "version": "2.0.0",
+  "name": "Lawful Lock Policy Pack",
+  "principles": [
+    "No circumvention. No bypass. No exploit guidance.",
+    "User-initiated authentication only (no credential capture).",
+    "All destructive actions require explicit typed confirmation.",
+    "All runs produce immutable audit logs."
+  ],
+  "global": {
+    "audit": {
+      "enabled": true,
+      "immutable": true,
+      "fields": [
+        "timestamp",
+        "case_id",
+        "user_id",
+        "workflow_id",
+        "step_id",
+        "action",
+        "args",
+        "stdout",
+        "stderr",
+        "exit_code",
+        "policy_gates",
+        "confirmations"
+      ]
+    },
+    "ui_language": {
+      "banned_terms": [
+        "bypass",
+        "exploit",
+        "activation lock removal",
+        "icloud unlock",
+        "remove icloud lock",
+        "apple id bypass",
+        "frp bypass",
+        "unauthorized access",
+        "forced unlock"
+      ],
+      "required_disclaimer": "This tool assists with diagnostics, ownership verification, and official recovery pathways. It does not bypass security or remove locks."
+    }
+  },
+  "rbac": {
+    "roles": {
+      "creator": {
+        "description": "Bobby-only creator access",
+        "requires": ["webauthn_fido2", "local_machine", "workshop_pin"]
+      },
+      "tech": {
+        "description": "Standard technician access",
+        "requires": ["login"]
+      },
+      "admin": {
+        "description": "Administrator access",
+        "requires": ["login", "admin_approval"]
+      }
+    }
+  },
+  "gates": {
+    "ownership_attested": {
+      "type": "boolean",
+      "required": true,
+      "message": "Ownership/permission attestation is required.",
+      "checkbox_text": "I own this device or have written permission to service it.",
+      "typed_phrase": "I CONFIRM AUTHORIZED SERVICE"
+    },
+    "device_authorized": {
+      "type": "boolean",
+      "required": true,
+      "message": "Device must be authorized (e.g., ADB RSA accepted / trusted pairing present / fastboot permitted)."
+    },
+    "bootloader_unlocked": {
+      "type": "boolean",
+      "required": false,
+      "message": "Bootloader must be unlocked for flashing operations.",
+      "applies_to": ["flash_partition", "erase_partition"]
+    },
+    "destructive_confirm": {
+      "type": "typed_confirmation",
+      "required": true,
+      "phrase": "ERASE_AND_RESTORE",
+      "warning": "This may erase data. Ensure backups are complete. Proceed only if you understand the impact.",
+      "message": "Typed confirmation is required for destructive actions."
+    },
+    "test_device_registered": {
+      "type": "boolean",
+      "required": false,
+      "message": "This operation is only allowed on registered test devices.",
+      "applies_to": ["research_sandbox", "advanced_authorized_ops"]
+    }
+  },
+  "blocked_intent_keywords": [
+    "bypass",
+    "frp",
+    "activation lock removal",
+    "icloud unlock",
+    "mdm bypass",
+    "jailbreak for unlock",
+    "remove google account",
+    "unauthorized access",
+    "bruteforce",
+    "exploit"
+  ],
+  "rules": [
+    {
+      "id": "allow_detection_all_roles",
+      "name": "Allow Detection for All Roles",
+      "description": "Detection operations are safe and allowed for all users",
+      "conditions": {
+        "action_types": [
+          "detect_usb_devices",
+          "detect_android_adb",
+          "detect_android_fastboot",
+          "detect_ios_devices",
+          "device_info"
+        ]
+      },
+      "action": "allow"
+    },
+    {
+      "id": "gate_ownership_attestation",
+      "name": "Ownership Attestation Required",
+      "description": "All sensitive operations require ownership verification",
+      "conditions": {
+        "risk_levels": ["medium", "high", "destructive"]
+      },
+      "action": "require_gate",
+      "required_gates": ["ownership_attested"]
+    },
+    {
+      "id": "gate_device_authorization",
+      "name": "Device Authorization Required",
+      "description": "ADB/iOS operations require device authorization",
+      "conditions": {
+        "action_types": [
+          "android.adb.getprop",
+          "android.adb.bugreport",
+          "android.adb.logcat",
+          "ios.ideviceinfo.identity"
+        ]
+      },
+      "action": "require_gate",
+      "required_gates": ["device_authorized"]
+    },
+    {
+      "id": "gate_destructive_confirmation",
+      "name": "Destructive Action Confirmation",
+      "description": "Destructive actions require typed confirmation",
+      "conditions": {
+        "action_types": [
+          "flash_partition",
+          "erase_partition",
+          "factory_reset"
+        ]
+      },
+      "action": "require_gate",
+      "required_gates": ["destructive_confirm"]
+    },
+    {
+      "id": "block_circumvention_keywords",
+      "name": "No Circumvention Allowed",
+      "description": "Block requests containing bypass/circumvention keywords",
+      "conditions": {
+        "content_contains": [
+          "bypass",
+          "exploit",
+          "unlock icloud",
+          "activation lock removal",
+          "frp bypass",
+          "mdm bypass"
+        ]
+      },
+      "action": "block",
+      "block_reason": "This action is blocked because it resembles circumvention. Use official recovery pathways only."
+    },
+    {
+      "id": "rule_apple_aar_read_only",
+      "name": "Apple Access & Recovery is Read-Only",
+      "description": "Apple recovery workflows are read-only diagnostics only",
+      "applies_to": ["apple_access_recovery_v1"],
+      "constraints": {
+        "allowed_actions": [
+          "device_intake_readonly",
+          "status_assessment_readonly",
+          "ownership_packet_collect",
+          "support_bundle_export",
+          "official_handoff_links"
+        ],
+        "blocked_actions": [
+          "lock_removal",
+          "credential_capture",
+          "server_simulation",
+          "private_api_use"
+        ]
+      }
+    },
+    {
+      "id": "rule_android_repair_safe",
+      "name": "Android Repair Must Use OEM Sources",
+      "description": "Android repair workflows must use official OEM sources only",
+      "applies_to": ["android_legal_repair_v1"],
+      "constraints": {
+        "allowed_firmware_sources": [
+          "oem_official",
+          "carrier_official"
+        ],
+        "blocked_sources": [
+          "unknown_mirrors",
+          "paywalled_unlock_sites",
+          "cracked_tools"
+        ]
+      }
+    },
+    {
+      "id": "allow_reboot_tech_and_above",
+      "name": "Allow Reboot for Tech Role and Above",
+      "description": "Reboot operations require at least tech role",
+      "conditions": {
+        "roles": ["tech", "admin", "creator"],
+        "action_types": ["reboot_device"],
+        "risk_levels": ["medium"]
+      },
+      "action": "allow_with_requirements",
+      "requirements": ["typed_confirmation"]
+    },
+    {
+      "id": "destructive_requires_admin",
+      "name": "Destructive Actions Require Admin",
+      "description": "Flash, erase operations require admin role or higher",
+      "conditions": {
+        "roles": ["admin", "creator"],
+        "action_types": [
+          "flash_partition",
+          "erase_partition"
+        ],
+        "risk_levels": ["destructive"]
+      },
+      "action": "allow_with_requirements",
+      "requirements": [
+        "typed_confirmation",
+        "device_state_validation",
+        "additional_evidence"
+      ]
+    },
+    {
+      "id": "allow_audit_logging_always",
+      "name": "Allow Audit Logging Always",
+      "description": "Audit logging operations are always allowed",
+      "conditions": {
+        "action_types": ["audit_log"]
+      },
+      "action": "allow"
+    }
+  ],
+  "default_policy": {
+    "action": "deny",
+    "deny_reason": "No policy rule matched this action. Contact administrator to add appropriate policy."
+  }
+}

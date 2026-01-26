@@ -6,6 +6,7 @@ pub mod utils;
 pub mod bridge;
 pub mod thermal;
 pub mod storage;
+pub mod device_state;
 
 use thiserror::Error;
 
@@ -66,4 +67,20 @@ pub use storage::{
     SmartData,
     StorageHealthReport,
     SmartParser,
+};
+
+pub use device_state::{
+    UnifiedDeviceState,
+    DeviceIdentity,
+    ConnectionState,
+    ConnectionTransport,
+    HardwareInfo,
+    SoftwareInfo,
+    SecurityState,
+    StoragePartition,
+    BatteryState,
+    OperationState,
+    DeviceCapabilities,
+    DeviceTimestamps,
+    DEVICE_STATE_JSON_SCHEMA,
 };

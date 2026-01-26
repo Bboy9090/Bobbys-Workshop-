@@ -268,9 +268,13 @@
     "save_to": "diagnostics_reports/vessel-sanctum-{timestamp}.json"
   },
   "metadata": {
+    "status": "done",
+    "pr_link": null,
+    "placeholder_found": false,
     "author": "Bobby's World Tools",
     "version": "1.0.0",
-    "created": "2025-12-16",
+    "created_at": 1734220800000,
+    "updated_at": 1734426000000,
     "tags": ["diagnostics", "mobile", "android", "ios", "health-check", "vessel-sanctum"],
     "workshop_vibe": "90s repair station aesthetic - honest, thorough, no-nonsense diagnostics"
   }

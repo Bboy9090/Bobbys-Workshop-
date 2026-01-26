@@ -13,6 +13,7 @@ Added to `/server/index.js`:
 #### Core Endpoints
 
 **GET `/api/bootforgeusb/scan`**
+
 - Scans all connected USB devices
 - Classifies devices as iOS/Android/unknown
 - Returns confidence scores and tool correlation
@@ -20,23 +21,27 @@ Added to `/server/index.js`:
 - Timeout: 10s, Max buffer: 10MB
 
 **GET `/api/bootforgeusb/status`**
+
 - Checks CLI installation status
 - Reports Rust build environment availability
 - Lists system tool status (adb/fastboot/idevice_id)
 - Returns library version and path
 
 **GET `/api/bootforgeusb/devices/:uid`**
+
 - Retrieves specific device by UID
 - Full device record with evidence
 - 404 if device not found
 
 **GET `/api/bootforgeusb/correlate`**
+
 - Analyzes correlation quality for all devices
 - Shows matching methods (tool_confirmed, usb_heuristic, system_level, none)
 - Provides confidence boost details
 - Lists matched tool IDs
 
 **POST `/api/bootforgeusb/build`**
+
 - Builds BootForgeUSB CLI from source
 - Streams build progress as chunked JSON
 - Installs CLI globally via cargo
@@ -61,6 +66,7 @@ Added to `/server/index.js`:
 ### 3. UI Integration
 
 Updated `/src/App.tsx`:
+
 - Added new "BootForge USB" tab to main navigation
 - Integrated BootForgeUSBScanner component
 - Updated tab grid from 4 to 5 columns
@@ -69,6 +75,7 @@ Updated `/src/App.tsx`:
 ### 4. Documentation
 
 **`/BOOTFORGEUSB_API.md`** - Complete API documentation including:
+
 - Architecture diagram
 - All 5 endpoints with request/response examples
 - Device data model TypeScript definitions
@@ -82,6 +89,7 @@ Updated `/src/App.tsx`:
 - Security considerations
 
 **`/server/README.md`** - Updated to include:
+
 - BootForgeUSB feature in features list
 - All 5 endpoints with examples
 - Link to complete BootForgeUSB API docs
@@ -127,30 +135,36 @@ Updated `/src/App.tsx`:
 ### Device Classification
 
 **iOS Detection:**
+
 - `ios_normal_confirmed` - idevice_id confirmation
 - `ios_recovery_likely` - USB heuristics (Apple VID + recovery patterns)
 - `ios_dfu_likely` - USB heuristics (Apple VID + minimal descriptors)
 
 **Android Detection:**
+
 - `android_adb_confirmed` - Tool-confirmed via adb serial match
 - `android_fastboot_confirmed` - Tool-confirmed via fastboot ID match
 - `android_recovery_adb_confirmed` - ADB sideload/recovery mode
 - `android_usb_likely` - USB heuristics (Google VID or vendor interfaces)
 
 **Unknown:**
+
 - `unknown_usb` - Unclassified devices
 
 ### Correlation Methods (v0.2)
 
 1. **tool_confirmed** - Device matched via tool ID (serial/UDID)
+
    - Confidence boost: +0.15
    - Highest accuracy
 
 2. **system_level** - Tool sees devices but can't match to specific USB record
+
    - Uses single-candidate heuristics
    - Medium accuracy
 
 3. **usb_heuristic** - USB-only classification
+
    - VID/PID/interface patterns
    - Lower confidence
 
@@ -159,29 +173,32 @@ Updated `/src/App.tsx`:
 
 ### Confidence Scoring
 
-| Range | Level | Meaning |
-|-------|-------|---------|
-| 0.90-1.00 | High | Tool-confirmed or strong correlation |
-| 0.75-0.89 | Medium | USB heuristics match known patterns |
-| 0.55-0.74 | Low | Generic USB detection |
-| <0.55 | Very Low | Unknown device |
+| Range     | Level    | Meaning                              |
+| --------- | -------- | ------------------------------------ |
+| 0.90-1.00 | High     | Tool-confirmed or strong correlation |
+| 0.75-0.89 | Medium   | USB heuristics match known patterns  |
+| 0.55-0.74 | Low      | Generic USB detection                |
+| <0.55     | Very Low | Unknown device                       |
 
 ### Evidence Collection
 
 Each device record includes:
 
 **USB Evidence:**
+
 - Vendor ID (VID) / Product ID (PID)
 - Manufacturer, product, serial strings
 - Bus number and address
 - Interface hints (class/subclass/protocol)
 
 **Tool Evidence:**
+
 - ADB: present/seen status, device IDs, raw output
 - Fastboot: present/seen status, device IDs, raw output
 - idevice_id: present/seen status, UDIDs, raw output
 
 **Classification Notes:**
+
 - Human-readable explanations
 - Correlation details
 - Warnings and recommendations
@@ -276,9 +293,7 @@ Each device record includes:
         "method": "tool_confirmed",
         "confidence_boost": 0.15,
         "matched_ids": ["ABC123456"],
-        "details": [
-          "Correlated via 1 tool ID(s)"
-        ]
+        "details": ["Correlated via 1 tool ID(s)"]
       }
     }
   ],
@@ -293,6 +308,7 @@ Each device record includes:
 ## Error Handling
 
 ### CLI Not Available (503)
+
 ```json
 {
   "error": "BootForgeUSB not available",
@@ -303,6 +319,7 @@ Each device record includes:
 ```
 
 ### Scan Timeout (504)
+
 ```json
 {
   "error": "BootForgeUSB scan timeout",
@@ -312,6 +329,7 @@ Each device record includes:
 ```
 
 ### Device Not Found (404)
+
 ```json
 {
   "error": "Device not found",
@@ -331,7 +349,7 @@ const API_BASE = 'http://localhost:3001';
 async function scanDevices() {
   const res = await fetch(`${API_BASE}/api/bootforgeusb/scan`);
   const data = await res.json();
-  
+
   if (data.success) {
     return data.devices;
   } else {
@@ -341,11 +359,11 @@ async function scanDevices() {
 
 function DeviceList() {
   const [devices, setDevices] = useState([]);
-  
+
   useEffect(() => {
     scanDevices().then(setDevices).catch(console.error);
   }, []);
-  
+
   return (
     <div>
       {devices.map(device => (
@@ -393,6 +411,7 @@ Server should start on http://localhost:3001
 ### 2. Install BootForgeUSB CLI
 
 **Option A: Build from source**
+
 ```bash
 cd libs/bootforgeusb
 cargo build --release
@@ -400,6 +419,7 @@ cargo install --path .
 ```
 
 **Option B: Use API endpoint**
+
 ```bash
 curl -X POST http://localhost:3001/api/bootforgeusb/build
 ```
@@ -417,6 +437,7 @@ curl http://localhost:3001/api/bootforgeusb/status | jq '.available'
 ### 4. Install System Tools (Optional)
 
 **ADB/Fastboot:**
+
 ```bash
 # Debian/Ubuntu
 sudo apt-get install android-sdk-platform-tools
@@ -426,6 +447,7 @@ brew install android-platform-tools
 ```
 
 **idevice tools (iOS):**
+
 ```bash
 # Debian/Ubuntu
 sudo apt-get install libimobiledevice-utils
@@ -497,33 +519,40 @@ Expected: Device array with classified devices
 ## Troubleshooting
 
 ### "BootForgeUSB not available"
+
 **Cause:** CLI not installed or not in PATH
 **Solution:** Build and install from `libs/bootforgeusb` or use `/api/bootforgeusb/build`
 
 ### No devices detected
+
 **Cause:** Devices not connected, USB permissions, or libusb issues
 **Solution:**
+
 1. Check device is connected: `lsusb` (Linux) or System Information (macOS)
 2. Check USB permissions (Linux: udev rules)
 3. Install system tools (adb/fastboot/idevice_id) for better detection
 
 ### Low confidence scores
+
 **Cause:** Tool confirmation unavailable
 **Solution:** Install system tools (adb/fastboot/idevice_id)
 
 ### Backend API unavailable
+
 **Cause:** Server not running
 **Solution:** Start backend: `npm run server:dev`
 
 ## Files Modified/Created
 
 ### Created
+
 - `/server/index.js` - Added 5 BootForgeUSB endpoints (lines 729-889)
 - `/src/components/BootForgeUSBScanner.tsx` - Complete device scanner component
 - `/BOOTFORGEUSB_API.md` - Comprehensive API documentation
 - `/BOOTFORGEUSB_BACKEND_WIRING.md` - This summary document
 
 ### Modified
+
 - `/src/App.tsx` - Added BootForge USB tab
 - `/server/README.md` - Added BootForgeUSB endpoints section
 
@@ -540,12 +569,14 @@ This implementation integrates seamlessly with:
 ## Next Steps / Future Enhancements
 
 ### Immediate
+
 - ✅ Backend API endpoints (complete)
 - ✅ Frontend component (complete)
 - ✅ Documentation (complete)
 - ✅ Error handling (complete)
 
 ### Future
+
 - [ ] WebSocket support for live device hotplug events
 - [ ] Device history tracking (connect/disconnect logs)
 - [ ] Automatic correlation confidence tuning
@@ -566,6 +597,7 @@ This implementation integrates seamlessly with:
 ## Summary
 
 ✅ **Successfully wired up BootForgeUSB backend API** with:
+
 - 5 RESTful endpoints for device scanning, status, lookup, correlation, and building
 - Complete React component with real-time scanning UI
 - Comprehensive documentation (API reference + this summary)

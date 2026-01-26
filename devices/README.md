@@ -5,6 +5,7 @@ Local storage for device profiles and session data.
 ## Structure
 
 Device profiles are stored as JSON files:
+
 - `{device_serial}.json` - Device-specific profile
 - Contains device metadata, history, and preferences
 

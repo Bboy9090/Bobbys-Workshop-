@@ -26,6 +26,7 @@ import {
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useBatchDiagnosticsWebSocket } from '@/hooks/use-batch-diagnostics-websocket';
+import { getAPIUrl, getWSUrl } from '@/lib/apiConfig';
 import { useAutoSnapshot } from '@/hooks/use-auto-snapshot';
 import {
   batteryHealthManifest,
@@ -86,7 +87,7 @@ export function BatchDiagnosticsPanel() {
   const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
 
   const ws = useBatchDiagnosticsWebSocket({
-    wsUrl: 'ws://localhost:3001/ws/batch-diagnostics',
+    wsUrl: getWSUrl('/ws/batch-diagnostics'),
   });
 
   const autoSnapshot = useAutoSnapshot({
@@ -100,14 +101,19 @@ export function BatchDiagnosticsPanel() {
   const scanDevices = async () => {
     setIsScanning(true);
     try {
-      const response = await fetch('http://localhost:3001/api/devices/scan');
+      const response = await fetch(getAPIUrl('/api/devices/scan'));
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        throw new Error(text || `HTTP ${response.status}`);
+      }
       const data = await response.json();
+      const scannedDevices: ConnectedDevice[] = Array.isArray(data.devices) ? data.devices : [];
       
-      if (data.devices && Array.isArray(data.devices)) {
-        setConnectedDevices(data.devices);
+      if (scannedDevices.length >= 0) {
+        setConnectedDevices(scannedDevices);
         
         const newDevices = new Map<string, DeviceDiagnosticState>();
-        data.devices.forEach((device: ConnectedDevice) => {
+        scannedDevices.forEach((device: ConnectedDevice) => {
           const existing = devices.get(device.device_uid);
           newDevices.set(device.device_uid, {
             device,
@@ -124,13 +130,14 @@ export function BatchDiagnosticsPanel() {
         
         setDevices(newDevices);
         toast.success('Device scan complete', {
-          description: `Found ${data.devices.length} device(s)`,
+          description: `Found ${scannedDevices.length} device(s)`,
         });
       }
     } catch (error) {
       toast.error('Failed to scan devices', {
         description: error instanceof Error ? error.message : 'Unknown error',
       });
+      setConnectedDevices([]);
     } finally {
       setIsScanning(false);
     }

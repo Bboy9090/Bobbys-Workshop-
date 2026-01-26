@@ -8,10 +8,21 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Alert, AlertDescription } from '../ui/alert';
-import { Smartphone, Activity, Upload, FileText, Wrench, Shield, Lock } from 'lucide-react';
+import { Smartphone, Activity, Upload, FileText, Wrench, Shield, Lock, Unlock, Zap, Mic, FileX, Cpu } from 'lucide-react';
 import { TrapdoorControlPanel } from '../TrapdoorControlPanel';
 import { ShadowLogsViewer } from '../ShadowLogsViewer';
 import { WorkflowExecutionConsole } from '../WorkflowExecutionConsole';
+import { OperationExecutor } from '../trapdoor/OperationExecutor';
+import { SonicCodexPanel } from './SonicCodexPanel';
+import { GhostCodexPanel } from './GhostCodexPanel';
+import { PandoraCodexPanel } from './PandoraCodexPanel';
+import { UnlockChamberPanel } from './UnlockChamberPanel';
+import { FlashForgePanel } from './FlashForgePanel';
+import { JailbreakSanctumPanel } from './JailbreakSanctumPanel';
+import { RootVaultPanel } from './RootVaultPanel';
+import { BypassLaboratoryPanel } from './BypassLaboratoryPanel';
+import { WorkflowEnginePanel } from './WorkflowEnginePanel';
+import { ShadowArchivePanel } from './ShadowArchivePanel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 
 interface Device {
@@ -22,20 +33,35 @@ interface Device {
 }
 
 export const PandorasRoom: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'trapdoor' | 'diagnostics' | 'deployment'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'secret-rooms' | 'trapdoor' | 'diagnostics' | 'deployment'>('overview');
   const [devices, setDevices] = useState<Device[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeSecretRoom, setActiveSecretRoom] = useState<string>('unlock');
 
   const tabs = [
     { id: 'overview' as const, name: 'Overview', icon: Smartphone },
+    { id: 'secret-rooms' as const, name: 'Secret Rooms', icon: Lock },
     { id: 'trapdoor' as const, name: 'Trapdoor Tools', icon: Shield },
     { id: 'diagnostics' as const, name: 'Advanced Diagnostics', icon: Activity },
     { id: 'deployment' as const, name: 'Deployment', icon: Upload },
   ];
 
+  const secretRooms = [
+    { id: 'unlock', name: 'Unlock Chamber', icon: Unlock, description: 'Device unlock automation' },
+    { id: 'flash', name: 'Flash Forge', icon: Zap, description: 'Multi-brand flash operations' },
+    { id: 'ios', name: 'Jailbreak Sanctum', icon: Smartphone, description: 'iOS device manipulation' },
+    { id: 'root', name: 'Root Vault', icon: Shield, description: 'Root installation and management' },
+    { id: 'bypass', name: 'Bypass Laboratory', icon: FileX, description: 'Security bypass automation' },
+    { id: 'workflows', name: 'Workflow Engine', icon: Activity, description: 'Automated workflow execution' },
+    { id: 'logs', name: 'Shadow Archive', icon: FileText, description: 'Complete operation history' },
+    { id: 'sonic', name: 'Sonic Codex', icon: Mic, description: 'Audio processing and transcription' },
+    { id: 'ghost', name: 'Ghost Codex', icon: FileX, description: 'Metadata shredding and privacy' },
+    { id: 'pandora', name: 'Pandora Codex', icon: Cpu, description: 'Hardware manipulation and Chain-Breaker' },
+  ];
+
   return (
-    <div className="min-h-screen bg-[#0B0F14] text-white p-6">
+    <div className="min-h-0 bg-[#0B0F14] text-white p-6">
       <div className="max-w-7xl mx-auto">
         <header className="mb-8">
           <div className="flex items-center gap-3 mb-2">
@@ -45,10 +71,12 @@ export const PandorasRoom: React.FC = () => {
             </h1>
           </div>
           <p className="text-gray-400">
-            Bobby's Secret Room - Advanced device management, diagnostics, and trapdoor tool execution
+            <strong>Bobby's Secret Rooms</strong> - The Hidden Power Behind Bobby's Workshop. 
+            Ultra-secure, authenticated access points to the most advanced device manipulation capabilities ever built.
           </p>
-          <p className="text-sm text-gray-500 mt-1">
-            Merged from The-Pandora-Codex Control Room (TITAN 2)
+          <p className="text-sm text-gray-500 mt-1 italic">
+            "Not everything should be accessible to everyone. Some operations are so powerful, so dangerous, 
+            so LEGENDARY that they require a special key. That key is Bobby's Secret Rooms."
           </p>
         </header>
 
@@ -124,6 +152,90 @@ export const PandorasRoom: React.FC = () => {
             </div>
           )}
 
+          {activeTab === 'secret-rooms' && (
+            <div className="space-y-6">
+              <Alert className="bg-[#0B0F14] border-[#2FD3FF]/50">
+                <Lock className="h-4 w-4 text-[#2FD3FF]" />
+                <AlertDescription className="text-gray-300">
+                  <strong className="text-[#2FD3FF]">Bobby's Secret Rooms</strong> - Ultra-secure, authenticated access to advanced device manipulation capabilities.
+                </AlertDescription>
+              </Alert>
+
+              <Tabs value={activeSecretRoom} onValueChange={setActiveSecretRoom} className="w-full">
+                <TabsList className="grid w-full grid-cols-5 bg-[#141922] mb-6">
+                  {secretRooms.slice(0, 5).map((room) => {
+                    const Icon = room.icon;
+                    return (
+                      <TabsTrigger 
+                        key={room.id} 
+                        value={room.id}
+                        className="data-[state=active]:bg-[#2FD3FF] data-[state=active]:text-black"
+                      >
+                        <Icon className="h-4 w-4 mr-2" />
+                        <span className="hidden md:inline">{room.name}</span>
+                      </TabsTrigger>
+                    );
+                  })}
+                </TabsList>
+                <TabsList className="grid w-full grid-cols-5 bg-[#141922] mb-6">
+                  {secretRooms.slice(5).map((room) => {
+                    const Icon = room.icon;
+                    return (
+                      <TabsTrigger 
+                        key={room.id} 
+                        value={room.id}
+                        className="data-[state=active]:bg-[#2FD3FF] data-[state=active]:text-black"
+                      >
+                        <Icon className="h-4 w-4 mr-2" />
+                        <span className="hidden md:inline">{room.name}</span>
+                      </TabsTrigger>
+                    );
+                  })}
+                </TabsList>
+
+                <TabsContent value="sonic">
+                  <SonicCodexPanel />
+                </TabsContent>
+
+                <TabsContent value="ghost">
+                  <GhostCodexPanel />
+                </TabsContent>
+
+                <TabsContent value="pandora">
+                  <PandoraCodexPanel />
+                </TabsContent>
+
+                <TabsContent value="unlock">
+                  <UnlockChamberPanel />
+                </TabsContent>
+
+                <TabsContent value="flash">
+                  <FlashForgePanel />
+                </TabsContent>
+
+                <TabsContent value="ios">
+                  <JailbreakSanctumPanel />
+                </TabsContent>
+
+                <TabsContent value="root">
+                  <RootVaultPanel />
+                </TabsContent>
+
+                <TabsContent value="bypass">
+                  <BypassLaboratoryPanel />
+                </TabsContent>
+
+                <TabsContent value="workflows">
+                  <WorkflowEnginePanel />
+                </TabsContent>
+
+                <TabsContent value="logs">
+                  <ShadowArchivePanel />
+                </TabsContent>
+              </Tabs>
+            </div>
+          )}
+
           {activeTab === 'trapdoor' && (
             <div className="space-y-6">
               <Alert className="bg-[#0B0F14] border-[#FF6B9D]/50">
@@ -158,6 +270,18 @@ export const PandorasRoom: React.FC = () => {
                     </CardHeader>
                     <CardContent>
                       <TrapdoorControlPanel />
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="bg-[#141922] border-[#2FD3FF]/20 mt-6">
+                    <CardHeader>
+                      <CardTitle className="text-white">Operation Executor</CardTitle>
+                      <CardDescription className="text-gray-400">
+                        Browse and execute operations with policy enforcement
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <OperationExecutor />
                     </CardContent>
                   </Card>
                 </TabsContent>

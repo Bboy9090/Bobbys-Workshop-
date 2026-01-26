@@ -7,6 +7,7 @@ Evidence-based USB device detection with **per-device correlation** for Pandora 
 **No fake outputs. No simulated success.**
 
 BootForgeUSB v0.2 provides device detection with:
+
 - **Per-device correlation** - Match USB devices to tool outputs by serial/ID
 - **Confidence scores** - Never claim 100% certainty without proof
 - **Evidence bundles** - Raw USB descriptors + tool outputs + matched IDs
@@ -17,6 +18,7 @@ BootForgeUSB v0.2 provides device detection with:
 ## What's New in v0.2
 
 ### Device Correlation
+
 v0.2 upgrades from "system-level confirmation" to **per-device correlation**:
 
 1. **Direct Serial Match** - USB serial equals adb/fastboot device ID
@@ -25,7 +27,9 @@ v0.2 upgrades from "system-level confirmation" to **per-device correlation**:
 4. **Matched Tool IDs** - Each device record includes `matched_tool_ids[]`
 
 ### Enhanced Evidence
+
 Tool evidence now includes:
+
 ```json
 {
   "adb": {
@@ -38,7 +42,9 @@ Tool evidence now includes:
 ```
 
 ### Correlation Notes
+
 Devices now include correlation evidence in notes:
+
 - "Correlated: adb device id matches USB serial"
 - "Correlated: single likely-Android USB device + single adb device id present (heuristic)"
 - "Correlated: single idevice_id UDID + single Apple USB device present"
@@ -46,12 +52,14 @@ Devices now include correlation evidence in notes:
 ## Architecture
 
 ### Rust Core Library
+
 - `usb_scan.rs` - USB enumeration via rusb/libusb + interface hints
 - `classify.rs` - Classification rules with v0.2 correlation logic
 - `model.rs` - Type definitions (Device, Evidence, InterfaceHint, matched_tool_ids)
 - `tools/confirmers.rs` - Tool validation with device ID parsing
 
 ### Python Binding (pyo3)
+
 ```python
 import bootforgeusb
 
@@ -60,6 +68,7 @@ devices = bootforgeusb.scan()
 ```
 
 ### CLI
+
 ```bash
 bootforgeusb scan
 ```
@@ -67,18 +76,21 @@ bootforgeusb scan
 ## Device Classification
 
 ### iOS Modes
+
 - `ios_normal_likely` - VID:05AC + not DFU/Recovery PIDs
 - `ios_normal_confirmed` - Single Apple device + single idevice_id UDID
 - `ios_recovery_likely` - VID:05AC + PID:1281 or interface pattern
 - `ios_dfu_likely` - VID:05AC + PID:1227 or minimal descriptors + vendor interface
 
 ### Android Modes
+
 - `android_adb_confirmed` - Serial matches adb device ID
 - `android_fastboot_confirmed` - Serial matches fastboot device ID
 - `android_recovery_adb_confirmed` - ADB + recovery/sideload in output
 - `android_usb_likely` - Vendor VID or vendor interface, not confirmed
 
 ### Unknown
+
 - `unknown_usb` - Connected but not classified
 
 ## Evidence Structure (v0.2)
@@ -100,9 +112,7 @@ bootforgeusb scan
       "bus": 1,
       "address": 5,
       "interface_class": 255,
-      "interface_hints": [
-        {"class": 255, "subclass": 66, "protocol": 1}
-      ]
+      "interface_hints": [{ "class": 255, "subclass": 66, "protocol": 1 }]
     },
     "tools": {
       "adb": {
@@ -125,9 +135,7 @@ bootforgeusb scan
       }
     }
   },
-  "notes": [
-    "Correlated: adb device id matches USB serial"
-  ]
+  "notes": ["Correlated: adb device id matches USB serial"]
 }
 ```
 
@@ -136,21 +144,27 @@ bootforgeusb scan
 Confirmers parse device IDs from tool output:
 
 ### ADB Confirmer
+
 ```bash
 adb devices -l
 ```
+
 Parses device IDs from lines like: `ABC123\tdevice ...`
 
 ### Fastboot Confirmer
+
 ```bash
 fastboot devices
 ```
+
 Parses device IDs from lines like: `ABC123\tfastboot`
 
 ### iOS Confirmer
+
 ```bash
 idevice_id -l
 ```
+
 Parses UDIDs (one per line)
 
 ## Confidence Scoring v0.2
@@ -164,6 +178,7 @@ Parses UDIDs (one per line)
 ## Correlation Rules (Conservative)
 
 ### Direct Match
+
 ```
 IF usb.serial == adb_device_id
   THEN mode = android_adb_confirmed
@@ -172,6 +187,7 @@ IF usb.serial == adb_device_id
 ```
 
 ### Single-Candidate (Heuristic)
+
 ```
 IF count(likely_android_usb) == 1
    AND count(adb.device_ids) == 1
@@ -182,6 +198,7 @@ IF count(likely_android_usb) == 1
 ```
 
 ### iOS Correlation
+
 ```
 IF count(apple_usb) == 1
    AND count(idevice_id.device_ids) == 1
@@ -193,6 +210,7 @@ IF count(apple_usb) == 1
 ## Building
 
 ### Rust Library + CLI
+
 ```bash
 cd libs/bootforgeusb
 cargo build --release
@@ -200,6 +218,7 @@ cargo build --release
 ```
 
 ### Python Binding
+
 ```bash
 cd libs/bootforgeusb
 pip install maturin
@@ -210,11 +229,13 @@ python3 -c "import bootforgeusb; print(bootforgeusb.scan())"
 ## Requirements
 
 ### System Dependencies
+
 - **libusb** (Linux: `apt-get install libusb-1.0-0-dev`)
 - **macOS** - Included in Xcode Command Line Tools
 - **Windows** - libusb-win32 or WinUSB drivers
 
 ### Optional Tools (for confirmers)
+
 - `adb` - Android SDK Platform Tools
 - `fastboot` - Android SDK Platform Tools
 - `idevice_id` - libimobiledevice
@@ -246,11 +267,13 @@ for device in devices:
 ## Development
 
 ### Run Tests
+
 ```bash
 cargo test
 ```
 
 ### Enable Logging
+
 ```bash
 RUST_LOG=debug ./target/release/bootforgeusb scan
 ```
@@ -258,6 +281,7 @@ RUST_LOG=debug ./target/release/bootforgeusb scan
 ## Roadmap
 
 ### v0.1 (MVP) ✅
+
 - [x] USB enumeration with rusb
 - [x] Basic classification rules
 - [x] Tool confirmers (adb/fastboot/idevice)
@@ -266,6 +290,7 @@ RUST_LOG=debug ./target/release/bootforgeusb scan
 - [x] Confidence scoring
 
 ### v0.2 (Current) ✅
+
 - [x] Per-device correlation (serial matching)
 - [x] Single-candidate heuristic correlation
 - [x] Device ID parsing from tool outputs
@@ -273,12 +298,14 @@ RUST_LOG=debug ./target/release/bootforgeusb scan
 - [x] matched_tool_ids in output
 
 ### v0.3 (Planned)
+
 - [ ] Hotplug monitoring (watch mode)
 - [ ] Advanced vendor modes (Samsung Odin, Qualcomm EDL, MTK)
 - [ ] Windows driver binding inspection
 - [ ] Device state transitions tracking
 
 ### v1.0 (Future)
+
 - [ ] Performance profiling
 - [ ] Device fingerprinting
 - [ ] Risk assessment integration

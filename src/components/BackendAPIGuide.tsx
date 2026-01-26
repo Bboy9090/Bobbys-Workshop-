@@ -3,15 +3,20 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Code, Copy, CheckCircle } from '@phosphor-icons/react';
 import { useState } from 'react';
-import { toast } from 'sonner';
+import { copyTextToClipboard } from '@/lib/clipboard';
 
 export function BackendAPIGuide() {
   const [copied, setCopied] = useState('');
 
-  const copyToClipboard = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
+  const copyToClipboard = async (text: string, id: string) => {
+    const didCopy = await copyTextToClipboard(text, {
+      successMessage: 'Copied to clipboard',
+      unavailableMessage: 'Clipboard access is unavailable. Please copy the snippet manually.'
+    });
+
+    if (!didCopy) return;
+
     setCopied(id);
-    toast.success('Copied to clipboard');
     setTimeout(() => setCopied(''), 2000);
   };
 

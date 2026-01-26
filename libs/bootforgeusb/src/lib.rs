@@ -3,26 +3,40 @@ pub mod usb_scan;
 pub mod classify;
 pub mod tools;
 
-use model::{DeviceRecord, Evidence, ToolEvidence};
+use model::{ConfirmedDeviceRecord, Evidence};
 use std::collections::HashMap;
 
-pub fn scan() -> Result<Vec<DeviceRecord>, Box<dyn std::error::Error>> {
-    let usb_devices = usb_scan::scan_usb_devices()?;
-    let confirmers = tools::confirmers::ToolConfirmers::new();
+/// Main entry point: Scan USB transports and produce confirmed device records.
+/// 
+/// Pipeline:
+/// 1. Probe USB transports (enumerate all USB devices)
+/// 2. Classify candidates (determine platform + mode)
+/// 3. Probe tools (collect adb/fastboot/idevice_id evidence)
+/// 4. Resolve identities (correlate transports to tool IDs)
+/// 5. Assemble confirmed device records
+/// 
+/// Returns: Vec of confirmed devices with stable identities and confidence scores.
+pub fn scan() -> Result<Vec<ConfirmedDeviceRecord>, Box<dyn std::error::Error>> {
+    // Stage 1: Probe USB transports
+    let usb_transports = usb_scan::probe_usb_transports()?;
+    
+    // Stage 3: Probe tool evidence (done early for correlation)
+    let tool_confirmers = tools::confirmers::ToolConfirmers::new();
     
     let mut results = Vec::new();
     
-    for usb in &usb_devices {
-        let device_uid = format!(
-            "usb:{}:{}:bus{}:addr{}",
-            usb.vid, usb.pid, usb.bus, usb.address
+    // Stages 2, 4, 5: Classify, resolve identity, assemble records
+    for transport in &usb_transports {
+        // Stage 2: Classify candidate
+        // Stage 4: Resolve identity with correlation
+        let (classification, matched_tool_ids) = classify::resolve_device_identity_with_correlation(
+            transport,
+            &usb_transports,
+            &tool_confirmers,
         );
         
-        let (classification, matched_tool_ids) = classify::classify_with_correlation(
-            usb,
-            &usb_devices,
-            &confirmers,
-        );
+        // Stage 5: Assemble confirmed device record
+        let device_uid = resolve_device_identity(transport, &matched_tool_ids);
         
         let platform_hint = match classification.mode.as_str() {
             s if s.starts_with("ios_") => "ios",
@@ -31,17 +45,17 @@ pub fn scan() -> Result<Vec<DeviceRecord>, Box<dyn std::error::Error>> {
         };
         
         let mut tool_evidence = HashMap::new();
-        tool_evidence.insert("adb".to_string(), confirmers.adb.clone());
-        tool_evidence.insert("fastboot".to_string(), confirmers.fastboot.clone());
-        tool_evidence.insert("idevice_id".to_string(), confirmers.idevice_id.clone());
+        tool_evidence.insert("adb".to_string(), tool_confirmers.adb.clone());
+        tool_evidence.insert("fastboot".to_string(), tool_confirmers.fastboot.clone());
+        tool_evidence.insert("idevice_id".to_string(), tool_confirmers.idevice_id.clone());
         
-        let record = DeviceRecord {
+        let record = ConfirmedDeviceRecord {
             device_uid,
             platform_hint: platform_hint.to_string(),
             mode: classification.mode.as_str().to_string(),
             confidence: classification.confidence,
             evidence: Evidence {
-                usb: usb.clone(),
+                usb: transport.clone(),
                 tools: tool_evidence,
             },
             notes: classification.notes,
@@ -52,6 +66,27 @@ pub fn scan() -> Result<Vec<DeviceRecord>, Box<dyn std::error::Error>> {
     }
     
     Ok(results)
+}
+
+/// Resolve stable device identity from transport and tool correlation.
+/// 
+/// Prefers serial number (most stable), falls back to transport UID.
+fn resolve_device_identity(transport: &model::UsbTransportEvidence, matched_tool_ids: &[String]) -> String {
+    // Prefer serial number if available (stable across reconnections)
+    if let Some(serial) = &transport.serial {
+        return serial.clone();
+    }
+    
+    // Prefer matched tool ID if available
+    if let Some(tool_id) = matched_tool_ids.first() {
+        return tool_id.clone();
+    }
+    
+    // Fallback to transport UID (unstable across reconnections)
+    format!(
+        "usb:{}:{}:bus{}:addr{}",
+        transport.vid, transport.pid, transport.bus, transport.address
+    )
 }
 
 #[cfg(feature = "python")]

@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { EmptyState } from './EmptyState';
 import { useApp } from '@/lib/app-context';
+import { API_CONFIG, getAPIUrl } from '@/lib/apiConfig';
 import { 
   Play, 
   Flask,
@@ -17,67 +18,51 @@ import { toast } from 'sonner';
 
 interface TestResult {
   name: string;
-  status: 'PASS' | 'FAIL' | 'RUNNING' | 'SKIPPED';
+  status: 'PASS' | 'FAIL' | 'WARNING' | 'RUNNING' | 'SKIPPED';
   duration?: number;
   details?: string;
 }
 
-const API_BASE = 'http://localhost:3001';
-
 export function PandoraTestsPanel() {
-  const { isDemoMode } = useApp();
+  const { backendAvailable } = useApp();
   const [tests, setTests] = useState<TestResult[]>([]);
   const [running, setRunning] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
 
   const runAllTests = async () => {
-    if (!isDemoMode) {
-      toast.error('Testing requires backend API connection');
+    if (!backendAvailable) {
+      toast.error('Connect backend to run tests');
       return;
     }
 
     setRunning(true);
-    setTests([]);
-    toast.info('Running automated tests... (DEMO MODE)');
+    setTests([{ name: 'Running backend self-tests…', status: 'RUNNING' }]);
+    toast.info('Running automated tests…');
 
     try {
-      const testSuite: TestResult[] = [
-        { name: '[DEMO] USB Detection Test', status: 'RUNNING' },
-        { name: '[DEMO] Tool Correlation Test', status: 'RUNNING' },
-        { name: '[DEMO] Performance Benchmark', status: 'RUNNING' },
-        { name: '[DEMO] Flash Speed Test', status: 'RUNNING' },
-        { name: '[DEMO] Device Classification', status: 'RUNNING' },
-        { name: '[DEMO] Optimization Validation', status: 'RUNNING' },
-      ];
-
-      setTests(testSuite);
-
-      for (let i = 0; i < testSuite.length; i++) {
-        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1500));
-        
-        const passed = Math.random() > 0.2;
-        const duration = 800 + Math.random() * 1200;
-        
-        setTests(prev => prev.map((t, idx) => 
-          idx === i 
-            ? { 
-                ...t, 
-                status: passed ? 'PASS' : 'FAIL',
-                duration: Math.floor(duration),
-                details: passed ? '[DEMO] All checks passed' : '[DEMO] Some checks failed'
-              }
-            : t
-        ));
+      const res = await fetch(getAPIUrl(API_CONFIG.ENDPOINTS.TESTS_RUN), { method: 'POST' });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `HTTP ${res.status}`);
       }
 
-      const res = await fetch(`${API_BASE}/api/tests/run`, { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        setHistory(prev => [{ timestamp: Date.now(), results: data }, ...prev.slice(0, 9)]);
-      }
+      const data = await res.json();
+      const results: TestResult[] = Array.isArray(data?.results)
+        ? data.results.map((r: any) => ({
+            name: String(r?.name ?? 'Unnamed Test'),
+            status: (r?.status as TestResult['status']) ?? 'SKIPPED',
+            duration: typeof r?.duration === 'number' ? r.duration : undefined,
+            details: typeof r?.details === 'string' ? r.details : undefined,
+          }))
+        : [];
 
-      toast.success('Test suite completed (DEMO MODE)');
+      setTests(results);
+      setHistory(prev => [{ timestamp: Date.now(), results: data }, ...prev.slice(0, 9)]);
+
+      toast.success('Test suite completed');
     } catch (err) {
+      console.error('Test suite failed:', err);
+      setTests([{ name: 'Backend self-tests failed', status: 'FAIL', details: err instanceof Error ? err.message : String(err) }]);
       toast.error('Test suite failed');
     } finally {
       setRunning(false);
@@ -107,6 +92,8 @@ export function PandoraTestsPanel() {
         return <Badge className="bg-blue-600/20 text-blue-300 border-blue-500/30">RUNNING</Badge>;
       case 'SKIPPED':
         return <Badge className="bg-amber-600/20 text-amber-300 border-amber-500/30">SKIPPED</Badge>;
+      case 'WARNING':
+        return <Badge className="bg-amber-600/20 text-amber-300 border-amber-500/30">WARNING</Badge>;
     }
   };
 
@@ -126,13 +113,13 @@ export function PandoraTestsPanel() {
               </CardTitle>
               <CardDescription>Validate detection, performance, and optimizations</CardDescription>
             </div>
-            <Button onClick={runAllTests} disabled={running || !isDemoMode}>
+            <Button onClick={runAllTests} disabled={running || !backendAvailable}>
               {running ? (
                 <CircleNotch className="w-4 h-4 animate-spin" />
               ) : (
                 <Play className="w-4 h-4" weight="fill" />
               )}
-              {isDemoMode ? 'Run All Tests' : 'Connect Backend'}
+              {backendAvailable ? 'Run All Tests' : 'Connect Backend'}
             </Button>
           </div>
         </CardHeader>
@@ -141,10 +128,10 @@ export function PandoraTestsPanel() {
             <EmptyState
               icon={<Flask className="w-12 h-12" weight="duotone" />}
               title="No test results yet"
-              description={isDemoMode
-                ? "Run automated tests to validate detection, performance, and optimizations (demo mode)"
-                : "Connect to backend API to run real automated tests"}
-              action={isDemoMode ? {
+              description={backendAvailable
+                ? 'Run automated tests to validate tooling and environment'
+                : 'Connect to backend API to run automated tests'}
+              action={backendAvailable ? {
                 label: 'Run All Tests',
                 onClick: runAllTests
               } : undefined}

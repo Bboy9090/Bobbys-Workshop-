@@ -1,0 +1,33 @@
+{
+  "operation": "key_event",
+  "displayName": "Send Key Event",
+  "description": "Send a key event to the device",
+  "category": "input",
+  "riskLevel": "low",
+  "requiresConfirmation": false,
+  "allowedRoles": ["owner", "admin", "technician"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    },
+    "keyCode": {
+      "type": "integer",
+      "required": true,
+      "description": "Android key code (e.g., 4=Back, 3=Home, 24=Volume Up)"
+    },
+    "action": {
+      "type": "string",
+      "required": false,
+      "enum": ["down", "up", "press"],
+      "default": "press",
+      "description": "Key action type"
+    }
+  },
+  "auditLogging": "standard",
+  "rateLimitPerMinute": 60,
+  "estimatedDuration": 1000
+}

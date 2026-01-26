@@ -19,6 +19,16 @@ import { format } from 'date-fns';
 import { useAuthorizationHistory } from '@/hooks/use-authorization-history';
 import type { AuthorizationHistoryEntry } from '@/types/authorization-history';
 import { motion, AnimatePresence } from 'framer-motion';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export function AuthorizationHistoryTimeline() {
   const {
@@ -34,6 +44,7 @@ export function AuthorizationHistoryTimeline() {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [clearHistoryDialogOpen, setClearHistoryDialogOpen] = useState(false);
 
   const stats = getStats();
   
@@ -161,11 +172,7 @@ export function AuthorizationHistoryTimeline() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  if (confirm('Clear all authorization history?')) {
-                    clearHistory();
-                  }
-                }}
+                onClick={() => setClearHistoryDialogOpen(true)}
                 className="text-destructive hover:text-destructive"
               >
                 <Trash className="h-4 w-4" />
@@ -327,6 +334,24 @@ function TimelineEntry({
           </div>
         </div>
       </Card>
+
+      <AlertDialog open={clearHistoryDialogOpen} onOpenChange={setClearHistoryDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear Authorization History</AlertDialogTitle>
+            <AlertDialogDescription>
+              Clear all authorization history? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              clearHistory();
+              setClearHistoryDialogOpen(false);
+            }}>Clear All</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </motion.div>
   );
 }

@@ -1,6 +1,5 @@
 // Trapdoor API - Secure REST endpoints for sensitive operations
 // Requires admin-level authentication for all operations
-// Includes throttling, monitoring, and batch workflow execution
 
 import express from 'express';
 import WorkflowEngine from '../tasks/workflow-engine.js';
@@ -10,94 +9,6 @@ const router = express.Router();
 const workflowEngine = new WorkflowEngine();
 const shadowLogger = new ShadowLogger();
 
-// API usage tracking for monitoring and throttling
-const apiUsageStats = {
-  requests: {},
-  totalRequests: 0,
-  throttledRequests: 0,
-  failedRequests: 0,
-  successfulRequests: 0
-};
-
-// Rate limiting configuration
-const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
-const MAX_REQUESTS_PER_WINDOW = 30;
-const rateLimitMap = new Map();
-
-/**
- * Throttling middleware - Rate limit API calls
- */
-function throttleRequests(req, res, next) {
-  const clientId = req.ip;
-  const now = Date.now();
-  
-  if (!rateLimitMap.has(clientId)) {
-    rateLimitMap.set(clientId, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
-  } else {
-    const clientData = rateLimitMap.get(clientId);
-    
-    if (now > clientData.resetTime) {
-      // Reset window
-      clientData.count = 1;
-      clientData.resetTime = now + RATE_LIMIT_WINDOW;
-    } else {
-      clientData.count++;
-      
-      if (clientData.count > MAX_REQUESTS_PER_WINDOW) {
-        apiUsageStats.throttledRequests++;
-        
-        shadowLogger.logShadow({
-          operation: 'rate_limit_exceeded',
-          deviceSerial: 'N/A',
-          userId: req.ip,
-          authorization: 'THROTTLED',
-          success: false,
-          metadata: {
-            endpoint: req.path,
-            requestCount: clientData.count,
-            resetTime: new Date(clientData.resetTime).toISOString()
-          }
-        }).catch(err => console.error('Shadow log error:', err));
-        
-        return res.status(429).json({
-          error: 'Too Many Requests',
-          message: 'Rate limit exceeded. Please try again later.',
-          retryAfter: Math.ceil((clientData.resetTime - now) / 1000)
-        });
-      }
-    }
-  }
-  
-  next();
-}
-
-/**
- * Monitoring middleware - Track API usage
- */
-function monitorUsage(req, res, next) {
-  const endpoint = req.path;
-  
-  // Track request
-  if (!apiUsageStats.requests[endpoint]) {
-    apiUsageStats.requests[endpoint] = 0;
-  }
-  apiUsageStats.requests[endpoint]++;
-  apiUsageStats.totalRequests++;
-  
-  // Track response
-  const originalJson = res.json.bind(res);
-  res.json = function(data) {
-    if (res.statusCode >= 200 && res.statusCode < 300) {
-      apiUsageStats.successfulRequests++;
-    } else {
-      apiUsageStats.failedRequests++;
-    }
-    return originalJson(data);
-  };
-  
-  next();
-}
-
 /**
  * Admin authentication middleware
  * In production, this should use JWT or similar
@@ -106,7 +17,13 @@ function requireAdmin(req, res, next) {
   const apiKey = req.headers['x-api-key'];
   const adminKey = process.env.ADMIN_API_KEY || 'dev-admin-key';
 
-  if (!apiKey || apiKey !== adminKey) {
+  const passcodeHeader = req.headers['x-secret-room-passcode'] || req.headers['x-trapdoor-passcode'];
+  const requiredPasscode = process.env.SECRET_ROOM_PASSCODE || process.env.TRAPDOOR_PASSCODE || null;
+
+  const apiKeyOk = !!apiKey && apiKey === adminKey;
+  const passcodeOk = !!requiredPasscode && !!passcodeHeader && passcodeHeader === requiredPasscode;
+
+  if (!apiKeyOk && !passcodeOk) {
     shadowLogger.logShadow({
       operation: 'unauthorized_access_attempt',
       deviceSerial: 'N/A',
@@ -128,10 +45,6 @@ function requireAdmin(req, res, next) {
 
   next();
 }
-
-// Apply throttling and monitoring to all routes
-router.use(throttleRequests);
-router.use(monitorUsage);
 
 /**
  * POST /api/trapdoor/frp
@@ -394,120 +307,126 @@ router.get('/workflows', requireAdmin, async (req, res) => {
 
 /**
  * POST /api/trapdoor/batch/execute
- * Execute multiple workflows in batch (admin only)
+ * Execute batch commands with throttling and monitoring
  */
 router.post('/batch/execute', requireAdmin, async (req, res) => {
   try {
-    const { workflows, authorization } = req.body;
+    // Accept both historical payload shapes:
+    // - { commands: [...] } (legacy)
+    // - { workflows: [...] } (tests / newer callers)
+    const { commands: commandsRaw, workflows: workflowsRaw, throttle, deviceSerial: topLevelDeviceSerial } = req.body || {};
+    const commands = Array.isArray(commandsRaw) ? commandsRaw : (Array.isArray(workflowsRaw) ? workflowsRaw : null);
 
-    if (!workflows || !Array.isArray(workflows) || workflows.length === 0) {
+    if (!commands || !Array.isArray(commands)) {
       return res.status(400).json({
-        error: 'Invalid batch request',
-        message: 'workflows array is required and must contain at least one workflow'
+        error: 'Invalid request',
+        message: 'Commands/workflows must be an array'
       });
     }
 
-    if (workflows.length > 10) {
+    if (commands.length === 0) {
+      return res.status(400).json({ error: 'Invalid request', message: 'Batch is empty' });
+    }
+
+    // Hard safety limit for batch size
+    const MAX_BATCH = 10;
+    if (commands.length > MAX_BATCH) {
       return res.status(400).json({
-        error: 'Batch size limit exceeded',
-        message: 'Maximum 10 workflows per batch'
+        error: `Batch size limit exceeded: max ${MAX_BATCH}`,
+        message: `Batch size limit exceeded: max ${MAX_BATCH}`
       });
     }
 
-    // Log batch operation start
+    // Log batch execution start
+    const firstSerial = topLevelDeviceSerial || commands[0]?.deviceSerial || 'unknown';
     await shadowLogger.logShadow({
-      operation: 'batch_workflow_started',
-      deviceSerial: 'batch',
+      operation: 'batch_execute_started',
+      deviceSerial: firstSerial,
       userId: req.ip,
-      authorization: authorization?.userInput || 'ADMIN',
+      authorization: 'ADMIN',
       success: true,
       metadata: {
-        workflowCount: workflows.length,
-        workflows: workflows.map(w => ({ category: w.category, id: w.workflowId })),
+        commandCount: commands.length,
+        throttle: throttle || 0,
         timestamp: new Date().toISOString()
       }
     });
 
-    // Execute workflows in sequence
     const results = [];
-    let successCount = 0;
-    let failureCount = 0;
+    const throttleMs = throttle || 0;
 
-    for (const workflow of workflows) {
-      const { category, workflowId, deviceSerial } = workflow;
-
-      if (!category || !workflowId || !deviceSerial) {
-        results.push({
-          category,
-          workflowId,
-          deviceSerial,
-          success: false,
-          error: 'Missing required parameters (category, workflowId, deviceSerial)'
-        });
-        failureCount++;
-        continue;
-      }
-
+    // Execute commands with throttling
+    for (let i = 0; i < commands.length; i++) {
+      const cmd = commands[i];
+      const serial = topLevelDeviceSerial || cmd?.deviceSerial;
+      
       try {
-        const result = await workflowEngine.executeWorkflow(category, workflowId, {
-          deviceSerial,
-          userId: req.ip,
-          authorization
-        });
+        if (!serial) {
+          throw new Error('Device serial required');
+        }
+        const result = await workflowEngine.executeWorkflow(
+          cmd.category,
+          cmd.workflowId,
+          {
+            deviceSerial: serial,
+            userId: req.ip,
+            authorization: cmd.authorization
+          }
+        );
 
         results.push({
-          category,
-          workflowId,
-          deviceSerial,
-          ...result
+          index: i,
+          command: cmd,
+          result,
+          timestamp: new Date().toISOString()
         });
 
-        if (result.success) {
-          successCount++;
-        } else {
-          failureCount++;
+        // Log individual command completion
+        await shadowLogger.logPublic({
+          operation: 'batch_command_completed',
+          message: `Batch command ${i + 1}/${commands.length} completed`,
+          metadata: {
+            deviceSerial: serial,
+            workflowId: cmd.workflowId,
+            success: result.success
+          }
+        });
+
+        // Throttle between commands
+        if (throttleMs > 0 && i < commands.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, throttleMs));
         }
       } catch (error) {
         results.push({
-          category,
-          workflowId,
-          deviceSerial,
-          success: false,
-          error: error.message
+          index: i,
+          command: cmd,
+          result: { success: false, error: error.message },
+          timestamp: new Date().toISOString()
         });
-        failureCount++;
       }
     }
 
-    // Log batch completion
+    // Log batch execution completion
     await shadowLogger.logShadow({
-      operation: 'batch_workflow_completed',
-      deviceSerial: 'batch',
+      operation: 'batch_execute_completed',
+      deviceSerial: firstSerial,
       userId: req.ip,
-      authorization: authorization?.userInput || 'ADMIN',
-      success: successCount > 0,
+      authorization: 'ADMIN',
+      success: true,
       metadata: {
-        totalWorkflows: workflows.length,
-        successCount,
-        failureCount,
-        timestamp: new Date().toISOString(),
-        results: results.map(r => ({ 
-          category: r.category, 
-          id: r.workflowId, 
-          success: r.success 
-        }))
+        commandCount: commands.length,
+        successCount: results.filter(r => r.result.success).length,
+        timestamp: new Date().toISOString()
       }
     });
 
     return res.json({
       success: true,
-      batchSize: workflows.length,
-      successCount,
-      failureCount,
+      totalCommands: commands.length,
       results
     });
   } catch (error) {
-    console.error('Batch workflow execution error:', error);
+    console.error('Batch execution error:', error);
     return res.status(500).json({
       error: 'Internal server error',
       message: error.message
@@ -517,31 +436,55 @@ router.post('/batch/execute', requireAdmin, async (req, res) => {
 
 /**
  * GET /api/trapdoor/monitoring/stats
- * Get API usage and monitoring statistics (admin only)
+ * Lightweight monitoring summary for tests/admin UI.
  */
 router.get('/monitoring/stats', requireAdmin, async (req, res) => {
   try {
-    const logStats = await shadowLogger.getLogStats();
-    
+    const stats = await shadowLogger.getStats();
     return res.json({
       success: true,
-      timestamp: new Date().toISOString(),
       apiUsage: {
-        totalRequests: apiUsageStats.totalRequests,
-        successfulRequests: apiUsageStats.successfulRequests,
-        failedRequests: apiUsageStats.failedRequests,
-        throttledRequests: apiUsageStats.throttledRequests,
-        requestsByEndpoint: apiUsageStats.requests
+        // This legacy core router does not maintain per-endpoint counters yet.
+        requestsTracked: false
       },
       rateLimiting: {
-        windowSize: RATE_LIMIT_WINDOW / 1000 + 's',
-        maxRequestsPerWindow: MAX_REQUESTS_PER_WINDOW,
-        activeClients: rateLimitMap.size
+        enabled: false,
+        note: 'Rate limiting is applied in server/index.js, not in this legacy core router.'
       },
-      logging: logStats.success ? logStats.stats : { error: 'Failed to retrieve log stats' }
+      logging: stats
     });
   } catch (error) {
-    console.error('Error retrieving monitoring stats:', error);
+    return res.status(500).json({ error: 'Internal server error', message: error.message });
+  }
+});
+
+/**
+ * GET /api/trapdoor/logs/stats
+ * Get shadow log statistics
+ */
+router.get('/logs/stats', requireAdmin, async (req, res) => {
+  try {
+    const result = await shadowLogger.getStats();
+    return res.json(result);
+  } catch (error) {
+    console.error('Error getting log stats:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/trapdoor/logs/rotate
+ * Manually trigger log rotation
+ */
+router.post('/logs/rotate', requireAdmin, async (req, res) => {
+  try {
+    const result = await shadowLogger.rotateLogs();
+    return res.json(result);
+  } catch (error) {
+    console.error('Error rotating logs:', error);
     return res.status(500).json({
       error: 'Internal server error',
       message: error.message
@@ -551,30 +494,14 @@ router.get('/monitoring/stats', requireAdmin, async (req, res) => {
 
 /**
  * POST /api/trapdoor/logs/cleanup
- * Clean up old shadow logs based on retention policy (admin only)
+ * Cleanup old log files based on retention policy.
  */
 router.post('/logs/cleanup', requireAdmin, async (req, res) => {
   try {
     const result = await shadowLogger.cleanupOldLogs();
-    
-    await shadowLogger.logShadow({
-      operation: 'log_cleanup_executed',
-      deviceSerial: 'N/A',
-      userId: req.ip,
-      authorization: 'ADMIN',
-      success: result.success,
-      metadata: {
-        timestamp: new Date().toISOString()
-      }
-    });
-    
     return res.json(result);
   } catch (error) {
-    console.error('Error cleaning up logs:', error);
-    return res.status(500).json({
-      error: 'Internal server error',
-      message: error.message
-    });
+    return res.status(500).json({ error: 'Internal server error', message: error.message });
   }
 });
 

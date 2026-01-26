@@ -33,6 +33,7 @@ public/audio/
 ## Audio Specifications
 
 ### Instrumental Loops
+
 - **BPM**: 80-92
 - **Style**: Boom-bap, dusty drums, soft swing
 - **Vocals**: None
@@ -43,6 +44,7 @@ public/audio/
 - **Format**: MP3 320kbps or FLAC
 
 ### Ambient Loops
+
 - **Style**: Vinyl hiss, room tone, distant city hum
 - **Beat**: None
 - **Rhythm**: None
@@ -53,20 +55,24 @@ public/audio/
 ## Where to Get License-Clean Audio
 
 ### Royalty-Free Music Libraries (Subscription Required)
+
 - **Artlist**: https://artlist.io
 - **Epidemic Sound**: https://epidemicsound.com
 - **Musicbed**: https://musicbed.com
 
 ### One-Time Purchase
+
 - **AudioJungle**: https://audiojungle.net
 - **Pond5**: https://pond5.com
 
 ### Commissioned Work
+
 - Hire a producer on Fiverr or Upwork
 - Request original loops matching the specifications
 - Ensure you receive full commercial rights
 
 ### DIY (If You're a Producer)
+
 - Create your own loops
 - Use royalty-free samples
 - Ensure all source material is licensed for commercial use
@@ -74,6 +80,7 @@ public/audio/
 ## What NOT to Use
 
 ❌ **DO NOT USE:**
+
 - Copyrighted music from streaming services
 - Samples ripped from commercial tracks
 - "Sound-alike" versions of known songs
@@ -89,6 +96,7 @@ You can test the UI and controls without audio files installed.
 ## File Naming Convention
 
 Files **must** be named exactly as shown:
+
 - `loop_1.mp3` through `loop_6.mp3`
 - Case-sensitive on Linux/Mac
 - No spaces, no special characters
@@ -104,6 +112,7 @@ After adding files, verify they load:
 5. Check for successful loading of audio files
 
 If you see 404 errors, check:
+
 - File paths match exactly
 - Files are in `public/audio/` directory
 - File names are correct (loop_1.mp3, not Loop_1.MP3)
@@ -112,6 +121,7 @@ If you see 404 errors, check:
 ## Legal Compliance
 
 By adding audio files to this directory, you confirm:
+
 - You have the legal right to use these files
 - You have obtained necessary licenses for commercial use
 - Files do not infringe on any copyrights

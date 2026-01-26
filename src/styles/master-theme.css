@@ -1,0 +1,297 @@
+/**
+ * BOBBY'S WORKSHOP - MASTER THEME
+ * 
+ * Unified design system combining:
+ * - Space Jam / Hare Jordan Theme
+ * - 90s Hip-Hop Aesthetic
+ * - NYC Playground Workshop
+ * - Trapdoor Architecture
+ * 
+ * This file consolidates all theme variables from:
+ * - design-tokens.css (base workshop tokens)
+ * - space-jam-theme.css (Space Jam colors)
+ * - workshop-vibe.css (90s hip-hop elements)
+ * 
+ * Use this as the single source of truth for the unified design system.
+ */
+
+:root {
+  /* ========================================
+     UNIFIED COLOR SYSTEM
+     Consolidated from all theme files
+     ======================================== */
+
+  /* Space Jam Primary Colors */
+  --master-space-jam-purple: #6B2C91;
+  --master-space-jam-purple-dark: #4A1A65;
+  --master-space-jam-purple-light: #8B4CB8;
+  --master-space-jam-orange: #FF6B35;
+  --master-space-jam-orange-dark: #CC5529;
+  --master-space-jam-orange-light: #FF8C5A;
+  --master-basketball-gold: #FFD700;
+
+  /* Hare Jordan Signature */
+  --master-jordan-red: #CE1141;
+  --master-jordan-black: #000000;
+  --master-jordan-white: #FFFFFF;
+  --master-jordan-gold: #FFD700;
+
+  /* 90s Hip-Hop Neon Accents */
+  --master-neon-cyan: #00FFFF;
+  --master-neon-pink: #FF00FF;
+  --master-neon-yellow: #FFFF00;
+  --master-neon-green: #00FF00;
+  --master-neon-orange: #FF6600;
+  --master-neon-purple: #9932CC;
+
+  /* NYC Playground Surfaces */
+  --master-concrete: #2C2C2C;
+  --master-asphalt: #1F1F1F;
+  --master-sidewalk: #3D3D3D;
+  --master-trap-basement: #0D0D0D;
+  --master-trap-walls: #1A1A1A;
+  --master-trap-border: #2A2A2A;
+
+  /* Workshop Surfaces (from design-tokens) */
+  --master-workshop-midnight: #0a0a0c;
+  --master-workshop-concrete: #12141a;
+  --master-workshop-steel: #1a1d26;
+
+  /* Spray Paint Palette (from design-tokens) */
+  --master-spray-cyan: #2dd4ff;
+  --master-spray-magenta: #ff3dbb;
+  --master-spray-yellow: #ffd400;
+  --master-spray-lime: #35ff9a;
+  --master-spray-orange: #ff8a3d;
+  --master-spray-violet: #9d4edd;
+
+  /* Ink Levels */
+  --master-ink-primary: #ededed;
+  --master-ink-secondary: #b8b8b8;
+  --master-ink-muted: #6b7280;
+  --master-ink-legendary: #FFFFFF;
+
+  /* State Colors */
+  --master-state-success: #22c55e;
+  --master-state-warning: #eab308;
+  --master-state-danger: #ef4444;
+  --master-state-info: #3b82f6;
+
+  /* ========================================
+     AIR JORDAN COLORWAYS (Risk Levels)
+     For buttons, badges, and risk indicators
+     ======================================== */
+
+  /* Jordan Bred - High Risk (Black/Red) */
+  --master-jordan-bred-bg: linear-gradient(135deg, #000000 0%, #8B0000 100%);
+  --master-jordan-bred-border: #DC143C;
+  --master-jordan-bred-text: #FFFFFF;
+
+  /* Jordan Royal - Medium Risk (Black/Blue) */
+  --master-jordan-royal-bg: linear-gradient(135deg, #000000 0%, #003DA5 100%);
+  --master-jordan-royal-border: #1E40AF;
+  --master-jordan-royal-text: #FFFFFF;
+
+  /* Jordan Chicago - Medium Risk (White/Red/Black) */
+  --master-jordan-chicago-bg: linear-gradient(135deg, #F8F8F8 0%, #DC143C 50%, #000000 100%);
+  --master-jordan-chicago-border: #DC143C;
+  --master-jordan-chicago-text: #000000;
+
+  /* Jordan Concord - Low Risk (White/Purple) */
+  --master-jordan-concord-bg: linear-gradient(135deg, #F8F8F8 0%, #8B7AC8 100%);
+  --master-jordan-concord-border: #6A5ACD;
+  --master-jordan-concord-text: #000000;
+
+  /* Jordan Space Jam - Special (Black/Blue) */
+  --master-jordan-spacejam-bg: linear-gradient(135deg, #000000 0%, #1A1A2E 50%, #0F52BA 100%);
+  --master-jordan-spacejam-border: #1E90FF;
+  --master-jordan-spacejam-text: #FFFFFF;
+
+  /* Jordan Cement - Warning (Grey/Red) */
+  --master-jordan-cement-bg: linear-gradient(135deg, #F5F5F5 0%, #A9A9A9 50%, #DC143C 100%);
+  --master-jordan-cement-border: #808080;
+  --master-jordan-cement-text: #000000;
+
+  /* ========================================
+     GLOW EFFECTS (Unified)
+     ======================================== */
+
+  --master-glow-purple: 0 0 20px rgba(107, 44, 145, 0.6),
+                        0 0 40px rgba(107, 44, 141, 0.4),
+                        0 0 60px rgba(107, 44, 141, 0.2);
+
+  --master-glow-orange: 0 0 20px rgba(255, 107, 53, 0.6),
+                        0 0 40px rgba(255, 107, 53, 0.4),
+                        0 0 60px rgba(255, 107, 53, 0.2);
+
+  --master-glow-cyan: 0 0 15px rgba(0, 255, 255, 0.8),
+                      0 0 30px rgba(0, 255, 255, 0.5),
+                      0 0 45px rgba(0, 255, 255, 0.3);
+
+  --master-glow-jordan: 0 0 20px rgba(206, 17, 65, 0.7),
+                        0 0 40px rgba(206, 17, 65, 0.5);
+
+  /* ========================================
+     TYPOGRAPHY (Unified)
+     ======================================== */
+
+  --master-font-display: 'Bebas Neue', 'Impact', sans-serif;
+  --master-font-body: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  --master-font-mono: 'Space Mono', 'Menlo', 'Monaco', monospace;
+
+  /* ========================================
+     SPACING & LAYOUT (Unified)
+     ======================================== */
+
+  --master-radius-sm: 4px;
+  --master-radius-md: 8px;
+  --master-radius-lg: 12px;
+  --master-radius-xl: 16px;
+  --master-radius-full: 9999px;
+
+  --master-transition-fast: 100ms ease-out;
+  --master-transition-normal: 200ms ease-out;
+  --master-transition-slow: 300ms ease-out;
+}
+
+/* ========================================
+   UNIFIED UTILITY CLASSES
+   Combine themes for consistent styling
+   ======================================== */
+
+/* Background Gradients */
+.bg-master-space-jam {
+  background: linear-gradient(135deg, 
+    var(--master-space-jam-purple) 0%,
+    var(--master-space-jam-orange) 100%);
+}
+
+.bg-master-playground {
+  background: var(--master-concrete);
+  background-image: 
+    radial-gradient(circle at 20% 80%, rgba(107, 44, 145, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(255, 107, 53, 0.1) 0%, transparent 50%);
+}
+
+.bg-master-trap-house {
+  background: var(--master-trap-basement);
+  border: 1px solid var(--master-trap-border);
+}
+
+/* Text Styles */
+.text-master-legendary {
+  color: var(--master-ink-legendary);
+  font-family: var(--master-font-display);
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.text-master-graffiti {
+  color: var(--master-neon-cyan);
+  font-family: var(--master-font-display);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-shadow: var(--master-glow-cyan);
+}
+
+.text-master-jordan {
+  color: var(--master-jordan-red);
+  font-family: var(--master-font-display);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-shadow: var(--master-glow-jordan);
+}
+
+/* Risk Level Buttons (Jordan Colorways) */
+.btn-master-risk-high {
+  background: var(--master-jordan-bred-bg);
+  border: 2px solid var(--master-jordan-bred-border);
+  color: var(--master-jordan-bred-text);
+  box-shadow: 0 6px 16px rgba(220, 20, 60, 0.4);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all var(--master-transition-normal);
+}
+
+.btn-master-risk-high:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(220, 20, 60, 0.6);
+}
+
+.btn-master-risk-medium {
+  background: var(--master-jordan-chicago-bg);
+  border: 2px solid var(--master-jordan-chicago-border);
+  color: var(--master-jordan-chicago-text);
+  box-shadow: 0 6px 16px rgba(220, 20, 60, 0.5);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all var(--master-transition-normal);
+}
+
+.btn-master-risk-medium:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(220, 20, 60, 0.6);
+}
+
+.btn-master-risk-low {
+  background: var(--master-jordan-concord-bg);
+  border: 2px solid var(--master-jordan-concord-border);
+  color: var(--master-jordan-concord-text);
+  box-shadow: 0 6px 16px rgba(106, 90, 205, 0.4);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all var(--master-transition-normal);
+}
+
+.btn-master-risk-low:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(106, 90, 205, 0.6);
+}
+
+/* Card Styles */
+.card-master-space-jam {
+  background: var(--master-trap-walls);
+  border: 2px solid var(--master-space-jam-purple);
+  box-shadow: var(--master-glow-purple);
+  border-radius: var(--master-radius-lg);
+  transition: all var(--master-transition-normal);
+}
+
+.card-master-space-jam:hover {
+  border-color: var(--master-space-jam-orange);
+  box-shadow: var(--master-glow-orange);
+  transform: translateY(-4px);
+}
+
+.card-master-jordan {
+  background: var(--master-trap-walls);
+  border: 3px solid var(--master-jordan-red);
+  box-shadow: var(--master-glow-jordan);
+  border-radius: var(--master-radius-xl);
+  transition: all var(--master-transition-normal);
+}
+
+.card-master-jordan:hover {
+  transform: translateY(-6px) scale(1.02);
+  box-shadow: var(--master-glow-jordan), 0 12px 48px rgba(206, 17, 65, 0.6);
+}
+
+.card-master-playground {
+  background: var(--master-concrete);
+  border: 2px solid var(--master-trap-border);
+  border-radius: var(--master-radius-md);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Note: This file consolidates variables. 
+ * The actual implementation classes (baseball-card, cd-jewel-case, boom-bap-panel, etc.)
+ * remain in their respective theme files (workshop-vibe.css, space-jam-theme.css).
+ * 
+ * Use this file as a reference for unified variable names when creating new components.
+ */

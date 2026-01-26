@@ -3,10 +3,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { 
-  GitBranch, 
-  Code, 
-  FileCode, 
+import {
+  GitBranch,
+  Code,
+  FileCode,
   Terminal, 
   Folder,
   CheckCircle,
@@ -15,16 +15,21 @@ import {
   Download
 } from '@phosphor-icons/react';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { ExportPandoraCodexFiles } from './ExportPandoraCodexFiles';
+import { copyTextToClipboard } from '@/lib/clipboard';
 
 export function PandoraCodexIntegrationGuide() {
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
 
-  const copyToClipboard = (text: string, section: string) => {
-    navigator.clipboard.writeText(text);
+  const copyToClipboard = async (text: string, section: string) => {
+    const didCopy = await copyTextToClipboard(text, {
+      successMessage: `${section} copied to clipboard!`,
+      unavailableMessage: 'Clipboard access is unavailable. Please copy the content manually.'
+    });
+
+    if (!didCopy) return;
+
     setCopiedSection(section);
-    toast.success(`${section} copied to clipboard!`);
     setTimeout(() => setCopiedSection(null), 2000);
   };
 

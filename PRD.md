@@ -2,7 +2,8 @@
 
 Bobby's World - A professional repair utility dashboard (3uTools / SamFW style) featuring device diagnostics, flash monitoring, evidence reporting, and community repair guides. Redesigned from enterprise interface to streamlined workshop toolkit with compact header, device sidebar, horizontal tabs, and collapsible console.
 
-**Experience Qualities**: 
+**Experience Qualities**:
+
 1. **Efficient** - Compact, utility-focused interface with minimal chrome and maximum workspace
 2. **Professional** - Clean tool aesthetic with proper visual hierarchy, like field equipment
 3. **Technical** - Workshop-grade infrastructure that technicians trust for real work
@@ -13,6 +14,7 @@ This is a comprehensive repair utility dashboard with real-time device monitorin
 ## Essential Features
 
 ### Dashboard Layout (Utility-Style Interface)
+
 - **Functionality**: Professional dashboard with compact header (48px with wrench icon, title, backend status badge), left sidebar (device list with real-time status icons), horizontal tab navigation (Diagnostics | Reports | Tests | Plugins | Community | Settings), main content area with section headers, and bottom collapsible console panel
 - **Purpose**: Provide efficient access to all tools with proper visual hierarchy like 3uTools/SamFW - everything visible at a glance with no wasted space
 - **Trigger**: App loads into dashboard layout with device sidebar showing real devices from backend API (connected/weak/confirmed/likely/unconfirmed) or empty state if none detected
@@ -20,6 +22,7 @@ This is a comprehensive repair utility dashboard with real-time device monitorin
 - **Success criteria**: Device sidebar updates with real device data only (no ghost values), tab switching instant, console panel expandable/collapsible, no nested navigation, all tools 1-2 clicks away, backend connection status always visible
 
 ### Diagnostics Tab (Real Backend Integration)
+
 - **Functionality**: Eight sub-sections: Device Diagnostics (ADB/Fastboot/USB detection via real API), Batch Diagnostics (multi-device runs), Flash Monitoring (Pandora Codex integration with real-time WebSocket benchmarking), Multi-Brand Flash (iOS DFU, Odin, EDL, Fastboot, MTK), Firmware Version Checking (automatic firmware version detection with library browser for all brands/models and download links), Authorization Triggers (comprehensive guide to 36+ device authorization triggers) - all connected to backend Express server
 - **Purpose**: Centralize all device testing, flashing operations, firmware management, and authorization triggers with real backend API connectivity - no mock data
 - **Trigger**: User clicks Diagnostics tab → Frontend queries `/api/flash/devices` and `/api/firmware/check/:serial` → Real device scan via ADB/Fastboot with firmware version extraction
@@ -27,6 +30,7 @@ This is a comprehensive repair utility dashboard with real-time device monitorin
 - **Success criteria**: Backend server running on port 3001, real device detection working, firmware version extraction functional via ADB getprop commands, firmware database queryable by brand/model, version comparison logic working, security status determination accurate (current/outdated/critical), WebSocket progress streaming functional, flash history persisted, all operations use backend API endpoints (no mock responses), authorization triggers guide fully comprehensive with 36+ triggers documented
 
 ### Reports Tab (Evidence & Backups)
+
 - **Functionality**: Four sub-sections: Evidence Bundles (signed reports with chain-of-custody), Backups (snapshot retention with auto-cleanup), Evidence Dashboard (authority signing, correlation tracking), Repair Library (teardown guides, tutorials)
 - **Purpose**: Consolidate all reporting, evidence management, and repair documentation - simpler naming, clearer purpose
 - **Trigger**: User clicks Reports tab
@@ -34,6 +38,7 @@ This is a comprehensive repair utility dashboard with real-time device monitorin
 - **Success criteria**: Evidence bundles exportable, snapshots auto-created during operations, retention policies enforced, signing/verification working, repair guides organized by device type
 
 ### Tests Tab (Test Suite & Performance)
+
 - **Functionality**: Three sub-sections: Test Suite (automated security scans, quality checks, compatibility validation), Performance (CPU/memory/execution benchmarking), Plugin Map (dependency graph, conflict detection)
 - **Purpose**: Group all testing and validation tools together - security, performance, and plugin health
 - **Trigger**: User clicks Tests tab
@@ -41,6 +46,7 @@ This is a comprehensive repair utility dashboard with real-time device monitorin
 - **Success criteria**: Automated test pipeline runs correctly, security scans complete, performance benchmarks accurate, dependency graph visualizes conflicts
 
 ### Plugins Tab (Marketplace & Management)
+
 - **Functionality**: Three sub-sections: Marketplace (browse, search, filter by certification/risk), Installed (manage enabled plugins), Submit Plugin (community contribution portal)
 - **Purpose**: Centralize plugin discovery, installation, and submission with certification badges
 - **Trigger**: User clicks Plugins tab
@@ -48,6 +54,7 @@ This is a comprehensive repair utility dashboard with real-time device monitorin
 - **Success criteria**: Plugin marketplace searchable/filterable, installation works, certification badges visible, installed plugins manageable, submission form validates
 
 ### Community Tab
+
 - **Functionality**: Three sub-sections: Forums (advocacy, repair network), My Workspace (personal notes, repair history), Bobby's Vault (educational resources)
 - **Purpose**: Group all community engagement and educational content together
 - **Trigger**: User clicks Community tab
@@ -55,6 +62,7 @@ This is a comprehensive repair utility dashboard with real-time device monitorin
 - **Success criteria**: All community resources accessible, workspace data persists, forum discussions organized by topic
 
 ### Settings Tab
+
 - **Functionality**: Four sub-sections: Preferences (audio notifications, workshop atmosphere), Device Modes (BootForge support matrix), Legal Notice (authorized repair compliance), About (mission, right-to-repair advocacy)
 - **Purpose**: Consolidate configuration, device specs, legal info, and about into one location
 - **Trigger**: User clicks Settings tab
@@ -62,6 +70,7 @@ This is a comprehensive repair utility dashboard with real-time device monitorin
 - **Success criteria**: Settings persist via useKV, audio preferences work, device mode matrix displays correctly, legal disclaimers present
 
 ### Authorization Triggers System (Comprehensive Device Prompts)
+
 - **Functionality**: Comprehensive system with 27+ device authorization triggers mapped to real backend endpoints - categorized into Trust & Security (USB debugging, trust computer, file transfer), Flash Operations (flash firmware with typed CONFIRM, bootloader unlock with typed UNLOCK, factory reset with typed RESET, reboot modes), Diagnostics (run diagnostics, collect logs, benchmarks), Evidence & Reports (export bundles, sign evidence, create snapshots), Policy & Compliance (destructive action confirmations with typed YES, RBAC gates, audit consent), Hotplug Events (USB attach authorization, driver prompts), and Plugin Actions (install/update/uninstall) - all with full audit logging producing structured JSON entries and comprehensive history tracking with timeline visualization
 - **Purpose**: Provide complete interactive trigger system where every user prompt is backed by a real backend API endpoint with audit trail - enables explicit user confirmation before any sensitive operation with truth-first design (no ghost values, no simulated responses) - all executions tracked with retry mechanisms for failed operations
 - **Trigger**: User initiates sensitive operation (flash, unlock, reset, trust device) → System opens AuthorizationTriggerModal → User sees device ID, modal text, risk level badge → For destructive actions, user must type confirmation text exactly → On confirm, frontend executes trigger via backend API → History entry created → Audit log entry created → Success/error toast shown → Timeline updated
@@ -69,6 +78,7 @@ This is a comprehensive repair utility dashboard with real-time device monitorin
 - **Success criteria**: All 27 triggers documented in TRIGGER_CATALOG_API.md, each trigger has real backend endpoint (no mocks), AuthorizationTriggerModal component validates typed confirmations and records history, risk level badges visible (Low=green/Medium=amber/High=orange/Destructive=red), audit logging working for every trigger execution with structured JSON (action/triggerId/deviceId/userResponse/timestamp/metadata), TriggerCatalog component displays all triggers with search/filter by category, ComprehensiveAuthorizationTriggersGuide shows implementation details, useAuthorizationTrigger hook manages modal state, empty states shown if no devices (no ghost values), typed confirmation required for destructive actions, backend returns only real probe results, AuthorizationHistoryDashboard shows timeline with search/filter/stats, retry mechanisms with configurable backoff, history persisted via useKV, export to JSON available
 
 ### Authorization History Tracking (Timeline & Retry System)
+
 - **Functionality**: Comprehensive history tracking system that logs every authorization trigger execution with timeline visualization, statistics dashboard, and automatic retry mechanisms - shows chronological timeline grouped by date (Today/Yesterday/specific dates) with detailed entry cards showing trigger name, category badge, device info, status icon, execution time, retry count, user response, and error messages - statistics tab displays overview metrics (total/successful/failed/pending/retrying counts), performance metrics (success rate with progress bar, average execution time, failure rate), and category breakdown with success rates - retry settings tab allows configuration of max retry attempts (0-10), initial retry delay (100-10000ms), backoff multiplier (1-5x), and operation timeout (1-300s) with preview of retry behavior
 - **Purpose**: Provide complete audit trail of all authorization operations with ability to review, analyze, and retry failed operations - enables troubleshooting through detailed error messages and execution metrics - supports data-driven optimization through statistics and category-specific success rates - allows export of history as JSON for external analysis
 - **Trigger**: Authorization trigger executed → History entry automatically created → Entry shown in timeline → User can view statistics, search/filter timeline, retry failed operations, export history, or configure retry settings
@@ -76,6 +86,7 @@ This is a comprehensive repair utility dashboard with real-time device monitorin
 - **Success criteria**: All trigger executions automatically logged to history, timeline visualization working with date grouping (Today/Yesterday/dates), search by trigger name/device ID/device name functional, filters by category and status working, statistics accurately calculated (total/success/failed/pending/retrying/success rate/avg execution time), category breakdown shows success rates per category, retry functionality working with exponential backoff, retry settings configurable with preview, history persisted via useKV, export to JSON functional with timestamps, delete individual entries working, clear all history with confirmation, empty state shown when no history, status icons and badges color-coded (success=green/failed=red/retrying=amber/pending=gray), execution time displayed in milliseconds, retry count shown for retried entries, error messages displayed for failures, useAuthorizationHistory hook provides all necessary functions, AuthorizationHistoryTimeline component renders timeline, AuthorizationHistoryDashboard integrates into Diagnostics tab
 
 ### Firmware Version Checking (Automatic Device Scanning & Library Browser)
+
 - **Functionality**: Comprehensive firmware version checking system that automatically detects firmware versions on connected Android devices via ADB getprop commands and provides browsable firmware library organized by brand and model - FirmwareDashboard component with two tabs: Connected Devices (shows real-time firmware check results with current version, latest version, security patch date, bootloader version, baseband version, update availability badge, security status indicators) and Firmware Library (browse all brands, view models per brand, see complete version history, search firmware database, download links to official sources) - useFirmwareCheck hook manages checking operations with intelligent caching via useKV, auto-refresh intervals, batch checking for multiple devices, per-device error handling - security status determination algorithm analyzes version comparison + security patch age to classify as current/outdated/critical/unknown with color-coded badges - firmware database queryable by brand, model, version with full version history and download URLs
 - **Purpose**: Enable technicians to instantly verify device firmware versions against latest available releases, identify security vulnerabilities through patch age analysis, provide complete firmware library for downloading official firmware files, support compliance auditing through security status tracking - integrates with existing device detection and authorization systems
 - **Trigger**: User connects device via ADB → Automatic firmware check initiated → Backend extracts firmware info via getprop commands → Version compared against database → Security status calculated → UI updates with results → User can manually refresh, browse firmware library, search for specific firmware, or download firmware files
@@ -132,7 +143,7 @@ The colorway evokes field-tested equipment: dark backgrounds for reduced eye str
 - **Success**: `#2ECC71` - Successful operations, connected devices
 - **Muted**: `#8C8C8C` - Secondary text, inactive states
 - **Foreground**: `#EDEDED` - Primary text, high contrast
-- **Foreground/Background Pairings**: 
+- **Foreground/Background Pairings**:
   - Background (#0A0A0A): Chalk white (#EDEDED) - Ratio 18.2:1 ✓
   - Primary Cyan (#1ECAD3): Dark text (#0A0A0A) - Ratio 10.8:1 ✓
   - Accent Amber (#CFA24D): Dark text (#0A0A0A) - Ratio 7.2:1 ✓
@@ -146,10 +157,10 @@ Clean, technical typography for professional repair utility interface.
 - **Primary**: Outfit (geometric sans) for headers and UI text - technical yet approachable
 - **Secondary**: Space Mono for device IDs, serials, technical data, logs
 - **Accent**: Bebas Neue for large headers and branding
-- **Typographic Hierarchy**: 
+- **Typographic Hierarchy**:
   - Logo/Branding: Bebas Neue Bold/24px/tight spacing
   - Section Headers: Outfit Bold/24px/tight tracking
-  - Tab Labels: Outfit Medium/14px/normal spacing  
+  - Tab Labels: Outfit Medium/14px/normal spacing
   - Body Text: Outfit Regular/14px/relaxed spacing (1.5)
   - Technical Data: Space Mono Regular/12px/normal spacing
   - Labels: Outfit Medium/11px/wide spacing/uppercase
@@ -160,7 +171,7 @@ Minimal, purposeful animations for utility interface - instant feedback without 
 
 ## Component Selection
 
-- **Components**: 
+- **Components**:
   - Tabs for main navigation (Diagnostics, Reports, Tests, Plugins, Community, Settings)
   - Sidebar with collapsible device list
   - Card components for content sections
@@ -168,20 +179,17 @@ Minimal, purposeful animations for utility interface - instant feedback without 
   - Button for actions (primary cyan, ghost for secondary)
   - ScrollArea for device list, logs panel, content areas
   - Tooltip for additional info without cluttering UI
-  
-- **Customizations**: 
+- **Customizations**:
   - Custom device sidebar with collapsible state
   - Logs panel with expand/collapse animation
   - Status icons with color coding (green=connected, amber=weak, cyan=confirmed)
   - Tab indicators with active state highlighting
-  
-- **States**: 
+- **States**:
   - Buttons: Rest (default), Hover (slight brightness), Active (pressed), Disabled (faded)
   - Tabs: Inactive (muted), Active (primary background), Hover (subtle highlight)
   - Devices: Connected (green), Weak (amber), Confirmed (cyan), Unconfirmed (gray)
   - Logs: Info (cyan), Success (green), Warning (amber), Error (red)
-  
-- **Icon Selection**: 
+- **Icon Selection**:
   - Cpu, Scan for diagnostics
   - FileText, Archive for reports/evidence
   - Flask, TestTube for testing
@@ -190,6 +198,5 @@ Minimal, purposeful animations for utility interface - instant feedback without 
   - Gear, SlidersHorizontal for settings
   - DeviceMobile for devices
   - Lightning, Gauge for performance
-  
 - **Spacing**: Tight spacing in sidebar (gap-1), standard in tabs (gap-4), generous in content (gap-6)
 - **Mobile**: Sidebar becomes bottom sheet, tabs become horizontal scroll, logs panel always collapsed by default

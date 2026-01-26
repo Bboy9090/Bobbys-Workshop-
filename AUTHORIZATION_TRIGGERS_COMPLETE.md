@@ -3,6 +3,7 @@
 ## What Was Implemented
 
 ### ✅ Complete Backend Implementation
+
 Added **27 fully functional authorization trigger endpoints** with **real device probe execution**. No simulated data, no ghost values, no placeholders.
 
 ---
@@ -10,6 +11,7 @@ Added **27 fully functional authorization trigger endpoints** with **real device
 ## 📊 Breakdown by Platform
 
 ### Android/ADB (11 Triggers)
+
 1. **ADB USB Debugging Authorization** - `adb shell getprop`
 2. **File Transfer Permission** - `adb push` test file
 3. **Backup Authorization** - `adb backup` minimal request
@@ -23,6 +25,7 @@ Added **27 fully functional authorization trigger endpoints** with **real device
 11. **Reboot to EDL** - `adb reboot edl`
 
 ### iOS (6 Triggers)
+
 12. **Trust This Computer** - `ideviceinfo`
 13. **Device Pairing** - `idevicepair pair`
 14. **Backup Encryption** - `idevicebackup2 info`
@@ -31,19 +34,24 @@ Added **27 fully functional authorization trigger endpoints** with **real device
 17. **Developer Trust** - Returns manual steps
 
 ### Fastboot (2 Triggers)
+
 18. **Verify Bootloader Unlock** - `fastboot getvar unlocked`
 19. **OEM Unlock (DESTRUCTIVE)** - Returns manual command with warning
 
 ### Samsung (1 Trigger)
+
 20. **Download Mode Detection** - `heimdall detect` + `heimdall print-pit`
 
 ### Qualcomm (1 Trigger)
+
 21. **EDL Mode Verification** - Checks for EDL tools availability
 
 ### MediaTek (1 Trigger)
+
 22. **SP Flash Tool Verification** - Checks for MTKClient tools availability
 
 ### Utility (2 Endpoints)
+
 23. **Get All Available Triggers** - `GET /api/authorization/triggers`
 24. **Trigger All Authorizations** - `POST /api/authorization/trigger-all`
 
@@ -54,7 +62,9 @@ Added **27 fully functional authorization trigger endpoints** with **real device
 ### Files Created/Modified
 
 #### New Files
+
 1. **`server/authorization-triggers.js`** (1,400+ lines)
+
    - Complete `AuthorizationTriggers` class
    - 27 trigger methods with real command execution
    - Input sanitization and security validation
@@ -62,6 +72,7 @@ Added **27 fully functional authorization trigger endpoints** with **real device
    - Audit logging to `.pandora_private/logs/`
 
 2. **`AUTHORIZATION_TRIGGERS_IMPLEMENTATION.md`**
+
    - Complete API documentation
    - Request/response examples for all 27 endpoints
    - Error handling documentation
@@ -74,6 +85,7 @@ Added **27 fully functional authorization trigger endpoints** with **real device
    - Usage examples
 
 #### Modified Files
+
 1. **`server/index.js`**
    - Imported `AuthorizationTriggers` class
    - Added 27 REST API endpoints
@@ -85,11 +97,13 @@ Added **27 fully functional authorization trigger endpoints** with **real device
 ## 🚀 API Endpoints Added
 
 ### Base URL
+
 ```
 http://localhost:3001/api/authorization
 ```
 
 ### Android/ADB Endpoints
+
 - `POST /api/authorization/adb/trigger-usb-debugging`
 - `POST /api/authorization/adb/trigger-file-transfer`
 - `POST /api/authorization/adb/trigger-backup`
@@ -103,6 +117,7 @@ http://localhost:3001/api/authorization
 - `POST /api/authorization/adb/reboot-edl`
 
 ### iOS Endpoints
+
 - `POST /api/authorization/ios/trigger-trust-computer`
 - `POST /api/authorization/ios/trigger-pairing`
 - `POST /api/authorization/ios/trigger-backup-encryption`
@@ -111,19 +126,24 @@ http://localhost:3001/api/authorization
 - `POST /api/authorization/ios/trigger-developer-trust`
 
 ### Fastboot Endpoints
+
 - `POST /api/authorization/fastboot/verify-unlock`
 - `POST /api/authorization/fastboot/trigger-oem-unlock`
 
 ### Samsung Endpoint
+
 - `POST /api/authorization/samsung/trigger-download-mode`
 
 ### Qualcomm Endpoint
+
 - `POST /api/authorization/qualcomm/verify-edl`
 
 ### MediaTek Endpoint
+
 - `POST /api/authorization/mediatek/verify-flash`
 
 ### Utility Endpoints
+
 - `GET /api/authorization/triggers?platform={platform}`
 - `POST /api/authorization/trigger-all`
 
@@ -132,22 +152,26 @@ http://localhost:3001/api/authorization
 ## 🔐 Security Features
 
 ### 1. Input Sanitization
+
 ```javascript
 function sanitizeInput(input) {
-  if (!input || typeof input !== 'string') {
-    throw new Error('Invalid input');
+  if (!input || typeof input !== "string") {
+    throw new Error("Invalid input");
   }
-  return input.replace(/[^a-zA-Z0-9_\-:.]/g, '');
+  return input.replace(/[^a-zA-Z0-9_\-:.]/g, "");
 }
 ```
 
 ### 2. Command Timeout Protection
+
 - Default timeout: 30 seconds
 - Prevents hanging commands
 - Returns timeout errors instead of fake success
 
 ### 3. Audit Logging
+
 Every trigger execution logs:
+
 - Timestamp
 - Action performed
 - Device serial/UDID
@@ -157,16 +181,19 @@ Every trigger execution logs:
 - Success/failure status
 
 **Log Location:**
+
 ```
 .pandora_private/logs/authorization-triggers-{YYYY-MM-DD}.log
 ```
 
 ### 4. Tool Availability Checks
+
 Before executing commands:
+
 ```javascript
 function commandExists(cmd) {
   try {
-    execSync(`command -v ${cmd}`, { stdio: 'ignore', timeout: 2000 });
+    execSync(`command -v ${cmd}`, { stdio: "ignore", timeout: 2000 });
     return true;
   } catch {
     return false;
@@ -175,6 +202,7 @@ function commandExists(cmd) {
 ```
 
 Returns proper error if tool is missing:
+
 ```json
 {
   "success": false,
@@ -189,6 +217,7 @@ Returns proper error if tool is missing:
 ## 📋 Usage Examples
 
 ### Example 1: Trigger ADB USB Debugging
+
 ```bash
 curl -X POST http://localhost:3001/api/authorization/adb/trigger-usb-debugging \
   -H "Content-Type: application/json" \
@@ -196,6 +225,7 @@ curl -X POST http://localhost:3001/api/authorization/adb/trigger-usb-debugging \
 ```
 
 **Response (Unauthorized):**
+
 ```json
 {
   "success": false,
@@ -209,6 +239,7 @@ curl -X POST http://localhost:3001/api/authorization/adb/trigger-usb-debugging \
 ```
 
 ### Example 2: Verify Fastboot Unlock Status
+
 ```bash
 curl -X POST http://localhost:3001/api/authorization/fastboot/verify-unlock \
   -H "Content-Type: application/json" \
@@ -216,6 +247,7 @@ curl -X POST http://localhost:3001/api/authorization/fastboot/verify-unlock \
 ```
 
 **Response (Unlocked):**
+
 ```json
 {
   "success": true,
@@ -229,6 +261,7 @@ curl -X POST http://localhost:3001/api/authorization/fastboot/verify-unlock \
 ```
 
 ### Example 3: Trigger iOS Trust Computer
+
 ```bash
 curl -X POST http://localhost:3001/api/authorization/ios/trigger-trust-computer \
   -H "Content-Type: application/json" \
@@ -236,6 +269,7 @@ curl -X POST http://localhost:3001/api/authorization/ios/trigger-trust-computer 
 ```
 
 **Response (Not Trusted):**
+
 ```json
 {
   "success": false,
@@ -250,11 +284,13 @@ curl -X POST http://localhost:3001/api/authorization/ios/trigger-trust-computer 
 ```
 
 ### Example 4: Get All Android Triggers
+
 ```bash
 curl "http://localhost:3001/api/authorization/triggers?platform=android"
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -268,6 +304,7 @@ curl "http://localhost:3001/api/authorization/triggers?platform=android"
 ```
 
 ### Example 5: Trigger All Android Authorizations
+
 ```bash
 curl -X POST http://localhost:3001/api/authorization/trigger-all \
   -H "Content-Type: application/json" \
@@ -275,6 +312,7 @@ curl -X POST http://localhost:3001/api/authorization/trigger-all \
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -293,12 +331,14 @@ curl -X POST http://localhost:3001/api/authorization/trigger-all \
 ## 🧪 Testing Workflow
 
 ### 1. Start Backend Server
+
 ```bash
 cd server
 node index.js
 ```
 
 **Expected Output:**
+
 ```
 🔧 Pandora Codex API Server running on port 3001
 📡 System tools detection: http://localhost:3001/api/system-tools
@@ -316,6 +356,7 @@ node index.js
 ```
 
 ### 2. Connect Android Device (USB Debugging OFF)
+
 ```bash
 # Check device detection
 curl http://localhost:3001/api/adb/devices
@@ -335,6 +376,7 @@ curl -X POST http://localhost:3001/api/authorization/adb/check-debugging-status 
 ```
 
 ### 3. Test iOS Device
+
 ```bash
 # Trigger trust computer dialog
 curl -X POST http://localhost:3001/api/authorization/ios/trigger-trust-computer \
@@ -346,6 +388,7 @@ curl -X POST http://localhost:3001/api/authorization/ios/trigger-trust-computer 
 ```
 
 ### 4. View Audit Logs
+
 ```bash
 cat .pandora_private/logs/authorization-triggers-$(date +%Y-%m-%d).log
 ```
@@ -355,6 +398,7 @@ cat .pandora_private/logs/authorization-triggers-$(date +%Y-%m-%d).log
 ## 📊 Response Patterns
 
 ### Success Pattern
+
 ```json
 {
   "success": true,
@@ -369,6 +413,7 @@ cat .pandora_private/logs/authorization-triggers-$(date +%Y-%m-%d).log
 ```
 
 ### User Action Required Pattern
+
 ```json
 {
   "success": false,
@@ -382,6 +427,7 @@ cat .pandora_private/logs/authorization-triggers-$(date +%Y-%m-%d).log
 ```
 
 ### Tool Missing Pattern
+
 ```json
 {
   "success": false,
@@ -396,6 +442,7 @@ cat .pandora_private/logs/authorization-triggers-$(date +%Y-%m-%d).log
 ```
 
 ### Destructive Operation Pattern
+
 ```json
 {
   "success": false,
@@ -414,27 +461,35 @@ cat .pandora_private/logs/authorization-triggers-$(date +%Y-%m-%d).log
 ## ⚠️ Important Notes
 
 ### 1. Real Devices Required
+
 These endpoints execute **real commands** on **real devices**. Testing requires:
+
 - Actual Android/iOS devices connected via USB
 - Proper tool installation (adb, fastboot, ideviceinfo, etc.)
 - Device drivers installed
 
 ### 2. No Simulated Responses
+
 Unlike demo endpoints, these return:
+
 - ❌ No fake "connected" statuses
 - ❌ No placeholder data
 - ❌ No simulated success messages
 - ✅ Only real command execution results
 
 ### 3. Audit Trail
+
 Every trigger execution is logged. This provides:
+
 - Chain-of-custody evidence
 - Troubleshooting data
 - Security audit trail
 - Compliance documentation
 
 ### 4. User Presence Required
+
 Many triggers require the user to be physically present to:
+
 - Tap "Allow" on device screen
 - Enter device passcode
 - Confirm destructive operations
@@ -444,32 +499,43 @@ Many triggers require the user to be physically present to:
 ## 🎯 Next Steps
 
 ### Frontend Integration
+
 Now that backend endpoints are complete, the frontend can:
 
 1. **Call triggers from DeviceAuthorizationTriggersPanel:**
+
 ```typescript
-const result = await fetch('http://localhost:3001/api/authorization/adb/trigger-usb-debugging', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ serial: deviceSerial })
-});
+const result = await fetch(
+  "http://localhost:3001/api/authorization/adb/trigger-usb-debugging",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ serial: deviceSerial }),
+  },
+);
 ```
 
 2. **Display real-time results:**
+
 - Show "Authorization Required" modal when `requiresUserAction: true`
 - Display error messages from real command execution
 - Show command output for debugging
 
 3. **Batch trigger execution:**
+
 ```typescript
-const result = await fetch('http://localhost:3001/api/authorization/trigger-all', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ deviceId: device.serial, platform: 'android' })
-});
+const result = await fetch(
+  "http://localhost:3001/api/authorization/trigger-all",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ deviceId: device.serial, platform: "android" }),
+  },
+);
 ```
 
 4. **Monitor audit logs:**
+
 - Display recent trigger executions
 - Show success/failure rates
 - Export logs for compliance
@@ -508,6 +574,7 @@ const result = await fetch('http://localhost:3001/api/authorization/trigger-all'
 **27 authorization trigger endpoints** are now **fully implemented** and ready for production use with **real device probe execution**.
 
 All triggers:
+
 - ✅ Execute real commands (adb, fastboot, ideviceinfo, etc.)
 - ✅ Return real stdout/stderr output
 - ✅ Log to audit trail

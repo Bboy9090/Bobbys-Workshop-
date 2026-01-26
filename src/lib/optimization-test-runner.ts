@@ -1,3 +1,13 @@
+/**
+ * OPTIMIZATION TEST RUNNER
+ * 
+ * THIS FILE IS FOR DEVELOPMENT/TESTING ONLY.
+ * NOT USED IN PRODUCTION - Contains mock data generators for test suites.
+ * 
+ * Mock metrics in this file are ONLY for automated testing purposes
+ * and are never displayed to users or used in production features.
+ */
+
 import { TestResult, TestMetrics, generateMockMetrics, validateMetrics, delay, createTestId, calculateImprovement, OptimizationTestResult } from '@/lib/test-utils';
 
 export interface TestSuite {

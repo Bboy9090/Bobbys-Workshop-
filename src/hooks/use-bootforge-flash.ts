@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { bootForgeAPI } from '@/lib/bootforge-api';
+import type { RealtimeConnection } from '@/lib/realtime';
 import type {
   BootForgeDevice,
   FlashJobConfig,
@@ -30,8 +31,8 @@ export function useBootForgeFlash(options: UseBootForgeFlashOptions = {}) {
   const [isScanning, setIsScanning] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
   
-  const wsRef = useRef<WebSocket | null>(null);
-  const jobWsRefs = useRef<Map<string, WebSocket>>(new Map());
+  const wsRef = useRef<RealtimeConnection | null>(null);
+  const jobWsRefs = useRef<Map<string, RealtimeConnection>>(new Map());
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -370,8 +371,13 @@ export function useBootForgeFlash(options: UseBootForgeFlashOptions = {}) {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          
-          if (data.type === 'device_connected' || data.type === 'device_disconnected') {
+
+          if (
+            data?.type === 'connected' ||
+            data?.type === 'disconnected' ||
+            data?.type === 'device_connected' ||
+            data?.type === 'device_disconnected'
+          ) {
             scanDevices();
           }
         } catch (error) {

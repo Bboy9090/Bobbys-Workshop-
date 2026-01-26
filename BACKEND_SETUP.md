@@ -15,11 +15,13 @@ This installs Express and CORS for the backend API server.
 ### 2. Start the Backend Server
 
 **Development mode (with auto-reload):**
+
 ```bash
 npm run server:dev
 ```
 
 **Production mode:**
+
 ```bash
 npm run server:start
 ```
@@ -77,6 +79,7 @@ The frontend will start on **http://localhost:5173** and connect to the backend 
 ## 🔧 Available Endpoints
 
 ### GET /api/health
+
 Health check endpoint.
 
 ```bash
@@ -84,6 +87,7 @@ curl http://localhost:3001/api/health
 ```
 
 ### GET /api/system-tools
+
 Get all system tools detection results.
 
 ```bash
@@ -91,6 +95,7 @@ curl http://localhost:3001/api/system-tools
 ```
 
 ### GET /api/system-tools/rust
+
 Get Rust toolchain info.
 
 ```bash
@@ -98,6 +103,7 @@ curl http://localhost:3001/api/system-tools/rust
 ```
 
 ### GET /api/system-tools/android
+
 Get Android tools (ADB, Fastboot) info.
 
 ```bash
@@ -105,6 +111,7 @@ curl http://localhost:3001/api/system-tools/android
 ```
 
 ### GET /api/system-info
+
 Get system information (OS, CPU, memory).
 
 ```bash
@@ -112,6 +119,7 @@ curl http://localhost:3001/api/system-info
 ```
 
 ### GET /api/adb/devices
+
 Get parsed ADB devices list.
 
 ```bash
@@ -127,6 +135,7 @@ See [server/README.md](server/README.md) for full API documentation.
 **Cause:** The backend server isn't running or is on a different port.
 
 **Solution:**
+
 ```bash
 # Check if server is running
 lsof -i :3001
@@ -138,6 +147,7 @@ npm run server:dev
 ### Port 3001 already in use
 
 **Solution:**
+
 ```bash
 # Kill process on port 3001
 npm run server:kill
@@ -154,6 +164,7 @@ npm run server:dev
 **Cause:** Tools might not be in PATH or require different command.
 
 **Solution:**
+
 ```bash
 # Test command manually
 rustc --version
@@ -170,6 +181,7 @@ echo $PATH
 **Cause:** Backend CORS is misconfigured or frontend is using wrong URL.
 
 **Solution:** The backend has CORS enabled by default. Check that:
+
 - Backend is running on port 3001
 - Frontend is making requests to `http://localhost:3001`
 - No proxy is interfering
@@ -218,6 +230,7 @@ PORT=3001 npm run server:start
 ```
 
 For actual production deployment, add:
+
 - Environment-based CORS configuration
 - Rate limiting
 - Authentication

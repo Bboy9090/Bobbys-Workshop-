@@ -1,16 +1,24 @@
-use crate::model::{Classification, DeviceMode, UsbEvidence, InterfaceHint};
+use crate::model::{Classification, DeviceMode, UsbTransportEvidence, InterfaceHint};
 use crate::tools::confirmers::ToolConfirmers;
 
-pub fn classify_device(usb: &UsbEvidence) -> Classification {
-    let vid = usb.vid.as_str();
-    let pid = usb.pid.as_str();
+/// Stage 2: Classify a candidate USB transport (determine platform + mode).
+/// 
+/// Analyzes VID/PID patterns and interface hints to determine:
+/// - Platform: Android, iOS, or Unknown
+/// - Mode: ADB, Fastboot, DFU, Recovery, Normal, etc.
+/// - Confidence: 0.0 - 1.0 based on evidence strength
+/// 
+/// This is USB-only classification (no tool correlation yet).
+pub fn classify_candidate_device(transport: &UsbTransportEvidence) -> Classification {
+    let vid = transport.vid.as_str();
+    let pid = transport.pid.as_str();
     
     if vid == "05ac" {
-        return classify_apple_device(pid, usb);
+        return classify_apple_device(pid, transport);
     }
     
     if is_android_vendor(vid) {
-        return classify_android_device(pid, usb);
+        return classify_android_device(pid, transport);
     }
     
     Classification {
@@ -20,35 +28,58 @@ pub fn classify_device(usb: &UsbEvidence) -> Classification {
     }
 }
 
-pub fn classify_with_correlation(
-    usb: &UsbEvidence,
-    all_usb: &[UsbEvidence],
+/// Stage 4: Resolve device identity with tool correlation.
+/// 
+/// Combines USB classification with tool evidence to:
+/// 1. Match USB serial to tool device IDs (direct correlation)
+/// 2. Apply single-candidate heuristic (if no serial)
+/// 3. Update confidence and classification based on correlation
+/// 
+/// Returns: (Updated classification, matched tool IDs)
+pub fn resolve_device_identity_with_correlation(
+    transport: &UsbTransportEvidence,
+    all_transports: &[UsbTransportEvidence],
     tools: &ToolConfirmers,
 ) -> (Classification, Vec<String>) {
-    let mut classification = classify_device(usb);
+    // Start with USB-only classification
+    let mut classification = classify_candidate_device(transport);
     let mut matched_tool_ids = Vec::new();
     
-    if let Some(serial) = &usb.serial {
-        matched_tool_ids = tools.confirm_device(Some(serial), &mut classification);
+    // Step 4a: Direct serial match (highest confidence)
+    if let Some(serial) = &transport.serial {
+        matched_tool_ids = tools.correlate_device_identity(Some(serial), &mut classification);
     }
     
+    // Step 4b: Single-candidate heuristic (if no direct match)
     if matched_tool_ids.is_empty() {
-        matched_tool_ids.extend(try_single_candidate_correlation(usb, all_usb, tools, &mut classification));
+        matched_tool_ids.extend(attempt_single_candidate_identity_resolution(
+            transport, all_transports, tools, &mut classification
+        ));
     }
     
     (classification, matched_tool_ids)
 }
 
-fn try_single_candidate_correlation(
-    usb: &UsbEvidence,
-    all_usb: &[UsbEvidence],
+/// Attempt single-candidate identity resolution heuristic.
+/// 
+/// When exactly one platform candidate and exactly one tool device ID,
+/// assume they match (heuristic correlation). Used when USB serial is unavailable.
+/// 
+/// Heuristic rules:
+/// - Android + ADB: Single Android candidate + single ADB device → Match
+/// - Android + Fastboot: Single Android candidate + single Fastboot device → Match
+/// - iOS + idevice_id: Single Apple candidate + single UDID → Match
+fn attempt_single_candidate_identity_resolution(
+    transport: &UsbTransportEvidence,
+    all_transports: &[UsbTransportEvidence],
     tools: &ToolConfirmers,
     classification: &mut Classification,
 ) -> Vec<String> {
     let mut matched = Vec::new();
     
-    if is_android_likely(usb) && tools.adb.device_ids.len() == 1 {
-        let android_count = all_usb.iter().filter(|d| is_android_likely(d)).count();
+    // Android + ADB heuristic
+    if is_android_likely(transport) && tools.adb.device_ids.len() == 1 {
+        let android_count = all_transports.iter().filter(|d| is_android_likely(d)).count();
         if android_count == 1 {
             classification.confidence = 0.90;
             classification.mode = if tools.adb.raw.to_lowercase().contains("sideload") 
@@ -64,8 +95,9 @@ fn try_single_candidate_correlation(
         }
     }
     
-    if is_android_likely(usb) && tools.fastboot.device_ids.len() == 1 {
-        let android_count = all_usb.iter().filter(|d| is_android_likely(d)).count();
+    // Android + Fastboot heuristic
+    if is_android_likely(transport) && tools.fastboot.device_ids.len() == 1 {
+        let android_count = all_transports.iter().filter(|d| is_android_likely(d)).count();
         if android_count == 1 {
             classification.confidence = 0.90;
             classification.mode = DeviceMode::AndroidFastbootConfirmed;
@@ -76,8 +108,9 @@ fn try_single_candidate_correlation(
         }
     }
     
-    if is_apple(usb) && tools.idevice_id.device_ids.len() == 1 {
-        let apple_count = all_usb.iter().filter(|d| is_apple(d)).count();
+    // iOS + idevice_id heuristic
+    if is_apple(transport) && tools.idevice_id.device_ids.len() == 1 {
+        let apple_count = all_transports.iter().filter(|d| is_apple(d)).count();
         if apple_count == 1 {
             classification.confidence = 0.95;
             classification.mode = DeviceMode::IosNormalLikely;
@@ -95,19 +128,19 @@ fn has_vendor_interface(hints: &[InterfaceHint]) -> bool {
     hints.iter().any(|h| h.class == 0xff)
 }
 
-fn is_apple(usb: &UsbEvidence) -> bool {
-    usb.vid.eq_ignore_ascii_case("05ac")
+fn is_apple(transport: &UsbTransportEvidence) -> bool {
+    transport.vid.eq_ignore_ascii_case("05ac")
 }
 
-fn is_android_likely(usb: &UsbEvidence) -> bool {
-    if is_apple(usb) {
+fn is_android_likely(transport: &UsbTransportEvidence) -> bool {
+    if is_apple(transport) {
         return false;
     }
-    is_android_vendor(&usb.vid) || has_vendor_interface(&usb.interface_hints)
+    is_android_vendor(&transport.vid) || has_vendor_interface(&transport.interface_hints)
 }
 
-fn classify_apple_device(pid: &str, usb: &UsbEvidence) -> Classification {
-    let missing_strings = usb.product.is_none() && usb.serial.is_none();
+fn classify_apple_device(pid: &str, transport: &UsbTransportEvidence) -> Classification {
+    let missing_strings = transport.product.is_none() && transport.serial.is_none();
     
     match pid {
         "1227" => Classification {
@@ -135,7 +168,7 @@ fn classify_apple_device(pid: &str, usb: &UsbEvidence) -> Classification {
             ],
         },
         _ => {
-            if missing_strings && has_vendor_interface(&usb.interface_hints) {
+            if missing_strings && has_vendor_interface(&transport.interface_hints) {
                 Classification {
                     mode: DeviceMode::IosDfuLikely,
                     confidence: 0.86,
@@ -143,7 +176,7 @@ fn classify_apple_device(pid: &str, usb: &UsbEvidence) -> Classification {
                         "Apple VID with minimal descriptors + vendor interface suggests DFU-like state".to_string(),
                     ],
                 }
-            } else if usb.product.as_ref().map(|p| p.contains("iPhone") || p.contains("iPad")).unwrap_or(false) {
+            } else if transport.product.as_ref().map(|p| p.contains("iPhone") || p.contains("iPad")).unwrap_or(false) {
                 Classification {
                     mode: DeviceMode::IosNormalLikely,
                     confidence: 0.70,
@@ -165,8 +198,8 @@ fn classify_apple_device(pid: &str, usb: &UsbEvidence) -> Classification {
     }
 }
 
-fn classify_android_device(pid: &str, usb: &UsbEvidence) -> Classification {
-    if has_vendor_interface(&usb.interface_hints) {
+fn classify_android_device(_pid: &str, transport: &UsbTransportEvidence) -> Classification {
+    if has_vendor_interface(&transport.interface_hints) {
         return Classification {
             mode: DeviceMode::UnknownUsb,
             confidence: 0.70,
@@ -211,7 +244,7 @@ mod tests {
 
     #[test]
     fn test_classify_apple_dfu() {
-        let usb = UsbEvidence {
+        let transport = UsbTransportEvidence {
             vid: "05ac".to_string(),
             pid: "1227".to_string(),
             manufacturer: Some("Apple Inc.".to_string()),
@@ -223,14 +256,14 @@ mod tests {
             interface_hints: vec![],
         };
         
-        let classification = classify_device(&usb);
+        let classification = classify_candidate_device(&transport);
         assert_eq!(classification.mode.as_str(), "ios_dfu_likely");
         assert!(classification.confidence > 0.8);
     }
 
     #[test]
     fn test_classify_google_android() {
-        let usb = UsbEvidence {
+        let transport = UsbTransportEvidence {
             vid: "18d1".to_string(),
             pid: "4ee7".to_string(),
             manufacturer: Some("Google".to_string()),
@@ -246,7 +279,45 @@ mod tests {
             }],
         };
         
-        let classification = classify_device(&usb);
+        let classification = classify_candidate_device(&transport);
         assert!(classification.confidence > 0.6);
+    }
+    
+    #[test]
+    fn test_classify_unknown_vid() {
+        let transport = UsbTransportEvidence {
+            vid: "0000".to_string(),
+            pid: "0000".to_string(),
+            manufacturer: None,
+            product: None,
+            serial: None,
+            bus: 1,
+            address: 1,
+            interface_class: None,
+            interface_hints: vec![],
+        };
+        
+        let classification = classify_candidate_device(&transport);
+        assert_eq!(classification.mode.as_str(), "unknown_usb");
+        assert!(classification.confidence >= 0.5 && classification.confidence <= 0.6);
+    }
+    
+    #[test]
+    fn test_classify_apple_recovery() {
+        let transport = UsbTransportEvidence {
+            vid: "05ac".to_string(),
+            pid: "1281".to_string(),
+            manufacturer: Some("Apple Inc.".to_string()),
+            product: None,
+            serial: None,
+            bus: 1,
+            address: 2,
+            interface_class: None,
+            interface_hints: vec![],
+        };
+        
+        let classification = classify_candidate_device(&transport);
+        assert_eq!(classification.mode.as_str(), "ios_recovery_likely");
+        assert!(classification.confidence > 0.8);
     }
 }

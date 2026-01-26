@@ -50,6 +50,8 @@ const CATEGORY_LABELS: Record<TriggerCategory, string> = {
 export function TriggerCatalog() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<TriggerCategory | 'all'>('all');
+  const [androidSerial, setAndroidSerial] = useState('');
+  const [iosUdid, setIosUdid] = useState('');
   const { trigger, deviceId, deviceName, additionalData, isOpen, openTrigger, closeTrigger } =
     useAuthorizationTrigger();
 
@@ -98,11 +100,23 @@ export function TriggerCatalog() {
     }
   };
 
-  const handleTestTrigger = (triggerId: string) => {
-    openTrigger(triggerId, {
-      deviceId: 'TEST_DEVICE_XYZ123',
-      deviceName: 'Test Device (Catalog Demo)',
-      additionalData: { testMode: true },
+  const handleRunTrigger = (t: AuthorizationTrigger) => {
+    const selectedDeviceId =
+      t.deviceIdField === 'udid' ? iosUdid.trim() : androidSerial.trim();
+
+    if (t.deviceIdRequired && !selectedDeviceId) {
+      toast.error('Device ID required', {
+        description:
+          t.deviceIdField === 'udid'
+            ? 'Enter an iOS UDID to run this trigger.'
+            : 'Enter an Android device serial to run this trigger.',
+      });
+      return;
+    }
+
+    openTrigger(t.id, {
+      deviceId: t.deviceIdRequired ? selectedDeviceId : undefined,
+      deviceName: t.deviceIdRequired ? selectedDeviceId : undefined,
     });
   };
 
@@ -124,6 +138,31 @@ export function TriggerCatalog() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
+                Android Serial
+              </div>
+              <Input
+                id="trigger-catalog-android-serial"
+                placeholder="e.g. R58M1234ABC"
+                value={androidSerial}
+                onChange={(e) => setAndroidSerial(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
+                iOS UDID
+              </div>
+              <Input
+                id="trigger-catalog-ios-udid"
+                placeholder="e.g. 00008110-0012345678901234"
+                value={iosUdid}
+                onChange={(e) => setIosUdid(e.target.value)}
+              />
+            </div>
+          </div>
+
           <div className="relative">
             <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -189,9 +228,9 @@ export function TriggerCatalog() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => handleTestTrigger(trigger.id)}
+                                    onClick={() => handleRunTrigger(trigger)}
                                   >
-                                    Test
+                                    Run
                                   </Button>
                                 </div>
 
@@ -246,7 +285,6 @@ export function TriggerCatalog() {
           toast.success('Trigger executed successfully', {
             description: `Action: ${trigger?.name}`,
           });
-          console.log('[Trigger Success]:', data);
         }}
         onError={(error) => {
           toast.error('Trigger execution failed', {

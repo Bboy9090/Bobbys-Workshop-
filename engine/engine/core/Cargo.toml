@@ -1,0 +1,15 @@
+[package]
+name = "engine-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+serde.workspace = true
+uuid.workspace = true
+log.workspace = true
+glm.workspace = true
+xxhash-rust.workspace = true
+tracy-client.workspace = true
+spdlog.workspace = true
+fmt.workspace = true

@@ -9,6 +9,7 @@ The WebSocket Live Correlation Tracking system provides real-time device correla
 ### Client-Side Components
 
 1. **useCorrelationWebSocket Hook** (`src/hooks/use-correlation-websocket.ts`)
+
    - Manages WebSocket connection lifecycle
    - Handles message parsing and routing
    - Provides auto-reconnect functionality
@@ -25,6 +26,7 @@ The WebSocket Live Correlation Tracking system provides real-time device correla
 ### Server-Side Integration
 
 The WebSocket server should implement the message protocol defined below. Example implementations are provided for:
+
 - Node.js (Express + ws)
 - Python (FastAPI)
 
@@ -33,9 +35,16 @@ The WebSocket server should implement the message protocol defined below. Exampl
 All messages are JSON-encoded with the following structure:
 
 ### Base Message Format
+
 ```typescript
 interface CorrelationWebSocketMessage {
-  type: 'correlation_update' | 'device_connected' | 'device_disconnected' | 'batch_update' | 'ping' | 'pong';
+  type:
+    | "correlation_update"
+    | "device_connected"
+    | "device_disconnected"
+    | "batch_update"
+    | "ping"
+    | "pong";
   deviceId?: string;
   device?: Partial<CorrelatedDevice>;
   devices?: Partial<CorrelatedDevice>[];
@@ -46,6 +55,7 @@ interface CorrelationWebSocketMessage {
 ### Message Types
 
 #### 1. correlation_update
+
 **Direction**: Server → Client  
 **Purpose**: Update correlation status for a specific device
 
@@ -64,6 +74,7 @@ interface CorrelationWebSocketMessage {
 ```
 
 #### 2. device_connected
+
 **Direction**: Server → Client  
 **Purpose**: Notify when a new device is detected
 
@@ -79,7 +90,9 @@ interface CorrelationWebSocketMessage {
     "confidence": 0.92,
     "correlationBadge": "CORRELATED",
     "matchedIds": ["XYZ789"],
-    "correlationNotes": ["Per-device correlation present (matched tool ID(s))."],
+    "correlationNotes": [
+      "Per-device correlation present (matched tool ID(s))."
+    ],
     "vendorId": 6353,
     "productId": 20199
   },
@@ -88,6 +101,7 @@ interface CorrelationWebSocketMessage {
 ```
 
 #### 3. device_disconnected
+
 **Direction**: Server → Client  
 **Purpose**: Notify when a device is disconnected
 
@@ -100,6 +114,7 @@ interface CorrelationWebSocketMessage {
 ```
 
 #### 4. batch_update
+
 **Direction**: Server → Client  
 **Purpose**: Send multiple device updates at once (initial state, rescan, etc.)
 
@@ -123,10 +138,12 @@ interface CorrelationWebSocketMessage {
 ```
 
 #### 5. ping / pong
+
 **Direction**: Bidirectional  
 **Purpose**: Keep-alive / connection health check
 
 Client sends ping every 30 seconds:
+
 ```json
 {
   "type": "ping",
@@ -135,6 +152,7 @@ Client sends ping every 30 seconds:
 ```
 
 Server responds with pong:
+
 ```json
 {
   "type": "pong",
@@ -181,11 +199,11 @@ function MyComponent() {
 
 ```typescript
 interface CorrelationWebSocketConfig {
-  url: string;                    // WebSocket server URL
-  reconnectDelay?: number;        // Delay between reconnect attempts (ms)
-  maxReconnectAttempts?: number;  // Max reconnect attempts before giving up
-  enableNotifications?: boolean;  // Show toast notifications
-  autoConnect?: boolean;          // Connect automatically on mount
+  url: string; // WebSocket server URL
+  reconnectDelay?: number; // Delay between reconnect attempts (ms)
+  maxReconnectAttempts?: number; // Max reconnect attempts before giving up
+  enableNotifications?: boolean; // Show toast notifications
+  autoConnect?: boolean; // Connect automatically on mount
 }
 ```
 
@@ -201,9 +219,9 @@ interface CorrelationWebSocketConfig {
 ### Node.js (Express + ws)
 
 ```javascript
-const express = require('express');
-const WebSocket = require('ws');
-const http = require('http');
+const express = require("express");
+const WebSocket = require("ws");
+const http = require("http");
 
 const app = express();
 const server = http.createServer(app);
@@ -212,36 +230,40 @@ const wss = new WebSocket.Server({ server });
 // Track connected clients
 const clients = new Set();
 
-wss.on('connection', (ws) => {
+wss.on("connection", (ws) => {
   clients.add(ws);
-  console.log('Client connected. Total clients:', clients.size);
+  console.log("Client connected. Total clients:", clients.size);
 
   // Send initial batch update
-  ws.send(JSON.stringify({
-    type: 'batch_update',
-    devices: getCurrentDevices(),
-    timestamp: Date.now()
-  }));
+  ws.send(
+    JSON.stringify({
+      type: "batch_update",
+      devices: getCurrentDevices(),
+      timestamp: Date.now(),
+    }),
+  );
 
-  ws.on('message', (data) => {
+  ws.on("message", (data) => {
     try {
       const message = JSON.parse(data);
-      
+
       // Handle ping
-      if (message.type === 'ping') {
-        ws.send(JSON.stringify({
-          type: 'pong',
-          timestamp: Date.now()
-        }));
+      if (message.type === "ping") {
+        ws.send(
+          JSON.stringify({
+            type: "pong",
+            timestamp: Date.now(),
+          }),
+        );
       }
     } catch (error) {
-      console.error('Failed to parse message:', error);
+      console.error("Failed to parse message:", error);
     }
   });
 
-  ws.on('close', () => {
+  ws.on("close", () => {
     clients.delete(ws);
-    console.log('Client disconnected. Total clients:', clients.size);
+    console.log("Client disconnected. Total clients:", clients.size);
   });
 });
 
@@ -249,9 +271,9 @@ wss.on('connection', (ws) => {
 function broadcast(message) {
   const data = JSON.stringify({
     ...message,
-    timestamp: Date.now()
+    timestamp: Date.now(),
   });
-  
+
   clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(data);
@@ -262,31 +284,31 @@ function broadcast(message) {
 // Example: Device correlation updated
 function onDeviceCorrelationUpdate(deviceId, device) {
   broadcast({
-    type: 'correlation_update',
+    type: "correlation_update",
     deviceId,
-    device
+    device,
   });
 }
 
 // Example: Device connected
 function onDeviceConnected(device) {
   broadcast({
-    type: 'device_connected',
+    type: "device_connected",
     deviceId: device.id,
-    device
+    device,
   });
 }
 
 // Example: Device disconnected
 function onDeviceDisconnected(deviceId) {
   broadcast({
-    type: 'device_disconnected',
-    deviceId
+    type: "device_disconnected",
+    deviceId,
   });
 }
 
 server.listen(3001, () => {
-  console.log('WebSocket server listening on port 3001');
+  console.log("WebSocket server listening on port 3001");
 });
 ```
 
@@ -309,7 +331,7 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     clients.add(websocket)
     print(f"Client connected. Total clients: {len(clients)}")
-    
+
     try:
         # Send initial batch update
         await websocket.send_json({
@@ -317,19 +339,19 @@ async def websocket_endpoint(websocket: WebSocket):
             "devices": get_current_devices(),
             "timestamp": int(datetime.now().timestamp() * 1000)
         })
-        
+
         # Message loop
         while True:
             data = await websocket.receive_text()
             message = json.loads(data)
-            
+
             # Handle ping
             if message.get("type") == "ping":
                 await websocket.send_json({
                     "type": "pong",
                     "timestamp": int(datetime.now().timestamp() * 1000)
                 })
-                
+
     except Exception as e:
         print(f"Error: {e}")
     finally:
@@ -340,7 +362,7 @@ async def websocket_endpoint(websocket: WebSocket):
 async def broadcast(message: dict):
     message["timestamp"] = int(datetime.now().timestamp() * 1000)
     data = json.dumps(message)
-    
+
     for client in clients.copy():
         try:
             await client.send_text(data)
@@ -386,12 +408,12 @@ To integrate WebSocket correlation tracking with BootForge USB device detection:
 
 ```typescript
 // In your device detection service
-import { broadcast } from './websocket-server';
+import { broadcast } from "./websocket-server";
 
 // When device is detected
 const dossier = normalizeBootForgeUSBRecord(deviceRecord);
 broadcast({
-  type: 'device_connected',
+  type: "device_connected",
   deviceId: dossier.id,
   device: {
     id: dossier.id,
@@ -403,32 +425,33 @@ broadcast({
     matchedIds: dossier.matched_ids,
     correlationNotes: dossier.correlation_notes,
     vendorId: dossier.usb_vid,
-    productId: dossier.usb_pid
-  }
+    productId: dossier.usb_pid,
+  },
 });
 
 // When correlation is updated
 broadcast({
-  type: 'correlation_update',
+  type: "correlation_update",
   deviceId: device.id,
   device: {
     correlationBadge: newBadge,
     matchedIds: newMatchedIds,
     confidence: newConfidence,
-    correlationNotes: newNotes
-  }
+    correlationNotes: newNotes,
+  },
 });
 
 // When device is disconnected
 broadcast({
-  type: 'device_disconnected',
-  deviceId: device.id
+  type: "device_disconnected",
+  deviceId: device.id,
 });
 ```
 
 ## Features
 
 ### Client-Side Features
+
 - ✅ Auto-reconnect with exponential backoff
 - ✅ Connection status indicators
 - ✅ Toast notifications for events
@@ -438,6 +461,7 @@ broadcast({
 - ✅ Integration with persistent storage (useKV)
 
 ### Server-Side Features
+
 - ✅ Broadcast to all connected clients
 - ✅ Initial state synchronization
 - ✅ Ping/pong keep-alive
@@ -452,40 +476,45 @@ For testing, you can use a simple Node.js WebSocket server:
 
 ```javascript
 // test-ws-server.js
-const WebSocket = require('ws');
+const WebSocket = require("ws");
 const wss = new WebSocket.Server({ port: 3001 });
 
-wss.on('connection', (ws) => {
-  console.log('Client connected');
-  
+wss.on("connection", (ws) => {
+  console.log("Client connected");
+
   // Send test device every 5 seconds
   const interval = setInterval(() => {
-    ws.send(JSON.stringify({
-      type: 'device_connected',
-      deviceId: `device-${Date.now()}`,
-      device: {
-        id: `device-${Date.now()}`,
-        platform: 'android',
-        mode: 'confirmed_android_os',
-        confidence: Math.random() * 0.2 + 0.8,
-        correlationBadge: ['CORRELATED', 'SYSTEM-CONFIRMED', 'LIKELY'][Math.floor(Math.random() * 3)],
-        matchedIds: ['ABC123'],
-        correlationNotes: ['Test device']
-      },
-      timestamp: Date.now()
-    }));
+    ws.send(
+      JSON.stringify({
+        type: "device_connected",
+        deviceId: `device-${Date.now()}`,
+        device: {
+          id: `device-${Date.now()}`,
+          platform: "android",
+          mode: "confirmed_android_os",
+          confidence: Math.random() * 0.2 + 0.8,
+          correlationBadge: ["CORRELATED", "SYSTEM-CONFIRMED", "LIKELY"][
+            Math.floor(Math.random() * 3)
+          ],
+          matchedIds: ["ABC123"],
+          correlationNotes: ["Test device"],
+        },
+        timestamp: Date.now(),
+      }),
+    );
   }, 5000);
-  
-  ws.on('close', () => {
+
+  ws.on("close", () => {
     clearInterval(interval);
-    console.log('Client disconnected');
+    console.log("Client disconnected");
   });
 });
 
-console.log('Test WebSocket server running on ws://localhost:3001');
+console.log("Test WebSocket server running on ws://localhost:3001");
 ```
 
 Run with:
+
 ```bash
 node test-ws-server.js
 ```
@@ -510,18 +539,21 @@ node test-ws-server.js
 ## Troubleshooting
 
 ### Connection Issues
+
 1. Verify WebSocket server is running
 2. Check firewall/network settings
 3. Ensure correct WebSocket URL (ws:// not http://)
 4. Check browser console for errors
 
 ### Reconnection Problems
+
 1. Increase `maxReconnectAttempts`
 2. Adjust `reconnectDelay`
 3. Check server-side connection handling
 4. Verify server supports reconnection
 
 ### Message Delivery
+
 1. Ensure message format matches protocol
 2. Check JSON serialization
 3. Verify timestamp format (milliseconds)
@@ -530,6 +562,7 @@ node test-ws-server.js
 ## Future Enhancements
 
 Potential improvements:
+
 1. Message compression (gzip)
 2. Binary message support (Protocol Buffers)
 3. Message queue for offline clients

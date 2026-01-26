@@ -22,6 +22,16 @@ import type {
   RollbackOperation, 
   RollbackPolicy 
 } from '@/types/plugin-rollback';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export function PluginRollbackPanel() {
   const [snapshots, setSnapshots] = useState<SnapshotMetadata[]>([]);
@@ -29,6 +39,8 @@ export function PluginRollbackPanel() {
   const [selectedSnapshot, setSelectedSnapshot] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [rollbackHistory, setRollbackHistory] = useState<Record<string, RollbackOperation[]>>({});
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     loadSnapshots();
@@ -64,17 +76,22 @@ export function PluginRollbackPanel() {
   };
 
   const handleDeleteSnapshot = async (snapshotId: string) => {
-    if (!confirm('Delete this snapshot? This cannot be undone.')) {
-      return;
-    }
+    setPendingDeleteId(snapshotId);
+    setDeleteDialogOpen(true);
+  };
 
+  const confirmDeleteSnapshot = async () => {
+    if (!pendingDeleteId) return;
+    
+    setDeleteDialogOpen(false);
     try {
-      await pluginRollbackManager.deleteSnapshot(snapshotId);
+      await pluginRollbackManager.deleteSnapshot(pendingDeleteId);
       toast.success('Snapshot deleted');
       await loadSnapshots();
     } catch (error) {
       toast.error('Failed to delete snapshot');
     }
+    setPendingDeleteId(null);
   };
 
   const handlePolicyUpdate = async (updates: Partial<RollbackPolicy>) => {

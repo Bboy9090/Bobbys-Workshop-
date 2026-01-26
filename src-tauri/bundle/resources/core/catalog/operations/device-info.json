@@ -1,0 +1,21 @@
+{
+  "operation": "device_info",
+  "displayName": "Get Device Information",
+  "description": "Retrieve comprehensive device information",
+  "category": "diagnostics",
+  "riskLevel": "low",
+  "requiresConfirmation": false,
+  "allowedRoles": ["owner", "admin", "technician", "viewer"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    }
+  },
+  "auditLogging": "standard",
+  "rateLimitPerMinute": 30,
+  "estimatedDuration": 2000
+}

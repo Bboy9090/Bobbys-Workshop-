@@ -37,7 +37,7 @@ interface TriggerAction {
 
 const TRIGGER_ACTIONS: TriggerAction[] = [
   {
-    id: 'adb_usb',
+    id: 'adb_usb_debugging',
     label: 'ADB USB Debugging',
     description: 'Trigger "Allow USB debugging?" dialog on Android device',
     icon: <ShieldCheck className="w-4 h-4" />,
@@ -46,7 +46,7 @@ const TRIGGER_ACTIONS: TriggerAction[] = [
     requiresUserAction: true,
   },
   {
-    id: 'adb_file',
+    id: 'file_transfer',
     label: 'File Transfer Authorization',
     description: 'Trigger file transfer permission dialog',
     icon: <FileArrowUp className="w-4 h-4" />,
@@ -55,7 +55,7 @@ const TRIGGER_ACTIONS: TriggerAction[] = [
     requiresUserAction: true,
   },
   {
-    id: 'adb_backup',
+    id: 'backup_auth',
     label: 'Backup Authorization',
     description: 'Trigger backup authorization and encryption dialog',
     icon: <Database className="w-4 h-4" />,
@@ -73,7 +73,7 @@ const TRIGGER_ACTIONS: TriggerAction[] = [
     requiresUserAction: true,
   },
   {
-    id: 'ios_pair',
+    id: 'ios_pairing',
     label: 'iOS Pairing Request',
     description: 'Send pairing request to establish device connection',
     icon: <Fingerprint className="w-4 h-4" />,
@@ -109,7 +109,7 @@ const TRIGGER_ACTIONS: TriggerAction[] = [
     requiresUserAction: true,
   },
   {
-    id: 'samsung_odin',
+    id: 'samsung_download',
     label: 'Download Mode Verify',
     description: 'Verify Samsung Download Mode connectivity',
     icon: <DeviceMobile className="w-4 h-4" />,
@@ -127,7 +127,7 @@ const TRIGGER_ACTIONS: TriggerAction[] = [
     requiresUserAction: false,
   },
   {
-    id: 'mtk_flash',
+    id: 'mediatek_flash',
     label: 'MTK SP Flash Auth',
     description: 'Check MediaTek SP Flash Tool authorization',
     icon: <Lightning className="w-4 h-4" />,
@@ -180,26 +180,21 @@ export function DeviceAuthorizationTriggersPanel({
     setLoading('all');
     
     try {
-      const allResults = await authTriggers.triggerAllAvailableAuthorizations(
+      const response = await authTriggers.triggerAllAvailableAuthorizations(
         deviceSerial,
         devicePlatform
       );
 
       const newResults = new Map<string, AuthorizationTriggerResult>();
-      allResults.forEach((result) => {
-        const action = TRIGGER_ACTIONS.find(
-          (a) => a.action.name === result.authorizationType
-        );
-        if (action) {
-          newResults.set(action.id, result);
-        }
-      });
+      for (const result of response.results || []) {
+        newResults.set(result.triggerId, result);
+      }
 
       setResults(newResults);
 
-      const successCount = allResults.filter((r) => r.success).length;
+      const successCount = (response.results || []).filter((r) => r.success).length;
       toast.success('Authorization Triggers', {
-        description: `Triggered ${successCount}/${allResults.length} authorization checks`,
+        description: `Triggered ${successCount}/${(response.results || []).length} authorization checks`,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';

@@ -29,36 +29,42 @@ Bobby's World Tools uses JSON-defined workflows for reproducible device operatio
 ### Field Specifications
 
 #### `id` (required)
+
 - **Type:** `string`
 - **Pattern:** `^[a-z0-9-]+$` (kebab-case)
 - **Description:** Unique workflow identifier
 - **Example:** `"adb-diagnostics"`, `"iot-firmware-update"`
 
 #### `name` (required)
+
 - **Type:** `string`
 - **Length:** 1-200 characters
 - **Description:** Human-readable workflow name
 - **Example:** `"ADB Device Diagnostics"`
 
 #### `description` (required)
+
 - **Type:** `string`
 - **Length:** 10-1000 characters
 - **Description:** Detailed workflow description
 - **Example:** `"Comprehensive diagnostic workflow for Android devices..."`
 
 #### `platform` (required)
+
 - **Type:** `string`
 - **Enum:** `android`, `ios`, `windows`, `iot`, `mobile`, `universal`
 - **Description:** Target platform for workflow
 - **Example:** `"android"`
 
 #### `category` (required)
+
 - **Type:** `string`
 - **Enum:** `diagnostics`, `maintenance`, `repair`, `bypass`, `flash`, `backup`, `restore`
 - **Description:** Workflow category
 - **Example:** `"diagnostics"`
 
 #### `risk_level` (required)
+
 - **Type:** `string`
 - **Enum:** `low`, `medium`, `high`, `destructive`
 - **Description:** Risk level of workflow operations
@@ -69,24 +75,28 @@ Bobby's World Tools uses JSON-defined workflows for reproducible device operatio
   - `destructive`: Data-erasing operations, requires explicit authorization
 
 #### `requires_authorization` (optional)
+
 - **Type:** `boolean`
 - **Default:** `false`
 - **Description:** Whether workflow requires explicit user authorization
 - **When true:** `authorization_prompt` is required
 
 #### `authorization_prompt` (conditional)
+
 - **Type:** `string`
 - **Required when:** `requires_authorization` is `true`
 - **Description:** Text prompt shown to user for authorization
 - **Example:** `"Type 'I OWN THIS DEVICE' to confirm"`
 
 #### `supported_devices` (optional)
+
 - **Type:** `array` of `string`
 - **Default:** `[platform]`
 - **Description:** List of supported device types
 - **Example:** `["android", "ios", "windows"]`
 
 #### `estimated_duration` (optional)
+
 - **Type:** `string`
 - **Pattern:** `^[0-9]+-[0-9]+ (seconds|minutes|hours)$`
 - **Default:** `"unknown"`
@@ -94,12 +104,14 @@ Bobby's World Tools uses JSON-defined workflows for reproducible device operatio
 - **Example:** `"5-10 minutes"`
 
 #### `steps` (required)
+
 - **Type:** `array` of step objects
 - **Min items:** 1
 - **Description:** Sequence of workflow steps
 - **See:** [Step Schema](#step-schema)
 
 #### `output_format` (optional)
+
 - **Type:** `object`
 - **Description:** Expected output format
 - **Properties:**
@@ -107,6 +119,7 @@ Bobby's World Tools uses JSON-defined workflows for reproducible device operatio
   - `fields`: Array of expected output field names
 
 #### `metadata` (optional)
+
 - **Type:** `object`
 - **Description:** Workflow metadata
 - **Properties:**
@@ -141,6 +154,7 @@ Each workflow step defines a single operation to perform.
 ### Step Fields
 
 #### `id` (required)
+
 - **Type:** `string`
 - **Pattern:** `^[a-z0-9-]+$` (kebab-case)
 - **Unique:** Within workflow
@@ -148,12 +162,14 @@ Each workflow step defines a single operation to perform.
 - **Example:** `"device-info"`, `"connectivity-test"`
 
 #### `name` (required)
+
 - **Type:** `string`
 - **Length:** 1-200 characters
 - **Description:** Human-readable step name
 - **Example:** `"Device Information Collection"`
 
 #### `type` (required)
+
 - **Type:** `string`
 - **Enum:** `command`, `check`, `wait`, `prompt`, `log`, `probe`
 - **Description:** Type of operation
@@ -166,6 +182,7 @@ Each workflow step defines a single operation to perform.
   - `probe`: Probe for devices/capabilities
 
 #### `action` (required)
+
 - **Type:** `string`
 - **Description:** Action to perform (command, check name, etc.)
 - **Examples:**
@@ -174,16 +191,19 @@ Each workflow step defines a single operation to perform.
   - `"shadow_log"` (for log type)
 
 #### `description` (required)
+
 - **Type:** `string`
 - **Description:** Detailed step description
 - **Example:** `"Verify stable connection to device"`
 
 #### `success_criteria` (required)
+
 - **Type:** `string`
 - **Description:** Criteria for determining step success
 - **Example:** `"Command executes successfully"`, `"Device responds"`
 
 #### `on_failure` (required)
+
 - **Type:** `string`
 - **Enum:** `abort`, `continue`, `retry`, `rollback`
 - **Description:** Action to take if step fails
@@ -194,6 +214,7 @@ Each workflow step defines a single operation to perform.
   - `rollback`: Execute rollback steps (if defined)
 
 #### `timeout` (optional)
+
 - **Type:** `number`
 - **Range:** 1000 - 3,600,000 (1 second - 1 hour)
 - **Default:** 30000 (30 seconds)
@@ -201,6 +222,7 @@ Each workflow step defines a single operation to perform.
 - **Description:** Maximum time to wait for step completion
 
 #### `retry_count` (conditional)
+
 - **Type:** `number`
 - **Range:** 1 - 10
 - **Required when:** `on_failure` is `"retry"`
@@ -208,6 +230,7 @@ Each workflow step defines a single operation to perform.
 - **Default:** 1
 
 #### `retry_delay` (conditional)
+
 - **Type:** `number`
 - **Range:** 1000 - 60,000 (1-60 seconds)
 - **Default:** 2000 (2 seconds)
@@ -475,34 +498,40 @@ All workflows are automatically validated before execution. Validation checks:
 ## Best Practices
 
 ### 1. ID Naming
+
 - Use kebab-case: `device-info`, `battery-check`
 - Be descriptive but concise
 - Include platform prefix for platform-specific workflows
 
 ### 2. Risk Levels
+
 - Use `low` for read-only operations
 - Use `medium` for safe modifications
 - Use `high` for risky operations
 - Use `destructive` only when data loss occurs
 
 ### 3. Authorization
+
 - Always require authorization for high/destructive workflows
 - Make authorization prompts clear and explicit
 - Include warnings about data loss
 
 ### 4. Error Handling
+
 - Use `abort` for critical steps
 - Use `retry` for network/connectivity issues
 - Use `continue` for optional steps
 - Set appropriate `retry_count` (3-5 attempts recommended)
 
 ### 5. Timeouts
+
 - Set realistic timeouts based on operation
 - Network operations: 10-30 seconds
 - File operations: 30-60 seconds
 - Flash/update operations: 5-10 minutes
 
 ### 6. Descriptions
+
 - Write clear, detailed descriptions
 - Explain what the step does and why
 - Include expected outcomes
@@ -512,24 +541,31 @@ All workflows are automatically validated before execution. Validation checks:
 ## Workflow Categories
 
 ### Diagnostics
+
 Non-invasive device information gathering and health checks.
 
 ### Maintenance
+
 Routine device maintenance operations (updates, cleanup).
 
 ### Repair
+
 Device repair and recovery operations.
 
 ### Bypass
+
 Security bypass operations (FRP, MDM) - **requires authorization**.
 
 ### Flash
+
 Firmware flashing and updating operations.
 
 ### Backup
+
 Data backup operations.
 
 ### Restore
+
 Data restoration operations.
 
 ---
@@ -537,6 +573,7 @@ Data restoration operations.
 ## Version History
 
 ### v1.0.0 (2025-12-17)
+
 - Initial workflow schema release
 - Support for 6 step types
 - Support for 4 risk levels

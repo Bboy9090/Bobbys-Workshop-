@@ -20,28 +20,26 @@ interface WorkflowResult {
 export function TrapdoorControlPanel() {
   const [deviceSerial, setDeviceSerial] = useState('');
   const [authorizationInput, setAuthorizationInput] = useState('');
-  const [apiKey, setApiKey] = useState('');
+  const [secretPasscode, setSecretPasscode] = useState(() => {
+    try {
+      return localStorage.getItem('bobbysWorkshop.secretRoomPasscode') || 'BJ0990';
+    } catch {
+      return 'BJ0990';
+    }
+  });
+  const [showPasscodeEditor, setShowPasscodeEditor] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [result, setResult] = useState<WorkflowResult | null>(null);
   const [error, setError] = useState('');
 
-  const executeWorkflow = async (endpoint: string, requiredInput: string) => {
-    if (!deviceSerial) {
-      setError('Device serial is required');
+  const ensurePasscode = () => secretPasscode?.trim() || 'BJ0990';
+
+  const executeWorkflow = async (endpoint: string, confirmation: string) => {
+    if (authorizationInput !== confirmation) {
+      setError(`You must type exactly: ${confirmation}`);
       return;
     }
 
-    if (!apiKey) {
-      setError('Admin API key is required');
-      return;
-    }
-
-    if (authorizationInput !== requiredInput) {
-      setError(`You must type '${requiredInput}' exactly to confirm`);
-      return;
-    }
-
-    setExecuting(true);
     setError('');
     setResult(null);
 
@@ -50,30 +48,19 @@ export function TrapdoorControlPanel() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-API-Key': apiKey
+          'X-Secret-Room-Passcode': ensurePasscode(),
         },
         body: JSON.stringify({
           deviceSerial,
-          authorization: {
-            confirmed: true,
-            userInput: authorizationInput
-          }
-        })
+        }),
       });
-
       const data = await response.json();
-
       if (!response.ok) {
-        setError(data.error || data.message || 'Operation failed');
-        return;
+        throw new Error(data.error || 'Request failed');
       }
-
       setResult(data);
-      setAuthorizationInput('');
-    } catch (err: any) {
-      setError(err.message || 'Network error');
-    } finally {
-      setExecuting(false);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unknown error');
     }
   };
 
@@ -93,39 +80,44 @@ export function TrapdoorControlPanel() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5" />
-            Admin Authentication
+            Authentication
           </CardTitle>
           <CardDescription>
-            Admin API key is required for all Trapdoor operations
+            Using stored Secret Room passcode automatically.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="apiKey">Admin API Key</Label>
-              <Input
-                id="apiKey"
-                type="password"
-                placeholder="Enter admin API key"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Set via ADMIN_API_KEY environment variable (default: dev-admin-key for development)
-                <br />
-                <strong className="text-orange-500">⚠️ Production: Use JWT tokens instead of static API keys</strong>
-              </p>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                Passcode is applied automatically to all Trapdoor requests.
+              </div>
+              <Button size="sm" variant="outline" onClick={() => setShowPasscodeEditor((v) => !v)}>
+                {showPasscodeEditor ? 'Hide' : 'Edit'} passcode
+              </Button>
             </div>
-
-            <div>
-              <Label htmlFor="deviceSerial">Device Serial</Label>
-              <Input
-                id="deviceSerial"
-                placeholder="Enter device serial number"
-                value={deviceSerial}
-                onChange={(e) => setDeviceSerial(e.target.value)}
-              />
-            </div>
+            {showPasscodeEditor && (
+              <div className="space-y-2">
+                <Label htmlFor="secretPasscode">Secret Room Passcode</Label>
+                <Input
+                  id="secretPasscode"
+                  type="password"
+                  value={secretPasscode}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setSecretPasscode(value);
+                    try {
+                      localStorage.setItem('bobbysWorkshop.secretRoomPasscode', value);
+                    } catch {
+                      // ignore
+                    }
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Default: <code className="font-mono">BJ0990</code>
+                </p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -173,7 +165,7 @@ export function TrapdoorControlPanel() {
 
               <Button
                 onClick={() => executeWorkflow('frp', 'I OWN THIS DEVICE')}
-                disabled={executing || !deviceSerial || !apiKey}
+                disabled={executing || !deviceSerial || !ensurePasscode()}
                 className="w-full"
                 variant="destructive"
               >
@@ -219,7 +211,7 @@ export function TrapdoorControlPanel() {
 
               <Button
                 onClick={() => executeWorkflow('unlock', 'UNLOCK')}
-                disabled={executing || !deviceSerial || !apiKey}
+                disabled={executing || !deviceSerial || !ensurePasscode()}
                 className="w-full"
                 variant="destructive"
               >

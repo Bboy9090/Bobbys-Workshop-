@@ -24,6 +24,7 @@ Frontend (React)              Backend (Node.js/Python)              System Tools
 ## System Dependencies
 
 ### macOS Installation
+
 ```bash
 # Install Homebrew (if not already installed)
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
@@ -45,6 +46,7 @@ curl -fsSL https://static.palera.in/scripts/install.sh | bash
 ```
 
 ### Linux Installation
+
 ```bash
 # Ubuntu/Debian
 sudo apt update
@@ -68,6 +70,7 @@ sudo curl -L https://static.palera.in/scripts/install.sh | sudo bash
 ```
 
 ### Windows (Limited Support)
+
 ```powershell
 # Windows support for libimobiledevice is limited
 # Recommended: Use 3uTools or iTunes for device detection
@@ -86,56 +89,60 @@ wsl --set-default-version 2
 
 ```javascript
 // server/routes/ios-flash.js
-const { exec } = require('child_process');
-const util = require('util');
+const { exec } = require("child_process");
+const util = require("util");
 const execPromise = util.promisify(exec);
 
 async function scanIOSDevices() {
   try {
     // List connected devices
-    const { stdout: deviceList } = await execPromise('idevice_id -l');
-    const udids = deviceList.trim().split('\n').filter(Boolean);
-    
+    const { stdout: deviceList } = await execPromise("idevice_id -l");
+    const udids = deviceList.trim().split("\n").filter(Boolean);
+
     if (udids.length === 0) {
       return { devices: [] };
     }
-    
-    const devices = await Promise.all(udids.map(async (udid) => {
-      try {
-        // Get device info
-        const { stdout: deviceInfo } = await execPromise(`ideviceinfo -u ${udid}`);
-        const info = parseDeviceInfo(deviceInfo);
-        
-        // Detect mode
-        const mode = await detectDeviceMode(udid);
-        
-        return {
-          udid,
-          name: info.DeviceName || 'Unknown iOS Device',
-          productType: info.ProductType || 'Unknown',
-          mode,
-          isDetected: true,
-        };
-      } catch (error) {
-        // Device might be in DFU/Recovery mode
-        return {
-          udid,
-          mode: 'dfu',
-          isDetected: true,
-        };
-      }
-    }));
-    
+
+    const devices = await Promise.all(
+      udids.map(async (udid) => {
+        try {
+          // Get device info
+          const { stdout: deviceInfo } = await execPromise(
+            `ideviceinfo -u ${udid}`,
+          );
+          const info = parseDeviceInfo(deviceInfo);
+
+          // Detect mode
+          const mode = await detectDeviceMode(udid);
+
+          return {
+            udid,
+            name: info.DeviceName || "Unknown iOS Device",
+            productType: info.ProductType || "Unknown",
+            mode,
+            isDetected: true,
+          };
+        } catch (error) {
+          // Device might be in DFU/Recovery mode
+          return {
+            udid,
+            mode: "dfu",
+            isDetected: true,
+          };
+        }
+      }),
+    );
+
     return { devices };
   } catch (error) {
-    console.error('iOS scan error:', error);
+    console.error("iOS scan error:", error);
     return { devices: [], error: error.message };
   }
 }
 
 function parseDeviceInfo(output) {
   const info = {};
-  output.split('\n').forEach(line => {
+  output.split("\n").forEach((line) => {
     const match = line.match(/^(\w+): (.+)$/);
     if (match) {
       info[match[1]] = match[2];
@@ -148,16 +155,16 @@ async function detectDeviceMode(udid) {
   try {
     // Try to get device info - if successful, device is in normal mode
     await execPromise(`ideviceinfo -u ${udid} -k ProductType`);
-    return 'normal';
+    return "normal";
   } catch (error) {
     // Check for recovery mode
     try {
       await execPromise(`idevice_id -l | grep ${udid}`);
       // Device responds but no info - likely recovery
-      return 'recovery';
+      return "recovery";
     } catch {
       // No response - likely DFU mode
-      return 'dfu';
+      return "dfu";
     }
   }
 }
@@ -174,18 +181,18 @@ module.exports = { scanIOSDevices };
 async function enterDFUMode(udid) {
   // Cannot be fully automated - requires physical button combinations
   // Provide instructions to user
-  
+
   return {
     success: false,
     requiresManual: true,
     instructions: [
-      'Connect device to computer',
-      'Press and hold Side button + Volume Down for 10 seconds',
-      'Release Side button, keep holding Volume Down for 5 seconds',
-      'Screen should remain black (DFU mode)',
-      'If Apple logo appears, restart and try again'
+      "Connect device to computer",
+      "Press and hold Side button + Volume Down for 10 seconds",
+      "Release Side button, keep holding Volume Down for 5 seconds",
+      "Screen should remain black (DFU mode)",
+      "If Apple logo appears, restart and try again",
     ],
-    message: 'DFU mode requires manual entry. Follow on-screen instructions.'
+    message: "DFU mode requires manual entry. Follow on-screen instructions.",
   };
 }
 ```
@@ -195,125 +202,169 @@ async function enterDFUMode(udid) {
 **Endpoint:** `POST /api/ios/jailbreak`
 
 ```javascript
-const WebSocket = require('ws');
+const WebSocket = require("ws");
 
 async function startJailbreak(udid, tool, ws) {
-  if (tool === 'checkra1n') {
+  if (tool === "checkra1n") {
     return executeCheckra1n(udid, ws);
-  } else if (tool === 'palera1n') {
+  } else if (tool === "palera1n") {
     return executePalera1n(udid, ws);
   }
-  throw new Error('Unknown jailbreak tool');
+  throw new Error("Unknown jailbreak tool");
 }
 
 async function executeCheckra1n(udid, ws) {
-  const { spawn } = require('child_process');
-  
+  const { spawn } = require("child_process");
+
   // checkra1n requires GUI on macOS, CLI on Linux
-  const isLinux = process.platform === 'linux';
-  const cmd = isLinux 
-    ? 'checkra1n' 
-    : '/Applications/checkra1n.app/Contents/MacOS/checkra1n';
-  
-  const args = ['-c', '-V', '--allow-untested-versions'];
-  
+  const isLinux = process.platform === "linux";
+  const cmd = isLinux
+    ? "checkra1n"
+    : "/Applications/checkra1n.app/Contents/MacOS/checkra1n";
+
+  const args = ["-c", "-V", "--allow-untested-versions"];
+
   const proc = spawn(cmd, args);
-  
-  proc.stdout.on('data', (data) => {
+
+  proc.stdout.on("data", (data) => {
     const line = data.toString();
-    ws.send(JSON.stringify({
-      type: 'flash.log',
-      payload: { line: line.trim() }
-    }));
-    
+    ws.send(
+      JSON.stringify({
+        type: "flash.log",
+        payload: { line: line.trim() },
+      }),
+    );
+
     // Parse progress
-    if (line.includes('Waiting for DFU')) {
-      ws.send(JSON.stringify({
-        type: 'flash.progress',
-        payload: { pct: 10, stage: 'waiting', detail: 'Waiting for DFU mode' }
-      }));
-    } else if (line.includes('Uploading')) {
-      ws.send(JSON.stringify({
-        type: 'flash.progress',
-        payload: { pct: 40, stage: 'uploading', detail: 'Uploading bootloader' }
-      }));
-    } else if (line.includes('Booting')) {
-      ws.send(JSON.stringify({
-        type: 'flash.progress',
-        payload: { pct: 80, stage: 'booting', detail: 'Booting device' }
-      }));
-    } else if (line.includes('Done')) {
-      ws.send(JSON.stringify({
-        type: 'flash.progress',
-        payload: { pct: 100, stage: 'complete', detail: 'Jailbreak complete' }
-      }));
+    if (line.includes("Waiting for DFU")) {
+      ws.send(
+        JSON.stringify({
+          type: "flash.progress",
+          payload: {
+            pct: 10,
+            stage: "waiting",
+            detail: "Waiting for DFU mode",
+          },
+        }),
+      );
+    } else if (line.includes("Uploading")) {
+      ws.send(
+        JSON.stringify({
+          type: "flash.progress",
+          payload: {
+            pct: 40,
+            stage: "uploading",
+            detail: "Uploading bootloader",
+          },
+        }),
+      );
+    } else if (line.includes("Booting")) {
+      ws.send(
+        JSON.stringify({
+          type: "flash.progress",
+          payload: { pct: 80, stage: "booting", detail: "Booting device" },
+        }),
+      );
+    } else if (line.includes("Done")) {
+      ws.send(
+        JSON.stringify({
+          type: "flash.progress",
+          payload: {
+            pct: 100,
+            stage: "complete",
+            detail: "Jailbreak complete",
+          },
+        }),
+      );
     }
   });
-  
-  proc.stderr.on('data', (data) => {
-    ws.send(JSON.stringify({
-      type: 'flash.log',
-      payload: { line: `ERROR: ${data.toString()}` }
-    }));
+
+  proc.stderr.on("data", (data) => {
+    ws.send(
+      JSON.stringify({
+        type: "flash.log",
+        payload: { line: `ERROR: ${data.toString()}` },
+      }),
+    );
   });
-  
-  proc.on('close', (code) => {
+
+  proc.on("close", (code) => {
     if (code === 0) {
-      ws.send(JSON.stringify({
-        type: 'flash.done',
-        payload: { ok: true }
-      }));
+      ws.send(
+        JSON.stringify({
+          type: "flash.done",
+          payload: { ok: true },
+        }),
+      );
     } else {
-      ws.send(JSON.stringify({
-        type: 'flash.error',
-        payload: { code: 'JAILBREAK_FAILED', message: `Exit code: ${code}` }
-      }));
+      ws.send(
+        JSON.stringify({
+          type: "flash.error",
+          payload: { code: "JAILBREAK_FAILED", message: `Exit code: ${code}` },
+        }),
+      );
     }
   });
 }
 
 async function executePalera1n(udid, ws) {
-  const { spawn } = require('child_process');
-  
-  const proc = spawn('palera1n', ['-V', '-f']);
-  
-  proc.stdout.on('data', (data) => {
+  const { spawn } = require("child_process");
+
+  const proc = spawn("palera1n", ["-V", "-f"]);
+
+  proc.stdout.on("data", (data) => {
     const line = data.toString();
-    ws.send(JSON.stringify({
-      type: 'flash.log',
-      payload: { line: line.trim() }
-    }));
-    
+    ws.send(
+      JSON.stringify({
+        type: "flash.log",
+        payload: { line: line.trim() },
+      }),
+    );
+
     // Parse palera1n output for progress
-    if (line.includes('Waiting')) {
-      ws.send(JSON.stringify({
-        type: 'flash.progress',
-        payload: { pct: 10, stage: 'waiting', detail: line.trim() }
-      }));
-    } else if (line.includes('Exploiting')) {
-      ws.send(JSON.stringify({
-        type: 'flash.progress',
-        payload: { pct: 50, stage: 'exploiting', detail: 'Running exploit' }
-      }));
-    } else if (line.includes('Done')) {
-      ws.send(JSON.stringify({
-        type: 'flash.progress',
-        payload: { pct: 100, stage: 'complete', detail: 'Jailbreak complete' }
-      }));
+    if (line.includes("Waiting")) {
+      ws.send(
+        JSON.stringify({
+          type: "flash.progress",
+          payload: { pct: 10, stage: "waiting", detail: line.trim() },
+        }),
+      );
+    } else if (line.includes("Exploiting")) {
+      ws.send(
+        JSON.stringify({
+          type: "flash.progress",
+          payload: { pct: 50, stage: "exploiting", detail: "Running exploit" },
+        }),
+      );
+    } else if (line.includes("Done")) {
+      ws.send(
+        JSON.stringify({
+          type: "flash.progress",
+          payload: {
+            pct: 100,
+            stage: "complete",
+            detail: "Jailbreak complete",
+          },
+        }),
+      );
     }
   });
-  
-  proc.on('close', (code) => {
+
+  proc.on("close", (code) => {
     if (code === 0) {
-      ws.send(JSON.stringify({
-        type: 'flash.done',
-        payload: { ok: true }
-      }));
+      ws.send(
+        JSON.stringify({
+          type: "flash.done",
+          payload: { ok: true },
+        }),
+      );
     } else {
-      ws.send(JSON.stringify({
-        type: 'flash.error',
-        payload: { code: 'JAILBREAK_FAILED', message: `Exit code: ${code}` }
-      }));
+      ws.send(
+        JSON.stringify({
+          type: "flash.error",
+          payload: { code: "JAILBREAK_FAILED", message: `Exit code: ${code}` },
+        }),
+      );
     }
   });
 }
@@ -325,36 +376,40 @@ module.exports = { startJailbreak };
 
 ```javascript
 // server/ios-flash-ws.js
-const WebSocket = require('ws');
-const { startJailbreak } = require('./jailbreak-executor');
+const WebSocket = require("ws");
+const { startJailbreak } = require("./jailbreak-executor");
 
-const wss = new WebSocket.Server({ port: 3001, path: '/ws/flash' });
+const wss = new WebSocket.Server({ port: 3001, path: "/ws/flash" });
 
-wss.on('connection', (ws) => {
-  console.log('iOS flash client connected');
-  
-  ws.on('message', async (message) => {
+wss.on("connection", (ws) => {
+  console.log("iOS flash client connected");
+
+  ws.on("message", async (message) => {
     try {
       const msg = JSON.parse(message);
-      
-      if (msg.type === 'flash.start') {
+
+      if (msg.type === "flash.start") {
         const { udid, tool } = msg.payload;
         await startJailbreak(udid, tool, ws);
       }
     } catch (error) {
-      ws.send(JSON.stringify({
-        type: 'flash.error',
-        payload: { code: 'INTERNAL_ERROR', message: error.message }
-      }));
+      ws.send(
+        JSON.stringify({
+          type: "flash.error",
+          payload: { code: "INTERNAL_ERROR", message: error.message },
+        }),
+      );
     }
   });
-  
-  ws.on('close', () => {
-    console.log('iOS flash client disconnected');
+
+  ws.on("close", () => {
+    console.log("iOS flash client disconnected");
   });
 });
 
-console.log('iOS Flash WebSocket server running on ws://localhost:3001/ws/flash');
+console.log(
+  "iOS Flash WebSocket server running on ws://localhost:3001/ws/flash",
+);
 ```
 
 ## Frontend Integration
@@ -362,7 +417,7 @@ console.log('iOS Flash WebSocket server running on ws://localhost:3001/ws/flash'
 ### React Component Usage
 
 ```tsx
-import { IOSDFUFlashPanel } from '@/components/IOSDFUFlashPanel';
+import { IOSDFUFlashPanel } from "@/components/IOSDFUFlashPanel";
 
 function App() {
   return (
@@ -385,12 +440,14 @@ function App() {
 ## Device Compatibility
 
 ### checkra1n Support
+
 - iPhone 5s through iPhone X
 - iPad (5th gen) through iPad Pro (2nd gen)
 - iOS 12.0 - iOS 14.8.1
 - Limited support for iOS 15+ on A11 and below
 
 ### palera1n Support
+
 - iPhone 8 through iPhone X (A11)
 - iOS 15.0 - iOS 16.x
 - Requires device in DFU mode
@@ -399,6 +456,7 @@ function App() {
 ## Troubleshooting
 
 ### Device Not Detected
+
 ```bash
 # Check USB connection
 idevice_id -l
@@ -413,12 +471,14 @@ sudo usermod -aG plugdev $USER  # Linux
 ```
 
 ### DFU Mode Entry Fails
+
 1. Ensure device is powered off completely
 2. Try multiple times - timing is critical
 3. Use different USB cable
 4. Connect directly to computer (no hub)
 
 ### Jailbreak Fails
+
 ```bash
 # Check checkra1n version
 checkra1n --version
@@ -433,6 +493,7 @@ tail -f ~/.checkra1n/log.txt
 ## Security Considerations
 
 ### Legal Notice
+
 - Jailbreaking voids Apple warranty
 - May violate terms of service
 - Can introduce security vulnerabilities
@@ -440,6 +501,7 @@ tail -f ~/.checkra1n/log.txt
 - Educational purposes only
 
 ### Best Practices
+
 - Backup device before jailbreaking
 - Use latest jailbreak tool versions
 - Only install trusted tweaks/packages

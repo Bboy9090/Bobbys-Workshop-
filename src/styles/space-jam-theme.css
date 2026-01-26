@@ -1,0 +1,571 @@
+/**
+ * 🏀 SPACE JAM / HARE JORDAN NYC PLAYGROUND WORKSHOP THEME
+ * Super Legendary Trap House Makeover
+ * 
+ * Inspired by:
+ * - Space Jam (1996) - Purple & Orange legendary palette
+ * - Hare Jordan - Bugs Bunny as Michael Jordan
+ * - NYC Playground Basketball Courts - Concrete, graffiti, street art
+ * - 90s Hip-Hop Culture - Bold, energetic, legendary
+ * - Trap House Workshop - Underground lab vibes
+ * - Bronx Grit - Street authenticity
+ */
+
+/* ============================================
+   COLOR VARIABLES
+   ============================================ */
+:root {
+  /* Space Jam Colors */
+  --space-jam-purple: #6B2C91;
+  --space-jam-purple-dark: #4A1A65;
+  --space-jam-purple-light: #8B4CB8;
+  --space-jam-orange: #FF6B35;
+  --space-jam-orange-dark: #CC5529;
+  --space-jam-orange-light: #FF8C5A;
+  --basketball-court: #FFD700;
+  --basketball-lines: #FFFFFF;
+  
+  /* NYC Playground */
+  --nyc-concrete: #2C2C2C;
+  --nyc-concrete-dark: #1A1A1A;
+  --nyc-concrete-light: #3A3A3A;
+  --nyc-asphalt: #1F1F1F;
+  --nyc-sidewalk: #3D3D3D;
+  
+  /* Graffiti Spray */
+  --spray-neon-cyan: #00FFFF;
+  --spray-neon-pink: #FF00FF;
+  --spray-neon-yellow: #FFFF00;
+  --spray-neon-green: #00FF00;
+  --spray-neon-orange: #FF6600;
+  --spray-neon-purple: #9932CC;
+  
+  /* Hare Jordan */
+  --hare-jordan-red: #CE1141;
+  --hare-jordan-black: #000000;
+  --hare-jordan-white: #FFFFFF;
+  --hare-jordan-gold: #FFD700;
+  
+  /* Trap House */
+  --trap-basement: #0D0D0D;
+  --trap-walls: #1A1A1A;
+  --trap-ceiling: #0F0F0F;
+  --trap-floor: #151515;
+  --trap-border: #2A2A2A;
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+@keyframes bounce-jordan {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-8px) rotate(-5deg);
+  }
+  50% {
+    transform: translateY(-12px) rotate(0deg);
+  }
+  75% {
+    transform: translateY(-8px) rotate(5deg);
+  }
+}
+
+@keyframes dribble {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-20px) scale(0.95);
+  }
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(107, 44, 145, 0.5),
+                0 0 20px rgba(107, 44, 145, 0.3),
+                0 0 30px rgba(107, 44, 145, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(107, 44, 145, 0.8),
+                0 0 40px rgba(107, 44, 145, 0.5),
+                0 0 60px rgba(107, 44, 145, 0.3);
+  }
+}
+
+@keyframes graffiti-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes neon-flicker {
+  0%, 100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  50% {
+    opacity: 0.8;
+    filter: brightness(1.2);
+  }
+}
+
+@keyframes spray-paint {
+  0% {
+    transform: scale(0) rotate(0deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1) rotate(180deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(360deg);
+    opacity: 0.9;
+  }
+}
+
+@keyframes court-lines {
+  0% {
+    stroke-dashoffset: 1000;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ============================================
+   BACKGROUND CLASSES
+   ============================================ */
+.bg-space-jam {
+  background: linear-gradient(135deg, var(--space-jam-purple) 0%, var(--space-jam-orange) 100%);
+}
+
+.bg-playground {
+  background: 
+    repeating-linear-gradient(
+      0deg,
+      var(--nyc-concrete) 0px,
+      var(--nyc-concrete) 2px,
+      var(--nyc-concrete-dark) 2px,
+      var(--nyc-concrete-dark) 4px
+    ),
+    var(--nyc-concrete);
+  position: relative;
+}
+
+.bg-playground::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 80% 70%, rgba(255, 255, 255, 0.03) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.bg-trap-house {
+  background: var(--trap-basement);
+  border: 1px solid var(--trap-border);
+  position: relative;
+}
+
+.bg-trap-house::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    linear-gradient(90deg, transparent 0%, rgba(42, 42, 42, 0.3) 50%, transparent 100%),
+    linear-gradient(0deg, transparent 0%, rgba(42, 42, 42, 0.2) 50%, transparent 100%);
+  pointer-events: none;
+}
+
+.bg-basketball-court {
+  background: var(--basketball-court);
+  position: relative;
+  overflow: hidden;
+}
+
+.bg-basketball-court::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    linear-gradient(0deg, var(--basketball-lines) 0%, var(--basketball-lines) 2px, transparent 2px, transparent 100%),
+    linear-gradient(90deg, var(--basketball-lines) 0%, var(--basketball-lines) 2px, transparent 2px, transparent 100%);
+  background-size: 50px 50px;
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+/* ============================================
+   TEXT CLASSES
+   ============================================ */
+.text-legendary {
+  color: var(--hare-jordan-white);
+  text-shadow: 
+    2px 2px 4px rgba(0, 0, 0, 0.8),
+    0 0 10px rgba(107, 44, 145, 0.5);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.text-graffiti {
+  color: var(--spray-neon-cyan);
+  text-shadow: 
+    0 0 10px var(--spray-neon-cyan),
+    0 0 20px var(--spray-neon-cyan),
+    0 0 30px var(--spray-neon-cyan);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.text-jordan {
+  color: var(--hare-jordan-red);
+  text-shadow: 
+    0 0 10px var(--hare-jordan-red),
+    0 0 20px rgba(206, 17, 65, 0.5);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.text-space-jam {
+  background: linear-gradient(135deg, var(--space-jam-purple) 0%, var(--space-jam-orange) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+}
+
+/* ============================================
+   BORDER CLASSES
+   ============================================ */
+.border-space-jam {
+  border: 2px solid var(--space-jam-purple);
+  box-shadow: 
+    0 0 10px rgba(107, 44, 145, 0.5),
+    inset 0 0 10px rgba(107, 44, 145, 0.2);
+}
+
+.border-jordan {
+  border: 2px solid var(--hare-jordan-red);
+  box-shadow: 
+    0 0 10px var(--hare-jordan-red),
+    0 0 20px rgba(206, 17, 65, 0.3);
+}
+
+.border-neon-cyan {
+  border: 2px solid var(--spray-neon-cyan);
+  box-shadow: 
+    0 0 10px var(--spray-neon-cyan),
+    0 0 20px rgba(0, 255, 255, 0.3);
+}
+
+.border-neon-pink {
+  border: 2px solid var(--spray-neon-pink);
+  box-shadow: 
+    0 0 10px var(--spray-neon-pink),
+    0 0 20px rgba(255, 0, 255, 0.3);
+}
+
+/* ============================================
+   BUTTON CLASSES
+   ============================================ */
+.btn-space-jam {
+  background: linear-gradient(135deg, var(--space-jam-purple) 0%, var(--space-jam-orange) 100%);
+  color: var(--hare-jordan-white);
+  border: none;
+  padding: 12px 24px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 
+    0 4px 15px rgba(107, 44, 145, 0.4),
+    0 0 20px rgba(255, 107, 53, 0.2);
+}
+
+.btn-space-jam:hover {
+  transform: translateY(-2px);
+  box-shadow: 
+    0 6px 20px rgba(107, 44, 145, 0.6),
+    0 0 30px rgba(255, 107, 53, 0.4);
+}
+
+.btn-space-jam:active {
+  transform: translateY(0);
+}
+
+.btn-jordan {
+  background: var(--hare-jordan-red);
+  color: var(--hare-jordan-white);
+  border: 2px solid var(--hare-jordan-gold);
+  padding: 12px 24px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 
+    0 4px 15px rgba(206, 17, 65, 0.5),
+    0 0 20px rgba(255, 215, 0, 0.3);
+}
+
+.btn-jordan:hover {
+  transform: translateY(-2px);
+  box-shadow: 
+    0 6px 20px rgba(206, 17, 65, 0.7),
+    0 0 30px rgba(255, 215, 0, 0.5);
+  background: var(--hare-jordan-red);
+  filter: brightness(1.1);
+}
+
+.btn-graffiti {
+  background: transparent;
+  color: var(--spray-neon-cyan);
+  border: 2px solid var(--spray-neon-cyan);
+  padding: 12px 24px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-shadow: 0 0 10px var(--spray-neon-cyan);
+}
+
+.btn-graffiti:hover {
+  background: rgba(0, 255, 255, 0.1);
+  box-shadow: 
+    0 0 20px var(--spray-neon-cyan),
+    inset 0 0 20px rgba(0, 255, 255, 0.1);
+  transform: translateY(-2px);
+}
+
+/* ============================================
+   CARD CLASSES
+   ============================================ */
+.card-space-jam {
+  background: rgba(26, 26, 26, 0.8);
+  border: 2px solid var(--space-jam-purple);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 
+    0 4px 20px rgba(0, 0, 0, 0.5),
+    0 0 20px rgba(107, 44, 145, 0.3);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.card-space-jam::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(107, 44, 145, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.card-space-jam:hover::before {
+  left: 100%;
+}
+
+.card-space-jam:hover {
+  transform: translateY(-4px);
+  box-shadow: 
+    0 8px 30px rgba(0, 0, 0, 0.6),
+    0 0 30px rgba(107, 44, 145, 0.5);
+  border-color: var(--space-jam-purple-light);
+}
+
+.card-jordan {
+  background: rgba(13, 13, 13, 0.9);
+  border: 2px solid var(--hare-jordan-red);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 
+    0 4px 20px rgba(0, 0, 0, 0.5),
+    0 0 20px rgba(206, 17, 65, 0.4);
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.card-jordan:hover {
+  transform: translateY(-4px);
+  box-shadow: 
+    0 8px 30px rgba(0, 0, 0, 0.6),
+    0 0 30px rgba(206, 17, 65, 0.6);
+  border-color: var(--hare-jordan-gold);
+}
+
+.card-playground {
+  background: var(--nyc-concrete);
+  border: 2px solid var(--nyc-concrete-light);
+  border-radius: 8px;
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.card-playground::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, 
+    var(--spray-neon-cyan) 0%,
+    var(--spray-neon-pink) 25%,
+    var(--spray-neon-yellow) 50%,
+    var(--spray-neon-green) 75%,
+    var(--spray-neon-cyan) 100%);
+  animation: graffiti-fade 0.5s ease;
+}
+
+.card-trap {
+  background: var(--trap-basement);
+  border: 1px solid var(--trap-border);
+  border-radius: 4px;
+  padding: 16px;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+/* ============================================
+   GLOW CLASSES
+   ============================================ */
+.glow-purple {
+  box-shadow: 
+    0 0 10px rgba(107, 44, 145, 0.5),
+    0 0 20px rgba(107, 44, 145, 0.3),
+    0 0 30px rgba(107, 44, 145, 0.2);
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+.glow-orange {
+  box-shadow: 
+    0 0 10px rgba(255, 107, 53, 0.5),
+    0 0 20px rgba(255, 107, 53, 0.3),
+    0 0 30px rgba(255, 107, 53, 0.2);
+}
+
+.glow-cyan {
+  box-shadow: 
+    0 0 10px var(--spray-neon-cyan),
+    0 0 20px rgba(0, 255, 255, 0.3),
+    0 0 30px rgba(0, 255, 255, 0.2);
+  animation: neon-flicker 2s ease-in-out infinite;
+}
+
+.glow-jordan {
+  box-shadow: 
+    0 0 10px var(--hare-jordan-red),
+    0 0 20px rgba(206, 17, 65, 0.5),
+    0 0 30px rgba(206, 17, 65, 0.3);
+}
+
+/* ============================================
+   ANIMATION CLASSES
+   ============================================ */
+.animate-bounce-jordan {
+  animation: bounce-jordan 1s ease-in-out infinite;
+}
+
+.animate-dribble {
+  animation: dribble 0.6s ease-in-out infinite;
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+.animate-graffiti-fade {
+  animation: graffiti-fade 0.5s ease;
+}
+
+.animate-neon-flicker {
+  animation: neon-flicker 2s ease-in-out infinite;
+}
+
+.animate-spray-paint {
+  animation: spray-paint 0.8s ease;
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+.graffiti-accent-line {
+  position: relative;
+}
+
+.graffiti-accent-line::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, 
+    transparent 0%,
+    var(--spray-neon-cyan) 20%,
+    var(--spray-neon-pink) 40%,
+    var(--spray-neon-yellow) 60%,
+    var(--spray-neon-green) 80%,
+    transparent 100%);
+  opacity: 0.8;
+}
+
+.nyc-grit-texture {
+  background-image: 
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.1) 0px,
+      transparent 1px,
+      transparent 2px,
+      rgba(0, 0, 0, 0.1) 3px
+    );
+  background-size: 100% 4px;
+}
+
+.trap-house-grid {
+  background-image: 
+    linear-gradient(rgba(42, 42, 42, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(42, 42, 42, 0.1) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 768px) {
+  .text-legendary {
+    font-size: 1.5rem;
+  }
+  
+  .btn-space-jam,
+  .btn-jordan,
+  .btn-graffiti {
+    padding: 10px 20px;
+    font-size: 0.875rem;
+  }
+}

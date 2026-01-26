@@ -4,9 +4,11 @@ import { Button } from "./components/ui/button";
 import { AlertTriangleIcon, RefreshCwIcon } from "lucide-react";
 
 export const ErrorFallback = ({ error, resetErrorBoundary }) => {
-  // When encountering an error in the development mode, rethrow it and don't display the boundary.
-  // The parent UI will take care of showing a more helpful dialog.
-  if (import.meta.env.DEV) throw error;
+  // Log error for debugging
+  console.error('[ErrorFallback] App error:', error);
+  
+  // In dev mode, still show the error boundary but also log to console
+  // This helps debug while still showing a user-friendly error screen
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">

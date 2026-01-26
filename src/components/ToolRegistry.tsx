@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Download, BookOpen, AndroidLogo, AppleLogo, Desktop, Star } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 interface Tool {
   id: string;
@@ -148,9 +149,11 @@ export function ToolRegistry() {
     });
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success('Copied to clipboard');
+  const copyToClipboard = async (text: string) => {
+    await copyTextToClipboard(text, {
+      successMessage: 'Copied to clipboard',
+      unavailableMessage: 'Clipboard access is unavailable. Please copy the command manually.'
+    });
   };
 
   if (selectedTool) {

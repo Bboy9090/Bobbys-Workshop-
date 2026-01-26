@@ -21,6 +21,7 @@ node scripts/mock-ws-server.js
 ```
 
 You should see output like:
+
 ```
 ╔════════════════════════════════════════════════════════════════╗
 ║   Pandora Codex - Mock WebSocket Device Hotplug Server        ║
@@ -36,6 +37,7 @@ Simulating random device events every 8-12 seconds.
 ```
 
 **What the mock server does:**
+
 - Listens on `ws://localhost:3001/ws/device-events`
 - Simulates random device connect/disconnect events every 8-12 seconds
 - Broadcasts events to all connected clients
@@ -51,6 +53,7 @@ npm run dev
 ```
 
 Or with pnpm:
+
 ```bash
 pnpm dev
 ```
@@ -70,6 +73,7 @@ Navigate to `http://localhost:5173` in your browser.
 ### Step 5: Watch Events Arrive
 
 Within 8-12 seconds, you should see:
+
 - Toast notifications appearing for device connections/disconnections
 - The event stream updating with new events
 - Statistics incrementing (connections, disconnections, current devices)
@@ -78,17 +82,21 @@ Within 8-12 seconds, you should see:
 ## What You'll See
 
 ### Connection Status
+
 - **Green Badge**: WebSocket connected successfully
 - **Red Badge**: WebSocket disconnected (will auto-reconnect)
 
 ### Statistics Dashboard
+
 - **Connected**: Total number of device connection events
 - **Disconnected**: Total number of device disconnection events
 - **Current Devices**: Net count of currently connected devices
 - **Total Events**: Number of events in the history buffer
 
 ### Event Cards
+
 Each event shows:
+
 - **Event Type Badge**: Connected (green) or Disconnected (red)
 - **Platform Badge**: iOS (blue) or Android (green)
 - **Confidence Badge**: Percentage with color coding (high/medium/low)
@@ -98,6 +106,7 @@ Each event shows:
 - **Time**: Relative timestamp (e.g., "2 seconds ago")
 
 ### Toast Notifications
+
 - **Success Toast (Green)**: Device connected
 - **Info Toast (Blue)**: Device disconnected
 - **Success Toast (Green)**: WebSocket connection established
@@ -134,17 +143,19 @@ For production use with real device detection:
 See [WEBSOCKET_HOTPLUG.md](./WEBSOCKET_HOTPLUG.md) for detailed backend implementation.
 
 Basic steps:
+
 1. Implement WebSocket endpoint in your Node.js backend
 2. Poll BootForgeUSB CLI for device changes
 3. Broadcast events to connected WebSocket clients
 
 Example code snippet:
+
 ```javascript
-const { exec } = require('child_process');
+const { exec } = require("child_process");
 let lastDeviceList = [];
 
 function checkDevices() {
-  exec('bootforgeusb-cli scan --json', (error, stdout) => {
+  exec("bootforgeusb-cli scan --json", (error, stdout) => {
     if (!error) {
       const currentDevices = JSON.parse(stdout);
       // Compare with lastDeviceList and broadcast changes
@@ -158,6 +169,7 @@ setInterval(checkDevices, 1000);
 ### Option 2: Native USB Monitoring
 
 For production systems, implement native USB event monitoring:
+
 - **Linux**: Use `libudev` for hardware events
 - **macOS**: Use `IOKit` notifications
 - **Windows**: Use `SetupAPI` device notifications
@@ -171,6 +183,7 @@ These provide instant event notifications without polling.
 **Problem**: Frontend shows disconnected status
 
 **Solutions**:
+
 1. Check if backend server is running: `ps aux | grep mock-ws-server`
 2. Verify port 3001 is not in use by another process
 3. Check firewall settings
@@ -181,6 +194,7 @@ These provide instant event notifications without polling.
 **Problem**: Connected but no events show up
 
 **Solutions**:
+
 1. Verify mock server is running and logging events
 2. Check browser console for JavaScript errors
 3. Refresh the page
@@ -191,6 +205,7 @@ These provide instant event notifications without polling.
 **Problem**: Events appear but no toasts
 
 **Solutions**:
+
 1. Check if notifications are blocked in browser
 2. Verify the `<Toaster />` component is mounted in App.tsx
 3. Check browser console for errors related to `sonner`
@@ -202,6 +217,7 @@ These provide instant event notifications without polling.
 **Error**: `EADDRINUSE: address already in use :::3001`
 
 **Solutions**:
+
 ```bash
 # Find process using port 3001
 lsof -i :3001
@@ -217,6 +233,7 @@ kill -9 <PID>
 **Problem**: WebSocket won't reconnect after server restart
 
 **Solutions**:
+
 1. Check max reconnection attempts (default: 5)
 2. Manually click "Reconnect" button
 3. Refresh the browser page
@@ -230,7 +247,7 @@ Edit `src/components/LiveDeviceHotplugMonitor.tsx`:
 
 ```typescript
 const { isConnected } = useDeviceHotplug({
-  wsUrl: 'ws://your-server:port/path',
+  wsUrl: "ws://your-server:port/path",
 });
 ```
 
@@ -240,9 +257,12 @@ Edit `scripts/mock-ws-server.js`:
 
 ```javascript
 // Change from 8-12 seconds to 3-5 seconds
-const eventInterval = setInterval(() => {
-  simulateRandomEvent();
-}, 3000 + Math.random() * 2000);  // 3-5 seconds
+const eventInterval = setInterval(
+  () => {
+    simulateRandomEvent();
+  },
+  3000 + Math.random() * 2000,
+); // 3-5 seconds
 ```
 
 ### Increase Event Buffer Size
@@ -251,7 +271,7 @@ Edit `src/hooks/use-device-hotplug.ts`:
 
 ```typescript
 // Change from 100 to 500 events
-setEvents(prev => [event, ...prev].slice(0, 500));
+setEvents((prev) => [event, ...prev].slice(0, 500));
 ```
 
 ### Disable Toast Notifications
@@ -278,7 +298,7 @@ Use hotplug events to trigger automated tests when devices connect:
 ```typescript
 const { events } = useDeviceHotplug({
   onConnect: (event) => {
-    if (event.platform_hint === 'android' && event.mode.includes('adb')) {
+    if (event.platform_hint === "android" && event.mode.includes("adb")) {
       runAutomatedTests(event.device_uid);
     }
   },
@@ -294,7 +314,7 @@ const [deviceInventory, setDeviceInventory] = useState<Set<string>>(new Set());
 
 useDeviceHotplug({
   onConnect: (event) => {
-    setDeviceInventory(prev => new Set(prev).add(event.device_uid));
+    setDeviceInventory((prev) => new Set(prev).add(event.device_uid));
   },
 });
 ```
@@ -306,8 +326,8 @@ Monitor for specific device types:
 ```typescript
 useDeviceHotplug({
   onConnect: (event) => {
-    if (event.platform_hint === 'ios' && event.mode.includes('dfu')) {
-      alert('iPhone in DFU mode detected!');
+    if (event.platform_hint === "ios" && event.mode.includes("dfu")) {
+      alert("iPhone in DFU mode detected!");
     }
   },
 });
@@ -316,6 +336,7 @@ useDeviceHotplug({
 ## Support
 
 For issues or questions:
+
 1. Check the [WEBSOCKET_HOTPLUG.md](./WEBSOCKET_HOTPLUG.md) documentation
 2. Review browser console for errors
 3. Check mock server logs for connection issues
@@ -324,6 +345,7 @@ For issues or questions:
 ## Summary
 
 You now have:
+
 - ✅ A working WebSocket server for device hotplug events
 - ✅ A real-time monitoring UI with live updates
 - ✅ Toast notifications for device events

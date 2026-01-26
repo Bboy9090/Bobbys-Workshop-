@@ -1,15 +1,20 @@
-use crate::model::{UsbEvidence, InterfaceHint};
-use rusb::{Context, Device, DeviceDescriptor, UsbContext};
-use std::time::Duration;
+use crate::model::{UsbTransportEvidence, InterfaceHint};
+use rusb::{Context, Device, UsbContext};
 
-pub fn scan_usb_devices() -> Result<Vec<UsbEvidence>, Box<dyn std::error::Error>> {
+/// Stage 1: Probe all USB transports (enumerate USB devices).
+/// 
+/// Enumerates all USB devices on all buses and extracts transport evidence
+/// (VID/PID, descriptors, interfaces). This is the first stage of the detection pipeline.
+/// 
+/// Returns: Vec of USB transport evidence (raw USB layer data).
+pub fn probe_usb_transports() -> Result<Vec<UsbTransportEvidence>, Box<dyn std::error::Error>> {
     let context = Context::new()?;
     let devices = context.devices()?;
     
     let mut results = Vec::new();
     
     for device in devices.iter() {
-        if let Ok(evidence) = extract_usb_evidence(&device) {
+        if let Ok(evidence) = extract_transport_evidence(&device) {
             results.push(evidence);
         }
     }
@@ -17,7 +22,11 @@ pub fn scan_usb_devices() -> Result<Vec<UsbEvidence>, Box<dyn std::error::Error>
     Ok(results)
 }
 
-fn extract_usb_evidence<T: UsbContext>(device: &Device<T>) -> Result<UsbEvidence, Box<dyn std::error::Error>> {
+/// Extract transport evidence from a USB device descriptor.
+/// 
+/// Reads VID/PID, manufacturer/product/serial strings, and interface descriptors.
+/// This is the raw USB layer data before platform classification.
+fn extract_transport_evidence<T: UsbContext>(device: &Device<T>) -> Result<UsbTransportEvidence, Box<dyn std::error::Error>> {
     let device_desc = device.device_descriptor()?;
     let bus = device.bus_number();
     let address = device.address();
@@ -26,23 +35,22 @@ fn extract_usb_evidence<T: UsbContext>(device: &Device<T>) -> Result<UsbEvidence
     let pid = format!("{:04x}", device_desc.product_id());
     
     let handle = device.open();
-    let timeout = Duration::from_secs(1);
     
     let manufacturer = handle.as_ref()
         .ok()
-        .and_then(|h| h.read_manufacturer_string_ascii(&device_desc, timeout).ok());
+        .and_then(|h| h.read_manufacturer_string_ascii(&device_desc).ok());
     
     let product = handle.as_ref()
         .ok()
-        .and_then(|h| h.read_product_string_ascii(&device_desc, timeout).ok());
+        .and_then(|h| h.read_product_string_ascii(&device_desc).ok());
     
     let serial = handle.as_ref()
         .ok()
-        .and_then(|h| h.read_serial_number_string_ascii(&device_desc, timeout).ok());
+        .and_then(|h| h.read_serial_number_string_ascii(&device_desc).ok());
     
-    let (interface_class, interface_hints) = get_interface_info(device);
+    let (interface_class, interface_hints) = extract_interface_descriptors(device);
     
-    Ok(UsbEvidence {
+    Ok(UsbTransportEvidence {
         vid,
         pid,
         manufacturer,
@@ -55,7 +63,10 @@ fn extract_usb_evidence<T: UsbContext>(device: &Device<T>) -> Result<UsbEvidence
     })
 }
 
-fn get_interface_info<T: UsbContext>(device: &Device<T>) -> (Option<u8>, Vec<InterfaceHint>) {
+/// Extract interface descriptors (class, subclass, protocol) from USB device.
+/// 
+/// Used for platform classification hints (e.g., vendor interface 0xff suggests Android).
+fn extract_interface_descriptors<T: UsbContext>(device: &Device<T>) -> (Option<u8>, Vec<InterfaceHint>) {
     let mut hints = Vec::new();
     let mut first_class = None;
     
@@ -82,14 +93,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_scan_devices() {
-        let result = scan_usb_devices();
-        assert!(result.is_ok(), "USB scan should not panic");
+    fn test_probe_usb_transports() {
+        let result = probe_usb_transports();
+        assert!(result.is_ok(), "USB transport probe should not panic");
         
-        if let Ok(devices) = result {
-            println!("Found {} USB devices", devices.len());
-            for device in devices {
-                println!("  VID:PID {}:{} - {:?}", device.vid, device.pid, device.product);
+        if let Ok(transports) = result {
+            println!("Found {} USB transports", transports.len());
+            for transport in transports {
+                println!("  VID:PID {}:{} - {:?}", transport.vid, transport.pid, transport.product);
+            }
+        }
+    }
+    
+    #[test]
+    fn test_transport_evidence_structure() {
+        // Verify transport evidence contains required fields
+        let result = probe_usb_transports();
+        if let Ok(transports) = result {
+            for transport in transports {
+                assert!(!transport.vid.is_empty(), "VID must not be empty");
+                assert!(!transport.pid.is_empty(), "PID must not be empty");
+                assert!(transport.bus >= 0, "Bus number must be >= 0");
+                assert!(transport.address >= 0, "Address must be >= 0");
             }
         }
     }

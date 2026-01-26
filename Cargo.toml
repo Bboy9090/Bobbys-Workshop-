@@ -1,0 +1,29 @@
+[package]
+name = "bootforge-usb"
+version = "0.1.0"
+edition = "2021"
+authors = ["BootForge Contributors"]
+description = "Cross-platform USB device enumeration and information library"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Bboy9090/Bootforge-usb"
+keywords = ["usb", "devices", "enumeration"]
+categories = ["hardware-support", "os"]
+
+[dependencies]
+rusb = "0.9"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"
+anyhow = "1.0"
+log = "0.4"
+
+[dev-dependencies]
+env_logger = "0.11"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Future: udev for Linux-specific enrichment
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# Future: windows crate for SetupAPI integration
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Future: IOKit bindings for macOS-specific enrichment

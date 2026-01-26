@@ -7,15 +7,23 @@ import { createContext, useContext, useState, ReactNode } from 'react';
 interface AppContextType {
   isOnline: boolean;
   setIsOnline: (online: boolean) => void;
+  backendAvailable: boolean;
+  setBackendAvailable: (available: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [backendAvailable, setBackendAvailable] = useState(false);
 
   return (
-    <AppContext.Provider value={{ isOnline, setIsOnline }}>
+    <AppContext.Provider value={{ 
+      isOnline, 
+      setIsOnline,
+      backendAvailable,
+      setBackendAvailable
+    }}>
       {children}
     </AppContext.Provider>
   );

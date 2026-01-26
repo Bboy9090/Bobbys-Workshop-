@@ -1,8 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Confirmed device record with stable identity, platform classification, and tool correlation.
+/// 
+/// A confirmed device is a USB transport that has been:
+/// 1. Classified (platform + mode determined)
+/// 2. Correlated (matched to tool output, if available)
+/// 3. Scored (confidence assigned)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeviceRecord {
+pub struct ConfirmedDeviceRecord {
     pub device_uid: String,
     pub platform_hint: String,
     pub mode: String,
@@ -12,14 +18,28 @@ pub struct DeviceRecord {
     pub matched_tool_ids: Vec<String>,
 }
 
+/// Legacy alias for backwards compatibility
+pub type DeviceRecord = ConfirmedDeviceRecord;
+
+/// Evidence bundle - USB transport data + tool outputs.
+/// 
+/// Contains all evidence used for device classification and identity resolution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Evidence {
-    pub usb: UsbEvidence,
+    /// USB transport evidence (raw USB layer data)
+    pub usb: UsbTransportEvidence,
+    /// Tool evidence (adb, fastboot, idevice_id outputs)
     pub tools: HashMap<String, ToolEvidence>,
 }
 
+/// USB transport evidence - raw USB layer data before platform classification.
+/// 
+/// A transport represents the physical USB connection (bus + address) with
+/// descriptors (VID/PID, manufacturer, product, serial, interfaces).
+/// 
+/// Multiple transports can represent the same logical device (reconnections).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UsbEvidence {
+pub struct UsbTransportEvidence {
     pub vid: String,
     pub pid: String,
     pub manufacturer: Option<String>,
@@ -30,6 +50,9 @@ pub struct UsbEvidence {
     pub interface_class: Option<u8>,
     pub interface_hints: Vec<InterfaceHint>,
 }
+
+/// Legacy alias for backwards compatibility
+pub type UsbEvidence = UsbTransportEvidence;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InterfaceHint {
@@ -100,6 +123,11 @@ impl DeviceMode {
     }
 }
 
+/// Device classification result - platform, mode, and confidence.
+/// 
+/// Produced by classifying a candidate USB transport based on VID/PID
+/// patterns and interface hints. May be updated during identity resolution
+/// if tool correlation provides additional evidence.
 #[derive(Debug, Clone)]
 pub struct Classification {
     pub mode: DeviceMode,

@@ -13,16 +13,19 @@ This document defines **authorized, lawful, and ownership-respecting** workflows
 ### Prerequisites for All Android Operations
 
 1. **Device Ownership**
+
    - User must be the legal owner of the device
    - OR have written authorization from the owner
    - OR device is owned by the organization performing the operation
 
 2. **User Authorization**
+
    - User must explicitly consent to each operation
    - Destructive operations require typed confirmations (CONFIRM, UNLOCK, RESET)
    - No operations performed without active user involvement
 
 3. **OEM Authorization**
+
    - Bootloader unlock requires OEM unlock toggle enabled by user
    - Firmware flashing limited to OEM-provided or signed images
    - No bypass of bootloader security
@@ -43,6 +46,7 @@ This document defines **authorized, lawful, and ownership-respecting** workflows
 **Purpose**: Detect and identify connected Android devices for diagnostics, inventory, or operations.
 
 **Prerequisites:**
+
 - Device connected via USB
 - USB debugging enabled on device (ADB mode)
 - OR device in fastboot/bootloader mode
@@ -83,11 +87,13 @@ Step 5: Display Information
 ```
 
 **API Endpoints:**
+
 - `GET /api/adb/devices` - List ADB-connected devices
 - `GET /api/fastboot/devices` - List Fastboot-connected devices
 - `GET /api/android-devices/all` - Unified ADB + Fastboot devices
 
 **Capabilities:**
+
 - ✅ Device model and manufacturer identification
 - ✅ Android version and security patch detection
 - ✅ Bootloader version retrieval
@@ -96,11 +102,13 @@ Step 5: Display Information
 - ✅ Storage capacity and usage
 
 **Limitations:**
+
 - ❌ Cannot detect device without USB debugging enabled (ADB mode)
 - ❌ Cannot retrieve properties from locked devices
 - ❌ Cannot detect devices with revoked USB debugging authorization
 
 **Lawful Use Cases:**
+
 - IT asset inventory management
 - Compliance auditing (OS version requirements)
 - Pre-repair device inspection
@@ -113,6 +121,7 @@ Step 5: Display Information
 **Purpose**: Automatically verify installed firmware version and security patch level against latest available updates.
 
 **Prerequisites:**
+
 - Device connected via ADB
 - Firmware database populated with OEM release data
 - Internet connection (for firmware database updates)
@@ -151,11 +160,13 @@ Step 5: User Actions
 ```
 
 **API Endpoints:**
+
 - `GET /api/firmware/check/:serial` - Check firmware for specific device
 - `GET /api/firmware/library` - Browse firmware database
 - `GET /api/firmware/library/:brand/:model` - Get firmware list for device
 
 **Capabilities:**
+
 - ✅ Automatic firmware version extraction
 - ✅ Security patch age calculation
 - ✅ Comparison against OEM release database
@@ -163,11 +174,13 @@ Step 5: User Actions
 - ✅ Security status classification (current/outdated/critical)
 
 **Limitations:**
+
 - ❌ Cannot force OTA updates (requires user initiation on device)
 - ❌ Cannot install firmware without bootloader unlock (for most devices)
 - ❌ Database limited to major OEMs (Google, Samsung, Xiaomi, OnePlus)
 
 **Lawful Use Cases:**
+
 - Enterprise compliance: Ensure devices meet security patch requirements
 - Repair shop: Verify device firmware status before/after repair
 - Personal: Monitor device security and update availability
@@ -179,6 +192,7 @@ Step 5: User Actions
 **Purpose**: Unlock device bootloader to enable custom firmware installation (user-authorized, warranty-voiding operation).
 
 **Prerequisites:**
+
 - Device ownership verified
 - OEM unlock toggle enabled in Developer Options (user action)
 - Device in fastboot/bootloader mode
@@ -210,9 +224,9 @@ Step 4: User Initiates Unlock
          - Void manufacturer warranty
          - Potentially brick device if interrupted
          - Make device vulnerable to unsigned firmware
-      
+
       Type "UNLOCK" to confirm
-  
+
   └─► User types "UNLOCK" exactly
   └─► User clicks "Confirm Unlock"
 
@@ -236,28 +250,33 @@ Step 7: Audit Logging
 ```
 
 **API Endpoints:**
+
 - `POST /api/fastboot/unlock` - Attempt bootloader unlock
 - `GET /api/fastboot/device-info?serial=XXX` - Check bootloader status
 
 **Capabilities:**
+
 - ✅ OEM-authorized bootloader unlock
 - ✅ Typed confirmation to prevent accidental unlock
 - ✅ Full audit trail of unlock attempts
 - ✅ Pre-unlock warnings about consequences
 
 **Limitations:**
+
 - ❌ Cannot unlock without OEM unlock toggle enabled
 - ❌ Cannot unlock carrier-locked devices
 - ❌ Cannot unlock enterprise MDM-controlled devices
 - ❌ Cannot reverse warranty void after unlock
 
 **Lawful Use Cases:**
+
 - Custom ROM installation (user-authorized)
 - Development and testing of Android builds
 - Rooting device for advanced functionality (user's choice)
 - Repair shop: Firmware recovery on bricked devices
 
 **Explicit Non-Goal:**
+
 - ❌ No bypass of OEM unlock requirement
 - ❌ No unlock of stolen devices
 - ❌ No unlock without user consent
@@ -269,6 +288,7 @@ Step 7: Audit Logging
 **Purpose**: Flash OEM firmware images to device partitions for repair, upgrade, or downgrade operations.
 
 **Prerequisites:**
+
 - Bootloader unlocked (see Workflow 3)
 - Device in fastboot mode
 - Valid firmware image file (boot.img, system.img, vendor.img, etc.)
@@ -298,14 +318,14 @@ Step 3: Image Validation
 Step 4: User Confirms Flash
   └─► UI displays:
       ⚠️ Flashing boot partition to device DEF456UVW
-      
+
       This will overwrite the boot partition with:
       - File: boot.img
       - Size: 33,554,432 bytes (32 MB)
       - Checksum: a1b2c3d4e5f6...
-      
+
       Type "CONFIRM" to proceed
-  
+
   └─► User types "CONFIRM"
   └─► User clicks "Start Flash"
 
@@ -330,12 +350,14 @@ Step 7: Audit Logging
 ```
 
 **API Endpoints:**
+
 - `POST /api/fastboot/flash` - Flash partition image
 - `POST /api/flash/validate-image` - Validate image file before flash
 - `POST /api/flash/start` - Start flash operation with progress tracking
 - `ws://localhost:3001/ws/flash-progress` - Real-time progress updates
 
 **Capabilities:**
+
 - ✅ Flash boot, recovery, system, vendor, vbmeta partitions
 - ✅ Real-time progress tracking via WebSocket
 - ✅ Image validation before flash
@@ -343,21 +365,25 @@ Step 7: Audit Logging
 - ✅ Full audit trail with checksums
 
 **Limitations:**
+
 - ❌ Cannot flash without bootloader unlock
 - ❌ Cannot flash signed partitions on locked bootloader
 - ❌ Cannot flash critical partitions (bootloader, radio, aboot)
 - ❌ Cannot flash images for wrong device model
 
 **Lawful Use Cases:**
+
 - OEM firmware restore after soft brick
 - Android version upgrade/downgrade (if bootloader unlocked)
 - Custom ROM installation (user-authorized)
 - Repair shop: Firmware recovery
 
 **Blocked Partitions (Safety):**
+
 - bootloader, aboot, sbl, tz, rpm, modem, radio, persist, dsp, vendor_boot (if critical)
 
 **Allowed Partitions:**
+
 - boot, recovery, system, system_a, system_b, vendor, vendor_a, vendor_b, userdata, cache
 
 ---
@@ -367,6 +393,7 @@ Step 7: Audit Logging
 **Purpose**: Erase user data while preserving system partitions (non-destructive to firmware).
 
 **Prerequisites:**
+
 - Device ownership verified
 - User explicitly authorizes reset
 - Typed confirmation "RESET" required
@@ -379,18 +406,18 @@ Step 1: User Initiates Factory Reset
   └─► User selects "Factory Reset" in Diagnostics panel
   └─► UI displays warning modal:
       ⚠️ WARNING: This will erase all data on device DEF456UVW
-      
+
       This includes:
       - All apps and app data
       - Photos, videos, and documents
       - User accounts and settings
-      
+
       This does NOT erase:
       - System firmware (Android OS remains intact)
       - Bootloader or radio firmware
-      
+
       Type "RESET" to confirm
-  
+
   └─► User types "RESET"
   └─► User clicks "Confirm Reset"
 
@@ -413,33 +440,39 @@ Step 4: Audit Logging
 ```
 
 **API Endpoints:**
+
 - `POST /api/fastboot/erase` - Erase non-critical partition
 - `POST /api/fastboot/reboot` - Reboot device
 
 **Alternative Method (ADB):**
+
 ```bash
 # If device in ADB mode
 adb shell recovery --wipe_data
 ```
 
 **Capabilities:**
+
 - ✅ Erase user data and cache partitions
 - ✅ Preserve system firmware
 - ✅ Typed confirmation required
 - ✅ Full audit trail
 
 **Limitations:**
+
 - ❌ Cannot erase system partitions (use flash operation instead)
 - ❌ Cannot bypass FRP (Factory Reset Protection)
 - ❌ Cannot reset without user consent
 
 **Lawful Use Cases:**
+
 - Pre-sale device preparation
 - Repair shop: Reset device after repair
 - Enterprise: Decommission employee device
 - Personal: Clean device for resale
 
 **Explicit Non-Goal:**
+
 - ❌ No FRP bypass
 - ❌ No Google account removal without credentials
 
@@ -451,19 +484,20 @@ adb shell recovery --wipe_data
 
 #### Supported Brands & Methods
 
-| Brand | Method | Protocol | Tool | Status |
-|-------|--------|----------|------|--------|
-| Google Pixel | Fastboot | Standard fastboot | `fastboot` | ✅ Implemented |
-| Samsung Galaxy | Heimdall | Odin protocol | `heimdall` | ⚠️ Planned |
-| Qualcomm Devices | EDL | Sahara protocol | `edl.py` | ⚠️ Planned |
-| MediaTek Devices | SP Flash Tool | MediaTek protocol | `sp-flash-tool` | ⚠️ Planned |
-| OnePlus | Fastboot | Standard fastboot | `fastboot` | ✅ Implemented |
-| Xiaomi | Fastboot | Standard fastboot (with auth) | `fastboot` | ✅ Implemented |
-| Motorola | Fastboot | Standard fastboot | `fastboot` | ✅ Implemented |
+| Brand            | Method        | Protocol                      | Tool            | Status         |
+| ---------------- | ------------- | ----------------------------- | --------------- | -------------- |
+| Google Pixel     | Fastboot      | Standard fastboot             | `fastboot`      | ✅ Implemented |
+| Samsung Galaxy   | Heimdall      | Odin protocol                 | `heimdall`      | ⚠️ Planned     |
+| Qualcomm Devices | EDL           | Sahara protocol               | `edl.py`        | ⚠️ Planned     |
+| MediaTek Devices | SP Flash Tool | MediaTek protocol             | `sp-flash-tool` | ⚠️ Planned     |
+| OnePlus          | Fastboot      | Standard fastboot             | `fastboot`      | ✅ Implemented |
+| Xiaomi           | Fastboot      | Standard fastboot (with auth) | `fastboot`      | ✅ Implemented |
+| Motorola         | Fastboot      | Standard fastboot             | `fastboot`      | ✅ Implemented |
 
 #### Samsung Galaxy (Heimdall/Odin)
 
 **Workflow:**
+
 ```
 Step 1: Reboot to Download Mode
   └─► Power off device
@@ -488,6 +522,7 @@ Step 4: Reboot
 #### Qualcomm EDL (Emergency Download Mode)
 
 **Workflow:**
+
 ```
 Step 1: Enter EDL Mode
   └─► User triggers EDL via test point or key combo
@@ -528,7 +563,7 @@ Step 3: Backend Executes Reboot
       - System: `adb reboot`
       - Bootloader: `adb reboot bootloader`
       - Recovery: `adb reboot recovery`
-  
+
   └─► If in Fastboot mode:
       - System: `fastboot reboot`
       - Bootloader: `fastboot reboot bootloader`
@@ -541,6 +576,7 @@ Step 4: Device Reboots
 ```
 
 **API Endpoints:**
+
 - `POST /api/fastboot/reboot` - Reboot device (fastboot)
 - `POST /api/adb/reboot` - Reboot device (adb)
 
@@ -551,28 +587,33 @@ Step 4: Device Reboots
 Pandora Codex **does not** and **will not** support:
 
 ### 1. FRP (Factory Reset Protection) Bypass
+
 - ❌ No Google account bypass
 - ❌ No FRP unlock tools
 - ❌ No unauthorized account removal
 - **Reason**: Violates ownership, enables device theft
 
 ### 2. Bootloader Unlock Bypass
+
 - ❌ No exploit-based bootloader unlock
 - ❌ No unlock without OEM unlock toggle
 - ❌ No carrier lock bypass
 - **Reason**: Violates OEM security policies, enables theft
 
 ### 3. IMEI Alteration
+
 - ❌ No IMEI rewriting or spoofing
 - ❌ No baseband modification for IMEI change
 - **Reason**: Illegal in most jurisdictions, enables fraud
 
 ### 4. MDM Profile Bypass
+
 - ❌ No unauthorized MDM profile removal
 - ❌ No enterprise device policy bypass
 - **Reason**: Violates organizational policies, may breach contracts
 
 ### 5. Security Exploit Tools
+
 - ❌ No root exploits for locked bootloaders
 - ❌ No bootrom exploits
 - ❌ No security bypass tools
@@ -587,6 +628,7 @@ Pandora Codex **does not** and **will not** support:
 Official Android tool for device communication.
 
 **Installation:**
+
 ```bash
 # Ubuntu/Debian
 sudo apt-get install adb
@@ -599,6 +641,7 @@ adb version
 ```
 
 **Pandora Integration:**
+
 - `GET /api/system-tools/android` - Check ADB status
 - `GET /api/adb/devices` - List ADB devices
 - `POST /api/adb/command` - Execute safe ADB commands
@@ -610,6 +653,7 @@ adb version
 Official Android tool for bootloader operations.
 
 **Installation:**
+
 ```bash
 # Ubuntu/Debian
 sudo apt-get install fastboot
@@ -622,6 +666,7 @@ fastboot --version
 ```
 
 **Pandora Integration:**
+
 - `GET /api/fastboot/devices` - List Fastboot devices
 - `POST /api/fastboot/flash` - Flash partitions
 - `POST /api/fastboot/unlock` - Unlock bootloader
@@ -655,6 +700,7 @@ Every Android operation produces structured audit log:
 ### Chain of Custody
 
 Evidence bundles include:
+
 - Device serial number
 - Firmware version before/after operation
 - Full command output (stdout/stderr)
@@ -669,11 +715,13 @@ Evidence bundles include:
 ### Repair Shop Workflow
 
 1. **Device Intake**
+
    - Connect device → Detect via ADB/Fastboot
    - Check firmware version → Security patch status
    - Run diagnostics → Document device health
 
 2. **Firmware Recovery (Bricked Device)**
+
    - Reboot to fastboot mode (if possible)
    - Flash OEM firmware images
    - Verify device boots successfully
@@ -686,6 +734,7 @@ Evidence bundles include:
 ### IT Department Workflow (Enterprise)
 
 1. **Device Provisioning**
+
    - Connect device → Verify firmware compliance
    - Check security patch (must be < 3 months old)
    - Add device to inventory via API export
@@ -708,12 +757,15 @@ Evidence bundles include:
 ## Future Capabilities (Planned)
 
 ### Samsung Odin/Heimdall Integration
+
 **Status**: Q1 2025 - Heimdall library integration
 
 ### Qualcomm EDL Support
+
 **Status**: Q2 2025 - EDL tool integration for emergency flashing
 
 ### MediaTek SP Flash Tool Support
+
 **Status**: Q2 2025 - MediaTek protocol support
 
 ---
@@ -721,6 +773,7 @@ Evidence bundles include:
 ## Maintenance
 
 This document is updated:
+
 - **On Android version releases**: Verify tool compatibility
 - **On OEM policy changes**: Review workflows for continued compliance
 - **Quarterly**: Legal and compliance review

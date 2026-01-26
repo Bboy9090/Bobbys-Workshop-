@@ -14,26 +14,33 @@ Modular device-ops framework for lawful repair, diagnostics, and auditable shop 
 ## Enterprise Pillars
 
 ### P0: Truth
+
 If it can't be verified, it can't be claimed. Every action produces evidence.
 
 ### P1: Safety
+
 Destructive actions require: policy + role + confirmation + device state validation.
 
 ### P2: Audit
+
 Every run creates an immutable record: who, what, when, why, result, artifacts, hashes.
 
 ### P3: Portability
+
 Works on Windows/macOS/Linux. Offline-first for shops.
 
 ### P4: Extensibility
+
 Plugins + capability registry. No monolith.
 
 ### P5: Compliance
+
 Separation of public repo vs local vault. Strong language and guardrails.
 
 ## Architecture Components
 
 ### 1. Pandora UI (Desktop/Web)
+
 - React + TypeScript
 - Role-aware UI
 - Offline queue
@@ -41,6 +48,7 @@ Separation of public repo vs local vault. Strong language and guardrails.
 - Real-time monitoring
 
 ### 2. Pandora API (Core Services)
+
 - Auth / RBAC
 - Job orchestration
 - Policy evaluation
@@ -48,6 +56,7 @@ Separation of public repo vs local vault. Strong language and guardrails.
 - Device state management
 
 ### 3. Pandora Agent (Local Executor)
+
 - Runs tools locally
 - Device discovery
 - Evidence capture
@@ -55,6 +64,7 @@ Separation of public repo vs local vault. Strong language and guardrails.
 - Tool health monitoring
 
 ### 4. BootForgeUSB (Rust Core + Python Binding)
+
 - USB device enumeration with rusb/libusb
 - Classification engine with confidence scores
 - Tool confirmers (adb/fastboot/idevice_id)
@@ -62,6 +72,7 @@ Separation of public repo vs local vault. Strong language and guardrails.
 - No claims beyond proven facts
 
 ### 5. Bobby Vault (Local Only)
+
 - User-supplied tools (.pandora_private/)
 - Hash allowlist
 - Signed manifests
@@ -143,9 +154,9 @@ BootForgeUSB provides this contract:
       "address": 12
     },
     "tools": {
-      "adb": {"present": true, "seen": false, "raw": ""},
-      "fastboot": {"present": true, "seen": false, "raw": ""},
-      "idevice_id": {"present": false, "seen": false, "raw": "missing"}
+      "adb": { "present": true, "seen": false, "raw": "" },
+      "fastboot": { "present": true, "seen": false, "raw": "" },
+      "idevice_id": { "present": false, "seen": false, "raw": "missing" }
     }
   },
   "notes": [
@@ -159,6 +170,7 @@ BootForgeUSB provides this contract:
 ## Policy Engine
 
 ### Policy Inputs
+
 - User role (tech/admin/owner)
 - Action risk level (low/medium/high/destructive)
 - Device state (adb/fastboot/dfu/unknown)
@@ -166,6 +178,7 @@ BootForgeUSB provides this contract:
 - Ticket/authorization attached
 
 ### Policy Outcomes
+
 - `allow`
 - `deny` with reason
 - `allow_with_requirements`:
@@ -191,6 +204,7 @@ evidence_bundle_J-12345/
 ```
 
 **Enterprise upgrade:**
+
 - Sign the manifest (public key verification)
 - Store hashes of artifacts
 - Prevents tampering and disputes
@@ -207,6 +221,7 @@ evidence_bundle_J-12345/
 ## Tool Health Dashboard
 
 Shows:
+
 - Tool installed? version? path?
 - Last time it succeeded
 - OS permission readiness (Windows driver state, udev rules on Linux)
@@ -225,6 +240,7 @@ Prevents 80% of "why didn't it work?" questions.
 ## Implementation Phases
 
 ### Phase 0 — Foundations (must)
+
 - [ ] BootForgeUSB Rust core + Python binding
 - [ ] Shared schemas (pandora-core)
 - [ ] Tool registry (public + private overlay)
@@ -233,6 +249,7 @@ Prevents 80% of "why didn't it work?" questions.
 - [ ] No-Illusion enforcement
 
 ### Phase 1 — MVP (ship)
+
 - [ ] Device Dossier UI
 - [ ] Tool Health Monitor
 - [ ] Job Queue
@@ -240,12 +257,14 @@ Prevents 80% of "why didn't it work?" questions.
 - [ ] Basic policy gates
 
 ### Phase 2 — Pro
+
 - [ ] Profiles per brand/chipset
 - [ ] Automation for safe steps
 - [ ] Team workflows
 - [ ] Historical analytics
 
 ### Phase 3 — Enterprise
+
 - [ ] Full policy engine + RBAC
 - [ ] Signed plugins
 - [ ] Signed evidence bundles
@@ -255,6 +274,7 @@ Prevents 80% of "why didn't it work?" questions.
 ## Current Status
 
 **Existing Real-Time Flash Monitor:**
+
 - ✅ WebUSB detection
 - ✅ ADB/Fastboot detection (via backend API)
 - ✅ Performance benchmarking
@@ -266,6 +286,7 @@ Prevents 80% of "why didn't it work?" questions.
 - ⚠️ No audit logs
 
 **Next Steps:**
+
 1. Implement BootForgeUSB for real device detection
 2. Add evidence bundles and audit logging
 3. Implement policy engine

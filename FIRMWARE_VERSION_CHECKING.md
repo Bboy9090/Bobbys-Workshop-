@@ -7,6 +7,7 @@ The Firmware Version Checking System automatically checks firmware versions on c
 ## Features
 
 ### 1. Automatic Device Firmware Checking
+
 - **Real-time detection**: Automatically detects connected devices via ADB/Fastboot
 - **Version comparison**: Compares current firmware with latest available version
 - **Security status**: Analyzes security patch level and firmware age
@@ -14,7 +15,9 @@ The Firmware Version Checking System automatically checks firmware versions on c
 - **Caching**: Intelligent caching of firmware data with configurable refresh
 
 ### 2. Firmware Information Display
+
 For each connected device, the system shows:
+
 - Current firmware version and build number
 - Latest available firmware version
 - Security patch date and status
@@ -26,6 +29,7 @@ For each connected device, the system shows:
 - Direct download links
 
 ### 3. Firmware Library Browser
+
 - **Browse by brand**: View all supported brands
 - **Model listing**: See all models for each brand
 - **Version history**: Complete version history for each model
@@ -34,6 +38,7 @@ For each connected device, the system shows:
 - **Version comparison**: See all available versions for any device
 
 ### 4. Security Status Indicators
+
 - **Current** (Green): Device is running latest firmware with recent security patch
 - **Outdated** (Amber): Device firmware is 1-2 versions behind or security patch is 3-6 months old
 - **Critical** (Red): Device firmware is severely outdated or security patch is >6 months old
@@ -44,19 +49,25 @@ For each connected device, the system shows:
 ### Frontend Components
 
 #### FirmwareDashboard
+
 Main dashboard component with two tabs:
+
 - Connected Devices: Shows firmware check results for connected devices
 - Firmware Library: Browse and search firmware database
 
 #### FirmwareVersionChecker
+
 Displays firmware information for all connected devices:
+
 - Device list with real-time status
 - Search/filter by serial, model, or product
 - Manual refresh buttons per device or all devices
 - Cache management
 
 #### FirmwareLibrary
+
 Browse and search firmware database:
+
 - Brand browser with grid layout
 - Model listing for each brand
 - Version history for each model
@@ -66,34 +77,38 @@ Browse and search firmware database:
 ### Hooks
 
 #### useFirmwareCheck
+
 Custom hook for managing firmware checking operations:
 
 ```typescript
 const {
-  firmwareData,        // Cached firmware info for all devices
-  isChecking,          // Loading state
-  lastChecked,         // Timestamp of last check
-  errors,              // Error messages by device serial
-  checkFirmware,       // Check all devices
-  checkSingleDevice,   // Check specific device
-  clearCache,          // Clear cached data
-  getFirmwareForDevice // Get firmware for specific device
+  firmwareData, // Cached firmware info for all devices
+  isChecking, // Loading state
+  lastChecked, // Timestamp of last check
+  errors, // Error messages by device serial
+  checkFirmware, // Check all devices
+  checkSingleDevice, // Check specific device
+  clearCache, // Clear cached data
+  getFirmwareForDevice, // Get firmware for specific device
 } = useFirmwareCheck(deviceSerials, {
-  autoCheck: false,      // Auto-check on mount
-  checkInterval: 0,      // Auto-refresh interval (0 = disabled)
-  cacheResults: true     // Cache results in KV store
+  autoCheck: false, // Auto-check on mount
+  checkInterval: 0, // Auto-refresh interval (0 = disabled)
+  cacheResults: true, // Cache results in KV store
 });
 ```
 
 ### API Endpoints
 
 #### Check Device Firmware
+
 ```
 GET /api/firmware/check/:serial
 ```
+
 Returns firmware information for a specific device
 
 **Response:**
+
 ```json
 {
   "firmware": {
@@ -126,12 +141,15 @@ Returns firmware information for a specific device
 ```
 
 #### Batch Check Firmware
+
 ```
 POST /api/firmware/check/batch
 ```
+
 Check firmware for multiple devices
 
 **Request:**
+
 ```json
 {
   "devices": ["ABC123", "DEF456", "GHI789"]
@@ -139,6 +157,7 @@ Check firmware for multiple devices
 ```
 
 **Response:**
+
 ```json
 {
   "results": [
@@ -159,13 +178,16 @@ Check firmware for multiple devices
 ```
 
 #### Get Firmware Database
+
 ```
 GET /api/firmware/database/:brand
 GET /api/firmware/database/:brand/:model
 ```
+
 Retrieve firmware database entries
 
 **Response:**
+
 ```json
 {
   "firmwares": [
@@ -190,12 +212,15 @@ Retrieve firmware database entries
 ```
 
 #### Get Brand Firmware List
+
 ```
 GET /api/firmware/list/:brand
 ```
+
 Get complete firmware list for a brand
 
 **Response:**
+
 ```json
 {
   "brand": "Google",
@@ -212,12 +237,15 @@ Get complete firmware list for a brand
 ```
 
 #### Get All Brands
+
 ```
 GET /api/firmware/brands
 ```
+
 List all brands with firmware in database
 
 **Response:**
+
 ```json
 {
   "brands": ["Google", "Samsung", "Xiaomi", "OnePlus", ...]
@@ -225,12 +253,15 @@ List all brands with firmware in database
 ```
 
 #### Search Firmware
+
 ```
 GET /api/firmware/search?q=query
 ```
+
 Search firmware database
 
 **Response:**
+
 ```json
 {
   "results": [
@@ -245,12 +276,15 @@ Search firmware database
 ```
 
 #### Download Firmware
+
 ```
 POST /api/firmware/download
 ```
+
 Initiate firmware download
 
 **Request:**
+
 ```json
 {
   "deviceSerial": "ABC123",
@@ -260,6 +294,7 @@ Initiate firmware download
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -268,12 +303,15 @@ Initiate firmware download
 ```
 
 #### Get Download Status
+
 ```
 GET /api/firmware/download/:downloadId
 ```
+
 Check download progress
 
 **Response:**
+
 ```json
 {
   "id": "download-uuid-123",
@@ -289,9 +327,11 @@ Check download progress
 ```
 
 #### Cancel Download
+
 ```
 POST /api/firmware/download/:downloadId/cancel
 ```
+
 Cancel active download
 
 ## Security Status Determination
@@ -303,6 +343,7 @@ The system uses multiple factors to determine security status:
 3. **Update Availability**: Checks if newer version exists
 
 ### Algorithm:
+
 ```
 if current_version == latest_version:
   return "current"
@@ -323,6 +364,7 @@ return "unknown"
 ## Usage Examples
 
 ### Automatic Device Checking
+
 ```typescript
 import { useFirmwareCheck } from '@/hooks/use-firmware-check';
 import { useAndroidDevices } from '@/hooks/use-android-devices';
@@ -330,12 +372,12 @@ import { useAndroidDevices } from '@/hooks/use-android-devices';
 function MyComponent() {
   const { devices } = useAndroidDevices();
   const deviceSerials = devices.map(d => d.serial);
-  
+
   const { firmwareData, isChecking, checkFirmware } = useFirmwareCheck(
     deviceSerials,
     { autoCheck: true, cacheResults: true }
   );
-  
+
   return (
     <div>
       {devices.map(device => {
@@ -355,14 +397,15 @@ function MyComponent() {
 ```
 
 ### Manual Check with Refresh
+
 ```typescript
 function ManualCheck() {
   const { checkSingleDevice, isChecking } = useFirmwareCheck([]);
-  
+
   const handleCheck = async (serial: string) => {
     await checkSingleDevice(serial);
   };
-  
+
   return (
     <Button onClick={() => handleCheck('ABC123')} disabled={isChecking}>
       Check Firmware
@@ -372,11 +415,12 @@ function ManualCheck() {
 ```
 
 ### Periodic Auto-Refresh
+
 ```typescript
 const { firmwareData } = useFirmwareCheck(deviceSerials, {
   autoCheck: true,
   checkInterval: 300000, // Check every 5 minutes
-  cacheResults: true
+  cacheResults: true,
 });
 ```
 
@@ -385,6 +429,7 @@ const { firmwareData } = useFirmwareCheck(deviceSerials, {
 The backend server must implement the following:
 
 1. **Device Firmware Extraction**: Use ADB commands to extract firmware information:
+
    ```bash
    adb shell getprop ro.build.version.release
    adb shell getprop ro.build.version.incremental
@@ -395,6 +440,7 @@ The backend server must implement the following:
    ```
 
 2. **Firmware Database**: Maintain a database of firmware versions by brand/model
+
    - Can use official sources (OTA update servers, manufacturer APIs)
    - Can integrate with community firmware repositories
    - Must include version, build number, security patch, download URLs
@@ -410,6 +456,7 @@ The backend server must implement the following:
 The firmware checking system follows the truth-first principle:
 
 ✅ **DO:**
+
 - Show "No devices connected" when no devices are present
 - Display actual firmware versions from device
 - Show "Unable to check" when backend is unavailable
@@ -417,6 +464,7 @@ The firmware checking system follows the truth-first principle:
 - Show accurate update availability
 
 ❌ **DON'T:**
+
 - Show fake firmware versions or ghost devices
 - Display placeholder "Connected" states
 - Simulate firmware data when backend is unavailable
@@ -436,19 +484,25 @@ The system gracefully handles various error scenarios:
 ## Integration Points
 
 ### Device Detection
+
 Integrates with existing device detection system:
+
 - `useAndroidDevices` hook for device list
 - Device serial numbers as primary identifiers
 - Supports both ADB and Fastboot modes
 
 ### Authorization System
+
 Can trigger authorization prompts:
+
 - Before checking firmware versions
 - Before downloading firmware
 - Integration with authorization history tracking
 
 ### Snapshot System
+
 Creates automatic snapshots:
+
 - Before firmware updates
 - After version checks
 - With firmware metadata included
@@ -479,6 +533,7 @@ Potential future improvements:
 ## Testing
 
 Backend API endpoints should be tested for:
+
 - Correct firmware extraction from devices
 - Accurate version comparison logic
 - Proper error handling for unavailable devices

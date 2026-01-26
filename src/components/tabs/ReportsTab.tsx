@@ -1,7 +1,7 @@
 import { EvidenceBundleManager } from "../EvidenceBundleManager";
 import { SnapshotRetentionPanel } from "../SnapshotRetentionPanel";
-import { AuthorityDashboard } from "../AuthorityDashboard";
 import { RepairLibrary } from "../RepairLibrary";
+import { EmptyState } from "../EmptyState";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { 
     Archive, 
@@ -57,7 +57,11 @@ export function ReportsTab() {
                 </TabsContent>
 
                 <TabsContent value="dashboard" className="mt-4">
-                    <AuthorityDashboard />
+                    <EmptyState
+                        icon={<ShieldCheck className="w-12 h-12" weight="duotone" />}
+                        title="Authority dashboard disabled"
+                        description="The previous authority dashboard displayed demo data. Re-enable only after it is backed by real evidence/correlation APIs."
+                    />
                 </TabsContent>
 
                 <TabsContent value="library" className="mt-4">

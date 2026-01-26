@@ -7,18 +7,21 @@ The Bobby Dev Arsenal now includes comprehensive real-time WebUSB connection mon
 ## Features Implemented
 
 ### 1. Live Connection Monitoring
+
 - **Real-time event detection**: Automatically detects USB device connections and disconnections
 - **Event listeners**: Uses WebUSB API `connect` and `disconnect` events
 - **Visual indicators**: Shows "Live Monitoring" badge when active with pulsing dot
 - **Automatic refresh**: Device list updates automatically on connection changes
 
 ### 2. Toast Notifications
+
 - **Connection alerts**: Success toast when devices connect
-- **Disconnection alerts**: Error toast when devices disconnect  
+- **Disconnection alerts**: Error toast when devices disconnect
 - **Rich information**: Shows device name, manufacturer, and vendor in notifications
 - **Customizable duration**: Adjustable notification display time (2-10 seconds)
 
 ### 3. Connection History Panel
+
 - **Event log**: Records all connection/disconnection events with timestamps
 - **Scrollable history**: Shows up to 50 recent events
 - **Event details**: Displays device info, vendor ID, product ID, and serial number
@@ -27,6 +30,7 @@ The Bobby Dev Arsenal now includes comprehensive real-time WebUSB connection mon
 - **Clear history**: Button to reset the event log
 
 ### 4. Monitoring Statistics
+
 - **Active devices counter**: Shows currently connected USB devices
 - **Connection counter**: Total connections during session
 - **Disconnection counter**: Total disconnections during session
@@ -35,6 +39,7 @@ The Bobby Dev Arsenal now includes comprehensive real-time WebUSB connection mon
 - **Last event time**: Displays time since last connection event
 
 ### 5. Customizable Settings
+
 - **Connection notifications toggle**: Enable/disable connection alerts
 - **Disconnection notifications toggle**: Enable/disable disconnection alerts
 - **Notification duration slider**: Adjust how long toasts stay visible
@@ -43,6 +48,7 @@ The Bobby Dev Arsenal now includes comprehensive real-time WebUSB connection mon
 - **Persistent settings**: All preferences saved via Spark KV store
 
 ### 6. Enhanced Device Display
+
 - **Live connection indicators**: Pulsing green dot on connected devices
 - **Connection status badges**: "Connected" badge on active devices
 - **Hover effects**: Visual feedback on device cards
@@ -51,36 +57,41 @@ The Bobby Dev Arsenal now includes comprehensive real-time WebUSB connection mon
 ## Technical Implementation
 
 ### WebUSB API Integration
+
 ```typescript
 // Event listeners for real-time monitoring
-navigator.usb.addEventListener('connect', handleConnect);
-navigator.usb.addEventListener('disconnect', handleDisconnect);
+navigator.usb.addEventListener("connect", handleConnect);
+navigator.usb.addEventListener("disconnect", handleDisconnect);
 ```
 
 ### Notification System
+
 ```typescript
-toast.success('USB Device Connected', {
+toast.success("USB Device Connected", {
   description: `${deviceName} - ${vendorName}`,
   duration: settings.notificationDuration,
 });
 ```
 
 ### Persistent Storage
+
 ```typescript
 const [settings] = useKV<NotificationSettings>(
-  'usb-monitoring-settings',
-  DEFAULT_SETTINGS
+  "usb-monitoring-settings",
+  DEFAULT_SETTINGS,
 );
 ```
 
 ## Components Added
 
 1. **USBConnectionMonitor** (`src/components/USBConnectionMonitor.tsx`)
+
    - Connection history display
    - Event timeline with timestamps
    - Clear history functionality
 
 2. **USBMonitoringStats** (`src/components/USBMonitoringStats.tsx`)
+
    - Real-time statistics dashboard
    - Session tracking
    - Counter displays
@@ -93,6 +104,7 @@ const [settings] = useKV<NotificationSettings>(
 ### Enhanced Components
 
 1. **USBDeviceDetector** (enhanced)
+
    - Live monitoring indicator
    - Connection status badges
    - Visual connection feedback
@@ -105,6 +117,7 @@ const [settings] = useKV<NotificationSettings>(
 ## Browser Support
 
 **WebUSB API is supported in:**
+
 - ✅ Chrome/Chromium (desktop and Android)
 - ✅ Edge (Chromium-based)
 - ✅ Opera
@@ -116,6 +129,7 @@ The app gracefully handles unsupported browsers by displaying an appropriate mes
 ## User Experience
 
 ### Connection Flow
+
 1. User connects USB device to computer
 2. WebUSB API fires `connect` event
 3. Device info extracted from event
@@ -126,6 +140,7 @@ The app gracefully handles unsupported browsers by displaying an appropriate mes
 8. Visual indicators update
 
 ### Disconnection Flow
+
 1. User disconnects USB device
 2. WebUSB API fires `disconnect` event
 3. Device info extracted from event

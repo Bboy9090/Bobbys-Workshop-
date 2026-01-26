@@ -1,4 +1,5 @@
 use crate::Result;
+use crate::BootforgeError;
 use super::detect::UsbDeviceInfo;
 
 #[derive(Debug, Clone)]
@@ -28,14 +29,16 @@ impl UsbTransport {
     }
 
     pub async fn send(&self, data: &[u8]) -> Result<usize> {
-        log::debug!("Sending {} bytes", data.len());
-        // Stub: wire up actual USB write
-        Ok(data.len())
+        log::warn!("USB send not yet implemented (attempted {} bytes)", data.len());
+        // TODO: Implement actual USB write using libusb or rusb
+        // For now, return error to prevent silent failure
+        Err(BootforgeError::Usb("USB transport not yet implemented. Cannot send data to device.".to_string()))
     }
 
     pub async fn receive(&self, max_len: usize) -> Result<Vec<u8>> {
-        log::debug!("Receiving up to {} bytes", max_len);
-        // Stub: wire up actual USB read
-        Ok(Vec::new())
+        log::warn!("USB receive not yet implemented (requested {} bytes)", max_len);
+        // TODO: Implement actual USB read using libusb or rusb
+        // For now, return error instead of empty data
+        Err(BootforgeError::Usb("USB transport not yet implemented. Cannot receive data from device.".to_string()))
     }
 }

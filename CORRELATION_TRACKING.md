@@ -9,12 +9,14 @@ The Device Correlation Tracking System provides transparent, honest device ident
 ### Core Components
 
 1. **Types** (`src/types/correlation.ts`)
+
    - `CorrelationBadge`: Badge types (CORRELATED, CORRELATED (WEAK), SYSTEM-CONFIRMED, LIKELY, UNCONFIRMED)
    - `PolicyGates`: Policy enforcement structure
    - `DossierSeed`: Complete device dossier with correlation data
    - `DeviceRecord`: Raw device detection record
 
 2. **Normalizer** (`src/lib/dossier-normalizer.ts`)
+
    - `getMatchedIds()`: Extracts matched tool IDs from device record
    - `correlationBadge()`: Determines correlation badge based on evidence
    - `policyGates()`: Calculates allowed/blocked actions
@@ -29,6 +31,7 @@ The Device Correlation Tracking System provides transparent, honest device ident
 ## Correlation Badge Logic
 
 ### CORRELATED
+
 **Criteria**: Matched tool IDs present + "confirmed" in mode + confidence ≥ 0.90
 
 **Meaning**: Per-device correlation established. This USB record is definitively linked to specific tool ID(s).
@@ -36,6 +39,7 @@ The Device Correlation Tracking System provides transparent, honest device ident
 **Example**: USB device 18d1:4ee7 matched to adb serial "ABC123XYZ"
 
 ### CORRELATED (WEAK)
+
 **Criteria**: Matched tool IDs present + (mode not confirmed OR confidence < 0.90)
 
 **Meaning**: Tool IDs are matched but confidence is not high enough for strong correlation.
@@ -43,6 +47,7 @@ The Device Correlation Tracking System provides transparent, honest device ident
 **Example**: USB device has matched ID but mode is "likely_android" instead of "confirmed"
 
 ### SYSTEM-CONFIRMED
+
 **Criteria**: No matched tool IDs + "confirmed" in mode + confidence ≥ 0.90
 
 **Meaning**: Tools detect the platform/device at system level, but not mapped to this specific USB record.
@@ -50,11 +55,13 @@ The Device Correlation Tracking System provides transparent, honest device ident
 **Warning**: "Tool confirmation detected, but not mapped to this specific USB record (system-level only)."
 
 ### LIKELY
+
 **Criteria**: No matched tool IDs + "likely" in mode
 
 **Meaning**: Detection suggests probable platform/mode but lacks confirmation.
 
 ### UNCONFIRMED
+
 **Criteria**: None of the above
 
 **Meaning**: Insufficient evidence for confident classification.
@@ -64,6 +71,7 @@ The Device Correlation Tracking System provides transparent, honest device ident
 Policy gates define what operations Pandora/BootForge can perform on a device based on correlation quality.
 
 ### Gate Structure
+
 ```typescript
 {
   require_explicit_device_select: true,  // Always true
@@ -86,18 +94,21 @@ Rationale: Per-device correlation provides additional evidence, allowing slightl
 ### Action Categories
 
 #### Always Allowed (Safe)
+
 - `detect`
 - `read_usb_identity`
 - `tool_health`
 - `export_evidence_bundle`
 
 #### Android Conditional (Read-Only)
+
 - `android_getprop` (requires `can_run_adb_shell`)
 - `android_logcat_tail` (requires `can_run_adb_shell`)
 - `fastboot_getvar` (requires `can_use_fastboot`)
 - `fastboot_list_devices` (requires `can_use_fastboot`)
 
 #### Android Destructive (Always Blocked by Default)
+
 - `fastboot_flash_partition`
 - `android_factory_reset`
 - `bootloader_unlock_attempt`
@@ -105,10 +116,12 @@ Rationale: Per-device correlation provides additional evidence, allowing slightl
 **Note**: These require job preflight + authorization even when confidence is high.
 
 #### iOS Conditional (Read-Only)
+
 - `ios_info_read` (requires `can_collect_ios_info`)
 - `ios_pairing_status` (requires `can_collect_ios_info`)
 
 #### iOS Destructive (Always Blocked by Default)
+
 - `ios_restore_attempt`
 - `ios_firmware_write`
 
@@ -131,22 +144,26 @@ Capabilities determine what tool-level operations are available:
 Device dossiers track evidence from two sources:
 
 ### USB Evidence
+
 - Vendor ID (VID)
 - Product ID (PID)
 - Serial number (if available)
 
 Example:
+
 ```
 USB VID: 0x18d1
 USB PID: 0x4ee7
 ```
 
 ### Tool Evidence
+
 - Serial numbers reported by tools (adb, fastboot, libimobiledevice)
 - Transport IDs
 - Device modes
 
 Example:
+
 ```
 Serial: ABC123XYZ
 ```
@@ -156,23 +173,23 @@ Serial: ABC123XYZ
 ### Basic Usage
 
 ```typescript
-import { normalizeBootForgeUSBRecord } from '@/lib/dossier-normalizer';
+import { normalizeBootForgeUSBRecord } from "@/lib/dossier-normalizer";
 
 const deviceRecord = {
-  id: 'device-1',
-  serial: 'ABC123XYZ',
+  id: "device-1",
+  serial: "ABC123XYZ",
   vendorId: 0x18d1,
   productId: 0x4ee7,
-  platform: 'android',
-  mode: 'confirmed_android_os',
+  platform: "android",
+  mode: "confirmed_android_os",
   confidence: 0.95,
-  matched_tool_ids: ['ABC123XYZ', 'adb-ABC123XYZ'],
+  matched_tool_ids: ["ABC123XYZ", "adb-ABC123XYZ"],
 };
 
 const dossier = normalizeBootForgeUSBRecord(deviceRecord);
 
-console.log(dossier.correlation_badge);  // "CORRELATED"
-console.log(dossier.matched_ids);  // ["ABC123XYZ", "adb-ABC123XYZ"]
+console.log(dossier.correlation_badge); // "CORRELATED"
+console.log(dossier.matched_ids); // ["ABC123XYZ", "adb-ABC123XYZ"]
 console.log(dossier.policy_gates.allowed_actions);
 console.log(dossier.policy_gates.blocked_actions);
 ```
@@ -180,9 +197,11 @@ console.log(dossier.policy_gates.blocked_actions);
 ### Batch Processing
 
 ```typescript
-import { normalizeScan } from '@/lib/dossier-normalizer';
+import { normalizeScan } from "@/lib/dossier-normalizer";
 
-const records = [/* ... device records ... */];
+const records = [
+  /* ... device records ... */
+];
 const { devices, summary } = normalizeScan(records);
 
 console.log(`Total: ${summary.total}`);
@@ -201,7 +220,7 @@ import { CorrelationBadgeDisplay } from '@/components/CorrelationBadgeDisplay';
 <DeviceDossierPanel dossier={dossier} />
 
 // Badge only
-<CorrelationBadgeDisplay 
+<CorrelationBadgeDisplay
   badge={dossier.correlation_badge}
   matchedIds={dossier.matched_ids}
 />
@@ -242,22 +261,26 @@ The system never overstates confidence:
 The Correlation Dashboard (`CorrelationDashboard.tsx`) provides:
 
 ### Summary Cards
+
 - Total devices
 - Correlated count with progress bar
 - System-confirmed count with progress bar
 - Unconfirmed count with progress bar
 
 ### Device Tabs
+
 - Quick navigation between devices
 - Badge display on each tab
 - Full dossier panel for selected device
 
 ### Distribution View
+
 - All devices with correlation status
 - Platform and confidence indicators
 - Matched IDs display
 
 ### Documentation Card
+
 - Explains each badge type
 - Reference for operators
 
@@ -268,17 +291,17 @@ The correlation system can be tested with mock data:
 ```typescript
 const mockDevices = [
   {
-    id: 'device-1',
-    matched_tool_ids: ['ABC123'],  // Has correlation
-    platform: 'android',
-    mode: 'confirmed_android_os',
+    id: "device-1",
+    matched_tool_ids: ["ABC123"], // Has correlation
+    platform: "android",
+    mode: "confirmed_android_os",
     confidence: 0.95,
   },
   {
-    id: 'device-2',
-    matched_tool_ids: [],  // No correlation
-    platform: 'android',
-    mode: 'confirmed_android_os',
+    id: "device-2",
+    matched_tool_ids: [], // No correlation
+    platform: "android",
+    mode: "confirmed_android_os",
     confidence: 0.93,
   },
 ];
@@ -302,6 +325,7 @@ Potential improvements:
 ## API Reference
 
 See inline TypeScript documentation in:
+
 - `src/types/correlation.ts`
 - `src/lib/dossier-normalizer.ts`
 

@@ -23,10 +23,11 @@ import {
   Circle
 } from '@phosphor-icons/react';
 import { useFlashProgressWebSocket } from '@/hooks/use-flash-progress-websocket';
+import { getWSUrl } from '@/lib/apiConfig';
 import { toast } from 'sonner';
 
 export function LiveProgressMonitor() {
-  const [wsUrl, setWsUrl] = useState('ws://localhost:3001/flash-progress');
+  const [wsUrl, setWsUrl] = useState(getWSUrl('/ws/flash-progress'));
   
   const {
     isConnected,

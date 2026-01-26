@@ -25,6 +25,16 @@ interface Workflow {
   category: string;
   risk_level: string;
   requires_authorization: boolean;
+  metadata?: {
+    status?: 'backlog' | 'in_progress' | 'review' | 'done';
+    pr_link?: string;
+    placeholder_found?: boolean;
+    version?: string;
+    author?: string;
+    created_at?: number;
+    updated_at?: number;
+    tags?: string[];
+  };
 }
 
 interface WorkflowStep {
@@ -50,19 +60,39 @@ export function WorkflowExecutionConsole() {
   const fetchWorkflows = async () => {
     setLoading(true);
     try {
-      // Note: This endpoint requires admin auth in production
+      let secretPasscode: string | null = null;
+      try {
+        secretPasscode = localStorage.getItem('bobbysWorkshop.secretRoomPasscode');
+      } catch {
+        secretPasscode = null;
+      }
+
+      if (!secretPasscode) {
+        setWorkflows([]);
+        setError('Secret Room passcode is required to load workflows.');
+        return;
+      }
+
+      // Note: Trapdoor endpoints are gated by the Secret Room passcode.
       const response = await fetch('http://localhost:3001/api/trapdoor/workflows', {
         headers: {
-          'X-API-Key': 'dev-admin-key' // In production, get this from auth context
+          'X-Secret-Room-Passcode': secretPasscode
         }
       });
 
       if (response.ok) {
         const data = await response.json();
         setWorkflows(data.workflows || []);
+        setError('');
+      } else {
+        const data = await response.json().catch(() => null);
+        setWorkflows([]);
+        setError(data?.message || data?.error || 'Failed to load workflows.');
       }
     } catch (err) {
       console.error('Error fetching workflows:', err);
+      setWorkflows([]);
+      setError('Network error while loading workflows.');
     } finally {
       setLoading(false);
     }
@@ -82,6 +112,28 @@ export function WorkflowExecutionConsole() {
         {riskLevel.toUpperCase()}
       </Badge>
     );
+  };
+
+  const getStatusBadge = (status?: string) => {
+    if (!status) return null;
+    
+    const variants: Record<string, { variant: any; className: string; label: string }> = {
+      backlog: { variant: 'outline', className: 'border-gray-400 text-gray-600', label: 'Backlog' },
+      in_progress: { variant: 'outline', className: 'border-blue-500 text-blue-600', label: 'In Progress' },
+      review: { variant: 'outline', className: 'border-purple-500 text-purple-600', label: 'Review' },
+      done: { variant: 'outline', className: 'border-green-500 text-green-600', label: 'Done' }
+    };
+
+    const config = variants[status] || variants.backlog;
+    return (
+      <Badge variant={config.variant} className={config.className}>
+        {config.label}
+      </Badge>
+    );
+  };
+
+  const formatStatusText = (status: string) => {
+    return status.replaceAll('_', ' ').toUpperCase();
   };
 
   const getPlatformIcon = (platform: string) => {
@@ -153,6 +205,12 @@ export function WorkflowExecutionConsole() {
                               Auth Required
                             </Badge>
                           )}
+                          {workflow.metadata?.status && getStatusBadge(workflow.metadata.status)}
+                          {workflow.metadata?.placeholder_found && (
+                            <Badge variant="outline" className="border-red-500 text-red-600">
+                              ⚠ Placeholder
+                            </Badge>
+                          )}
                         </div>
                       </div>
                     </CardContent>
@@ -200,8 +258,57 @@ export function WorkflowExecutionConsole() {
                       Authorization Required
                     </Badge>
                   )}
+                  {selectedWorkflow.metadata?.status && getStatusBadge(selectedWorkflow.metadata.status)}
+                  {selectedWorkflow.metadata?.placeholder_found && (
+                    <Badge variant="outline" className="border-red-500 text-red-600">
+                      ⚠ Placeholder Found
+                    </Badge>
+                  )}
                 </div>
               </div>
+
+              {selectedWorkflow.metadata && (
+                <div className="border rounded-lg p-3 bg-slate-50 space-y-2 text-xs">
+                  <h4 className="font-semibold text-sm mb-2">Workflow Metadata</h4>
+                  {selectedWorkflow.metadata.version && (
+                    <div><strong>Version:</strong> {selectedWorkflow.metadata.version}</div>
+                  )}
+                  {selectedWorkflow.metadata.author && (
+                    <div><strong>Author:</strong> {selectedWorkflow.metadata.author}</div>
+                  )}
+                  {selectedWorkflow.metadata.status && (
+                    <div><strong>Status:</strong> {formatStatusText(selectedWorkflow.metadata.status)}</div>
+                  )}
+                  {selectedWorkflow.metadata.pr_link && (
+                    <div>
+                      <strong>PR Link:</strong>{' '}
+                      <a 
+                        href={selectedWorkflow.metadata.pr_link} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        {selectedWorkflow.metadata.pr_link}
+                      </a>
+                    </div>
+                  )}
+                  {selectedWorkflow.metadata.placeholder_found !== undefined && (
+                    <div>
+                      <strong>Placeholder Found:</strong> {selectedWorkflow.metadata.placeholder_found ? 'Yes ⚠️' : 'No ✓'}
+                    </div>
+                  )}
+                  {selectedWorkflow.metadata.tags && selectedWorkflow.metadata.tags.length > 0 && (
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <strong>Tags:</strong>
+                      {selectedWorkflow.metadata.tags.map(tag => (
+                        <Badge key={tag} variant="secondary" className="text-xs">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {selectedWorkflow.requires_authorization && (
                 <Alert className="border-orange-500 bg-orange-50">

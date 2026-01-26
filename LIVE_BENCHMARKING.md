@@ -11,17 +11,20 @@ The Live Device Benchmarking system provides real-time performance monitoring an
 The system captures comprehensive metrics at 10Hz (100ms intervals) during flash operations:
 
 - **Transfer Metrics**
+
   - Write Speed (MB/s)
   - Read Speed (MB/s)
   - Peak/Average/Minimum speeds
 
 - **System Resources**
+
   - CPU Usage (%)
   - CPU Temperature (°C)
   - Memory Usage (%)
   - Memory Bandwidth (MB/s)
 
 - **I/O Performance**
+
   - USB Bandwidth utilization
   - USB Latency (ms)
   - Disk IOPS
@@ -38,6 +41,7 @@ The system captures comprehensive metrics at 10Hz (100ms intervals) during flash
 Each benchmark session receives a comprehensive performance evaluation:
 
 #### Letter Grades (A+ to F)
+
 - **A+ (95-100)**: Exceptional performance, optimal configuration
 - **A (85-94)**: Excellent performance, minor optimization possible
 - **B (75-84)**: Good performance, some improvements recommended
@@ -46,13 +50,16 @@ Each benchmark session receives a comprehensive performance evaluation:
 - **F (<50)**: Critical performance issues, immediate attention required
 
 #### Scoring Components
+
 1. **Speed Score (50%)**: Based on transfer speed vs. theoretical maximum
 2. **Latency Score (25%)**: USB latency and response time
 3. **Throttle Score (10%)**: Frequency and impact of thermal throttling
 4. **Efficiency Score (15%)**: System resource utilization efficiency
 
 #### Efficiency Rating
+
 Separate 0-100 efficiency score calculated from:
+
 - Speed-to-resource ratio
 - CPU utilization vs. throughput
 - Memory usage vs. data transferred
@@ -63,6 +70,7 @@ Separate 0-100 efficiency score calculated from:
 Real-time analysis identifies performance bottlenecks automatically:
 
 #### Bottleneck Types
+
 - **Thermal Throttling**: CPU temperature exceeds safe thresholds
 - **USB Congestion**: Latency spikes or bandwidth saturation
 - **Memory Pressure**: Insufficient RAM limiting buffer performance
@@ -70,6 +78,7 @@ Real-time analysis identifies performance bottlenecks automatically:
 - **Speed Degradation**: Write speed drops below critical thresholds
 
 #### Severity Levels
+
 - **Critical**: >50% of operation affected, immediate action required
 - **High**: 30-50% affected, significant impact on performance
 - **Medium**: 10-30% affected, moderate optimization opportunity
@@ -80,11 +89,13 @@ Real-time analysis identifies performance bottlenecks automatically:
 Based on detected bottlenecks, the system generates specific, actionable recommendations:
 
 **Thermal Issues**
+
 - Improve cooling or reduce ambient temperature
 - Consider thermal throttling mitigation strategies
 - Allow device to cool before next operation
 
 **USB Issues**
+
 - Use USB 3.0+ port with dedicated bandwidth
 - Remove other USB devices to reduce bus congestion
 - Try different USB cable or port
@@ -92,11 +103,13 @@ Based on detected bottlenecks, the system generates specific, actionable recomme
 - Check for driver updates
 
 **Memory Issues**
+
 - Close background applications to free memory
 - Increase system RAM if possible
 - Reduce buffer sizes in settings
 
 **CPU Issues**
+
 - Close CPU-intensive applications
 - Enable performance power mode
 
@@ -105,19 +118,23 @@ Based on detected bottlenecks, the system generates specific, actionable recomme
 All benchmark results are automatically saved and analyzed for trends:
 
 #### Per-Device History
+
 - All benchmark sessions tracked by device serial
 - Average performance scores
 - Best/worst results
 - Performance trend analysis (improving/declining/stable)
 
 #### Cross-Device Comparison
+
 - Device performance rankings
 - Speed comparisons
 - Reliability metrics
 - Optimization effectiveness tracking
 
 #### Trend Detection
+
 Analyzes recent vs. historical performance:
+
 - **Improving**: Recent benchmarks show 5+ point improvement
 - **Declining**: Recent benchmarks show 5+ point decline
 - **Stable**: Performance remains consistent
@@ -135,21 +152,27 @@ Analyzes recent vs. historical performance:
 ### Understanding Your Results
 
 #### Performance Grade
+
 Your overall grade reflects:
+
 - Transfer speed compared to device capabilities
 - Consistency of performance throughout operation
 - Resource efficiency
 - Absence of critical bottlenecks
 
 #### Bottleneck Alerts
+
 Active alerts appear during operation when issues are detected:
+
 - Red/Critical: Immediate impact on performance
 - Orange/High: Significant slowdown occurring
 - Yellow/Medium: Optimization opportunity
 - Blue/Low: Minor issue, informational
 
 #### Optimization Recommendations
+
 Listed in priority order based on:
+
 - Expected performance impact
 - Ease of implementation
 - Confidence in effectiveness
@@ -157,12 +180,14 @@ Listed in priority order based on:
 ### Viewing Historical Data
 
 #### Device Rankings
+
 - All tested devices ranked by average score
 - Color-coded performance indicators
 - Trend arrows showing improvement/decline
 - Quick device comparison
 
 #### Device Details
+
 - Complete benchmark history for selected device
 - Performance trends over time
 - Partition-specific performance
@@ -173,7 +198,9 @@ Listed in priority order based on:
 ### Components
 
 #### `LiveDeviceBenchmark.tsx`
+
 Main benchmarking component that:
+
 - Manages metric collection intervals
 - Renders real-time performance graphs
 - Detects and displays bottleneck alerts
@@ -181,7 +208,9 @@ Main benchmarking component that:
 - Generates optimization recommendations
 
 #### `BenchmarkedFlashingPanel.tsx`
+
 Integrated flash operation panel that:
+
 - Manages batch flash operations
 - Coordinates benchmarking with operations
 - Displays operation queue and progress
@@ -189,7 +218,9 @@ Integrated flash operation panel that:
 - Provides historical data access
 
 #### `BenchmarkDashboard.tsx`
+
 Analytics dashboard that:
+
 - Aggregates benchmark data across devices
 - Calculates performance trends
 - Ranks devices by performance
@@ -197,7 +228,9 @@ Analytics dashboard that:
 - Provides comparative analytics
 
 #### `use-live-benchmark.ts`
+
 React hook providing:
+
 - Benchmark session state management
 - Result persistence via `useKV`
 - Device history queries
@@ -283,18 +316,21 @@ interface BenchmarkResult {
 ## Performance Considerations
 
 ### Zero-Overhead Design
+
 - Benchmarking runs in separate timing context
 - Metrics collection uses non-blocking sampling
 - Analysis happens in idle callbacks
 - No impact on actual flash performance
 
 ### Memory Management
+
 - Metrics buffer limited to last 300 samples (~30 seconds at 10Hz)
 - Old benchmark results auto-pruned if storage exceeds limits
 - Canvas graphs use hardware acceleration
 - Efficient data structures for real-time updates
 
 ### Accuracy
+
 - Metrics sampled consistently at 100ms intervals
 - Multiple samples averaged for stability
 - Outliers detected and handled appropriately
@@ -303,6 +339,7 @@ interface BenchmarkResult {
 ## Future Enhancements
 
 ### Planned Features
+
 - [ ] Machine learning-based bottleneck prediction
 - [ ] Automatic optimization application
 - [ ] Benchmark comparison with similar devices
@@ -313,6 +350,7 @@ interface BenchmarkResult {
 - [ ] Competitive performance rankings
 
 ### Integration Opportunities
+
 - Real WebUSB device monitoring
 - Actual ADB/Fastboot performance tracking
 - Hardware temperature sensors
@@ -322,17 +360,20 @@ interface BenchmarkResult {
 ## Troubleshooting
 
 ### No Benchmarks Appearing
+
 - Ensure flash operation is actually running
 - Check that benchmark component is mounted
 - Verify KV storage is functioning
 - Check browser console for errors
 
 ### Inaccurate Metrics
+
 - Metrics are simulated in demo mode
 - Real metrics require actual hardware integration
 - Browser throttling may affect timing in background tabs
 
 ### Missing Historical Data
+
 - Data persisted in browser localStorage
 - Clearing browser data removes history
 - Different browsers/devices have separate histories
@@ -343,17 +384,17 @@ interface BenchmarkResult {
 
 ```typescript
 const {
-  activeBenchmark,        // Current benchmark session or null
-  benchmarkResults,       // All stored benchmark results
-  startBenchmark,         // Start a new benchmark session
-  stopBenchmark,          // Stop current benchmark
-  handleBenchmarkComplete,// Callback when benchmark finishes
-  getDeviceHistory,       // Get all benchmarks for a device
-  getAverageScore,        // Calculate average score
-  getBestResult,          // Get best result for a device
-  clearHistory,           // Clear all benchmark history
-  isActive                // Whether benchmark is running
-} = useLiveBenchmark()
+  activeBenchmark, // Current benchmark session or null
+  benchmarkResults, // All stored benchmark results
+  startBenchmark, // Start a new benchmark session
+  stopBenchmark, // Stop current benchmark
+  handleBenchmarkComplete, // Callback when benchmark finishes
+  getDeviceHistory, // Get all benchmarks for a device
+  getAverageScore, // Calculate average score
+  getBestResult, // Get best result for a device
+  clearHistory, // Clear all benchmark history
+  isActive, // Whether benchmark is running
+} = useLiveBenchmark();
 ```
 
 ### LiveDeviceBenchmark Component

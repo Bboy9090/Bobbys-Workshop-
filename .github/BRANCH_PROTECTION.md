@@ -15,6 +15,7 @@ Branch protection is configured through a ruleset file located at `.github/rules
 Before any pull request can be merged into `main`, the following status checks must pass:
 
 ### 1. Test Summary
+
 - **Workflow**: CI - Parallel Test Suite
 - **Purpose**: Aggregates results from all parallel test jobs
 - **Jobs included**:
@@ -26,6 +27,7 @@ Before any pull request can be merged into `main`, the following status checks m
   - Code Quality Checks
 
 ### 2. CodeQL Advanced
+
 - **Workflow**: CodeQL Advanced
 - **Purpose**: Security vulnerability scanning
 - **Languages analyzed**:
@@ -34,6 +36,7 @@ Before any pull request can be merged into `main`, the following status checks m
   - Rust
 
 ### 3. rust-clippy analyze
+
 - **Workflow**: rust-clippy analyze
 - **Purpose**: Rust code quality and best practices checking
 
@@ -42,19 +45,23 @@ Before any pull request can be merged into `main`, the following status checks m
 The following rules are enforced on the `main` branch:
 
 1. **Required Pull Request Reviews**
+
    - At least 1 approving review required
    - Stale reviews dismissed when new commits are pushed
    - Review threads must be resolved before merging
 
 2. **Required Status Checks**
+
    - All status checks listed above must pass
    - Branches must be up to date with base branch before merging (strict mode)
    - Prevents "fake green" where outdated branches appear to pass
 
 3. **Branch Deletion Prevention**
+
    - The `main` branch cannot be deleted
 
 4. **No Force Pushes**
+
    - Force pushes to `main` are blocked
    - Maintains complete git history
 
@@ -66,6 +73,7 @@ The following rules are enforced on the `main` branch:
 ## Bypass Permissions
 
 Repository administrators (actor_id: 5, RepositoryRole: Admin) can bypass these rules when necessary for emergency fixes or repository maintenance. This is a standard GitHub configuration that allows admins to:
+
 - Merge critical hotfixes without waiting for all checks
 - Perform repository maintenance operations
 - Resolve stuck merge situations
@@ -146,6 +154,7 @@ For repositories on GitHub plans that support it, consider enabling merge queue 
 3. Configure queue settings as needed
 
 Merge queue provides:
+
 - Automatic serialization of merges
 - Testing of merged result before final merge
 - Prevention of broken builds from race conditions

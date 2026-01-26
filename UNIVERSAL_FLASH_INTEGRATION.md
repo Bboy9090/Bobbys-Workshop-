@@ -7,6 +7,7 @@ The Universal Flash Station is a comprehensive multi-brand phone flashing interf
 ## Architecture
 
 ### Frontend (React/TypeScript)
+
 - **UniversalFlashPanel**: Main UI component for device selection and flash operations
 - **useBootForgeFlash**: React hook managing WebSocket connections and API calls
 - **bootforge-api**: API client for BootForge USB backend
@@ -15,6 +16,7 @@ The Universal Flash Station is a comprehensive multi-brand phone flashing interf
 ### Backend Requirements
 
 The frontend expects a BootForge USB backend server running on:
+
 - **REST API**: `http://localhost:8000` (configurable via `VITE_BOOTFORGE_API_URL`)
 - **WebSocket**: `ws://localhost:8000` (configurable via `VITE_BOOTFORGE_WS_URL`)
 
@@ -23,6 +25,7 @@ The frontend expects a BootForge USB backend server running on:
 The system includes comprehensive support for:
 
 ### Android Manufacturers
+
 - **Samsung** (Odin, Heimdall, Fastboot)
 - **Google Pixel** (Fastboot, ADB Sideload)
 - **Xiaomi** (Fastboot, EDL mode)
@@ -45,6 +48,7 @@ The system includes comprehensive support for:
 - **Fairphone** (Fastboot, ADB Sideload)
 
 ### iOS Devices
+
 - **Apple** (DFU mode)
 
 ## Backend API Endpoints
@@ -52,7 +56,9 @@ The system includes comprehensive support for:
 ### Device Management
 
 #### `POST /api/bootforge/devices/scan`
+
 Scan for connected USB devices
+
 ```json
 Response: {
   "devices": [
@@ -76,7 +82,9 @@ Response: {
 ```
 
 #### `GET /api/bootforge/devices`
+
 Get all connected devices
+
 ```json
 Response: {
   "devices": [ ... ]
@@ -84,7 +92,9 @@ Response: {
 ```
 
 #### `GET /api/bootforge/devices/{serial}`
+
 Get detailed information about a specific device
+
 ```json
 Response: {
   "serial": "ABC123XYZ",
@@ -94,7 +104,9 @@ Response: {
 ```
 
 #### `GET /api/bootforge/devices/{serial}/bootloader-status`
+
 Check bootloader unlock status
+
 ```json
 Response: {
   "unlocked": true,
@@ -103,7 +115,9 @@ Response: {
 ```
 
 #### `POST /api/bootforge/devices/{serial}/reboot`
+
 Reboot device to different mode
+
 ```json
 Request: {
   "mode": "bootloader" | "recovery" | "normal" | "download" | "edl"
@@ -116,7 +130,9 @@ Response: {
 ### Flash Operations
 
 #### `POST /api/bootforge/flash/start`
+
 Start a flash operation
+
 ```json
 Request: {
   "deviceSerial": "ABC123XYZ",
@@ -164,7 +180,9 @@ Response: {
 ```
 
 #### `POST /api/bootforge/flash/{jobId}/pause`
+
 Pause an active flash operation
+
 ```json
 Response: {
   "success": true,
@@ -173,7 +191,9 @@ Response: {
 ```
 
 #### `POST /api/bootforge/flash/{jobId}/resume`
+
 Resume a paused flash operation
+
 ```json
 Response: {
   "success": true,
@@ -182,7 +202,9 @@ Response: {
 ```
 
 #### `POST /api/bootforge/flash/{jobId}/cancel`
+
 Cancel a flash operation
+
 ```json
 Response: {
   "success": true,
@@ -191,7 +213,9 @@ Response: {
 ```
 
 #### `GET /api/bootforge/flash/{jobId}/status`
+
 Get current status of a flash operation
+
 ```json
 Response: {
   "jobId": "flash-job-uuid",
@@ -205,7 +229,9 @@ Response: {
 ```
 
 #### `GET /api/bootforge/flash/active`
+
 Get all active flash operations
+
 ```json
 Response: {
   "operations": [ ... ]
@@ -213,7 +239,9 @@ Response: {
 ```
 
 #### `GET /api/bootforge/flash/history?limit=50`
+
 Get flash operation history
+
 ```json
 Response: {
   "operations": [ ... ]
@@ -221,7 +249,9 @@ Response: {
 ```
 
 #### `POST /api/bootforge/validate-image`
+
 Validate a firmware image
+
 ```json
 Request: {
   "imagePath": "/path/to/firmware.img"
@@ -236,9 +266,11 @@ Response: {
 ## WebSocket Protocol
 
 ### Device Monitor WebSocket
+
 **URL**: `ws://localhost:8000/ws/bootforge/devices`
 
 Streams real-time device connection/disconnection events:
+
 ```json
 {
   "type": "device_connected" | "device_disconnected",
@@ -252,9 +284,11 @@ Streams real-time device connection/disconnection events:
 ```
 
 ### Flash Progress WebSocket
+
 **URL**: `ws://localhost:8000/ws/bootforge/flash/{jobId}`
 
 Streams real-time flash progress updates:
+
 ```json
 {
   "type": "status" | "progress" | "log" | "warning" | "error",
@@ -273,7 +307,9 @@ Streams real-time flash progress updates:
 ## Flash Methods by Brand
 
 ### Fastboot (Most Android devices)
+
 Standard Google-developed flashing protocol
+
 ```bash
 fastboot flash boot boot.img
 fastboot flash system system.img
@@ -281,23 +317,31 @@ fastboot reboot
 ```
 
 ### Odin/Heimdall (Samsung)
+
 Samsung-specific flashing protocol
+
 ```bash
 heimdall flash --BOOT boot.img --SYSTEM system.img
 ```
 
 ### EDL (Emergency Download Mode)
+
 Qualcomm emergency flashing mode
+
 - Used for deeply bricked devices
 - Requires special tools (edl.py, QFIL)
 
 ### DFU (Apple iOS)
+
 Device Firmware Update mode for iPhones/iPads
+
 - Requires iTunes/Finder or third-party tools
 - Limited by Apple security restrictions
 
 ### ADB Sideload
+
 Over-the-air style updates via recovery
+
 ```bash
 adb sideload update.zip
 ```
@@ -323,10 +367,10 @@ async def scan_devices():
 @app.post("/api/bootforge/flash/start")
 async def start_flash(config: FlashJobConfig):
     job_id = generate_job_id()
-    
+
     # Start async flash task
     asyncio.create_task(execute_flash_operation(job_id, config))
-    
+
     return {
         "id": job_id,
         "jobConfig": config,
@@ -341,7 +385,7 @@ async def start_flash(config: FlashJobConfig):
 @app.websocket("/ws/bootforge/flash/{job_id}")
 async def flash_progress_ws(websocket: WebSocket, job_id: str):
     await websocket.accept()
-    
+
     try:
         while True:
             # Stream flash progress
@@ -371,15 +415,18 @@ async def cancel_flash(job_id: str):
 ## Configuration
 
 ### Environment Variables
+
 Create a `.env` file:
+
 ```env
 VITE_BOOTFORGE_API_URL=http://localhost:8000
 VITE_BOOTFORGE_WS_URL=ws://localhost:8000
 ```
 
 ### Frontend Usage
+
 ```tsx
-import { UniversalFlashPanel } from '@/components/UniversalFlashPanel';
+import { UniversalFlashPanel } from "@/components/UniversalFlashPanel";
 
 function App() {
   return <UniversalFlashPanel />;
@@ -389,28 +436,33 @@ function App() {
 ## Features
 
 ### ✅ Multi-Brand Support
+
 - 20+ device manufacturers
 - Brand-specific flash methods
 - Automatic capability detection
 
 ### ✅ Pause/Resume Control
+
 - Pause flash operations mid-transfer
 - Resume from exact position
 - Cancel with cleanup
 
 ### ✅ Real-Time Monitoring
+
 - WebSocket-based live updates
 - Transfer speed tracking
 - ETA calculations
 - Per-partition progress
 
 ### ✅ Safety Features
+
 - Bootloader unlock verification
 - Partition validation
 - User data wipe warnings
 - Brand-specific safety warnings
 
 ### ✅ Comprehensive Logging
+
 - Detailed operation logs
 - Warning messages
 - Error reporting with recovery hints
@@ -418,18 +470,21 @@ function App() {
 ## Development
 
 ### Prerequisites
+
 - Node.js 18+
 - Python 3.10+ (for backend)
 - USB access permissions
 - ADB/Fastboot tools installed
 
 ### Running Frontend
+
 ```bash
 npm install
 npm run dev
 ```
 
 ### Testing Without Backend
+
 The hook gracefully handles connection failures and will show appropriate UI states when the backend is unavailable.
 
 ## Security Considerations
@@ -445,17 +500,20 @@ The hook gracefully handles connection failures and will show appropriate UI sta
 ## Troubleshooting
 
 ### WebSocket Connection Failed
+
 - Check backend is running on correct port
 - Verify CORS settings
 - Check firewall rules
 
 ### Device Not Detected
+
 - Ensure USB debugging enabled
 - Check USB drivers installed
 - Verify ADB/Fastboot in PATH
 - Try different USB cable/port
 
 ### Flash Operation Fails
+
 - Verify bootloader unlocked
 - Check firmware compatibility
 - Ensure sufficient USB power

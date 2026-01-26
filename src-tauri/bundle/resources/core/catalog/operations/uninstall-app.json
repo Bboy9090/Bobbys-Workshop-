@@ -1,0 +1,32 @@
+{
+  "operation": "uninstall_app",
+  "displayName": "Uninstall Application",
+  "description": "Uninstall an application from the device",
+  "category": "app",
+  "riskLevel": "medium",
+  "requiresConfirmation": true,
+  "allowedRoles": ["owner", "admin"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    },
+    "packageName": {
+      "type": "string",
+      "required": true,
+      "description": "Package name of app to uninstall"
+    },
+    "keepData": {
+      "type": "boolean",
+      "required": false,
+      "default": false,
+      "description": "Keep app data and cache"
+    }
+  },
+  "auditLogging": "standard",
+  "rateLimitPerMinute": 10,
+  "estimatedDuration": 5000
+}

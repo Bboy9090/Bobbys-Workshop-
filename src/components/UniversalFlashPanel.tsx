@@ -31,6 +31,7 @@ import {
 import { toast } from 'sonner';
 import { useBootForgeFlash } from '@/hooks/use-bootforge-flash';
 import { DEVICE_BRAND_CAPABILITIES, type DeviceBrand, type FlashMethod, type FlashJobConfig } from '@/types/flash-operations';
+import { DeviceStateGuide, type DeviceState } from './DeviceStateGuide';
 
 export function UniversalFlashPanel() {
   const {
@@ -56,6 +57,28 @@ export function UniversalFlashPanel() {
 
   const device = connectedDevices.find(d => d.serial === selectedDevice);
   const capabilities = device ? device.capabilities : null;
+
+  const requiredState: DeviceState = (() => {
+    switch (flashMethod) {
+      case 'fastboot':
+        return 'fastboot';
+      case 'odin':
+      case 'heimdall':
+        return 'download';
+      case 'edl':
+        return 'edl';
+      case 'dfu':
+        return 'dfu';
+      case 'adb-sideload':
+      case 'recovery':
+        return 'recovery';
+      default:
+        return 'normal';
+    }
+  })();
+
+  const guidePlatform = device?.platform === 'ios' ? 'ios' : 'android';
+  const guideDeviceName = device?.model || device?.serial || 'Your device';
 
   const handleStartFlash = async () => {
     if (!selectedDevice || !imagePath || selectedPartitions.length === 0) {
@@ -161,6 +184,12 @@ export function UniversalFlashPanel() {
             </TabsList>
 
             <TabsContent value="flash" className="space-y-4 mt-4">
+              <DeviceStateGuide
+                requiredState={requiredState}
+                platform={guidePlatform}
+                deviceName={guideDeviceName}
+              />
+
               <div className="grid gap-4">
                 <div className="space-y-2">
                   <Label>Device Selection</Label>

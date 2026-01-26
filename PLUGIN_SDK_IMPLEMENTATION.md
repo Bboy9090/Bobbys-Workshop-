@@ -93,15 +93,15 @@ Plugins have access to:
 Operations available to plugins:
 
 ```typescript
-- getDeviceInfo(serial)
-- executeCommand(command, args)
-- detectDevices()
-- startFlashOperation(config)
-- monitorProgress(jobId)
-- createEvidence(data)
-- requestPermission(permission)
-- showNotification(notification)
-- openDialog(dialog)
+-getDeviceInfo(serial) -
+  executeCommand(command, args) -
+  detectDevices() -
+  startFlashOperation(config) -
+  monitorProgress(jobId) -
+  createEvidence(data) -
+  requestPermission(permission) -
+  showNotification(notification) -
+  openDialog(dialog);
 ```
 
 ## Rust Interface
@@ -126,6 +126,7 @@ FFI bindings provided for TypeScript interop.
 ### Bobby's World Hub
 
 Plugin Manager accessible from:
+
 - Authority Dashboard
 - Settings Panel
 - Tool Registry
@@ -133,6 +134,7 @@ Plugin Manager accessible from:
 ### Plugin Storage
 
 Uses `useKV` for:
+
 - Plugin list (`bobby-plugins`)
 - Security policy (`bobby-security-policy`)
 - Plugin settings (per-plugin namespace)
@@ -189,7 +191,7 @@ Added to App.tsx as 'plugins' section.
 
 ```typescript
 // Navigate to Plugin Manager
-navigateToSection('plugins');
+navigateToSection("plugins");
 
 // Click "Install Plugin"
 // Select plugin file or URL
@@ -197,47 +199,47 @@ navigateToSection('plugins');
 // Confirm installation
 
 // Enable plugin
-enablePlugin('com.bobby.samsung-odin');
+enablePlugin("com.bobby.samsung-odin");
 
 // Execute plugin
-executePlugin('com.bobby.samsung-odin');
+executePlugin("com.bobby.samsung-odin");
 ```
 
 ### Creating a Plugin
 
 ```typescript
-import { Plugin, PluginManifest } from '@/types/plugin-sdk';
+import { Plugin, PluginManifest } from "@/types/plugin-sdk";
 
 const manifest: PluginManifest = {
-  id: 'com.example.myplugin',
-  name: 'My Plugin',
-  version: '1.0.0',
-  author: 'Your Name',
-  description: 'Custom detection plugin',
-  category: 'device-detection',
-  capabilities: ['detection'],
-  riskLevel: 'safe',
-  requiredPermissions: ['device:read'],
-  supportedPlatforms: ['android'],
-  minimumSDKVersion: '1.0.0',
-  entryPoint: './index.js',
-  license: 'MIT',
+  id: "com.example.myplugin",
+  name: "My Plugin",
+  version: "1.0.0",
+  author: "Your Name",
+  description: "Custom detection plugin",
+  category: "device-detection",
+  capabilities: ["detection"],
+  riskLevel: "safe",
+  requiredPermissions: ["device:read"],
+  supportedPlatforms: ["android"],
+  minimumSDKVersion: "1.0.0",
+  entryPoint: "./index.js",
+  license: "MIT",
 };
 
 const plugin: Plugin = {
   manifest,
-  
+
   async initialize(context, api) {
-    context.logger.info('Plugin initialized');
+    context.logger.info("Plugin initialized");
   },
-  
+
   async detect(device) {
     // Detection logic
     return {
       detected: true,
       confidence: 0.95,
-      platform: 'android',
-      brand: 'samsung',
+      platform: "android",
+      brand: "samsung",
     };
   },
 };

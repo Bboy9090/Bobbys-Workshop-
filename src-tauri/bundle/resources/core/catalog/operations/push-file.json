@@ -1,0 +1,31 @@
+{
+  "operation": "push_file",
+  "displayName": "Push File to Device",
+  "description": "Upload a file from local system to device",
+  "category": "file",
+  "riskLevel": "medium",
+  "requiresConfirmation": false,
+  "allowedRoles": ["owner", "admin", "technician"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    },
+    "localPath": {
+      "type": "string",
+      "required": true,
+      "description": "Path to local file"
+    },
+    "remotePath": {
+      "type": "string",
+      "required": true,
+      "description": "Destination path on device"
+    }
+  },
+  "auditLogging": "standard",
+  "rateLimitPerMinute": 10,
+  "estimatedDuration": 10000
+}

@@ -7,12 +7,14 @@ Bobby's World Workshop now includes comprehensive authorization history tracking
 ## Features
 
 ### 📊 History Tracking
+
 - **Automatic Logging**: Every authorization trigger execution is automatically recorded
 - **Detailed Metadata**: Captures trigger name, category, device info, timestamps, execution time
 - **Status Tracking**: Monitors success, failure, pending, and retrying states
 - **User Response**: Records whether user approved, rejected, or action timed out
 
 ### 🕐 Timeline Visualization
+
 - **Grouped by Date**: Entries organized by Today, Yesterday, or specific dates
 - **Search & Filter**: Search by trigger name, device ID, or device name
 - **Category Filtering**: Filter by trust_security, flash_operations, diagnostics, etc.
@@ -20,6 +22,7 @@ Bobby's World Workshop now includes comprehensive authorization history tracking
 - **Real-time Updates**: Timeline updates automatically as new triggers execute
 
 ### 🔄 Retry Mechanisms
+
 - **Automatic Retry**: Failed operations can be retried with exponential backoff
 - **Configurable Settings**:
   - Max Retry Attempts (0-10)
@@ -30,6 +33,7 @@ Bobby's World Workshop now includes comprehensive authorization history tracking
 - **Smart Backoff**: Delays increase exponentially to avoid overwhelming systems
 
 ### 📈 Statistics Dashboard
+
 - **Overview Metrics**:
   - Total executions
   - Successful operations
@@ -49,6 +53,7 @@ Bobby's World Workshop now includes comprehensive authorization history tracking
 Navigate to: **Diagnostics Tab → Auth History**
 
 The dashboard has three main tabs:
+
 1. **Timeline**: View chronological history with search/filter
 2. **Statistics**: View performance metrics and category breakdowns
 3. **Retry Settings**: Configure automatic retry behavior
@@ -67,6 +72,7 @@ The dashboard has three main tabs:
 ```
 
 **Timeline Features**:
+
 - Search by trigger name, device ID, or device name
 - Filter by category (Trust & Security, Flash Ops, etc.)
 - Filter by status (Success, Failed, Retrying, Pending)
@@ -77,6 +83,7 @@ The dashboard has three main tabs:
 ### Statistics View
 
 **Overview Stats Card**:
+
 - Total Executions
 - Successful count
 - Failed count
@@ -84,11 +91,13 @@ The dashboard has three main tabs:
 - Retrying count
 
 **Performance Metrics Card**:
+
 - Success Rate with progress bar
 - Average Execution Time
 - Failure Rate percentage
 
 **Category Breakdown**:
+
 - Shows total operations per category
 - Success rate for each category
 - Visual progress bars
@@ -98,16 +107,20 @@ The dashboard has three main tabs:
 Configure automatic retry behavior:
 
 **Max Retry Attempts**: Number of retry attempts before giving up (0-10)
+
 - Default: 3
 
 **Initial Retry Delay**: Delay before first retry in milliseconds (100-10000ms)
+
 - Default: 1000ms (1 second)
 
 **Backoff Multiplier**: Exponential multiplier for subsequent retries (1-5x)
+
 - Default: 2x
 - Example: 1000ms → 2000ms → 4000ms
 
 **Operation Timeout**: Maximum time to wait for operation (1-300 seconds)
+
 - Default: 30000ms (30 seconds)
 
 **Retry Behavior Preview**:
@@ -122,22 +135,26 @@ When a trigger is executed via `AuthorizationTriggerModal`:
 ```tsx
 // History entry created on trigger execution
 const historyEntry = addHistoryEntry({
-  triggerId: 'flash_firmware',
-  triggerName: 'Flash Firmware',
-  category: 'flash_operations',
-  deviceId: 'ABC123',
-  deviceName: 'Samsung Galaxy S21',
-  status: 'pending',
-  userResponse: 'approved',
-  metadata: { /* additional data */ }
+  triggerId: "flash_firmware",
+  triggerName: "Flash Firmware",
+  category: "flash_operations",
+  deviceId: "ABC123",
+  deviceName: "Samsung Galaxy S21",
+  status: "pending",
+  userResponse: "approved",
+  metadata: {
+    /* additional data */
+  },
 });
 
 // Entry updated on completion
 updateHistoryEntry(historyEntry.id, {
-  status: 'success', // or 'failed'
+  status: "success", // or 'failed'
   executionTime: 1234,
   errorMessage: undefined,
-  auditLog: { /* full audit details */ }
+  auditLog: {
+    /* full audit details */
+  },
 });
 ```
 
@@ -150,7 +167,7 @@ Failed entries can be retried from the timeline:
 // that haven't exceeded max retries
 <Button onClick={handleRetry}>
   <ArrowClockwise /> Retry
-</Button>
+</Button>;
 
 // Retry logic with backoff
 await retryAuthorization(entryId, async () => {
@@ -164,10 +181,12 @@ await retryAuthorization(entryId, async () => {
 All authorization history is persisted using the `useKV` hook:
 
 **Storage Keys**:
+
 - `authorization-history`: Array of all history entries
 - `authorization-retry-config`: Retry configuration settings
 
 **Data Structure**:
+
 ```typescript
 interface AuthorizationHistoryEntry {
   id: string;
@@ -176,8 +195,8 @@ interface AuthorizationHistoryEntry {
   category: string;
   deviceId?: string;
   deviceName?: string;
-  status: 'pending' | 'success' | 'failed' | 'retrying';
-  userResponse: 'approved' | 'rejected' | 'timeout';
+  status: "pending" | "success" | "failed" | "retrying";
+  userResponse: "approved" | "rejected" | "timeout";
   timestamp: number;
   executionTime?: number;
   errorMessage?: string;
@@ -224,22 +243,26 @@ Export authorization history as JSON for external analysis:
 ## Best Practices
 
 ### Monitoring
+
 - Review success rates regularly in Statistics tab
 - Investigate failed operations with high retry counts
 - Monitor average execution times for performance issues
 
 ### Retry Configuration
+
 - Start with default settings (3 retries, 1000ms delay, 2x backoff)
 - Increase max retries for unreliable connections
 - Increase timeout for slow operations
 - Adjust backoff multiplier based on system responsiveness
 
 ### Data Management
+
 - Export history periodically for external backup
 - Clear old entries to maintain performance
 - Use search/filter to focus on specific issues
 
 ### Troubleshooting
+
 - Check error messages in timeline entries
 - Review audit logs for detailed execution info
 - Monitor retry counts to identify problematic triggers
@@ -248,21 +271,25 @@ Export authorization history as JSON for external analysis:
 ## Timeline Entry States
 
 **Success** (Green):
+
 - Operation completed successfully
 - Execution time recorded
 - No errors
 
 **Failed** (Red):
+
 - Operation failed
 - Error message displayed
 - Retry available (if under max retries)
 
 **Retrying** (Amber):
+
 - Currently retrying after failure
 - Animated spinner indicator
 - Retry count displayed
 
 **Pending** (Gray):
+
 - Operation started but not completed
 - Usually very brief state
 - Transitions to success or failed
@@ -274,23 +301,24 @@ The authorization history system integrates with existing trigger APIs:
 ```typescript
 // From use-authorization-history.ts
 const {
-  history,                    // All history entries
-  addHistoryEntry,           // Add new entry
-  updateHistoryEntry,        // Update existing entry
-  deleteHistoryEntry,        // Delete entry
-  clearHistory,              // Clear all entries
-  retryAuthorization,        // Retry failed operation
-  getTimelineGroups,         // Get grouped timeline
-  getFilteredHistory,        // Filter history
-  getStats,                  // Get statistics
-  isRetrying,                // Retry status by entry ID
-  retryConfig                // Current retry config
+  history, // All history entries
+  addHistoryEntry, // Add new entry
+  updateHistoryEntry, // Update existing entry
+  deleteHistoryEntry, // Delete entry
+  clearHistory, // Clear all entries
+  retryAuthorization, // Retry failed operation
+  getTimelineGroups, // Get grouped timeline
+  getFilteredHistory, // Filter history
+  getStats, // Get statistics
+  isRetrying, // Retry status by entry ID
+  retryConfig, // Current retry config
 } = useAuthorizationHistory();
 ```
 
 ## Future Enhancements
 
 Potential improvements for future versions:
+
 - Bulk retry operations
 - Scheduled automatic retries
 - Email notifications for critical failures

@@ -19,6 +19,7 @@ Clean, authoritative, and honest about capabilities.
 ## 🚀 Core Features
 
 ### iOS DFU Flash Station
+
 - **Real DFU mode detection** via libimobiledevice
 - **checkra1n jailbreak support** with live progress tracking
 - **palera1n integration** for newer iOS versions
@@ -27,11 +28,13 @@ Clean, authoritative, and honest about capabilities.
 - Device state detection: Normal / Recovery / DFU modes
 
 **API Endpoints:**
+
 - `GET /api/ios/scan` - Detect connected iOS devices
 - `POST /api/ios/dfu/enter` - Automated DFU mode entry
 - `WS ws://localhost:3001/ws/flash` - Live jailbreak progress
 
 ### MediaTek Flash Panel
+
 - **SP Flash Tool integration** for MediaTek chipsets
 - **Scatter file validation** and firmware image management
 - **Preloader/VCOM detection** via USB scanning
@@ -39,18 +42,20 @@ Clean, authoritative, and honest about capabilities.
 - **Multi-image partition flashing** support
 
 **Supported Chipsets:**
+
 - MT6765 (Helio P35)
 - MT6762 (Helio P22)
 - MT6739, MT6737, MT6580
 - And all other MediaTek platforms via SP Flash Tool
 
 ### Security Lock Education Panel
+
 - **FRP (Factory Reset Protection) Detection**
   - Real ADB-based detection via `settings get secure android_id`
   - Confidence scoring: High / Medium / Low / Unknown
   - Device manufacturer and Android version identification
-  
 - **MDM (Mobile Device Management) Detection**
+
   - Enterprise profile identification
   - Organization name extraction
   - Restriction list analysis
@@ -62,16 +67,19 @@ Clean, authoritative, and honest about capabilities.
   - Enterprise IT contact procedures for MDM
 
 **Educational Content:**
+
 - What FRP is and why it exists (anti-theft protection)
 - Legitimate recovery methods (account sign-in, recovery, proof of purchase)
 - MDM profile explanation (enterprise device management)
 - Legal notices and ethical guidelines
 
 **API Endpoints:**
+
 - `POST /api/frp/detect` - Detect FRP lock status
 - `POST /api/mdm/detect` - Detect MDM profiles
 
 ### Multi-Brand Flash Dashboard
+
 - **Samsung Odin Protocol** - Official download mode flashing
 - **Xiaomi EDL (Emergency Download)** - Qualcomm EDL for bricked devices
 - **Universal Fastboot** - Google, OnePlus, Motorola, ASUS support
@@ -79,6 +87,7 @@ Clean, authoritative, and honest about capabilities.
 - **MediaTek** - SP Flash Tool scatter-based flashing
 
 ### Pandora Codex Control Room
+
 - **Flash Operations Monitor** - Queue management and history
 - **Real-Time Performance** - Transfer speed, CPU, memory, USB utilization
 - **Automated Testing** - Detection, performance, optimization validation
@@ -86,6 +95,7 @@ Clean, authoritative, and honest about capabilities.
 - **Live Hotplug Monitor** - Device connect/disconnect event stream
 
 ### Device Diagnostics
+
 - **Real USB Detection** - ADB and Fastboot device enumeration
 - **Battery Health** - Capacity percentage and cycle count
 - **Storage Diagnostics** - SMART data and health status
@@ -95,6 +105,7 @@ Clean, authoritative, and honest about capabilities.
 ## 🔧 Backend API Architecture
 
 ### WebSocket Endpoints
+
 ```typescript
 ws://localhost:3001/ws/flash - Flash progress streaming
 ws://localhost:3001/ws/hotplug - Device hotplug events
@@ -104,6 +115,7 @@ ws://localhost:3001/ws/correlation - Device correlation tracking
 ### REST API Endpoints
 
 #### iOS Flashing
+
 ```
 GET  /api/ios/scan - Scan for iOS devices
 POST /api/ios/dfu/enter - Enter DFU mode
@@ -111,6 +123,7 @@ POST /api/ios/jailbreak - Start jailbreak (checkra1n/palera1n)
 ```
 
 #### Android Flashing
+
 ```
 GET  /api/android/devices - List ADB devices
 GET  /api/fastboot/devices - List Fastboot devices
@@ -120,6 +133,7 @@ POST /api/edl/flash - Xiaomi EDL flash
 ```
 
 #### MediaTek
+
 ```
 GET  /api/mtk/scan - Detect MTK devices
 POST /api/mtk/flash - SP Flash Tool operation
@@ -127,6 +141,7 @@ GET  /api/mtk/preloader - Check preloader mode
 ```
 
 #### Security Detection
+
 ```
 POST /api/frp/detect - Detect FRP lock
 POST /api/mdm/detect - Detect MDM profile
@@ -134,6 +149,7 @@ GET  /api/security/info - Device security info
 ```
 
 #### Pandora Codex
+
 ```
 GET  /api/flash/history - Flash operation history
 POST /api/flash/start - Start flash operation
@@ -147,6 +163,7 @@ GET  /api/hotplug/events - Device hotplug event log
 ## 📦 Required System Dependencies
 
 ### Linux/macOS
+
 ```bash
 # Android tools
 sudo apt install android-tools-adb android-tools-fastboot
@@ -159,6 +176,7 @@ wget https://spflashtool.com/download/SP_Flash_Tool_v5.2136_Linux.zip
 ```
 
 ### Windows
+
 ```powershell
 # Install via Chocolatey
 choco install adb fastboot
@@ -170,6 +188,7 @@ choco install adb fastboot
 ## 🚨 Legal & Ethical Guidelines
 
 ### What This Toolkit DOES
+
 ✅ Detect device security states (FRP, MDM, bootloader locks)
 ✅ Provide educational resources for legitimate recovery
 ✅ Link to official manufacturer unlock procedures
@@ -177,6 +196,7 @@ choco install adb fastboot
 ✅ Teach proper diagnostic and repair techniques
 
 ### What This Toolkit DOES NOT DO
+
 ❌ Bypass FRP on devices you don't own
 ❌ Remove MDM from enterprise-managed devices without authorization
 ❌ Enable device theft or unauthorized access
@@ -184,12 +204,15 @@ choco install adb fastboot
 ❌ Provide "hacking" or "cracking" tools
 
 ### Legal Notice
+
 This software is intended for **authorized repair technicians only**. Use only on:
+
 - Devices you personally own
 - Devices where you have explicit owner authorization
 - Devices in professional repair contexts with proper documentation
 
 Bypassing security features on devices you do not own is **illegal** under:
+
 - Computer Fraud and Abuse Act (CFAA) - United States
 - Computer Misuse Act - United Kingdom
 - Similar laws in most jurisdictions
@@ -199,18 +222,21 @@ Bypassing security features on devices you do not own is **illegal** under:
 ## 🛠️ Development
 
 ### Start Development Server
+
 ```bash
 npm install
 npm run dev
 ```
 
 ### Build for Production
+
 ```bash
 npm run build
 npm run preview
 ```
 
 ### Start Backend Services
+
 ```bash
 # Start WebSocket flash progress server
 node server/flash-ws.js
@@ -234,12 +260,14 @@ node server/correlation-ws.js
 ## 🤝 Contributing
 
 Contributions welcome for:
+
 - Additional device brand support
 - Educational repair guides
 - Legitimate security unlock procedures
 - Bug fixes and performance improvements
 
 **We will not accept contributions that:**
+
 - Enable unauthorized device access
 - Bypass security without owner consent
 - Violate terms of service or warranties

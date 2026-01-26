@@ -1,0 +1,26 @@
+{
+  "operation": "capture_screenshot",
+  "displayName": "Capture Screenshot",
+  "description": "Capture device screen to image file",
+  "category": "diagnostics",
+  "riskLevel": "low",
+  "requiresConfirmation": false,
+  "allowedRoles": ["owner", "admin", "technician"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    },
+    "outputPath": {
+      "type": "string",
+      "required": false,
+      "description": "Output file path (auto-generated if not provided)"
+    }
+  },
+  "auditLogging": "standard",
+  "rateLimitPerMinute": 10,
+  "estimatedDuration": 5000
+}

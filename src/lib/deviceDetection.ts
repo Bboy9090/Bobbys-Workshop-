@@ -38,15 +38,39 @@ export interface DetectionResult {
 
 export async function detectSystemTools(): Promise<SystemTool[]> {
   try {
-    const response = await fetch(getAPIUrl(API_CONFIG.ENDPOINTS.SYSTEM_TOOLS), {
-      signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
-    });
-    
-    if (!response.ok) {
-      throw new Error(`API returned ${response.status}: ${response.statusText}`);
-    }
+    const isTauri = typeof window !== 'undefined' && Boolean((window as any).__TAURI__ || (window as any).__TAURI_INTERNALS__);
 
-    const data = await response.json();
+    const fetchSystemTools = async () => {
+      const response = await fetch(getAPIUrl(API_CONFIG.ENDPOINTS.SYSTEM_TOOLS), {
+        signal: AbortSignal.timeout(API_CONFIG.TIMEOUT)
+      });
+
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+      }
+
+      return await response.json();
+    };
+
+    let data = await fetchSystemTools();
+
+    const needsAndroidTools =
+      (data?.tools?.adb && !data.tools.adb.installed) || (data?.tools?.fastboot && !data.tools.fastboot.installed);
+
+    if (isTauri && needsAndroidTools) {
+      try {
+        await fetch(getAPIUrl(API_CONFIG.ENDPOINTS.SYSTEM_TOOLS_ANDROID_ENSURE), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+          signal: AbortSignal.timeout(120_000)
+        });
+
+        data = await fetchSystemTools();
+      } catch {
+        // If provisioning fails (offline, blocked download, etc), fall back to reporting the original tool state.
+      }
+    }
     const results: SystemTool[] = [];
 
     const toolMapping = [

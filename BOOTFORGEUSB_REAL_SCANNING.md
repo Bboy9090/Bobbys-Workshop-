@@ -13,9 +13,11 @@ The BootForgeUSB Scanner has been upgraded to support **real device scanning** t
 **Endpoint:** `GET /api/bootforgeusb/scan`
 
 **Query Parameters:**
+
 - `demo=true` - Request demo data fallback if CLI unavailable
 
 **Response Format:**
+
 ```json
 {
   "success": true,
@@ -28,6 +30,7 @@ The BootForgeUSB Scanner has been upgraded to support **real device scanning** t
 ```
 
 **Behavior:**
+
 1. **CLI Available:** Executes `bootforgeusb-cli` command and returns real USB device data
 2. **CLI Not Found + demo=true:** Returns demo device data with `demo: true` flag
 3. **CLI Not Found + demo=false:** Returns 503 error with installation instructions
@@ -37,6 +40,7 @@ The BootForgeUSB Scanner has been upgraded to support **real device scanning** t
 ### Frontend Component (`src/components/BootForgeUSBScanner.tsx`)
 
 **Features:**
+
 - Automatic status check on mount
 - Real-time device scanning via API
 - Demo mode indicator in UI
@@ -45,6 +49,7 @@ The BootForgeUSB Scanner has been upgraded to support **real device scanning** t
 - Expandable device cards with evidence details
 
 **States:**
+
 - `loading` - Checking backend status
 - `scanning` - Scanning for devices
 - `isDemoMode` - Showing demo data (not real devices)
@@ -55,10 +60,12 @@ The BootForgeUSB Scanner has been upgraded to support **real device scanning** t
 ### Prerequisites
 
 **Required:**
+
 - Rust toolchain (`rustc` and `cargo`)
 - USB access permissions (Linux: udev rules)
 
 **Optional (for correlation):**
+
 - `adb` - Android Debug Bridge
 - `fastboot` - Android Fastboot tool
 - `idevice_id` - iOS device detection (libimobiledevice)
@@ -92,40 +99,52 @@ This will compile and install the CLI tool automatically (requires Rust toolchai
 ## Device Detection Flow
 
 ### 1. USB Enumeration
+
 BootForgeUSB scans USB buses using `libusb` or platform-specific APIs:
+
 - Reads VID (Vendor ID) and PID (Product ID)
 - Extracts manufacturer and product strings
 - Captures USB interface descriptors
 - Generates unique device UID
 
 ### 2. Platform Classification
+
 Analyzes USB evidence to determine platform:
+
 - **Android:** VID/PID patterns (Google, Samsung, Xiaomi, etc.)
 - **iOS:** Apple VID (0x05ac) with specific PID ranges
 - **Unknown:** Unrecognized devices
 
 ### 3. Mode Detection
+
 Determines device operational mode:
+
 - **Normal OS** - Standard operating system mode
 - **Recovery** - Recovery/restore mode
 - **Fastboot** - Android bootloader mode
 - **DFU** - iOS Device Firmware Update mode
 
 ### 4. Tool Correlation
+
 Cross-references with system tools:
+
 - Runs `adb devices` to match Android serials
 - Runs `fastboot devices` to match bootloader serials
 - Runs `idevice_id -l` to match iOS UDIDs
 - Stores matched IDs in `matched_tool_ids` array
 
 ### 5. Confidence Scoring
+
 Calculates confidence level (0.0 - 1.0):
+
 - USB evidence only: 0.70 - 0.85
 - Tool confirmation: +0.10 - 0.15
 - Multiple correlations: Higher confidence
 
 ### 6. Correlation Badge
+
 Assigns user-facing status:
+
 - **CORRELATED** - Device matched to tool ID (high confidence)
 - **CORRELATED (WEAK)** - Tool ID match but lower confidence
 - **SYSTEM-CONFIRMED** - Tool sees platform but no device match
@@ -139,24 +158,28 @@ When `bootforgeusb-cli` is not installed, the scanner automatically enters **Dem
 ### Demo Devices
 
 **Device 1: Google Pixel 6 (Android OS)**
+
 - Platform: Android
 - Mode: Normal OS (Confirmed)
 - Confidence: 95%
 - Correlation: CORRELATED (ADB serial matched)
 
 **Device 2: Apple iPhone (iOS)**
+
 - Platform: iOS
 - Mode: Normal OS (Likely)
 - Confidence: 88%
 - Correlation: LIKELY (USB evidence only)
 
 **Device 3: Fastboot Device (Bootloader)**
+
 - Platform: Android
 - Mode: Fastboot (Confirmed)
 - Confidence: 92%
 - Correlation: CORRELATED (Fastboot serial matched)
 
 **Device 4: Xiaomi Device (Unauthorized)**
+
 - Platform: Android
 - Mode: Normal OS (Likely)
 - Confidence: 78%
@@ -171,6 +194,7 @@ When `bootforgeusb-cli` is not installed, the scanner automatically enters **Dem
 ## API Reference
 
 ### Status Check
+
 ```bash
 GET /api/bootforgeusb/status
 ```
@@ -178,6 +202,7 @@ GET /api/bootforgeusb/status
 Returns CLI availability, build environment, and system tools status.
 
 ### Scan Devices
+
 ```bash
 GET /api/bootforgeusb/scan?demo=true
 ```
@@ -185,6 +210,7 @@ GET /api/bootforgeusb/scan?demo=true
 Scans for USB devices. Falls back to demo data if CLI unavailable.
 
 ### Device Lookup
+
 ```bash
 GET /api/bootforgeusb/devices/:uid
 ```
@@ -192,6 +218,7 @@ GET /api/bootforgeusb/devices/:uid
 Retrieves detailed information for specific device UID.
 
 ### Correlation Analysis
+
 ```bash
 GET /api/bootforgeusb/correlate
 ```
@@ -208,6 +235,7 @@ SUBSYSTEM=="usb", MODE="0666", GROUP="plugdev"
 ```
 
 Reload rules:
+
 ```bash
 sudo udevadm control --reload-rules
 sudo udevadm trigger
@@ -220,6 +248,7 @@ sudo udevadm trigger
 **Cause:** CLI tool not installed or not in PATH
 
 **Solution:**
+
 1. Verify Rust installation: `rustc --version`
 2. Build from source: `cd libs/bootforgeusb && cargo build --release`
 3. Install: `cargo install --path . --bin bootforgeusb-cli`
@@ -228,11 +257,13 @@ sudo udevadm trigger
 ### "No devices detected" (Real Mode)
 
 **Possible Causes:**
+
 - No USB devices connected
 - USB permissions issue (Linux)
 - Device not in ADB/Fastboot mode
 
 **Solutions:**
+
 1. Connect a mobile device via USB
 2. Enable USB debugging (Android)
 3. Trust computer on device (iOS)
@@ -244,6 +275,7 @@ sudo udevadm trigger
 **Cause:** USB enumeration took longer than 10 seconds
 
 **Solution:**
+
 - Disconnect unnecessary USB devices
 - Check for USB hub issues
 - Restart USB services: `sudo systemctl restart usbmuxd` (iOS)
@@ -253,6 +285,7 @@ sudo udevadm trigger
 ### Testing with Real Devices
 
 1. **Connect Android Device:**
+
    ```bash
    # Enable USB debugging in Developer Options
    adb devices
@@ -260,6 +293,7 @@ sudo udevadm trigger
    ```
 
 2. **Scan with BootForgeUSB:**
+
    ```bash
    bootforgeusb-cli
    ```
@@ -294,11 +328,13 @@ The BootForgeUSB Scanner integrates with other Pandora Codex components:
 ## Security Considerations
 
 ### Safe Operations
+
 - Device detection (read-only)
 - USB information queries
 - Serial number correlation
 
 ### Restricted Operations
+
 - Device flashing (requires explicit authorization)
 - Bootloader unlocking (policy gates)
 - Partition modification (blocked by default)
@@ -306,6 +342,7 @@ The BootForgeUSB Scanner integrates with other Pandora Codex components:
 ### Policy Gates
 
 All destructive operations require:
+
 1. Explicit device selection
 2. Typed confirmation
 3. Confidence threshold > 0.90

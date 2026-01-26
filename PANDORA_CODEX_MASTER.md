@@ -281,7 +281,7 @@ npm run bootforge:test          # Test BootForgeUSB library
 #### Connection
 
 ```javascript
-const ws = new WebSocket('ws://localhost:3001/ws/device-events');
+const ws = new WebSocket("ws://localhost:3001/ws/device-events");
 ```
 
 #### Message Types
@@ -346,7 +346,9 @@ const ws = new WebSocket('ws://localhost:3001/ws/device-events');
 {
   "type": "device_connected",
   "deviceId": "device-xyz789",
-  "device": { /* device object */ },
+  "device": {
+    /* device object */
+  },
   "timestamp": 1703001234567
 }
 ```

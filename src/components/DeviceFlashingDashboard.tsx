@@ -25,9 +25,10 @@ import {
 } from '@phosphor-icons/react';
 import { useKV } from '@github/spark/hooks';
 import { toast } from 'sonner';
-import { FlashProgressMonitor, useFlashProgressSimulator } from './FlashProgressMonitor';
 import type { FlashProgress } from './FlashProgressMonitor';
 import { LiveProgressMonitor } from './LiveProgressMonitor';
+import { useAudioNotifications } from '@/hooks/use-audio-notifications';
+import { getAPIUrl } from '@/lib/apiConfig';
 
 interface Device {
   serial: string;
@@ -82,7 +83,8 @@ export function DeviceFlashingDashboard() {
     activeJobs: 0
   });
 
-  const { progress, startFlashing, stopFlashing } = useFlashProgressSimulator();
+  const flashingEnabled = false;
+  const { handleJobStart, handleJobError, handleJobComplete } = useAudioNotifications();
 
   useEffect(() => {
     scanForDevices();
@@ -94,57 +96,43 @@ export function DeviceFlashingDashboard() {
     }
   }, [flashJobs]);
 
-  useEffect(() => {
-    if (progress && activeJob) {
-      setActiveJob(prev => prev ? { ...prev, progress } : null);
-
-      if (progress.status === 'completed') {
-        completeActiveJob(progress);
-      } else if (progress.status === 'error') {
-        failActiveJob(progress.error || 'Unknown error');
-      }
-    }
-  }, [progress]);
-
   const scanForDevices = async () => {
     setIsScanning(true);
     try {
-      const response = await fetch('http://localhost:3001/api/devices/scan');
-      if (response.ok) {
-        const data = await response.json();
-        setDevices(data.devices || []);
-        toast.success(`Found ${data.devices?.length || 0} device(s)`);
-      } else {
-        setDevices([
-          {
-            serial: 'ABC123XYZ',
-            model: 'Pixel 6',
-            platform: 'android',
-            mode: 'fastboot',
-            confidence: 95,
-            correlationBadge: 'CORRELATED',
-            matchedIds: ['ABC123XYZ'],
-            usbPort: 'usb-0000:00:14.0-1',
-            vendor: 'Google'
-          }
-        ]);
-        toast.info('Using demo device (backend offline)');
+      const response = await fetch(getAPIUrl('/api/devices/scan'));
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        throw new Error(text || `HTTP ${response.status}`);
       }
+
+      const data = await response.json();
+      const scanned = Array.isArray(data.devices) ? data.devices : [];
+      const mapped: Device[] = scanned.map((d: any) => {
+        const evidence = (d?.evidence ?? {}) as any;
+        const rawConfidence = typeof d?.confidence === 'number' ? d.confidence : 0;
+        const percentConfidence = rawConfidence <= 1 ? Math.round(rawConfidence * 100) : Math.round(rawConfidence);
+        const serial = typeof evidence?.serial === 'string' ? evidence.serial : (typeof d?.display_name === 'string' ? d.display_name : String(d?.device_uid ?? 'unknown'));
+
+        return {
+          serial,
+          model: typeof d?.display_name === 'string' ? d.display_name : undefined,
+          platform: d?.platform_hint === 'android' || d?.platform_hint === 'ios' ? d.platform_hint : 'unknown',
+          mode: typeof d?.mode === 'string' ? d.mode : 'unknown',
+          confidence: Number.isFinite(percentConfidence) ? percentConfidence : 0,
+          correlationBadge: typeof d?.correlation_badge === 'string' ? d.correlation_badge : 'UNCONFIRMED',
+          matchedIds: Array.isArray(d?.matched_tool_ids) ? d.matched_tool_ids : [],
+          usbPort: typeof evidence?.pnpDeviceId === 'string' ? evidence.pnpDeviceId : undefined,
+          vendor: typeof evidence?.manufacturer === 'string' ? evidence.manufacturer : undefined,
+        };
+      });
+
+      setDevices(mapped);
+      toast.success(`Found ${mapped.length} device(s)`);
     } catch (error) {
-      setDevices([
-        {
-          serial: 'ABC123XYZ',
-          model: 'Pixel 6',
-          platform: 'android',
-          mode: 'fastboot',
-          confidence: 95,
-          correlationBadge: 'CORRELATED',
-          matchedIds: ['ABC123XYZ'],
-          usbPort: 'usb-0000:00:14.0-1',
-          vendor: 'Google'
-        }
-      ]);
-      toast.info('Using demo device (backend offline)');
+      setDevices([]);
+      toast.error('Device scan failed', {
+        description: error instanceof Error ? error.message : 'Unknown error',
+      });
     } finally {
       setIsScanning(false);
     }
@@ -173,6 +161,13 @@ export function DeviceFlashingDashboard() {
   };
 
   const startFlashJob = async () => {
+    if (!flashingEnabled) {
+      toast.error('Flashing disabled', {
+        description: 'Flashing is not yet wired to a real backend implementation. This UI will be re-enabled when real fastboot flashing is available.',
+      });
+      return;
+    }
+
     if (!selectedDevice) {
       toast.error('Please select a device');
       return;
@@ -189,24 +184,9 @@ export function DeviceFlashingDashboard() {
       return;
     }
 
-    const imageSize = Math.floor(Math.random() * 2000 + 500) * 1024 * 1024;
-
-    const job: FlashJob = {
-      id: `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      deviceSerial: device.serial,
-      deviceModel: device.model,
-      partition: selectedPartition,
-      imagePath: `/firmware/${selectedPartition}.img`,
-      imageSize,
-      status: 'running',
-      startTime: Date.now()
-    };
-
-    setActiveJob(job);
-    setFlashJobs(prev => [job, ...(prev || [])]);
-    
-    startFlashing(selectedPartition, imageSize);
-    toast.success(`Started flashing ${selectedPartition} to ${device.serial}`);
+    toast.error('Flashing disabled', {
+      description: 'Device is detected, but flashing is currently disabled until backed by real endpoints and progress reporting.',
+    });
   };
 
   const completeActiveJob = (progress: FlashProgress) => {
@@ -225,6 +205,10 @@ export function DeviceFlashingDashboard() {
       (prev || []).map(j => j.id === activeJob.id ? completedJob : j)
     );
     setActiveJob(null);
+    
+    // Audio notification for successful completion
+    handleJobComplete();
+    
     toast.success('Flash operation completed successfully');
   };
 
@@ -242,6 +226,10 @@ export function DeviceFlashingDashboard() {
       (prev || []).map(j => j.id === activeJob.id ? failedJob : j)
     );
     setActiveJob(null);
+    
+    // Audio notification for error
+    handleJobError();
+    
     toast.error(`Flash operation failed: ${error}`);
   };
 
@@ -257,7 +245,6 @@ export function DeviceFlashingDashboard() {
     setFlashJobs(prev =>
       (prev || []).map(j => j.id === activeJob.id ? cancelledJob : j)
     );
-    stopFlashing();
     setActiveJob(null);
     toast.info('Flash operation cancelled');
   };
@@ -415,11 +402,14 @@ export function DeviceFlashingDashboard() {
         </CardContent>
       </Card>
 
-      {activeJob && progress && (
-        <FlashProgressMonitor 
-          progress={progress} 
-          onCancel={cancelActiveJob}
-        />
+      {!flashingEnabled && (
+        <Alert className="border-amber-500/30 bg-amber-600/10">
+          <Warning className="w-4 h-4 text-amber-400" weight="fill" />
+          <AlertTitle className="text-amber-300">Flashing disabled</AlertTitle>
+          <AlertDescription className="text-amber-300">
+            Flashing and simulated progress were removed for truth-first behavior. This will be re-enabled only when real flashing endpoints and real progress reporting are available.
+          </AlertDescription>
+        </Alert>
       )}
 
       <Tabs defaultValue="flash" className="w-full">
@@ -517,7 +507,7 @@ export function DeviceFlashingDashboard() {
                   <div className="flex gap-3">
                     <Button 
                       onClick={startFlashJob}
-                      disabled={!selectedDevice || !!activeJob}
+                      disabled={!flashingEnabled || !selectedDevice || !!activeJob}
                       className="gap-2"
                     >
                       <Play weight="fill" className="w-4 h-4" />
@@ -686,8 +676,8 @@ export function DeviceFlashingDashboard() {
               <CardContent className="pt-6">
                 <div className="text-center text-muted-foreground py-8">
                   <ClockCounterClockwise className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                  <p>No flash history yet</p>
-                  <p className="text-sm mt-2">Complete a flash operation to see history</p>
+                  <p>No flash history</p>
+                  <p className="text-sm mt-2">Flashing is currently disabled.</p>
                 </div>
               </CardContent>
             </Card>

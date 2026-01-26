@@ -20,7 +20,9 @@ export function useAndroidDevices(autoRefresh: boolean = false, refreshInterval:
       }
       
       const result = await response.json();
-      setData(result);
+      // Handle envelope format (ok/data/meta) or direct format
+      const data = result.data || result;
+      setData(data);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch Android devices';
       setError(message);
@@ -46,10 +48,10 @@ export function useAndroidDevices(autoRefresh: boolean = false, refreshInterval:
     loading,
     error,
     refresh: fetchDevices,
-    adbAvailable: data?.sources.adb.available || false,
-    fastbootAvailable: data?.sources.fastboot.available || false,
-    adbCount: data?.sources.adb.count || 0,
-    fastbootCount: data?.sources.fastboot.count || 0,
+    adbAvailable: data?.sources?.adb?.available || false,
+    fastbootAvailable: data?.sources?.fastboot?.available || false,
+    adbCount: data?.sources?.adb?.count || 0,
+    fastbootCount: data?.sources?.fastboot?.count || 0,
   };
 }
 
