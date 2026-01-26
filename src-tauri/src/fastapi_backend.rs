@@ -3,7 +3,7 @@
 
 use std::process::{Command, Child, Stdio};
 use std::path::PathBuf;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use std::io::Error;
 
 #[cfg(target_os = "windows")]
@@ -13,7 +13,7 @@ use std::os::windows::process::CommandExt;
 fn find_python_executable(app_handle: &AppHandle) -> Option<PathBuf> {
     // Try bundled Python first
     if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        let bundled_python = resource_dir
+        let bundled_python: PathBuf = resource_dir
             .join("python")
             .join("runtime")
             .join("python-embedded")
@@ -51,10 +51,13 @@ fn find_python_executable(app_handle: &AppHandle) -> Option<PathBuf> {
     }
     
     // Try PATH
-    if let Ok(output) = Command::new(if cfg!(target_os = "windows") { "python" } else { "python3" })
-        .arg("--version")
-        .output()
+    let mut path_cmd = Command::new(if cfg!(target_os = "windows") { "python" } else { "python3" });
+    path_cmd.arg("--version");
+    #[cfg(target_os = "windows")]
     {
+        path_cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    if let Ok(output) = path_cmd.output() {
         if output.status.success() {
             let python_cmd = if cfg!(target_os = "windows") { "python" } else { "python3" };
             println!("[FastAPI] Using system Python from PATH: {}", python_cmd);
@@ -176,8 +179,12 @@ pub fn launch_fastapi_backend(app_handle: &AppHandle) -> Result<Child, Error> {
     std::fs::create_dir_all(&log_dir).ok();
     
     let log_file = log_dir.join("fastapi-backend.log");
-    if let Ok(file) = std::fs::File::create(&log_file) {
-        cmd.stdout(Stdio::from(file)).stderr(Stdio::from(file));
+    let (stdout_ok, stderr_ok) = (
+        std::fs::OpenOptions::new().create(true).append(true).open(&log_file),
+        std::fs::OpenOptions::new().create(true).append(true).open(&log_file),
+    );
+    if let (Ok(f1), Ok(f2)) = (stdout_ok, stderr_ok) {
+        cmd.stdout(Stdio::from(f1)).stderr(Stdio::from(f2));
     } else {
         cmd.stdout(Stdio::null()).stderr(Stdio::null());
     }

@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { Basketball, Zap, Crown } from 'lucide-react';
+import { Circle, Zap, Crown } from 'lucide-react';
 
 export const SpaceJamHeader: React.FC = () => {
   return (
@@ -27,17 +27,17 @@ export const SpaceJamHeader: React.FC = () => {
         {/* Left Side - Logo & Title */}
         <div className="flex items-center gap-6">
           {/* Hare Jordan Icon */}
-          <div className="w-16 h-16 rounded-2xl border-4 border-jordan bg-hare-jordan-red flex items-center justify-center animate-bounce-jordan shadow-jordan glow-jordan">
+          <div className="w-16 h-16 rounded-2xl border-4 border-jordan bg-hare-jordan-red flex items-center justify-center animate-bounce-jordan glow-jordan">
             <span className="text-4xl">🐰</span>
           </div>
 
           {/* Title */}
           <div>
-            <h1 className="text-3xl font-black text-space-jam font-display tracking-wider animate-graffiti mb-1">
+            <h1 className="text-3xl font-black text-space-jam font-display tracking-wider mb-1">
               HARE JORDAN'S
             </h1>
             <div className="flex items-center gap-2">
-              <Basketball className="w-5 h-5 text-basketball-court animate-dribble" />
+              <Circle className="w-5 h-5 text-basketball-court animate-dribble fill-current" />
               <p className="text-lg text-legendary font-display tracking-wide">
                 NYC PLAYGROUND WORKSHOP
               </p>

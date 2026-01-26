@@ -168,33 +168,41 @@ export async function safeExecString(commandString, options = {}) {
  * Check if a command exists in PATH (Windows-native, no where.exe call)
  */
 export function commandExistsInPath(cmd) {
+  return findToolPathInPath(cmd) !== null;
+}
+
+/**
+ * Resolve command to full path via PATH only (no execSync/where/which).
+ * Prevents console windows on Windows.
+ * @returns {string|null} Full path or null if not found
+ */
+export function findToolPathInPath(cmd) {
   if (process.platform === 'win32') {
-    // Check PATH directly without calling where.exe to prevent console windows
     const pathEnv = process.env.PATH || '';
     const pathDirs = pathEnv.split(';');
     const extensions = process.env.PATHEXT ? process.env.PATHEXT.split(';') : ['.exe', '.cmd', '.bat', '.com'];
-    
     for (const dir of pathDirs) {
       if (!dir) continue;
       for (const ext of extensions) {
         const fullPath = join(dir, cmd + ext);
-        if (existsSync(fullPath)) {
-          return true;
-        }
+        if (existsSync(fullPath)) return fullPath;
       }
     }
-    return false;
-  } else {
-    // Unix-like: use command -v
-    try {
-      const result = spawnSync('command', ['-v', cmd], {
-        stdio: 'ignore',
-        timeout: 2000
-      });
-      return result.status === 0;
-    } catch {
-      return false;
+    return null;
+  }
+  try {
+    const result = spawnSync('which', [cmd], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 2000
+    });
+    if (result.status === 0 && result.stdout) {
+      const p = result.stdout.trim().split('\n')[0];
+      return p || null;
     }
+    return null;
+  } catch {
+    return null;
   }
 }
 

@@ -50,9 +50,9 @@ if ($IsWindows) {
     if (-not (Test-Path $PythonZip)) {
         try {
             Invoke-WebRequest -Uri $PythonUrl -OutFile $PythonZip -UseBasicParsing
-            Write-Host "✓ Downloaded Python embedded distribution" -ForegroundColor Green
+            Write-Host "[OK] Downloaded Python embedded distribution" -ForegroundColor Green
         } catch {
-            Write-Host "✗ Download failed: $_" -ForegroundColor Red
+            Write-Host "[X] Download failed: $_" -ForegroundColor Red
             Write-Host "`nManual download required:" -ForegroundColor Yellow
             Write-Host "  1. Download from: $PythonUrl" -ForegroundColor White
             Write-Host "  2. Save to: $PythonZip" -ForegroundColor White
@@ -60,7 +60,7 @@ if ($IsWindows) {
             exit 1
         }
     } else {
-        Write-Host "✓ Python embedded distribution already downloaded" -ForegroundColor Green
+        Write-Host "OK Python embedded distribution already downloaded" -ForegroundColor Green
     }
     
     Write-Host "Extracting Python runtime..." -ForegroundColor Cyan
@@ -68,7 +68,7 @@ if ($IsWindows) {
         Remove-Item -Path $EmbeddedDir -Recurse -Force
     }
     Expand-Archive -Path $PythonZip -DestinationPath $EmbeddedDir -Force
-    Write-Host "✓ Extracted Python runtime" -ForegroundColor Green
+    Write-Host "OK Extracted Python runtime" -ForegroundColor Green
     
     # Enable pip
     Write-Host "Enabling pip..." -ForegroundColor Cyan
@@ -79,7 +79,7 @@ if ($IsWindows) {
         $Content = Get-Content $PthFile -Raw
         $Content = $Content -replace "#import site", "import site"
         Set-Content -Path $PthFile -Value $Content -NoNewline
-        Write-Host "✓ Enabled pip" -ForegroundColor Green
+        Write-Host "OK Enabled pip" -ForegroundColor Green
     }
     
     # Install dependencies
@@ -89,9 +89,9 @@ if ($IsWindows) {
     if (Test-Path $RequirementsFile) {
         & $PythonExe -m pip install --upgrade pip --target "$EmbeddedDir\Lib\site-packages" --no-warn-script-location
         & $PythonExe -m pip install -r $RequirementsFile --target "$EmbeddedDir\Lib\site-packages" --no-warn-script-location
-        Write-Host "✓ Installed Python dependencies" -ForegroundColor Green
+        Write-Host "OK Installed Python dependencies" -ForegroundColor Green
     } else {
-        Write-Host "⚠ requirements.txt not found, skipping dependency installation" -ForegroundColor Yellow
+        Write-Host "WARN requirements.txt not found, skipping dependency installation" -ForegroundColor Yellow
     }
     
     # Copy backend modules
@@ -104,7 +104,7 @@ if ($IsWindows) {
             Remove-Item -Path $BackendDest -Recurse -Force
         }
         Copy-Item -Path $BackendSrc -Destination $BackendDest -Recurse -Force
-        Write-Host "✓ Copied backend modules" -ForegroundColor Green
+        Write-Host "[OK] Copied backend modules" -ForegroundColor Green
     }
     
     # Create launcher script
@@ -115,7 +115,7 @@ if ($IsWindows) {
 cd /d "%~dp0"
 python.exe -m backend.main
 "@ | Set-Content -Path $LauncherScript
-    Write-Host "✓ Created launcher script" -ForegroundColor Green
+    Write-Host "OK Created launcher script" -ForegroundColor Green
     
 } elseif ($IsMacOS) {
     Write-Host "=== macOS Python Runtime Bundle ===" -ForegroundColor Yellow
@@ -133,7 +133,7 @@ export PYTHONPATH="$(pwd)/backend:$(pwd)/python/runtime/python-embedded:$PYTHONP
 python3 -m backend.main
 "@ | Set-Content -Path $LauncherScript
     & chmod +x $LauncherScript
-    Write-Host "✓ Created launcher script" -ForegroundColor Green
+    Write-Host "OK Created launcher script" -ForegroundColor Green
     
 } else {
     Write-Host "=== Linux Python Runtime Bundle ===" -ForegroundColor Yellow
@@ -147,7 +147,7 @@ export PYTHONPATH="$(pwd)/backend:$(pwd)/python/runtime/python-embedded:$PYTHONP
 python3 -m backend.main
 "@ | Set-Content -Path $LauncherScript
     & chmod +x $LauncherScript
-    Write-Host "✓ Created launcher script" -ForegroundColor Green
+    Write-Host "OK Created launcher script" -ForegroundColor Green
 }
 
 Write-Host ""

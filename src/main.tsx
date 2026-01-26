@@ -5,10 +5,23 @@ import "@github/spark/spark";
 
 import App from './App.tsx';
 import { ErrorFallback } from './ErrorFallback.tsx';
+import { getAPIUrl } from './lib/apiConfig';
 
 import "./main.css";
 import "./styles/theme.css";
 import "./index.css";
+
+// Normalize relative API calls across the app.
+// Many components call fetch('/api/...'); in Tauri (file:// origin) and in dev (Vite),
+// this can hit the wrong server and return HTML -> "Unexpected token '<'".
+// We rewrite only string URLs that start with "/api" to the configured backend base URL.
+const __originalFetch = window.fetch.bind(window);
+window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+  if (typeof input === 'string' && input.startsWith('/api')) {
+    return __originalFetch(getAPIUrl(input), init);
+  }
+  return __originalFetch(input as any, init);
+};
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

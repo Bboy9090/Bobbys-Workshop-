@@ -118,3 +118,4 @@ if (Test-Path (Join-Path $TargetServerDir "package.json")) {
 
 Write-Host "Server bundled successfully!" -ForegroundColor Green
 Write-Host "Location: $TargetServerDir" -ForegroundColor Gray
+exit 0

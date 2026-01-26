@@ -15,7 +15,7 @@ import express from 'express';
 import ShadowLogger from '../../../../core/lib/shadow-logger.js';
 import { safeSpawn, commandExistsSafe } from '../../../utils/safe-exec.js';
 import { acquireDeviceLock, releaseDeviceLock } from '../../../locks.js';
-import ADBLibrary from '../../../../core/lib/adb.js';
+import ADBLibrary from '../../../utils/adb-library-wrapper.js';
 
 const router = express.Router();
 const shadowLogger = new ShadowLogger();

@@ -55,7 +55,8 @@ export async function executeFastbootCommand(serial, command, args = [], options
     // Spawn Fastboot process (no shell)
     const fastboot = spawn('fastboot', fastbootArgs, {
       shell: false, // Critical: no shell execution
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
     });
     
     // Collect stdout
@@ -108,7 +109,8 @@ export async function getFastbootDevices() {
     
     const fastboot = spawn('fastboot', ['devices', '-l'], {
       shell: false,
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
     });
     
     fastboot.stdout.on('data', (data) => {
@@ -197,3 +199,78 @@ export async function rebootFromFastboot(serial, mode = 'normal') {
   
   return executeFastbootCommand(serial, command, [], { timeout: 30000 });
 }
+
+/**
+ * Execute a raw fastboot subcommand string.
+ *
+ * Compatibility layer for workflow steps stored as strings like:
+ * "getvar all", "oem unlock", "devices".
+ *
+ * @param {string|null} serial
+ * @param {string} commandString
+ * @param {object} options
+ * @returns {Promise<{success: boolean, stdout: string, stderr: string, exitCode: number, error?: string}>}
+ */
+export async function executeCommand(serial, commandString, options = {}) {
+  try {
+    const parts = (commandString || '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) {
+      return { success: false, stdout: '', stderr: 'Empty fastboot command', exitCode: 1, error: 'Empty fastboot command' };
+    }
+
+    const [cmd, ...args] = parts;
+    const fullArgs = cmd === 'devices'
+      ? [cmd, ...args]
+      : (serial ? ['-s', serial, cmd, ...args] : [cmd, ...args]);
+
+    return await new Promise((resolve) => {
+      let stdout = '';
+      let stderr = '';
+
+      const child = spawn('fastboot', fullArgs, {
+        shell: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true
+      });
+
+      child.stdout?.on('data', (d) => { stdout += d.toString(); });
+      child.stderr?.on('data', (d) => { stderr += d.toString(); });
+
+      const timeout = options?.timeout ?? 60000;
+      const t = setTimeout(() => {
+        try { child.kill(); } catch { /* ignore */ }
+        resolve({ success: false, stdout: stdout.trim(), stderr: `Timeout after ${timeout}ms`, exitCode: 124, error: 'timeout' });
+      }, timeout);
+
+      child.on('close', (code) => {
+        clearTimeout(t);
+        const out = (stdout || stderr).trim();
+        const ok = code === 0 || out.includes('OKAY') || out.includes('finished');
+        resolve({
+          success: ok,
+          stdout: stdout.trim(),
+          stderr: stderr.trim(),
+          exitCode: code ?? 1,
+          ...(ok ? {} : { error: out || `exit ${code}` })
+        });
+      });
+
+      child.on('error', (err) => {
+        clearTimeout(t);
+        resolve({ success: false, stdout: stdout.trim(), stderr: err.message, exitCode: 1, error: err.message });
+      });
+    });
+  } catch (error) {
+    return { success: false, stdout: '', stderr: error.message, exitCode: 1, error: error.message };
+  }
+}
+
+export default {
+  validateDeviceSerial,
+  executeFastbootCommand,
+  getFastbootDevices,
+  isFastbootAvailable,
+  flashPartition,
+  rebootFromFastboot,
+  executeCommand
+};

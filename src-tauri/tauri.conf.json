@@ -36,8 +36,8 @@
     ],
     "resources": [
       "bundle/resources/**/*",
-      "python/runtime/**/*",
-      "python/fastapi_backend/**/*"
+      "../python/runtime/**/*",
+      "../python/fastapi_backend/**/*"
     ],
     "copyright": "© 2026 Phoenix Forge",
     "category": "DeveloperTool",

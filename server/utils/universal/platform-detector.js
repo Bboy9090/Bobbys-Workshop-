@@ -10,7 +10,9 @@
  */
 
 import os from 'os';
-import { execSync } from 'child_process';
+import fs from 'fs';
+import { spawnSync } from 'child_process';
+import { commandExistsInPath, findToolPathInPath } from '../safe-exec.js';
 
 class PlatformDetector {
   constructor() {
@@ -150,8 +152,7 @@ class PlatformDetector {
    */
   detectLinuxDistribution() {
     try {
-      // Try to read /etc/os-release
-      const osRelease = execSync('cat /etc/os-release 2>/dev/null || echo ""', { encoding: 'utf8' });
+      const osRelease = fs.readFileSync('/etc/os-release', { encoding: 'utf8' }).toString();
       const lines = osRelease.split('\n');
       let name = 'Linux';
       let version = null;
@@ -224,32 +225,14 @@ class PlatformDetector {
    * Check if tool is available
    */
   checkToolAvailable(tool) {
-    try {
-      if (process.platform === 'win32') {
-        execSync(`where ${tool} >nul 2>&1`, { stdio: 'ignore' });
-      } else {
-        execSync(`which ${tool} >/dev/null 2>&1`, { stdio: 'ignore' });
-      }
-      return true;
-    } catch (error) {
-      return false;
-    }
+    return commandExistsInPath(tool);
   }
 
   /**
-   * Find tool path
+   * Find tool path (no execSync – avoids console windows on Windows)
    */
   findToolPath(tool) {
-    try {
-      if (process.platform === 'win32') {
-        const path = execSync(`where ${tool}`, { encoding: 'utf8' }).trim();
-        return path.split('\n')[0];
-      } else {
-        return execSync(`which ${tool}`, { encoding: 'utf8' }).trim();
-      }
-    } catch (error) {
-      return null;
-    }
+    return findToolPathInPath(tool);
   }
 
   /**
@@ -257,10 +240,13 @@ class PlatformDetector {
    */
   checkLinuxUSB() {
     try {
-      // Check if udev rules exist or user is in dialout/plugdev group
-      const groups = execSync('groups', { encoding: 'utf8' });
+      const result = spawnSync('groups', [], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      const groups = result.stdout ? result.stdout : '';
       return groups.includes('dialout') || groups.includes('plugdev');
-    } catch (error) {
+    } catch {
       return false;
     }
   }

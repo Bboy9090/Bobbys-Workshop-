@@ -13,7 +13,7 @@
  */
 
 import express from 'express';
-import ADBLibrary from '../../../../core/lib/adb.js';
+import ADBLibrary from '../../../utils/adb-library-wrapper.js';
 
 const router = express.Router();
 
@@ -108,12 +108,23 @@ async function monitorBattery(deviceSerial, durationSeconds = 60) {
     const samples = [];
     const startTime = Date.now();
     const endTime = startTime + (durationSeconds * 1000);
+    const intervalMs = 5000; // Sample every 5 seconds
+    let nextSampleTime = startTime + intervalMs;
+    let sampleCount = 0;
 
     while (Date.now() < endTime) {
+      const now = Date.now();
+      
+      // Wait until next scheduled sample time to prevent drift
+      if (now < nextSampleTime) {
+        await new Promise(resolve => setTimeout(resolve, nextSampleTime - now));
+      }
+      
       const batteryInfo = await getBatteryHealth(deviceSerial);
       if (batteryInfo.success) {
         samples.push({
           timestamp: new Date().toISOString(),
+          sampleNumber: sampleCount++,
           level: batteryInfo.level,
           percentage: batteryInfo.percentage,
           voltage: batteryInfo.voltage,
@@ -123,26 +134,37 @@ async function monitorBattery(deviceSerial, durationSeconds = 60) {
         });
       }
       
-      // Sample every 5 seconds
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      // Schedule next sample at fixed interval
+      nextSampleTime += intervalMs;
     }
 
     // Calculate charge/discharge rate
     const firstSample = samples[0];
     const lastSample = samples[samples.length - 1];
+    const actualDuration = lastSample && firstSample 
+      ? (new Date(lastSample.timestamp).getTime() - new Date(firstSample.timestamp).getTime()) / 1000
+      : durationSeconds;
     const rate = lastSample && firstSample 
-      ? (lastSample.percentage - firstSample.percentage) / (durationSeconds / 60) // Percentage per minute
+      ? (lastSample.percentage - firstSample.percentage) / (actualDuration / 60) // Percentage per minute
       : null;
+
+    const expectedSamples = Math.floor(durationSeconds / (intervalMs / 1000));
+    const drift = samples.length - expectedSamples;
 
     return {
       success: true,
       samples,
       duration: durationSeconds,
+      actualDuration: Math.round(actualDuration * 10) / 10,
       startLevel: firstSample?.percentage || null,
       endLevel: lastSample?.percentage || null,
-      rate: rate,
+      rate: rate ? Math.round(rate * 100) / 100 : null,
       chargeRate: rate && rate > 0 ? Math.abs(rate) : null,
-      dischargeRate: rate && rate < 0 ? Math.abs(rate) : null
+      dischargeRate: rate && rate < 0 ? Math.abs(rate) : null,
+      sampleCount: samples.length,
+      expectedSamples,
+      timingDrift: drift,
+      intervalMs
     };
   } catch (error) {
     return {

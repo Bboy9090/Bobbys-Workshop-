@@ -55,7 +55,8 @@ export async function executeFastbootCommand(serial, command, args = [], options
     // Spawn Fastboot process (no shell)
     const fastboot = spawn('fastboot', fastbootArgs, {
       shell: false, // Critical: no shell execution
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
     });
     
     // Collect stdout
@@ -108,7 +109,8 @@ export async function getFastbootDevices() {
     
     const fastboot = spawn('fastboot', ['devices', '-l'], {
       shell: false,
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
     });
     
     fastboot.stdout.on('data', (data) => {

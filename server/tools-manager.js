@@ -163,6 +163,18 @@ export function getToolPath(toolName) {
   if (toolExists(bundledPath)) {
     return bundledPath;
   }
+
+  // 1b. Check local-only third party bin dir (preferred for personal lab tooling)
+  // This allows you to keep proven binaries locally without committing them.
+  const localThirdPartyBin = process.env.BOBBYS_WORKSHOP_THIRD_PARTY_BIN
+    || (process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'Bobbys-Workshop', 'tools', 'third_party', 'bin') : null)
+    || (process.env.APPDATA ? join(process.env.APPDATA, 'Bobbys-Workshop', 'tools', 'third_party', 'bin') : null);
+  if (localThirdPartyBin) {
+    const localCandidate = join(localThirdPartyBin, tool.executable);
+    if (toolExists(localCandidate)) {
+      return localCandidate;
+    }
+  }
   
   // 2. Check system PATH
   if (commandExistsInPath(tool.executable)) {

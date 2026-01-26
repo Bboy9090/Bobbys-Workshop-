@@ -59,7 +59,40 @@ export async function checkAPIHealth(): Promise<boolean> {
 }
 
 export function getAPIUrl(endpoint: string): string {
-  return `${API_CONFIG.BASE_URL}${endpoint}`;
+  const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const base = API_CONFIG.BASE_URL.replace(/\/+$/, '');
+  return `${base}${path}`;
+}
+
+/**
+ * Fetch JSON from API; rejects with clear error if backend returns HTML
+ * (e.g. 404/500 page, SPA fallback) to avoid "Unexpected token '<'" parse errors.
+ */
+export async function safeJsonFetch<T = unknown>(
+  endpoint: string,
+  init?: RequestInit
+): Promise<{ data: T; ok: boolean; status: number }> {
+  const url = getAPIUrl(endpoint);
+  const res = await fetch(url, init);
+  const text = await res.text();
+  const ct = res.headers.get('content-type') ?? '';
+  if (
+    !ct.includes('application/json') &&
+    (text.trimStart().startsWith('<') || /^\s*<!DOCTYPE/i.test(text))
+  ) {
+    throw new Error(
+      `Backend returned HTML instead of JSON. Is the API server running at ${API_CONFIG.BASE_URL}? Check that the desktop app started the backend, or run "npm run server:start" manually.`
+    );
+  }
+  let data: T;
+  try {
+    data = JSON.parse(text) as T;
+  } catch {
+    throw new Error(
+      `Invalid JSON from ${endpoint}: ${text.slice(0, 100)}${text.length > 100 ? '...' : ''}`
+    );
+  }
+  return { data, ok: res.ok, status: res.status };
 }
 
 export function getWSUrl(path: string): string {

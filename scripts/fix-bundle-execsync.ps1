@@ -26,42 +26,35 @@ foreach ($file in $jsFiles) {
 
     # Check if file needs commandExistsInPath import
     $needsImport = $false
-    if ($content -match "execSync\s*\(`where" -or $content -match "execSync\s*\(['\`]where") {
+    if ($content -match "execSync\s*\(\S*where" -or $content -match "execSync\s*\(\S*command\s+-v" -or $content -match "execSync\s*\(\S*which") {
         $needsImport = $true
     }
 
     # Add import if needed and not present
     if ($needsImport -and $content -notmatch "commandExistsInPath.*from.*safe-exec") {
-        # Try to find the import section
-        if ($content -match "(import.*from.*['\`]") {
-            # Add after existing imports
-            $content = $content -replace "(import.*from.*['\`][^'\`]+['\`];)", "`$1`nimport { commandExistsInPath } from '../utils/safe-exec.js';"
-        } elseif ($content -match "^(const.*=.*require\(|import.*from)") {
-            # Add at the top
-            $content = "import { commandExistsInPath } from '../utils/safe-exec.js';`n" + $content
-        }
+        $content = "import { commandExistsInPath } from '../utils/safe-exec.js';`n" + $content
         $modified = $true
     }
 
-    # Fix execSync('where ${tool}') patterns - Windows
-    if ($content -match "execSync\s*\([`'""]where\s+\$\{") {
-        # Pattern: execSync(`where ${tool}`, { stdio: 'ignore', timeout: 2000, windowsHide: true });
-        $content = $content -replace 'execSync\s*\([`'""]where\s+\$\{([^}]+)\}[`'""],\s*\{[^}]*\}\s*\);', 'if (!commandExistsInPath($1)) { missing.push($1); }'
-        $content = $content -replace 'execSync\s*\([`'""]where\s+(\w+)[`'""],\s*\{[^}]*\}\s*\);', 'if (!commandExistsInPath(''$1'')) { return false; }'
+    # Fix execSync('where ${tool}') patterns - Windows (use [\x60\x27\x22] = ` ' ")
+    $q = '[\x60\x27\x22]'
+    if ($content -match "execSync\s*\(\S*where\s+\`$\{") {
+        $content = $content -replace "execSync\s*\(${q}where\s+\`$\{([^}]+)\}${q},\s*\{[^}]*\}\s*\);", 'if (!commandExistsInPath($1)) { missing.push($1); }'
+        $content = $content -replace "execSync\s*\(${q}where\s+(\w+)${q},\s*\{[^}]*\}\s*\);", "if (!commandExistsInPath('`$1')) { return false; }"
         $modified = $true
     }
 
     # Fix execSync(`command -v ${cmd}`) patterns - Unix
-    if ($content -match "execSync\s*\([`'""]command\s+-v") {
-        $content = $content -replace 'execSync\s*\([`'""]command\s+-v\s+\$\{([^}]+)\}[`'""],\s*\{[^}]*\}\s*\);', 'if (!commandExistsInPath($1)) { return false; }'
-        $content = $content -replace 'execSync\s*\([`'""]command\s+-v\s+(\w+)[`'""],\s*\{[^}]*\}\s*\);', 'if (!commandExistsInPath(''$1'')) { return false; }'
+    if ($content -match "execSync\s*\(\S*command\s+-v") {
+        $content = $content -replace "execSync\s*\(${q}command\s+-v\s+\`$\{([^}]+)\}${q},\s*\{[^}]*\}\s*\);", 'if (!commandExistsInPath($1)) { return false; }'
+        $content = $content -replace "execSync\s*\(${q}command\s+-v\s+(\w+)${q},\s*\{[^}]*\}\s*\);", "if (!commandExistsInPath('`$1')) { return false; }"
         $modified = $true
     }
 
     # Fix execSync(`which ${cmd}`) patterns
-    if ($content -match "execSync\s*\([`'""]which") {
-        $content = $content -replace 'execSync\s*\([`'""]which\s+\$\{([^}]+)\}[`'""],\s*\{[^}]*\}\s*\);', 'if (!commandExistsInPath($1)) { return false; }'
-        $content = $content -replace 'execSync\s*\([`'""]which\s+(\w+)[`'""],\s*\{[^}]*\}\s*\);', 'if (!commandExistsInPath(''$1'')) { return false; }'
+    if ($content -match "execSync\s*\(\S*which") {
+        $content = $content -replace "execSync\s*\(${q}which\s+\`$\{([^}]+)\}${q},\s*\{[^}]*\}\s*\);", 'if (!commandExistsInPath($1)) { return false; }'
+        $content = $content -replace "execSync\s*\(${q}which\s+(\w+)${q},\s*\{[^}]*\}\s*\);", "if (!commandExistsInPath('`$1')) { return false; }"
         $modified = $true
     }
 
