@@ -18,6 +18,19 @@ class IOSLibrary {
   }
 
   /**
+   * Return availability of required iOS CLI tools.
+   * This is used by API endpoints to provide actionable diagnostics.
+   */
+  async getAvailableTools() {
+    return {
+      platform: process.platform,
+      idevice_id: commandExistsInPath('idevice_id'),
+      ideviceinfo: commandExistsInPath('ideviceinfo'),
+      idevicediagnostics: commandExistsInPath('idevicediagnostics'),
+    };
+  }
+
+  /**
    * Get connected iOS devices (synchronous wrapper for async function)
    */
   listDevices() {
