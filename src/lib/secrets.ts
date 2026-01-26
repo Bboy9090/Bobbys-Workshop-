@@ -11,7 +11,10 @@
  * 
  * In production: Load from environment variable VITE_SECRET_ROOM_PASSWORD
  */
-export const SECRET_ROOM_PASSWORD = process.env.VITE_SECRET_ROOM_PASSWORD || 'BJ0990';
+export const SECRET_ROOM_PASSWORD =
+  (import.meta as any).env?.VITE_SECRET_ROOM_PASSWORD ||
+  (globalThis as any).process?.env?.VITE_SECRET_ROOM_PASSWORD ||
+  'BJ0990';
 
 /**
  * Development API key for trapdoor operations
@@ -19,13 +22,19 @@ export const SECRET_ROOM_PASSWORD = process.env.VITE_SECRET_ROOM_PASSWORD || 'BJ
  * 
  * In production: Implement JWT-based authentication instead
  */
-export const DEV_ADMIN_API_KEY = process.env.VITE_ADMIN_API_KEY || 'dev-admin-key';
+export const DEV_ADMIN_API_KEY =
+  (import.meta as any).env?.VITE_ADMIN_API_KEY ||
+  (globalThis as any).process?.env?.VITE_ADMIN_API_KEY ||
+  'dev-admin-key';
 
 /**
  * Server configuration
  */
 export const SERVER_CONFIG = {
-  BASE_URL: process.env.VITE_SERVER_URL || 'http://localhost:3001',
+  BASE_URL:
+    (import.meta as any).env?.VITE_SERVER_URL ||
+    (globalThis as any).process?.env?.VITE_SERVER_URL ||
+    'http://localhost:3001',
   API_PREFIX: '/api',
   TRAPDOOR_PREFIX: '/api/trapdoor'
 };

@@ -28,7 +28,10 @@ export function CanaryDashboard({ passcode }: CanaryDashboardProps) {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'today' | 'week'>('all');
 
-  const FASTAPI_URL = process.env.VITE_FASTAPI_URL || 'http://127.0.0.1:8000';
+  const FASTAPI_URL =
+    (import.meta as any).env?.VITE_FASTAPI_URL ||
+    (globalThis as any).process?.env?.VITE_FASTAPI_URL ||
+    'http://127.0.0.1:8000';
 
   useEffect(() => {
     if (passcode && backendAvailable) {

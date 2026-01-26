@@ -28,7 +28,10 @@ export function TrapdoorGhostCodex({
   const [canaryType, setCanaryType] = useState('pdf');
   const [personas, setPersonas] = useState<any[]>([]);
 
-  const FASTAPI_URL = process.env.VITE_FASTAPI_URL || 'http://127.0.0.1:8000';
+  const FASTAPI_URL =
+    (import.meta as any).env?.VITE_FASTAPI_URL ||
+    (globalThis as any).process?.env?.VITE_FASTAPI_URL ||
+    'http://127.0.0.1:8000';
 
   const handleShred = async () => {
     if (!selectedFile || !passcode || !backendAvailable) return;

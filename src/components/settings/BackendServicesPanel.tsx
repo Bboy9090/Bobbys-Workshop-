@@ -27,7 +27,13 @@ interface BackendService {
   lastChecked?: Date;
 }
 
-const TRAPDOOR_API_URL = process.env.TRAPDOOR_API_URL || 'http://localhost:5001';
+// Browser-safe env handling (Vite):
+// - override with VITE_TRAPDOOR_API_URL
+const TRAPDOOR_API_URL =
+  (import.meta as any).env?.VITE_TRAPDOOR_API_URL ||
+  (globalThis as any).process?.env?.TRAPDOOR_API_URL ||
+  // Default Trapdoor Flask API port (avoid clashing with Vite)
+  'http://localhost:5002';
 
 export function BackendServicesPanel() {
   const [services, setServices] = useState<BackendService[]>([

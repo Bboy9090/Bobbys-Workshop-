@@ -53,6 +53,7 @@ import { WorkbenchCases } from './screens/WorkbenchCases';
 import { useBackendHealth } from '@/hooks/use-backend-health';
 import { WorkbenchSecretRooms } from './screens/WorkbenchSecretRooms';
 import { WorkbenchSettings } from './screens/WorkbenchSettings';
+import { WorkbenchTranscendent } from './screens/WorkbenchTranscendent';
 
 export function DashboardLayout() {
     const [activeTab, setActiveTab] = useState('dashboard');

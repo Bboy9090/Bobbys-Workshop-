@@ -1,0 +1,19 @@
+[package]
+name = "engine-render"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+engine-core = { path = "../core" }
+ash = { version = "0.38", features = ["linked"] }
+volk = "2.0"
+vk-mem = "0.3"
+shaderc = "0.9"
+spirv-reflect = "0.3"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+metal = "0.30"
+objc = "0.2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winapi = { version = "0.3", features = ["winuser", "windef"] }
