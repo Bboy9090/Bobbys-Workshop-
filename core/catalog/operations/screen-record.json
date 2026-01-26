@@ -1,0 +1,38 @@
+{
+  "operation": "screen_record",
+  "displayName": "Record Device Screen",
+  "description": "Record device screen to video file",
+  "category": "media",
+  "riskLevel": "low",
+  "requiresConfirmation": false,
+  "allowedRoles": ["owner", "admin", "technician"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    },
+    "duration": {
+      "type": "integer",
+      "required": false,
+      "default": 60,
+      "description": "Recording duration in seconds"
+    },
+    "bitrate": {
+      "type": "integer",
+      "required": false,
+      "default": 8000000,
+      "description": "Video bitrate in bits per second"
+    },
+    "outputPath": {
+      "type": "string",
+      "required": false,
+      "description": "Output file path (auto-generated if not provided)"
+    }
+  },
+  "auditLogging": "standard",
+  "rateLimitPerMinute": 5,
+  "estimatedDuration": 60000
+}

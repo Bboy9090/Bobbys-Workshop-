@@ -10,25 +10,25 @@ The Snapshot Retention system is now integrated into Bobby's World. Access it fr
 
 ```typescript
 // In RealTimeUSBDiagnostics.tsx or similar diagnostic components
-import { autoSnapshot } from '@/lib/auto-snapshot';
+import { autoSnapshot } from "@/lib/auto-snapshot";
 
 async function runDiagnostics(device: Device) {
   // Run your diagnostic tests
   const results = await performDiagnosticTests(device);
-  
+
   // Automatically snapshot the results
   await autoSnapshot.snapshotDiagnosticResult(results, {
     deviceSerial: device.serial,
     deviceModel: device.model,
-    testName: 'usb-diagnostics',
+    testName: "usb-diagnostics",
     passed: results.allTestsPassed,
-    tags: ['usb', device.platform],
+    tags: ["usb", device.platform],
     metadata: {
       batteryLevel: results.batteryLevel,
       connectionType: results.connectionType,
-    }
+    },
   });
-  
+
   return results;
 }
 ```
@@ -37,7 +37,7 @@ async function runDiagnostics(device: Device) {
 
 ```typescript
 // In MultiBrandFlashDashboard.tsx or flash-related components
-import { autoSnapshot } from '@/lib/auto-snapshot';
+import { autoSnapshot } from "@/lib/auto-snapshot";
 
 async function performFlash(device: Device, image: FlashImage) {
   const flashData = {
@@ -45,38 +45,37 @@ async function performFlash(device: Device, image: FlashImage) {
     device: device.serial,
     imageFile: image.filename,
   };
-  
+
   try {
     // Perform the flash
     await flashDevice(device, image);
-    
+
     flashData.endTime = Date.now();
-    flashData.status = 'success';
-    
+    flashData.status = "success";
+
     // Snapshot successful flash operation
     await autoSnapshot.snapshotFlashOperation(flashData, {
       deviceSerial: device.serial,
       deviceModel: device.model,
-      operation: 'system-flash',
+      operation: "system-flash",
       success: true,
       tags: [device.platform, image.type],
     });
-    
   } catch (error) {
     flashData.endTime = Date.now();
-    flashData.status = 'failed';
+    flashData.status = "failed";
     flashData.error = error.message;
-    
+
     // Snapshot failed operation (critical for debugging)
     await autoSnapshot.snapshotFlashOperation(flashData, {
       deviceSerial: device.serial,
       deviceModel: device.model,
-      operation: 'system-flash',
+      operation: "system-flash",
       success: false,
-      tags: [device.platform, 'error'],
+      tags: [device.platform, "error"],
       metadata: { errorMessage: error.message },
     });
-    
+
     throw error;
   }
 }
@@ -86,21 +85,21 @@ async function performFlash(device: Device, image: FlashImage) {
 
 ```typescript
 // In PluginManager.tsx or plugin settings components
-import { autoSnapshot } from '@/lib/auto-snapshot';
+import { autoSnapshot } from "@/lib/auto-snapshot";
 
 async function updatePluginConfig(pluginId: string, config: any) {
   // Update the plugin configuration
   await savePluginConfig(pluginId, config);
-  
+
   // Snapshot the configuration change
   await autoSnapshot.snapshotPluginConfig(config, {
     pluginId,
     pluginVersion: getPluginVersion(pluginId),
-    tags: ['config-update', pluginId],
+    tags: ["config-update", pluginId],
     metadata: {
       changedBy: await getCurrentUser(),
-      changeReason: 'settings-update',
-    }
+      changeReason: "settings-update",
+    },
   });
 }
 ```
@@ -109,22 +108,22 @@ async function updatePluginConfig(pluginId: string, config: any) {
 
 ```typescript
 // In LiveDeviceSelector.tsx or device monitoring components
-import { autoSnapshot } from '@/lib/auto-snapshot';
+import { autoSnapshot } from "@/lib/auto-snapshot";
 
 async function onDeviceConnected(device: Device) {
   // Capture device state when connected
   const deviceState = {
     connectionTime: Date.now(),
-    adbStatus: device.adbAuthorized ? 'authorized' : 'unauthorized',
+    adbStatus: device.adbAuthorized ? "authorized" : "unauthorized",
     batteryLevel: await getBatteryLevel(device),
     platform: device.platform,
     buildInfo: await getBuildInfo(device),
   };
-  
+
   await autoSnapshot.snapshotDeviceState(deviceState, {
     deviceSerial: device.serial,
     deviceModel: device.model,
-    tags: ['connected', device.platform],
+    tags: ["connected", device.platform],
     metadata: deviceState,
   });
 }
@@ -134,7 +133,7 @@ async function onDeviceConnected(device: Device) {
 
 ```typescript
 // In EvidenceBundleManager.tsx
-import { autoSnapshot } from '@/lib/auto-snapshot';
+import { autoSnapshot } from "@/lib/auto-snapshot";
 
 async function createEvidenceBundle(device: Device, diagnostics: any) {
   // Create and sign the bundle
@@ -143,21 +142,21 @@ async function createEvidenceBundle(device: Device, diagnostics: any) {
     diagnostics,
     timestamp: Date.now(),
   });
-  
+
   const signed = await evidenceBundle.sign(bundle);
-  
+
   // Snapshot the signed evidence (critical - keep forever)
   await autoSnapshot.snapshotEvidenceBundle(signed, {
     deviceSerial: device.serial,
     deviceModel: device.model,
     signed: true,
-    tags: ['forensic', 'signed', device.platform],
+    tags: ["forensic", "signed", device.platform],
     metadata: {
       bundleId: signed.id,
       signatureHash: signed.signature.hash,
-    }
+    },
   });
-  
+
   return signed;
 }
 ```
@@ -166,17 +165,20 @@ async function createEvidenceBundle(device: Device, diagnostics: any) {
 
 ```typescript
 // In App.tsx or main application component
-import { autoSnapshot } from '@/lib/auto-snapshot';
+import { autoSnapshot } from "@/lib/auto-snapshot";
 
 useEffect(() => {
   // Run periodic workspace backup every 24 hours
-  const interval = setInterval(async () => {
-    await autoSnapshot.runPeriodicBackup();
-  }, 24 * 60 * 60 * 1000); // 24 hours
-  
+  const interval = setInterval(
+    async () => {
+      await autoSnapshot.runPeriodicBackup();
+    },
+    24 * 60 * 60 * 1000,
+  ); // 24 hours
+
   // Also run on mount (checks if needed)
   autoSnapshot.runPeriodicBackup();
-  
+
   return () => clearInterval(interval);
 }, []);
 ```
@@ -187,16 +189,19 @@ useEffect(() => {
 // In App.tsx - apply retention policies periodically
 useEffect(() => {
   // Apply retention policies every 6 hours
-  const interval = setInterval(async () => {
-    const deleted = await autoSnapshot.applyRetentionPolicies();
-    if (deleted > 0) {
-      console.log(`Cleaned up ${deleted} expired snapshots`);
-    }
-  }, 6 * 60 * 60 * 1000); // 6 hours
-  
+  const interval = setInterval(
+    async () => {
+      const deleted = await autoSnapshot.applyRetentionPolicies();
+      if (deleted > 0) {
+        console.log(`Cleaned up ${deleted} expired snapshots`);
+      }
+    },
+    6 * 60 * 60 * 1000,
+  ); // 6 hours
+
   // Run on mount
   autoSnapshot.applyRetentionPolicies();
-  
+
   return () => clearInterval(interval);
 }, []);
 ```
@@ -206,7 +211,7 @@ useEffect(() => {
 ### Enable/Disable Auto-Snapshots
 
 ```typescript
-import { autoSnapshot } from '@/lib/auto-snapshot';
+import { autoSnapshot } from "@/lib/auto-snapshot";
 
 // Disable all auto-snapshots
 await autoSnapshot.configure({ enabled: false });
@@ -215,7 +220,7 @@ await autoSnapshot.configure({ enabled: false });
 await autoSnapshot.configure({
   types: {
     diagnosticResult: false,
-  }
+  },
 });
 
 // Enable notifications for debugging
@@ -236,12 +241,14 @@ useEffect(() => {
 ## UI Access
 
 Users can manage snapshots from:
+
 1. **Main Hub** → "Snapshot Retention" card
 2. **Settings Panel** → Could add quick links to retention settings
 
 ## Default Behavior
 
 By default, the system will:
+
 - ✅ Automatically snapshot all operation types
 - ✅ Apply retention policies based on snapshot type
 - ✅ Compress old snapshots to save storage
@@ -253,15 +260,19 @@ By default, the system will:
 ## Storage Monitoring
 
 ```typescript
-import { snapshotManager } from '@/lib/snapshot-manager';
+import { snapshotManager } from "@/lib/snapshot-manager";
 
 // Get current statistics
 const stats = await snapshotManager.getRetentionStats();
 
 console.log(`Total snapshots: ${stats.totalSnapshots}`);
-console.log(`Storage used: ${snapshotManager.formatBytes(stats.totalSizeBytes)}`);
+console.log(
+  `Storage used: ${snapshotManager.formatBytes(stats.totalSizeBytes)}`,
+);
 console.log(`Eligible for deletion: ${stats.eligibleForDeletion}`);
-console.log(`Compression savings: ${snapshotManager.formatBytes(stats.compressionSavings)}`);
+console.log(
+  `Compression savings: ${snapshotManager.formatBytes(stats.compressionSavings)}`,
+);
 ```
 
 ## Best Practices
@@ -276,16 +287,19 @@ console.log(`Compression savings: ${snapshotManager.formatBytes(stats.compressio
 ## Troubleshooting
 
 ### Snapshots Not Being Created
+
 - Check if auto-snapshots are enabled: `autoSnapshot.getConfig()`
 - Check console for error messages
 - Verify device data is being passed correctly
 
 ### Storage Growing Too Fast
+
 - Review retention policies (reduce max age/count)
 - Enable compression for more snapshot types
 - Check for unnecessary tags/metadata
 
 ### Missing Snapshots
+
 - Verify retention policies aren't too aggressive
 - Check if snapshots were manually deleted
 - Review "Recent Activity" tab for deletion events
@@ -293,12 +307,14 @@ console.log(`Compression savings: ${snapshotManager.formatBytes(stats.compressio
 ## Performance Impact
 
 The snapshot system is designed to be lightweight:
+
 - Snapshots are created asynchronously (non-blocking)
 - Compression is deferred until specified age
 - Retention policies run in background
 - Storage uses efficient browser APIs
 
 Typical overhead:
+
 - **Snapshot creation**: < 50ms
 - **Policy application**: < 200ms (runs infrequently)
 - **Storage per snapshot**: 1-10 KB (depends on data)
@@ -306,6 +322,7 @@ Typical overhead:
 ## Future Integrations
 
 Consider adding auto-snapshots to:
+
 - Batch diagnostics operations
 - Plugin installation/updates
 - Correlation tracking events

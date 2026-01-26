@@ -1,6 +1,9 @@
 use crate::model::{Classification, DeviceMode, ToolEvidence};
 use std::process::Command;
 
+/// Tool evidence collector - probes adb, fastboot, and idevice_id for device IDs.
+/// 
+/// Used during identity resolution to correlate USB transports with tool outputs.
 pub struct ToolConfirmers {
     pub adb: ToolEvidence,
     pub fastboot: ToolEvidence,
@@ -8,15 +11,24 @@ pub struct ToolConfirmers {
 }
 
 impl ToolConfirmers {
+    /// Create new tool confirmers by probing all tools.
+    /// 
+    /// Each tool is checked for availability and executed to collect device IDs.
     pub fn new() -> Self {
         Self {
-            adb: check_adb(),
-            fastboot: check_fastboot(),
-            idevice_id: check_idevice_id(),
+            adb: probe_adb_tool(),
+            fastboot: probe_fastboot_tool(),
+            idevice_id: probe_idevice_id_tool(),
         }
     }
 
-    pub fn confirm_device(&self, serial: Option<&str>, classification: &mut Classification) -> Vec<String> {
+    /// Correlate device identity by matching USB serial to tool device IDs.
+    /// 
+    /// Direct serial match (highest confidence correlation method).
+    /// Updates classification confidence and mode if match found.
+    /// 
+    /// Returns: Vec of matched tool IDs (empty if no match).
+    pub fn correlate_device_identity(&self, serial: Option<&str>, classification: &mut Classification) -> Vec<String> {
         let mut matched_ids = Vec::new();
         
         if let Some(serial_num) = serial {
@@ -95,7 +107,11 @@ fn parse_idevice_ids(stdout: &str) -> Vec<String> {
         .collect()
 }
 
-fn check_adb() -> ToolEvidence {
+/// Stage 3: Probe ADB tool for device IDs.
+/// 
+/// Executes `adb devices -l` and parses output for device serials.
+/// Used for identity correlation during device detection.
+fn probe_adb_tool() -> ToolEvidence {
     if !is_tool_available("adb") {
         return ToolEvidence::missing();
     }
@@ -119,7 +135,11 @@ fn check_adb() -> ToolEvidence {
     }
 }
 
-fn check_fastboot() -> ToolEvidence {
+/// Stage 3: Probe Fastboot tool for device IDs.
+/// 
+/// Executes `fastboot devices` and parses output for device serials.
+/// Used for identity correlation during device detection.
+fn probe_fastboot_tool() -> ToolEvidence {
     if !is_tool_available("fastboot") {
         return ToolEvidence::missing();
     }
@@ -143,7 +163,11 @@ fn check_fastboot() -> ToolEvidence {
     }
 }
 
-fn check_idevice_id() -> ToolEvidence {
+/// Stage 3: Probe idevice_id tool for UDIDs.
+/// 
+/// Executes `idevice_id -l` and parses output for iOS device UDIDs.
+/// Used for identity correlation during device detection.
+fn probe_idevice_id_tool() -> ToolEvidence {
     if !is_tool_available("idevice_id") {
         return ToolEvidence::missing();
     }
@@ -192,5 +216,77 @@ mod tests {
         println!("ADB present: {}", confirmers.adb.present);
         println!("Fastboot present: {}", confirmers.fastboot.present);
         println!("idevice_id present: {}", confirmers.idevice_id.present);
+    }
+    
+    #[test]
+    fn test_parse_adb_ids() {
+        let output = "List of devices attached\nABC123\tdevice\nDEF456\tdevice\n";
+        let ids = parse_adb_ids(output);
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&"ABC123".to_string()));
+        assert!(ids.contains(&"DEF456".to_string()));
+    }
+    
+    #[test]
+    fn test_parse_adb_ids_with_recovery() {
+        let output = "List of devices attached\nABC123\trecovery\n";
+        let ids = parse_adb_ids(output);
+        assert_eq!(ids.len(), 1);
+        assert!(ids.contains(&"ABC123".to_string()));
+    }
+    
+    #[test]
+    fn test_parse_fastboot_ids() {
+        let output = "ABC123 fastboot\nDEF456 fastboot\n";
+        let ids = parse_fastboot_ids(output);
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&"ABC123".to_string()));
+        assert!(ids.contains(&"DEF456".to_string()));
+    }
+    
+    #[test]
+    fn test_parse_idevice_ids() {
+        let output = "00008030-001A3D2A1E38001E\n00008030-001A3D2A1E38001F\n";
+        let ids = parse_idevice_ids(output);
+        assert_eq!(ids.len(), 2);
+        assert!(ids[0].starts_with("00008030"));
+    }
+    
+    #[test]
+    fn test_correlate_device_identity_no_match() {
+        let mut confirmers = ToolConfirmers::new();
+        confirmers.adb.device_ids = vec!["XYZ789".to_string()];
+        confirmers.adb.present = true;
+        confirmers.adb.seen = true;
+        
+        let mut classification = crate::model::Classification {
+            mode: crate::model::DeviceMode::UnknownUsb,
+            confidence: 0.5,
+            notes: vec![],
+        };
+        
+        let matched = confirmers.correlate_device_identity(Some("ABC123"), &mut classification);
+        assert!(matched.is_empty());
+        assert_eq!(classification.confidence, 0.5); // Unchanged
+    }
+    
+    #[test]
+    fn test_correlate_device_identity_adb_match() {
+        let mut confirmers = ToolConfirmers::new();
+        confirmers.adb.device_ids = vec!["ABC123".to_string()];
+        confirmers.adb.present = true;
+        confirmers.adb.seen = true;
+        
+        let mut classification = crate::model::Classification {
+            mode: crate::model::DeviceMode::UnknownUsb,
+            confidence: 0.7,
+            notes: vec![],
+        };
+        
+        let matched = confirmers.correlate_device_identity(Some("ABC123"), &mut classification);
+        assert_eq!(matched.len(), 1);
+        assert!(matched.contains(&"ABC123".to_string()));
+        assert!(classification.confidence > 0.7); // Increased
+        assert_eq!(classification.mode.as_str(), "android_adb_confirmed");
     }
 }

@@ -1,0 +1,482 @@
+/**
+ * NYC BUGS BUNNY SPACE JAM / HARE JORDAN PLAYGROUND WORKSHOP THEME
+ * 
+ * Super Legendary Trap House Makeover
+ * Inspired by:
+ * - Space Jam (1996) - Purple, Orange, Basketball Court
+ * - Hare Jordan - Bugs Bunny as MJ
+ * - NYC Playground Basketball Courts
+ * - Graffiti & Street Art
+ * - 90s Hip-Hop Culture
+ * - Trap House Workshop Vibes
+ */
+
+:root {
+  /* ========================================
+     SPACE JAM COURT COLORS
+     The legendary purple and orange palette
+     ======================================== */
+  
+  --space-jam-purple: #6B2C91;
+  --space-jam-purple-dark: #4A1A65;
+  --space-jam-purple-light: #8B4CB8;
+  --space-jam-purple-glow: #9D5CD6;
+  
+  --space-jam-orange: #FF6B35;
+  --space-jam-orange-dark: #CC5529;
+  --space-jam-orange-light: #FF8C5A;
+  --space-jam-orange-glow: #FF8C42;
+  
+  --basketball-court: #FFD700;
+  --basketball-court-dark: #CCAA00;
+  --basketball-lines: #FFFFFF;
+  
+  /* ========================================
+     NYC PLAYGROUND CONCRETE
+     The gritty, real street surfaces
+     ======================================== */
+  
+  --nyc-concrete: #2C2C2C;
+  --nyc-concrete-dark: #1A1A1A;
+  --nyc-concrete-light: #3A3A3A;
+  --nyc-asphalt: #1F1F1F;
+  --nyc-sidewalk: #3D3D3D;
+  
+  /* ========================================
+     GRAFFITI SPRAY COLORS
+     The tags on the walls
+     ======================================== */
+  
+  --spray-neon-cyan: #00FFFF;
+  --spray-neon-pink: #FF00FF;
+  --spray-neon-yellow: #FFFF00;
+  --spray-neon-green: #00FF00;
+  --spray-neon-orange: #FF6600;
+  --spray-neon-purple: #9932CC;
+  
+  /* ========================================
+     HARE JORDAN COLORS
+     Bugs Bunny as MJ - The Legend
+     ======================================== */
+  
+  --hare-jordan-red: #CE1141;
+  --hare-jordan-black: #000000;
+  --hare-jordan-white: #FFFFFF;
+  --hare-jordan-gold: #FFD700;
+  
+  /* ========================================
+     TRAP HOUSE WORKSHOP
+     The underground lab vibes
+     ======================================== */
+  
+  --trap-basement: #0D0D0D;
+  --trap-walls: #1A1A1A;
+  --trap-ceiling: #0F0F0F;
+  --trap-floor: #151515;
+  --trap-border: #2A2A2A;
+  --trap-border-glow: #3A3A3A;
+  
+  /* ========================================
+     TEXT COLORS - INK LEVELS
+     ======================================== */
+  
+  --ink-legendary: #FFFFFF;
+  --ink-primary: #E8E8E8;
+  --ink-secondary: #B0B0B0;
+  --ink-muted: #707070;
+  --ink-graffiti: var(--spray-neon-cyan);
+  --ink-jordan: var(--hare-jordan-red);
+  
+  /* ========================================
+     GLOW EFFECTS - NEON VIBES
+     ======================================== */
+  
+  --glow-purple: 0 0 20px rgba(107, 44, 145, 0.6),
+                 0 0 40px rgba(107, 44, 141, 0.4),
+                 0 0 60px rgba(107, 44, 141, 0.2);
+  
+  --glow-orange: 0 0 20px rgba(255, 107, 53, 0.6),
+                 0 0 40px rgba(255, 107, 53, 0.4),
+                 0 0 60px rgba(255, 107, 53, 0.2);
+  
+  --glow-cyan: 0 0 15px rgba(0, 255, 255, 0.8),
+               0 0 30px rgba(0, 255, 255, 0.5),
+               0 0 45px rgba(0, 255, 255, 0.3);
+  
+  --glow-pink: 0 0 15px rgba(255, 0, 255, 0.8),
+               0 0 30px rgba(255, 0, 255, 0.5),
+               0 0 45px rgba(255, 0, 255, 0.3);
+  
+  --glow-jordan: 0 0 20px rgba(206, 17, 65, 0.7),
+                 0 0 40px rgba(206, 17, 65, 0.5);
+  
+  /* ========================================
+     SHADOWS - DEPTH & DIMENSION
+     ======================================== */
+  
+  --shadow-playground: 0 8px 32px rgba(0, 0, 0, 0.6);
+  --shadow-trap: 0 4px 16px rgba(0, 0, 0, 0.8);
+  --shadow-neon: 0 0 20px currentColor;
+  --shadow-jordan: 0 4px 20px rgba(206, 17, 65, 0.4);
+  
+  /* ========================================
+     ANIMATIONS
+     ======================================== */
+  
+  --animation-bounce: bounce 0.6s ease-in-out;
+  --animation-glow: glow-pulse 2s ease-in-out infinite;
+  --animation-dribble: dribble 1s ease-in-out infinite;
+  --animation-jordan: jordan-jump 1.5s ease-in-out infinite;
+}
+
+/* ========================================
+   KEYFRAME ANIMATIONS
+   ======================================== */
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { 
+    box-shadow: var(--glow-purple);
+    opacity: 1;
+  }
+  50% { 
+    box-shadow: var(--glow-orange);
+    opacity: 0.8;
+  }
+}
+
+@keyframes dribble {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  50% { transform: translateY(5px) scaleY(0.9); }
+}
+
+@keyframes jordan-jump {
+  0% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-20px) rotate(5deg); }
+  50% { transform: translateY(-40px) rotate(0deg); }
+  75% { transform: translateY(-20px) rotate(-5deg); }
+  100% { transform: translateY(0) rotate(0deg); }
+}
+
+@keyframes graffiti-fade {
+  0% { opacity: 0; transform: scale(0.8); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes neon-flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+  51% { opacity: 0.9; }
+  52% { opacity: 0.6; }
+}
+
+/* ========================================
+   BACKGROUND CLASSES
+   ======================================== */
+
+.bg-space-jam {
+  background: linear-gradient(135deg, 
+    var(--space-jam-purple) 0%, 
+    var(--space-jam-purple-dark) 50%,
+    var(--trap-basement) 100%);
+}
+
+.bg-playground {
+  background: 
+    repeating-linear-gradient(
+      0deg,
+      var(--nyc-concrete) 0px,
+      var(--nyc-concrete) 2px,
+      var(--nyc-concrete-dark) 2px,
+      var(--nyc-concrete-dark) 4px
+    );
+}
+
+.bg-trap-house {
+  background: 
+    radial-gradient(circle at 20% 50%, var(--trap-walls) 0%, transparent 50%),
+    radial-gradient(circle at 80% 50%, var(--trap-walls) 0%, transparent 50%),
+    var(--trap-basement);
+}
+
+.bg-basketball-court {
+  background: 
+    linear-gradient(90deg, 
+      var(--basketball-court) 0%,
+      var(--basketball-court) 48%,
+      var(--basketball-lines) 48%,
+      var(--basketball-lines) 52%,
+      var(--basketball-court) 52%,
+      var(--basketball-court) 100%
+    );
+}
+
+/* ========================================
+   TEXT CLASSES
+   ======================================== */
+
+.text-legendary {
+  color: var(--ink-legendary);
+  text-shadow: 
+    0 0 10px rgba(255, 255, 255, 0.5),
+    0 0 20px rgba(255, 255, 255, 0.3),
+    0 2px 4px rgba(0, 0, 0, 0.8);
+  font-weight: 900;
+  letter-spacing: 0.05em;
+}
+
+.text-graffiti {
+  color: var(--spray-neon-cyan);
+  text-shadow: var(--glow-cyan);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.text-jordan {
+  color: var(--hare-jordan-red);
+  text-shadow: var(--glow-jordan);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.text-space-jam {
+  background: linear-gradient(135deg, 
+    var(--space-jam-purple-light) 0%,
+    var(--space-jam-orange) 50%,
+    var(--spray-neon-yellow) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+/* ========================================
+   BORDER CLASSES
+   ======================================== */
+
+.border-space-jam {
+  border: 2px solid var(--space-jam-purple);
+  box-shadow: var(--glow-purple);
+}
+
+.border-jordan {
+  border: 3px solid var(--hare-jordan-red);
+  box-shadow: var(--glow-jordan);
+}
+
+.border-neon-cyan {
+  border: 2px solid var(--spray-neon-cyan);
+  box-shadow: var(--glow-cyan);
+}
+
+.border-neon-pink {
+  border: 2px solid var(--spray-neon-pink);
+  box-shadow: var(--glow-pink);
+}
+
+/* ========================================
+   BUTTON CLASSES
+   ======================================== */
+
+.btn-space-jam {
+  background: linear-gradient(135deg, 
+    var(--space-jam-purple) 0%,
+    var(--space-jam-orange) 100%);
+  border: none;
+  color: var(--ink-legendary);
+  box-shadow: var(--glow-purple), var(--glow-orange);
+  transition: all 0.3s ease;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.btn-space-jam:hover {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 
+    0 0 30px rgba(107, 44, 145, 0.8),
+    0 0 30px rgba(255, 107, 53, 0.8),
+    0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+.btn-jordan {
+  background: var(--hare-jordan-red);
+  border: 3px solid var(--hare-jordan-gold);
+  color: var(--ink-legendary);
+  box-shadow: var(--glow-jordan);
+  transition: all 0.3s ease;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.btn-jordan:hover {
+  transform: translateY(-3px);
+  box-shadow: 
+    var(--glow-jordan),
+    0 8px 32px rgba(0, 0, 0, 0.6);
+  background: var(--hare-jordan-red);
+  border-color: var(--basketball-court);
+}
+
+.btn-graffiti {
+  background: transparent;
+  border: 2px solid var(--spray-neon-cyan);
+  color: var(--spray-neon-cyan);
+  box-shadow: var(--glow-cyan);
+  transition: all 0.3s ease;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+}
+
+.btn-graffiti:hover {
+  background: var(--spray-neon-cyan);
+  color: var(--trap-basement);
+  box-shadow: 
+    var(--glow-cyan),
+    0 0 40px rgba(0, 255, 255, 0.6);
+  transform: scale(1.05);
+}
+
+/* ========================================
+   CARD CLASSES
+   ======================================== */
+
+.card-space-jam {
+  background: var(--trap-walls);
+  border: 2px solid var(--space-jam-purple);
+  box-shadow: 
+    var(--glow-purple),
+    var(--shadow-playground);
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+.card-space-jam:hover {
+  border-color: var(--space-jam-orange);
+  box-shadow: 
+    var(--glow-orange),
+    var(--shadow-playground);
+  transform: translateY(-4px);
+}
+
+.card-jordan {
+  background: var(--trap-walls);
+  border: 3px solid var(--hare-jordan-red);
+  box-shadow: 
+    var(--glow-jordan),
+    var(--shadow-jordan);
+  border-radius: 16px;
+  transition: all 0.3s ease;
+}
+
+.card-jordan:hover {
+  transform: translateY(-6px) scale(1.02);
+  box-shadow: 
+    var(--glow-jordan),
+    0 12px 48px rgba(206, 17, 65, 0.6);
+}
+
+.card-playground {
+  background: var(--nyc-concrete);
+  border: 2px solid var(--trap-border);
+  box-shadow: var(--shadow-playground);
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.card-playground::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg,
+    var(--spray-neon-cyan) 0%,
+    var(--spray-neon-pink) 25%,
+    var(--spray-neon-yellow) 50%,
+    var(--spray-neon-green) 75%,
+    var(--spray-neon-cyan) 100%);
+  animation: graffiti-fade 0.5s ease-in-out;
+}
+
+/* ========================================
+   GLOW EFFECTS
+   ======================================== */
+
+.glow-purple {
+  box-shadow: var(--glow-purple);
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+.glow-orange {
+  box-shadow: var(--glow-orange);
+  animation: glow-pulse 3s ease-in-out infinite 1.5s;
+}
+
+.glow-cyan {
+  box-shadow: var(--glow-cyan);
+  animation: neon-flicker 2s ease-in-out infinite;
+}
+
+.glow-jordan {
+  box-shadow: var(--glow-jordan);
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* ========================================
+   SPECIAL EFFECTS
+   ======================================== */
+
+.animate-bounce-jordan {
+  animation: jordan-jump 2s ease-in-out infinite;
+}
+
+.animate-dribble {
+  animation: dribble 1s ease-in-out infinite;
+}
+
+.animate-graffiti {
+  animation: graffiti-fade 0.8s ease-out;
+}
+
+/* ========================================
+   UTILITY CLASSES
+   ======================================== */
+
+.text-shadow-neon {
+  text-shadow: 
+    0 0 10px currentColor,
+    0 0 20px currentColor,
+    0 0 30px currentColor;
+}
+
+.bg-gradient-space-jam {
+  background: linear-gradient(135deg,
+    var(--space-jam-purple) 0%,
+    var(--space-jam-orange) 50%,
+    var(--spray-neon-yellow) 100%);
+}
+
+.bg-gradient-jordan {
+  background: linear-gradient(135deg,
+    var(--hare-jordan-red) 0%,
+    var(--hare-jordan-black) 50%,
+    var(--hare-jordan-red) 100%);
+}
+
+.bg-gradient-playground {
+  background: linear-gradient(180deg,
+    var(--nyc-concrete) 0%,
+    var(--nyc-asphalt) 50%,
+    var(--trap-basement) 100%);
+}

@@ -1,0 +1,55 @@
+[2026-01-06T08:08:14.096Z] INFO: Backend starting on port 3001
+[2026-01-06T08:08:14.199Z] INFO: Log directory: C:\Users\Bobby\AppData\Local\BobbysWorkshop\logs
+[2026-01-06T08:08:14.283Z] INFO: Log file: C:\Users\Bobby\AppData\Local\BobbysWorkshop\logs\backend.log
+[2026-01-06T08:08:14.309Z] INFO: Process PID: 26276
+[2026-01-06T08:08:14.350Z] INFO: Node.js version: v25.2.1
+[2026-01-06T08:08:14.366Z] INFO: Platform: win32 x64
+[2026-01-06T08:08:14.392Z] INFO: 🚀 Performing startup validation...
+[StartupValidation] 🔍 Performing startup validation...
+[StartupValidation] Testing Node.js...
+[StartupValidation] ✅ Node.js: Compatible
+[StartupValidation] Testing File System...
+[StartupValidation] ✅ File System: Read/write access confirmed
+[StartupValidation] Testing Memory...
+[StartupValidation] ✅ Memory: Available: 31.9GB
+[StartupValidation] Testing ADB...
+[SafeExec] [1767686894500-axah2yczg] Executing: where adb
+[RetryCircuit] Retry attempt 1/3 for operation
+[SafeExec] [1767686894500-axah2yczg] Command succeeded: where
+[SafeExec] [1767686894778-ndrh9mgrc] Executing: adb version
+[RetryCircuit] Retry attempt 1/3 for operation
+[SafeExec] [1767686894778-ndrh9mgrc] Command succeeded: adb
+[StartupValidation] ✅ ADB: Version: 1.0.41
+[StartupValidation] Testing Fastboot...
+[SafeExec] [1767686894864-zho2tmvz2] Executing: where fastboot
+[RetryCircuit] Retry attempt 1/3 for operation
+[SafeExec] [1767686894864-zho2tmvz2] Command succeeded: where
+[StartupValidation] ✅ Fastboot: Available
+[StartupValidation] Testing Rust/Cargo...
+[SafeExec] [1767686895015-6i2bfgb3u] Executing: where rustc
+[RetryCircuit] Retry attempt 1/3 for operation
+[SafeExec] [1767686895015-6i2bfgb3u] Command succeeded: where
+[SafeExec] [1767686895192-v1jf5ffvi] Executing: where cargo
+[RetryCircuit] Retry attempt 1/3 for operation
+[SafeExec] [1767686895192-v1jf5ffvi] Command succeeded: where
+[StartupValidation] ✅ Rust/Cargo: Available
+[StartupValidation] 🔍 Startup validation complete in 909ms - Status: PASSED
+[2026-01-06T08:08:15.351Z] INFO: ✅ Startup validation passed - all systems nominal
+[2026-01-06T08:08:15.379Z] INFO: 🔧 Pandora Codex API Server running on http://127.0.0.1:3001
+[2026-01-06T08:08:15.380Z] INFO: 📡 System tools detection: http://127.0.0.1:3001/api/system-tools
+[2026-01-06T08:08:15.381Z] INFO: ⚡ Flash operations: http://127.0.0.1:3001/api/flash/*
+[2026-01-06T08:08:15.382Z] INFO: 📊 Performance monitor: http://127.0.0.1:3001/api/monitor/*
+[2026-01-06T08:08:15.383Z] INFO: 🧪 Automated testing: http://127.0.0.1:3001/api/tests/*
+[2026-01-06T08:08:15.384Z] INFO: 📐 Standards reference: http://127.0.0.1:3001/api/standards
+[2026-01-06T08:08:15.385Z] INFO: 🔌 Hotplug events: http://127.0.0.1:3001/api/hotplug/*
+[2026-01-06T08:08:15.386Z] INFO: 🔐 Authorization triggers (27 endpoints): http://127.0.0.1:3001/api/authorization/*
+[2026-01-06T08:08:15.387Z] INFO: 📦 Firmware library: http://127.0.0.1:3001/api/firmware/*
+[2026-01-06T08:08:15.390Z] INFO: 🔓 Trapdoor API (Bobby's Secret Workshop): http://127.0.0.1:3001/api/trapdoor/*
+[2026-01-06T08:08:15.390Z] INFO: 🌐 WebSocket hotplug: ws://127.0.0.1:3001/ws/device-events
+[2026-01-06T08:08:15.391Z] INFO: 🔗 WebSocket correlation: ws://127.0.0.1:3001/ws/correlation
+[2026-01-06T08:08:15.392Z] INFO: 📊 WebSocket analytics: ws://127.0.0.1:3001/ws/analytics
+[2026-01-06T08:08:15.393Z] INFO: 🏥 Health check: http://127.0.0.1:3001/api/health
+[2026-01-06T08:08:15.394Z] INFO: 
+✅ All 27 authorization triggers ready for real device probe execution
+✅ Firmware Library with brand-organized downloads available
+✅ Trapdoor API with workflow execution and shadow logging enabled

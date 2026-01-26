@@ -29,10 +29,11 @@ Lists all tools that are currently installed and available:
 ```
 
 Output:
+
 ```json
 [
-  {"name": "palera1n", "category": "ios_old", "available": true},
-  {"name": "checkra1n", "category": "ios_old", "available": true}
+  { "name": "palera1n", "category": "ios_old", "available": true },
+  { "name": "checkra1n", "category": "ios_old", "available": true }
 ]
 ```
 
@@ -45,6 +46,7 @@ Get detailed information about a specific tool:
 ```
 
 Output:
+
 ```json
 {
   "name": "palera1n",
@@ -72,6 +74,7 @@ echo '{"tool":"palera1n","args":["--version"],"env_path":null}' | \
 ```
 
 Output:
+
 ```json
 {
   "success": true,
@@ -182,6 +185,7 @@ When firejail is installed, tools are automatically executed in a sandboxed envi
 - No new privileges (`--nonewprivs`)
 
 Install firejail:
+
 ```bash
 # Ubuntu/Debian
 sudo apt-get install firejail
@@ -273,6 +277,7 @@ python3 tests/test_trapdoor_integration.py -v
 ```
 
 Tests verify:
+
 - Bridge initialization
 - Tool listing and checking
 - Tool information retrieval
@@ -293,6 +298,7 @@ cargo test trapdoor
 **Error**: `Tool palera1n not found or not available`
 
 **Solution**: Ensure the tool binary exists at `tools/ios_old/palera1n` and is executable:
+
 ```bash
 chmod +x tools/ios_old/palera1n
 ```
@@ -308,6 +314,7 @@ chmod +x tools/ios_old/palera1n
 **Error**: `RuntimeError: trapdoor_cli binary not found`
 
 **Solution**: Build the CLI first:
+
 ```bash
 cd bootforge
 cargo build --release --bin trapdoor_cli
@@ -318,6 +325,7 @@ cargo build --release --bin trapdoor_cli
 **Error**: `Rust backend execution failed`
 
 **Solution**: Check that:
+
 1. `USE_TRAPDOOR_RUST=1` is set
 2. `TRAPDOOR_CLI_PATH` points to the binary
 3. The binary is executable
@@ -356,26 +364,27 @@ if info['available']:
 ### TypeScript API Integration
 
 ```typescript
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { exec } from "child_process";
+import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
 async function runTool(tool: string, action: string) {
-    const useRust = process.env.USE_TRAPDOOR_RUST === "1";
-    
-    if (useRust) {
-        const cliPath = process.env.TRAPDOOR_CLI_PATH || 
-            './bootforge/target/release/trapdoor_cli';
-        
-        if (action === 'check') {
-            const { returncode } = await execAsync(`${cliPath} check ${tool}`);
-            return returncode === 0;
-        }
+  const useRust = process.env.USE_TRAPDOOR_RUST === "1";
+
+  if (useRust) {
+    const cliPath =
+      process.env.TRAPDOOR_CLI_PATH ||
+      "./bootforge/target/release/trapdoor_cli";
+
+    if (action === "check") {
+      const { returncode } = await execAsync(`${cliPath} check ${tool}`);
+      return returncode === 0;
     }
-    
-    // Fall back to Python
-    // ... existing Python code ...
+  }
+
+  // Fall back to Python
+  // ... existing Python code ...
 }
 ```
 
@@ -391,6 +400,7 @@ async function runTool(tool: string, action: string) {
 ## Support
 
 For issues or questions:
+
 1. Check TRAPDOOR_BOBBY_DEV_INTEGRATION.md
 2. Review bootforge/libbootforge/src/trapdoor/ source
 3. Check crm-api/src/routes/bobby-dev.ts integration

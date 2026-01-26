@@ -13,16 +13,19 @@ This document defines **authorized, lawful, and ownership-respecting** workflows
 ### Prerequisites for All Apple Operations
 
 1. **Device Ownership**
+
    - User must be the legal owner of the device
    - OR have written authorization from the owner
    - OR device is owned by the organization performing the operation
 
 2. **User Authorization**
+
    - User must explicitly consent to each operation
    - Destructive operations require typed confirmations
    - No operations performed without active user involvement
 
 3. **Apple ID Authentication**
+
    - User must be able to authenticate with their Apple ID when required
    - No Apple ID bypass or removal attempts
    - No activation lock circumvention
@@ -41,6 +44,7 @@ This document defines **authorized, lawful, and ownership-respecting** workflows
 **Purpose**: Gather device information for diagnostics, inventory, or compliance auditing.
 
 **Prerequisites:**
+
 - Device connected via USB
 - Device unlocked and "Trust This Computer" accepted
 - libimobiledevice installed (`idevice_id`, `ideviceinfo`)
@@ -69,10 +73,12 @@ Step 4: Display Information
 ```
 
 **API Endpoint:**
+
 - `GET /api/ios/devices` - List connected iOS devices
 - `GET /api/ios/device-info/:udid` - Get detailed device information
 
 **Capabilities:**
+
 - ✅ Device model identification
 - ✅ iOS version detection
 - ✅ Serial number retrieval
@@ -82,11 +88,13 @@ Step 4: Display Information
 - ✅ UDID for inventory tracking
 
 **Limitations:**
+
 - ❌ Cannot bypass device lock screen
 - ❌ Cannot access locked device data
 - ❌ Cannot modify device without user consent
 
 **Lawful Use Cases:**
+
 - IT inventory management
 - Compliance auditing (ensure devices meet OS version requirements)
 - Pre-purchase device verification
@@ -99,6 +107,7 @@ Step 4: Display Information
 **Purpose**: Create backups of user data for migration, archival, or disaster recovery.
 
 **Prerequisites:**
+
 - Device ownership verified
 - Device unlocked and trusted
 - User explicitly initiates backup
@@ -134,6 +143,7 @@ Step 5: User Notification
 ```
 
 **API Endpoints:**
+
 - `POST /api/ios/backup/start` - Initiate backup
 - `GET /api/ios/backup/progress/:job_id` - Query backup progress
 - `GET /api/ios/backups` - List all backups
@@ -141,18 +151,21 @@ Step 5: User Notification
 - `DELETE /api/ios/backup/:id` - Delete backup (requires confirmation)
 
 **Capabilities:**
+
 - ✅ Full device backup (apps, photos, messages, settings)
 - ✅ Incremental backups (only changed data)
 - ✅ Encrypted backups (optional, user-set password)
 - ✅ Backup verification and integrity checks
 
 **Limitations:**
+
 - ❌ Cannot backup without device unlock
 - ❌ Cannot decrypt backups without user password
 - ❌ Cannot extract DRM-protected content (movies, purchased music)
 - ❌ Cannot backup apps not permitted by iOS sandbox
 
 **Lawful Use Cases:**
+
 - Pre-repair backup for data safety
 - Device migration (old iPhone to new iPhone)
 - Data archival for personal records
@@ -165,6 +178,7 @@ Step 5: User Notification
 **Purpose**: Restore device from previously created backup.
 
 **Prerequisites:**
+
 - Valid backup created by authorized user
 - Device ownership verified
 - Device in setup/restore mode OR user-initiated erase
@@ -201,21 +215,25 @@ Step 5: Post-Restore Setup
 ```
 
 **API Endpoints:**
+
 - `POST /api/ios/restore/start` - Initiate restore
 - `GET /api/ios/restore/progress/:job_id` - Query restore progress
 
 **Capabilities:**
+
 - ✅ Full device restore from backup
 - ✅ Selective restore (contacts, photos only, etc.)
 - ✅ Restore with encryption password
 
 **Limitations:**
+
 - ❌ Cannot restore to device with different Apple ID
 - ❌ Cannot bypass activation lock during restore
 - ❌ Cannot restore backups from stolen devices
 - ❌ Cannot restore DRM content without original Apple ID
 
 **Lawful Use Cases:**
+
 - Post-repair data restoration
 - Device replacement (restore old device data to new device)
 - Recovery from accidental data loss
@@ -227,6 +245,7 @@ Step 5: Post-Restore Setup
 **Purpose**: Detect when device enters DFU mode for firmware restore/update operations.
 
 **Prerequisites:**
+
 - Device physically connected via USB
 - User manually triggers DFU mode (button sequence)
 - Device in critical failure state OR user-initiated
@@ -257,20 +276,24 @@ Step 4: Firmware Restore (if selected)
 ```
 
 **API Endpoints:**
+
 - `GET /api/ios/dfu-devices` - List devices in DFU mode
 
 **Capabilities:**
+
 - ✅ DFU mode detection via USB
 - ✅ Guide user through DFU mode entry
 - ✅ Provide firmware restore instructions
 
 **Limitations:**
+
 - ❌ Cannot install unsigned firmware (jailbreak)
 - ❌ Cannot downgrade to unsigned iOS versions
 - ❌ Cannot bypass activation lock in DFU mode
 - ❌ No direct firmware flashing (requires Apple's restore tools)
 
 **Lawful Use Cases:**
+
 - Unbricking devices stuck in boot loop
 - Firmware corruption recovery
 - Major iOS version downgrade (if signed by Apple)
@@ -282,6 +305,7 @@ Step 4: Firmware Restore (if selected)
 **Purpose**: Run non-destructive diagnostics to assess device health.
 
 **Prerequisites:**
+
 - Device connected and trusted
 - libimobiledevice installed (`idevicediagnostics`)
 
@@ -310,21 +334,25 @@ Step 4: Display Results
 ```
 
 **API Endpoints:**
+
 - `POST /api/ios/diagnostics/run` - Execute diagnostics
 - `GET /api/ios/diagnostics/results/:job_id` - Get results
 
 **Capabilities:**
+
 - ✅ Battery health assessment
 - ✅ Storage health check
 - ✅ Component functionality tests
 - ✅ iOS version and security patch verification
 
 **Limitations:**
+
 - ❌ Cannot run diagnostics on locked devices
 - ❌ Cannot access encrypted user data
 - ❌ Cannot modify system files
 
 **Lawful Use Cases:**
+
 - Pre-purchase device inspection
 - Warranty claim evidence collection
 - Repair shop diagnostics
@@ -337,30 +365,35 @@ Step 4: Display Results
 Pandora Codex **does not** and **will not** support:
 
 ### 1. Apple ID Bypass
+
 - ❌ No removal of Apple ID without credentials
 - ❌ No activation lock bypass
 - ❌ No iCloud account removal
 - **Reason**: Violates ownership, enables device theft
 
 ### 2. MDM Profile Removal (Unauthorized)
+
 - ❌ No MDM profile removal without administrator authorization
 - ❌ No supervision profile tampering
 - ❌ No bypass of organizational device policies
 - **Reason**: Violates enterprise security policies, may violate contracts
 
 ### 3. Jailbreaking or Custom Firmware
+
 - ❌ No jailbreak installation
 - ❌ No unsigned iOS firmware installation
 - ❌ No bootrom exploits or security bypasses
 - **Reason**: Voids warranty, violates Apple EULA, may be illegal in some jurisdictions
 
 ### 4. Supervision Without Authorization
+
 - ❌ No unauthorized device supervision
 - ❌ No supervision certificate forgery
 - ❌ No DEP/ADE enrollment without Apple Business Manager access
 - **Reason**: Requires proper organizational authorization
 
 ### 5. Data Extraction Without Consent
+
 - ❌ No forensic data extraction from locked devices
 - ❌ No bypass of FileVault/encryption
 - ❌ No unauthorized app data access
@@ -375,6 +408,7 @@ Pandora Codex **does not** and **will not** support:
 Open-source library for iOS device communication (legally reverse-engineered).
 
 **Capabilities:**
+
 - Device detection and pairing
 - Read device information
 - Backup and restore operations
@@ -382,11 +416,13 @@ Open-source library for iOS device communication (legally reverse-engineered).
 - Diagnostics
 
 **Limitations:**
+
 - Cannot bypass Apple ID or activation lock
 - Cannot install unsigned apps without developer certificate
 - Cannot access encrypted data without passcode
 
 **Installation:**
+
 ```bash
 # Ubuntu/Debian
 sudo apt-get install libimobiledevice-utils
@@ -399,6 +435,7 @@ idevice_id --version
 ```
 
 **Pandora Integration:**
+
 - `GET /api/system-tools/ios` - Check libimobiledevice status
 - All iOS operations require libimobiledevice availability
 
@@ -431,6 +468,7 @@ Every iOS operation produces structured audit log:
 ### Chain of Custody
 
 For repair shops and enterprises, evidence bundles include:
+
 - Device UDID and serial number
 - Timestamp of operation
 - User who initiated operation
@@ -439,6 +477,7 @@ For repair shops and enterprises, evidence bundles include:
 - Chain-of-custody notes
 
 **Export:**
+
 - `GET /api/evidence/export/:id` - Export signed evidence bundle as ZIP
 
 ---
@@ -448,11 +487,13 @@ For repair shops and enterprises, evidence bundles include:
 ### Repair Shop Workflow
 
 1. **Customer Check-In**
+
    - Connect device → Retrieve device info
    - Run diagnostics → Generate health report
    - Create backup → Evidence bundle
 
 2. **Repair Operation**
+
    - Perform hardware repair
    - Verify device still boots
 
@@ -464,11 +505,13 @@ For repair shops and enterprises, evidence bundles include:
 ### IT Department Workflow (Enterprise)
 
 1. **Device Enrollment**
+
    - Connect device → Retrieve UDID
    - Verify device meets compliance (iOS version, security patch)
    - Add to inventory system via API export
 
 2. **Device Refresh**
+
    - Create backup (authorized by employee)
    - Issue new device
    - Restore backup to new device
@@ -481,6 +524,7 @@ For repair shops and enterprises, evidence bundles include:
 ### Personal Use Workflow
 
 1. **Device Migration**
+
    - Backup old iPhone
    - Setup new iPhone
    - Restore backup to new device
@@ -499,6 +543,7 @@ For repair shops and enterprises, evidence bundles include:
 **Prerequisite**: Organization must have ABM account with API access.
 
 **Planned Features:**
+
 - Device enrollment via DEP/ADE
 - Automated supervision during setup
 - App distribution via Volume Purchase Program (VPP)
@@ -511,6 +556,7 @@ For repair shops and enterprises, evidence bundles include:
 ### Apple Configurator 2 Compatibility
 
 **Planned Features:**
+
 - Import/export Apple Configurator profiles
 - Supervised device blueprints
 - Batch provisioning workflows
@@ -522,6 +568,7 @@ For repair shops and enterprises, evidence bundles include:
 ## Maintenance
 
 This document is updated:
+
 - **On Apple policy changes**: Review workflows for continued compliance
 - **On new iOS version releases**: Verify libimobiledevice compatibility
 - **Annually**: Full legal and compliance review

@@ -1,0 +1,362 @@
+{
+  "version": "2.0.0",
+  "workflows": [
+    {
+      "id": "universal_device_scan_v1",
+      "name": "Universal Device Scan",
+      "description": "Comprehensive device detection across all platforms (read-only)",
+      "tags": ["scan", "report", "readonly"],
+      "required_gates": [],
+      "steps": [
+        {
+          "id": "usb_enumerate",
+          "action_id": "system.usb.enumerate",
+          "name": "USB Enumeration",
+          "retry": {
+            "max": 4,
+            "backoff_ms": [250, 500, 1000, 2000]
+          },
+          "outputs": ["usb_devices"]
+        },
+        {
+          "id": "adb_list",
+          "action_id": "android.adb.devices",
+          "name": "ADB Device List",
+          "retry": {
+            "max": 2,
+            "backoff_ms": [500, 1000]
+          },
+          "outputs": ["adb_devices"]
+        },
+        {
+          "id": "fastboot_list",
+          "action_id": "android.fastboot.devices",
+          "name": "Fastboot Device List",
+          "retry": {
+            "max": 2,
+            "backoff_ms": [500, 1000]
+          },
+          "outputs": ["fastboot_devices"]
+        },
+        {
+          "id": "ios_info",
+          "action_id": "ios.ideviceinfo.identity",
+          "name": "iOS Device Identity",
+          "retry": {
+            "max": 1,
+            "backoff_ms": [500]
+          },
+          "outputs": ["ios_devices"]
+        },
+        {
+          "id": "ios_recovery_probe",
+          "action_id": "ios.irecovery.query",
+          "name": "iOS Recovery Mode Query",
+          "retry": {
+            "max": 1,
+            "backoff_ms": [500]
+          },
+          "outputs": ["ios_recovery_state"]
+        },
+        {
+          "id": "emit_device_passports",
+          "action_id": "bobby.emit.device_passports",
+          "name": "Emit Device Passports",
+          "outputs": ["device_passports", "trust_states"]
+        }
+      ]
+    },
+    {
+      "id": "apple_access_recovery_v1",
+      "name": "Orchard Gate — Apple Access & Recovery",
+      "description": "Diagnostics + ownership verification + official Apple recovery hand-off. No bypass actions.",
+      "tags": ["ios", "recovery", "guidance"],
+      "required_gates": ["GATE_OWNERSHIP_ATTESTATION", "GATE_NO_CIRCUMVENTION", "GATE_TOOL_ALLOWLIST"],
+      "steps": [
+        {
+          "id": "STEP_INTAKE",
+          "name": "Device Intake (Read-Only)",
+          "actions": [
+            {
+              "id": "collect_device_passport",
+              "action_id": "device_intake_readonly",
+              "inputs": ["platform", "connection_state"],
+              "outputs": ["DevicePassport.json"]
+            }
+          ]
+        },
+        {
+          "id": "STEP_STATUS",
+          "name": "Activation & Access Status (Read-Only)",
+          "actions": [
+            {
+              "id": "assess_access_state",
+              "action_id": "status_assessment_readonly",
+              "inputs": ["DevicePassport.json", "user_claims"],
+              "outputs": ["AccessAssessment.json"]
+            }
+          ]
+        },
+        {
+          "id": "STEP_OWNERSHIP",
+          "name": "Ownership Verification Vault",
+          "actions": [
+            {
+              "id": "collect_ownership_packet",
+              "action_id": "ownership_packet_collect",
+              "inputs": ["receipt", "photos", "serial_imei", "attestation"],
+              "outputs": ["OwnershipPacket.zip"]
+            }
+          ]
+        },
+        {
+          "id": "STEP_EXPORT",
+          "name": "Support Bundle Export",
+          "actions": [
+            {
+              "id": "export_support_bundle",
+              "action_id": "support_bundle_export",
+              "inputs": ["DevicePassport.json", "AccessAssessment.json", "OwnershipPacket.zip"],
+              "outputs": ["AppleSupportBundle.zip", "CaseNotes.txt"]
+            }
+          ]
+        },
+        {
+          "id": "STEP_HANDOFF",
+          "name": "Official Recovery Hand-Off",
+          "actions": [
+            {
+              "id": "render_official_links",
+              "action_id": "official_handoff_links",
+              "inputs": ["region"],
+              "outputs": ["OfficialLinks.json"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "android_legal_repair_v1",
+      "name": "Android Legal Repair Assistant",
+      "description": "OEM-safe diagnostics + restore guidance. Requires authorization for ADB/Fastboot operations.",
+      "tags": ["android", "repair", "guidance"],
+      "required_gates": ["GATE_OWNERSHIP_ATTESTATION", "GATE_NO_CIRCUMVENTION", "GATE_TOOL_ALLOWLIST"],
+      "steps": [
+        {
+          "id": "STEP_INTAKE",
+          "name": "Device Intake (Read-Only)",
+          "actions": [
+            {
+              "id": "collect_device_passport",
+              "action_id": "device_intake_readonly",
+              "inputs": ["platform", "connection_state"],
+              "outputs": ["DevicePassport.json"]
+            }
+          ]
+        },
+        {
+          "id": "STEP_DIAG",
+          "name": "Diagnostics (Authorized Only)",
+          "actions": [
+            {
+              "id": "adb_getprop",
+              "action_id": "android.adb.getprop",
+              "retry": {
+                "max": 2,
+                "backoff_ms": [500, 1000]
+              },
+              "outputs": ["build_props"]
+            },
+            {
+              "id": "adb_bugreport",
+              "action_id": "android.adb.bugreport",
+              "retry": {
+                "max": 1,
+                "backoff_ms": [1000]
+              },
+              "outputs": ["bugreport_zip"]
+            },
+            {
+              "id": "fastboot_getvar",
+              "action_id": "android.fastboot.getvar.all",
+              "retry": {
+                "max": 1,
+                "backoff_ms": [500]
+              },
+              "outputs": ["fastboot_vars"]
+            }
+          ]
+        },
+        {
+          "id": "STEP_RESTORE_PLAN",
+          "name": "OEM Restore Plan",
+          "actions": [
+            {
+              "id": "build_restore_plan",
+              "action_id": "oem_restore_guidance",
+              "inputs": ["DevicePassport.json", "oem_source_links"],
+              "outputs": ["RestorePlan.md"]
+            }
+          ]
+        },
+        {
+          "id": "STEP_EXPORT",
+          "name": "Repair Report Export",
+          "actions": [
+            {
+              "id": "export_repair_report",
+              "action_id": "report_export",
+              "inputs": ["build_props", "bugreport_zip", "fastboot_vars", "RestorePlan.md"],
+              "outputs": ["RepairReport.md"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "android_diagnostics_authorized_v1",
+      "name": "Android Diagnostics (Authorized)",
+      "description": "Comprehensive Android device diagnostics (requires ADB authorization)",
+      "tags": ["android", "diagnostics", "advanced_authorized_ops", "report"],
+      "required_gates": ["ownership_attested", "device_authorized"],
+      "steps": [
+        {
+          "id": "adb_props",
+          "action_id": "android.adb.getprop",
+          "name": "ADB Get Properties",
+          "retry": {
+            "max": 2,
+            "backoff_ms": [500, 1000]
+          },
+          "outputs": ["build_props"]
+        },
+        {
+          "id": "adb_bugreport",
+          "action_id": "android.adb.bugreport",
+          "name": "ADB Bug Report",
+          "retry": {
+            "max": 1,
+            "backoff_ms": [1000]
+          },
+          "outputs": ["bugreport_zip"]
+        },
+        {
+          "id": "adb_logcat_snapshot",
+          "action_id": "android.adb.logcat.snapshot",
+          "name": "ADB Logcat Snapshot",
+          "retry": {
+            "max": 1,
+            "backoff_ms": [500]
+          },
+          "outputs": ["logcat_txt"]
+        },
+        {
+          "id": "generate_report",
+          "action_id": "bobby.report.android_diagnostics",
+          "name": "Generate Diagnostics Report",
+          "outputs": ["report_md", "artifact_index"]
+        }
+      ]
+    },
+    {
+      "id": "ios_recovery_assistant_v1",
+      "name": "iOS Recovery Assistant (Guidance + Evidence)",
+      "description": "iOS device recovery guidance and evidence bundle generation (no bypass)",
+      "tags": ["ios", "recovery", "guidance", "report"],
+      "steps": [
+        {
+          "id": "collect_ios_identity",
+          "action_id": "ios.ideviceinfo.identity",
+          "name": "iOS Device Identity",
+          "retry": {
+            "max": 1,
+            "backoff_ms": [500]
+          },
+          "outputs": ["ios_identity"]
+        },
+        {
+          "id": "detect_recovery_mode",
+          "action_id": "ios.irecovery.query",
+          "name": "iOS Recovery Mode Detection",
+          "retry": {
+            "max": 1,
+            "backoff_ms": [500]
+          },
+          "outputs": ["ios_recovery_state"]
+        },
+        {
+          "id": "generate_support_bundle",
+          "action_id": "bobby.bundle.apple_support",
+          "name": "Apple Support Bundle",
+          "outputs": ["apple_support_bundle_zip", "artifact_index"]
+        }
+      ]
+    },
+    {
+      "id": "smoke_test_detection",
+      "name": "Smoke Test: Device Detection",
+      "description": "Validate basic device detection capabilities (legacy format support)",
+      "tags": ["scan", "test"],
+      "risk_level": "low",
+      "steps": [
+        {
+          "id": "detect_usb",
+          "capability": "detect_usb_devices",
+          "params": {},
+          "expected_result": "success"
+        },
+        {
+          "id": "detect_adb",
+          "capability": "detect_android_adb",
+          "params": {},
+          "expected_result": "success_or_no_devices"
+        },
+        {
+          "id": "detect_fastboot",
+          "capability": "detect_android_fastboot",
+          "params": {},
+          "expected_result": "success_or_no_devices"
+        }
+      ]
+    },
+    {
+      "id": "full_device_dossier",
+      "name": "Create Full Device Dossier",
+      "description": "Gather all evidence about a connected device (legacy format support)",
+      "tags": ["scan", "report"],
+      "risk_level": "low",
+      "steps": [
+        {
+          "id": "usb_scan",
+          "capability": "detect_usb_devices",
+          "params": {},
+          "required": true
+        },
+        {
+          "id": "adb_check",
+          "capability": "detect_android_adb",
+          "params": {},
+          "required": false
+        },
+        {
+          "id": "fastboot_check",
+          "capability": "detect_android_fastboot",
+          "params": {},
+          "required": false
+        },
+        {
+          "id": "device_props",
+          "capability": "device_info",
+          "params": {},
+          "required": false
+        },
+        {
+          "id": "create_audit",
+          "capability": "audit_log",
+          "params": {},
+          "required": true
+        }
+      ]
+    }
+  ]
+}

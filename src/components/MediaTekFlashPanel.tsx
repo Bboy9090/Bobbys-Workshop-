@@ -22,7 +22,7 @@ import {
 import { toast } from 'sonner';
 import { useFlashProgressWebSocket } from '@/hooks/use-flash-progress-websocket';
 import { useApp } from '@/lib/app-context';
-import { API_CONFIG } from '@/lib/apiConfig';
+import { API_CONFIG, getWSUrl } from '@/lib/apiConfig';
 
 interface MTKDevice {
   id: string;
@@ -50,7 +50,6 @@ export function MediaTekFlashPanel() {
   const [imageFiles, setImageFiles] = useState<string[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [currentJob, setCurrentJob] = useState<MTKFlashJob | null>(null);
-  const { isDemoMode } = useApp();
 
   const {
     isConnected,
@@ -60,7 +59,7 @@ export function MediaTekFlashPanel() {
     disconnect,
     send,
   } = useFlashProgressWebSocket({
-    url: 'ws://localhost:3001/flash-progress',
+    url: getWSUrl('/ws/flash-progress'),
     enableNotifications: true,
     autoConnect: true,
   });
@@ -85,29 +84,11 @@ export function MediaTekFlashPanel() {
         throw new Error('Backend unavailable');
       }
     } catch (error) {
-      // Fall back to demo mode if available
-      console.warn('[MediaTekFlashPanel] Backend scan failed:', error);
-      if (isDemoMode) {
-        const demoDevices: MTKDevice[] = [
-          {
-            id: '[DEMO] mtk-001',
-            name: '[DEMO] MediaTek MT6765 (Helio P35)',
-            chipset: 'MT6765',
-            port: 'COM3',
-            mode: 'preloader',
-            detected: true,
-          },
-        ];
-
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        setDevices(demoDevices);
-        toast.info('Running in demo mode with simulated devices');
-      } else {
-        setDevices([]);
-        toast.error('Device scan failed', {
-          description: 'Backend API unavailable - cannot scan for MediaTek devices',
-        });
-      }
+      console.error('[MediaTekFlashPanel] Backend scan failed:', error);
+      toast.error('Failed to scan devices', {
+        description: error instanceof Error ? error.message : 'Backend unavailable',
+      });
+      setDevices([]);
     } finally {
       setIsScanning(false);
     }
@@ -219,7 +200,7 @@ export function MediaTekFlashPanel() {
 
   return (
     <div className="space-y-6">
-      <Card className="border-primary/30 bg-gradient-to-br from-card/90 to-card/60">
+      <Card className="border-primary/30 bg-linear-to-br from-card/90 to-card/60">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">

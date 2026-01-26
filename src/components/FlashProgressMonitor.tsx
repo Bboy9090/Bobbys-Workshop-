@@ -91,8 +91,11 @@ export function FlashProgressMonitor({ progress, onCancel, onComplete }: FlashPr
       ? (Math.sqrt(speeds.reduce((sum, speed) => sum + Math.pow(speed - avgSpeed, 2), 0) / speeds.length) / avgSpeed) * 100
       : 0;
 
+    const safeSerial = (progress.deviceSerial || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safePartition = progress.partition.replace(/[^a-zA-Z0-9_-]/g, '_');
+
     const profile: FlashSpeedProfile = {
-      id: `profile-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `profile-${progress.startTime}-${safeSerial}-${safePartition}`,
       deviceSerial: progress.deviceSerial || 'unknown',
       deviceModel: progress.deviceModel,
       partition: progress.partition,
@@ -301,101 +304,5 @@ function SpeedGraph({ speeds, peakSpeed }: SpeedGraphProps) {
   );
 }
 
-export function useFlashProgressSimulator() {
-  const [progress, setProgress] = useState<FlashProgress | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | undefined>(undefined);
-  const startTimeRef = useRef<number>(0);
-  const bytesRef = useRef<number>(0);
-  const speedHistoryRef = useRef<number[]>([]);
-
-  const startFlashing = (partition: string, totalBytes: number) => {
-    startTimeRef.current = Date.now();
-    bytesRef.current = 0;
-    speedHistoryRef.current = [];
-
-    setProgress({
-      partition,
-      bytesTransferred: 0,
-      totalBytes,
-      percentage: 0,
-      transferSpeed: 0,
-      averageSpeed: 0,
-      peakSpeed: 0,
-      eta: 0,
-      status: 'preparing',
-      startTime: startTimeRef.current,
-      currentTime: startTimeRef.current
-    });
-
-    setTimeout(() => {
-      setProgress(prev => prev ? { ...prev, status: 'flashing' } : null);
-      startProgressSimulation(totalBytes);
-    }, 1000);
-  };
-
-  const startProgressSimulation = (totalBytes: number) => {
-    intervalRef.current = setInterval(() => {
-      const currentTime = Date.now();
-      const elapsedSeconds = (currentTime - startTimeRef.current) / 1000;
-
-      const baseSpeed = 5 * 1024 * 1024;
-      const speedVariation = Math.sin(Date.now() / 1000) * 2 * 1024 * 1024;
-      const randomVariation = (Math.random() - 0.5) * 1024 * 1024;
-      const currentSpeed = Math.max(1024 * 1024, baseSpeed + speedVariation + randomVariation);
-
-      const increment = (currentSpeed * 0.1);
-      bytesRef.current = Math.min(bytesRef.current + increment, totalBytes);
-      
-      speedHistoryRef.current.push(currentSpeed);
-      if (speedHistoryRef.current.length > 50) {
-        speedHistoryRef.current.shift();
-      }
-
-      const averageSpeed = speedHistoryRef.current.reduce((a, b) => a + b, 0) / speedHistoryRef.current.length;
-      const peakSpeed = Math.max(...speedHistoryRef.current);
-      const percentage = (bytesRef.current / totalBytes) * 100;
-      const remainingBytes = totalBytes - bytesRef.current;
-      const eta = averageSpeed > 0 ? remainingBytes / averageSpeed : 0;
-
-      const currentPartition = progress?.partition || 'unknown';
-      
-      setProgress({
-        partition: currentPartition,
-        bytesTransferred: bytesRef.current,
-        totalBytes,
-        percentage,
-        transferSpeed: currentSpeed,
-        averageSpeed,
-        peakSpeed,
-        eta,
-        status: bytesRef.current >= totalBytes ? 'verifying' : 'flashing',
-        startTime: startTimeRef.current,
-        currentTime
-      });
-
-      if (bytesRef.current >= totalBytes) {
-        clearInterval(intervalRef.current);
-        setTimeout(() => {
-          setProgress(prev => prev ? { ...prev, status: 'completed' } : null);
-        }, 1500);
-      }
-    }, 100);
-  };
-
-  const stopFlashing = () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-    setProgress(null);
-  };
-
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, []);
-
-  return { progress, startFlashing, stopFlashing };
-}
+// Note: A flash progress simulator previously lived here.
+// It was removed to enforce truth-first behavior.

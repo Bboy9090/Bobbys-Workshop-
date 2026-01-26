@@ -30,15 +30,16 @@ import { useKV } from '@github/spark/hooks';
 import { toast } from 'sonner';
 import { PerformanceOptimizer } from './PerformanceOptimizer';
 import { PerformanceBenchmarking } from './PerformanceBenchmarking';
+import { API_CONFIG, getAPIUrl } from '@/lib/apiConfig';
 
 export interface RealtimeMetrics {
   timestamp: number;
   transferSpeed: number;
   cpuUsage: number;
   memoryUsage: number;
-  usbUtilization: number;
+  usbUtilization: number | null;
   diskIO: number;
-  bufferHealth: number;
+  bufferHealth: number | null;
 }
 
 export interface BottleneckDetection {
@@ -124,7 +125,7 @@ export function RealTimeFlashMonitor() {
 
   const startMonitoring = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/monitor/start', {
+      const response = await fetch(getAPIUrl(API_CONFIG.ENDPOINTS.MONITOR_START), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -136,9 +137,9 @@ export function RealTimeFlashMonitor() {
       const newSession: MonitoringSession = {
         id: `session-${Date.now()}`,
         startTime: Date.now(),
-        deviceSerial: `device-${Math.random().toString(36).substr(2, 9)}`,
-        partition: 'system',
-        fileSize: Math.floor(Math.random() * 2000 + 500) * 1024 * 1024,
+        deviceSerial: 'N/A',
+        partition: 'N/A',
+        fileSize: 0,
         metrics: [],
         bottlenecks: [],
         averageSpeed: 0,
@@ -162,7 +163,7 @@ export function RealTimeFlashMonitor() {
     if (!currentSession) return;
 
     try {
-      await fetch('http://localhost:3001/api/monitor/stop', {
+      await fetch(getAPIUrl(API_CONFIG.ENDPOINTS.MONITOR_STOP), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -188,7 +189,7 @@ export function RealTimeFlashMonitor() {
   const startMetricsCollection = () => {
     monitoringIntervalRef.current = setInterval(async () => {
       try {
-        const response = await fetch('http://localhost:3001/api/monitor/live');
+        const response = await fetch(getAPIUrl(API_CONFIG.ENDPOINTS.MONITOR_LIVE));
         if (!response.ok) {
           console.error('Failed to fetch metrics');
           return;
@@ -200,15 +201,20 @@ export function RealTimeFlashMonitor() {
           return;
         }
 
-        const transferSpeed = parseFloat(data.speed) * 1024 * 1024;
+        if (typeof data.speed !== 'number') return;
+        if (typeof data.cpu !== 'number') return;
+        if (typeof data.memory !== 'number') return;
+        if (typeof data.disk !== 'number') return;
+
+        const transferSpeed = data.speed * 1024 * 1024;
         const metrics: RealtimeMetrics = {
           timestamp: Date.now(),
           transferSpeed,
           cpuUsage: data.cpu,
           memoryUsage: data.memory,
-          usbUtilization: data.usb,
+          usbUtilization: typeof data.usb === 'number' ? data.usb : null,
           diskIO: data.disk,
-          bufferHealth: 70 + Math.random() * 20
+          bufferHealth: null
         };
 
         metricsHistoryRef.current.push(metrics);
@@ -253,7 +259,9 @@ export function RealTimeFlashMonitor() {
         title: 'USB Bandwidth Limitation',
         description: `Transfer speed at ${formatSpeed(metrics.transferSpeed)} indicates USB 2.0 connection or poor cable quality`,
         detectedAt: Date.now(),
-        metrics: { transferSpeed: metrics.transferSpeed, usbUtilization: metrics.usbUtilization },
+        metrics: metrics.usbUtilization === null
+          ? { transferSpeed: metrics.transferSpeed }
+          : { transferSpeed: metrics.transferSpeed, usbUtilization: metrics.usbUtilization },
         recommendation: 'Switch to USB 3.0 cable and port for 5-10x speed improvement',
         confidence: 0.92
       });
@@ -628,9 +636,11 @@ export function RealTimeFlashMonitor() {
               <CardContent>
                 <div className="space-y-2">
                   <div className="text-2xl font-bold font-mono">
-                    {currentMetrics ? `${currentMetrics.usbUtilization.toFixed(1)}%` : '0%'}
+                    {currentMetrics
+                      ? (typeof currentMetrics.usbUtilization === 'number' ? `${currentMetrics.usbUtilization.toFixed(1)}%` : 'N/A')
+                      : 'N/A'}
                   </div>
-                  <Progress value={currentMetrics?.usbUtilization || 0} />
+                  <Progress value={typeof currentMetrics?.usbUtilization === 'number' ? currentMetrics.usbUtilization : 0} />
                 </div>
               </CardContent>
             </Card>

@@ -30,6 +30,16 @@ import { toast } from 'sonner';
 import { useSnapshotManager } from '@/hooks/use-snapshot-manager';
 import { snapshotManager } from '@/lib/snapshot-manager';
 import type { RetentionPolicy, Snapshot, SnapshotType } from '@/types/snapshot';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export function SnapshotRetentionPanel() {
   const {
@@ -50,6 +60,7 @@ export function SnapshotRetentionPanel() {
   const [selectedType, setSelectedType] = useState<SnapshotType | 'all'>('all');
   const [editingPolicy, setEditingPolicy] = useState<RetentionPolicy | null>(null);
   const [showPolicyDialog, setShowPolicyDialog] = useState(false);
+  const [clearAllDialogOpen, setClearAllDialogOpen] = useState(false);
 
   const handleApplyPolicies = async () => {
     try {
@@ -85,9 +96,12 @@ export function SnapshotRetentionPanel() {
     }
   };
 
-  const handleClearAll = async () => {
-    if (!confirm('Delete ALL snapshots? This cannot be undone.')) return;
-    
+  const handleClearAll = () => {
+    setClearAllDialogOpen(true);
+  };
+
+  const confirmClearAll = async () => {
+    setClearAllDialogOpen(false);
     try {
       await clearAllSnapshots();
       toast.success('All snapshots cleared');
@@ -548,6 +562,21 @@ export function SnapshotRetentionPanel() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <AlertDialog open={clearAllDialogOpen} onOpenChange={setClearAllDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear All Snapshots</AlertDialogTitle>
+            <AlertDialogDescription>
+              Delete ALL snapshots? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmClearAll}>Clear All</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

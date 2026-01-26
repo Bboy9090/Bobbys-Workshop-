@@ -1,48 +1,52 @@
 # Tools Directory
 
-Standard device management tools and utilities.
+This directory contains bundled external tools that can be used by Bobby's Workshop.
 
-## Structure
+## Directory Structure
 
-- **adb/** - Android Debug Bridge binaries and scripts
-- **fastboot/** - Fastboot tool binaries
-- **ios/** - iOS management tools (libimobiledevice, etc.)
-- **mediatek/** - MediaTek-specific tools (SP Flash Tool)
-- **qualcomm/** - Qualcomm EDL tools
-- **samsung/** - Samsung Odin protocol tools
-- **scripts/** - Helper scripts for tool automation
-
-## Standard Tools
-
-These are legitimate, publicly available tools used for:
-- Device diagnostics
-- Firmware flashing
-- Backup and restore
-- Health monitoring
+```
+tools/
+├── checkra1n/          # iOS jailbreak tool (macOS/Linux)
+│   └── checkra1n
+├── palera1n/           # iOS jailbreak tool (macOS/Linux)
+│   └── palera1n
+├── odin/               # Samsung Odin (Windows only)
+│   └── Odin3.exe
+├── heimdall/           # Cross-platform Samsung flashing (Odin alternative)
+│   └── heimdall (or heimdall.exe on Windows)
+├── spflashtool/        # MediaTek SP Flash Tool (Windows)
+│   └── flash_tool.exe
+├── edl/                # Qualcomm EDL tool
+│   └── edl (or edl.exe on Windows)
+└── qfil/               # Qualcomm Flash Image Loader (Windows)
+    └── QFIL.exe
+```
 
 ## Installation
 
-Tools should be installed via system package managers when possible:
+Tools can be:
+1. **Manually placed** in their respective directories
+2. **Downloaded automatically** via the API (coming soon)
+3. **Detected from system PATH** if already installed
 
-```bash
-# Linux/macOS
-sudo apt install android-tools-adb android-tools-fastboot
-sudo apt install libimobiledevice-utils
+## Usage
 
-# Windows
-choco install adb fastboot
-```
+The `server/tools-manager.js` module automatically:
+- Detects tools in this directory
+- Falls back to system PATH if not found
+- Provides execution wrappers with proper error handling
 
-## Binary Storage
+## Platform Support
 
-Tool binaries are NOT committed to git. Users must:
-1. Install via package manager (preferred)
-2. Download from official sources
-3. Verify checksums before use
+- **checkra1n/palera1n**: macOS, Linux (iOS jailbreak)
+- **odin**: Windows only (Samsung flashing)
+- **heimdall**: All platforms (Samsung flashing alternative)
+- **spflashtool**: Windows only (MediaTek flashing)
+- **edl/qfil**: All platforms (Qualcomm EDL mode flashing)
 
-## Security
+## Notes
 
-- All tool execution is logged
-- Sensitive operations require authorization
-- Tools run with minimal privileges
-- Network access restricted via Firejail when applicable
+- Tools must be executable (Unix) or .exe files (Windows)
+- On first use, tools are checked for availability
+- Missing tools return clear error messages
+- Download links are provided in tool info responses

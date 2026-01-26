@@ -1,0 +1,238 @@
+/**
+ * Audit Logger - Immutable audit logging system
+ * 
+ * PRINCIPLE: All operations produce immutable audit logs
+ * Features: Append-only, hash chain, complete operation history
+ */
+
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { createLogger } from './bundled-logger.js';
+
+const logger = createLogger('AuditLogger');
+
+export interface AuditEvent {
+  timestamp: string;
+  caseId?: string;
+  userId: string;
+  workflowId?: string;
+  stepId?: string;
+  actionId: string;
+  action: string;
+  args: Record<string, any>;
+  stdout?: string;
+  stderr?: string;
+  exitCode?: number;
+  policyGates: Array<{
+    gateId: string;
+    passed: boolean;
+    reason?: string;
+  }>;
+  confirmations?: Array<{
+    type: string;
+    provided: boolean;
+  }>;
+  hash: string;
+  previousHash?: string;
+}
+
+export class AuditLogger {
+  private logsDir: string;
+  private hashChain: Map<string, string>; // caseId -> last hash
+
+  constructor(logsDir = './logs/audit') {
+    this.logsDir = logsDir;
+    this.hashChain = new Map();
+    this.ensureLogsDir();
+  }
+
+  /**
+   * Ensure logs directory exists
+   */
+  private async ensureLogsDir() {
+    try {
+      await fs.mkdir(this.logsDir, { recursive: true });
+    } catch (error) {
+      logger.error('[AuditLogger] Failed to create logs directory:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Log an audit event (append-only, immutable)
+   */
+  async logEvent(event: Omit<AuditEvent, 'hash' | 'previousHash' | 'timestamp'>): Promise<AuditEvent> {
+    const timestamp = new Date().toISOString();
+    const caseId = event.caseId || 'system';
+
+    // Get previous hash for this case
+    const previousHash = this.hashChain.get(caseId) || '';
+
+    // Create event with timestamp
+    const eventWithTimestamp: Omit<AuditEvent, 'hash'> = {
+      ...event,
+      timestamp,
+      previousHash: previousHash || undefined
+    };
+
+    // Calculate hash (previous hash + current event)
+    const hashInput = previousHash + JSON.stringify(eventWithTimestamp);
+    const hash = crypto.createHash('sha256').update(hashInput).digest('hex');
+
+    // Create final event
+    const auditEvent: AuditEvent = {
+      ...eventWithTimestamp,
+      hash
+    };
+
+    // Write to case-specific log file (append-only)
+    const logFile = path.join(this.logsDir, `case-${caseId}.jsonl`);
+    await fs.appendFile(logFile, JSON.stringify(auditEvent) + '\n');
+
+    // Update hash chain
+    this.hashChain.set(caseId, hash);
+
+    // Also write to master log
+    const masterLogFile = path.join(this.logsDir, 'master.jsonl');
+    await fs.appendFile(masterLogFile, JSON.stringify(auditEvent) + '\n');
+
+    logger.info(`[AuditLogger] Event logged: ${event.actionId} for case ${caseId}`);
+
+    return auditEvent;
+  }
+
+  /**
+   * Get audit events for a case
+   */
+  async getCaseEvents(caseId) {
+    const logFile = path.join(this.logsDir, `case-${caseId}.jsonl`);
+    
+    try {
+      const content = await fs.readFile(logFile, 'utf-8');
+      const lines = content.trim().split('\n').filter(line => line.length > 0);
+      
+      return lines.map(line => JSON.parse(line));
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return []; // No log file yet
+      }
+      logger.error(`[AuditLogger] Failed to read case events for ${caseId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get audit events for a job
+   */
+  async getJobEvents(jobId) {
+    // Search master log for job events
+    const masterLogFile = path.join(this.logsDir, 'master.jsonl');
+    
+    try {
+      const content = await fs.readFile(masterLogFile, 'utf-8');
+      const lines = content.trim().split('\n').filter(line => line.length > 0);
+      
+      return lines
+        .map(line => JSON.parse(line))
+        .filter(event => event.workflowId === jobId || event.stepId === jobId);
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return []; // No log file yet
+      }
+      logger.error(`[AuditLogger] Failed to read job events for ${jobId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Verify hash chain integrity for a case
+   */
+  async verifyHashChain(caseId: string): Promise<{ valid: boolean; errors: string[] }> {
+    const events = await this.getCaseEvents(caseId);
+    const errors: string[] = [];
+    let previousHash = '';
+
+    for (let i = 0; i < events.length; i++) {
+      const event = events[i];
+
+      // Verify previous hash matches
+      if (i > 0 && event.previousHash !== previousHash) {
+        errors.push(`Event ${i}: Previous hash mismatch. Expected ${previousHash}, got ${event.previousHash}`);
+      }
+
+      // Verify current hash
+      const hashInput = previousHash + JSON.stringify({
+        ...event,
+        hash: undefined,
+        previousHash: previousHash || undefined
+      });
+      const expectedHash = crypto.createHash('sha256').update(hashInput).digest('hex');
+
+      if (event.hash !== expectedHash) {
+        errors.push(`Event ${i}: Hash mismatch. Expected ${expectedHash}, got ${event.hash}`);
+      }
+
+      previousHash = event.hash;
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors
+    };
+  }
+
+  /**
+   * Export audit log for a case
+   */
+  async exportCaseLog(caseId, format = 'json') {
+    const events = await this.getCaseEvents(caseId);
+
+    if (format === 'json') {
+      return JSON.stringify(events, null, 2);
+    } else {
+      return events.map(e => JSON.stringify(e)).join('\n');
+    }
+  }
+
+  /**
+   * Get audit statistics for a case
+   */
+  async getCaseStatistics(caseId) {
+    const events = await this.getCaseEvents(caseId);
+
+    let passedGates = 0;
+    let failedGates = 0;
+    const actions = new Set<string>();
+
+    events.forEach(event => {
+      actions.add(event.actionId);
+      event.policyGates.forEach(gate => {
+        if (gate.passed) {
+          passedGates++;
+        } else {
+          failedGates++;
+        }
+      });
+    });
+
+    return {
+      totalEvents: events.length,
+      passedGates,
+      failedGates,
+      actions: Array.from(actions),
+      firstEvent: events[0]?.timestamp,
+      lastEvent: events[events.length - 1]?.timestamp
+    };
+  }
+}
+
+// Singleton instance
+let auditLoggerInstance = null;
+
+export function getAuditLogger() {
+  if (!auditLoggerInstance) {
+    auditLoggerInstance = new AuditLogger();
+  }
+  return auditLoggerInstance;
+}

@@ -1,0 +1,47 @@
+{
+  "operation": "swipe_event",
+  "displayName": "Send Swipe Event",
+  "description": "Send a swipe gesture to the device",
+  "category": "input",
+  "riskLevel": "low",
+  "requiresConfirmation": false,
+  "allowedRoles": ["owner", "admin", "technician"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    },
+    "x1": {
+      "type": "integer",
+      "required": true,
+      "description": "Start X coordinate"
+    },
+    "y1": {
+      "type": "integer",
+      "required": true,
+      "description": "Start Y coordinate"
+    },
+    "x2": {
+      "type": "integer",
+      "required": true,
+      "description": "End X coordinate"
+    },
+    "y2": {
+      "type": "integer",
+      "required": true,
+      "description": "End Y coordinate"
+    },
+    "duration": {
+      "type": "integer",
+      "required": false,
+      "default": 300,
+      "description": "Swipe duration in milliseconds"
+    }
+  },
+  "auditLogging": "standard",
+  "rateLimitPerMinute": 30,
+  "estimatedDuration": 2000
+}

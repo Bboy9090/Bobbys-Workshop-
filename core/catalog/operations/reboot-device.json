@@ -1,0 +1,36 @@
+{
+  "operation": "reboot_device",
+  "displayName": "Reboot Device",
+  "description": "Reboot an Android device via ADB",
+  "category": "safe",
+  "riskLevel": "low",
+  "requiresConfirmation": false,
+  "allowedRoles": ["owner", "admin", "technician"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    },
+    "mode": {
+      "type": "string",
+      "required": false,
+      "enum": ["system", "recovery", "bootloader"],
+      "default": "system",
+      "description": "Reboot mode"
+    },
+    "timeout": {
+      "type": "integer",
+      "required": false,
+      "minimum": 1000,
+      "maximum": 60000,
+      "default": 30000,
+      "description": "Operation timeout in milliseconds"
+    }
+  },
+  "auditLogging": "standard",
+  "rateLimitPerMinute": 10,
+  "estimatedDuration": 5000
+}

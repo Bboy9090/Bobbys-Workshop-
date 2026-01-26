@@ -34,26 +34,26 @@ import {
   PluginAPI,
   PluginManifest,
   PluginResult,
-} from '@/types/plugin-sdk';
+} from "@/types/plugin-sdk";
 
 const manifest: PluginManifest = {
-  id: 'com.example.myplugin',
-  name: 'My Plugin',
-  version: '1.0.0',
-  author: 'Your Name',
-  description: 'Custom device detection plugin',
-  category: 'device-detection',
-  capabilities: ['detection'],
-  riskLevel: 'safe',
-  requiredPermissions: ['device:read'],
-  supportedPlatforms: ['android', 'ios'],
-  minimumSDKVersion: '1.0.0',
-  entryPoint: './index.js',
-  license: 'MIT',
+  id: "com.example.myplugin",
+  name: "My Plugin",
+  version: "1.0.0",
+  author: "Your Name",
+  description: "Custom device detection plugin",
+  category: "device-detection",
+  capabilities: ["detection"],
+  riskLevel: "safe",
+  requiredPermissions: ["device:read"],
+  supportedPlatforms: ["android", "ios"],
+  minimumSDKVersion: "1.0.0",
+  entryPoint: "./index.js",
+  license: "MIT",
   certification: {
-    certifiedBy: 'self',
-    status: 'pending',
-    signatureHash: 'sha256:...',
+    certifiedBy: "self",
+    status: "pending",
+    signatureHash: "sha256:...",
   },
 };
 
@@ -61,11 +61,11 @@ const plugin: Plugin = {
   manifest,
 
   async initialize(context: PluginContext, api: PluginAPI) {
-    context.logger.info('Plugin initialized', { version: manifest.version });
-    
-    const settings = await context.kv.get('plugin-settings');
+    context.logger.info("Plugin initialized", { version: manifest.version });
+
+    const settings = await context.kv.get("plugin-settings");
     if (!settings) {
-      await context.kv.set('plugin-settings', { enabled: true });
+      await context.kv.set("plugin-settings", { enabled: true });
     }
   },
 
@@ -73,13 +73,13 @@ const plugin: Plugin = {
     return {
       detected: true,
       confidence: 0.95,
-      platform: 'android',
-      brand: 'samsung',
-      model: 'Galaxy S21',
-      deviceMode: 'fastboot',
-      capabilities: ['fastboot_flash', 'oem_unlock'],
-      correlationBadge: 'CORRELATED',
-      matchedIds: ['ABC123XYZ'],
+      platform: "android",
+      brand: "samsung",
+      model: "Galaxy S21",
+      deviceMode: "fastboot",
+      capabilities: ["fastboot_flash", "oem_unlock"],
+      correlationBadge: "CORRELATED",
+      matchedIds: ["ABC123XYZ"],
     };
   },
 
@@ -88,14 +88,14 @@ const plugin: Plugin = {
       passed: true,
       findings: [
         {
-          category: 'hardware',
-          severity: 'info',
-          title: 'Battery Health',
-          description: 'Battery capacity at 92%',
+          category: "hardware",
+          severity: "info",
+          title: "Battery Health",
+          description: "Battery capacity at 92%",
         },
       ],
       healthScore: 92,
-      recommendations: ['Battery in good condition'],
+      recommendations: ["Battery in good condition"],
     };
   },
 
@@ -114,21 +114,21 @@ Plugins have access to:
 ```typescript
 interface PluginAPI {
   getDeviceInfo(serial: string): Promise<DeviceInfo>;
-  
+
   executeCommand(command: string, args: string[]): Promise<CommandResult>;
-  
+
   detectDevices(): Promise<DetectedDevice[]>;
-  
+
   startFlashOperation(config: FlashConfig): Promise<string>;
-  
+
   monitorProgress(jobId: string): AsyncIterableIterator<ProgressUpdate>;
-  
+
   createEvidence(data: EvidenceData): Promise<string>;
-  
+
   requestPermission(permission: string): Promise<boolean>;
-  
+
   showNotification(notification: Notification): void;
-  
+
   openDialog(dialog: Dialog): Promise<DialogResult>;
 }
 ```
@@ -139,35 +139,35 @@ interface PluginAPI {
 interface PluginContext {
   pluginId: string;
   version: string;
-  environment: 'dev' | 'staging' | 'production';
-  
+  environment: "dev" | "staging" | "production";
+
   user: {
     id: string;
     isOwner: boolean;
     permissions: string[];
   };
-  
+
   device?: {
     serial: string;
     platform: string;
     brand: string;
     model: string;
   };
-  
+
   kv: {
     get<T>(key: string): Promise<T | undefined>;
     set<T>(key: string, value: T): Promise<void>;
     delete(key: string): Promise<void>;
     keys(): Promise<string[]>;
   };
-  
+
   logger: {
     info(message: string, metadata?: Record<string, any>): void;
     warn(message: string, metadata?: Record<string, any>): void;
     error(message: string, metadata?: Record<string, any>): void;
     debug(message: string, metadata?: Record<string, any>): void;
   };
-  
+
   emit(event: string, data: any): void;
   on(event: string, handler: (data: any) => void): () => void;
 }
@@ -235,15 +235,15 @@ pub enum PluginCapability {
 
 pub trait Plugin: Send + Sync {
     fn manifest(&self) -> &PluginManifest;
-    
+
     fn initialize(&mut self, context: PluginContext) -> Result<(), PluginError>;
-    
+
     fn detect(&self, device: &DetectedDevice) -> Result<DetectionResult, PluginError>;
-    
+
     fn diagnose(&self, device: &DetectedDevice) -> Result<DiagnosticResult, PluginError>;
-    
+
     fn flash(&self, config: &FlashConfig) -> Result<FlashResult, PluginError>;
-    
+
     fn cleanup(&mut self) -> Result<(), PluginError>;
 }
 
@@ -353,15 +353,15 @@ Plugins must declare required permissions:
 
 ```typescript
 requiredPermissions: [
-  'device:read',           // Read device information
-  'device:write',          // Modify device settings
-  'device:flash',          // Flash firmware
-  'device:command',        // Execute system commands
-  'storage:read',          // Read local storage
-  'storage:write',         // Write local storage
-  'network:request',       // Make network requests
-  'user:data',             // Access user data
-]
+  "device:read", // Read device information
+  "device:write", // Modify device settings
+  "device:flash", // Flash firmware
+  "device:command", // Execute system commands
+  "storage:read", // Read local storage
+  "storage:write", // Write local storage
+  "network:request", // Make network requests
+  "user:data", // Access user data
+];
 ```
 
 ### Sandboxing
@@ -396,13 +396,13 @@ securityPolicy: {
 
 ```typescript
 // Install from file
-await pluginRegistry.installFromFile('./my-plugin.js');
+await pluginRegistry.installFromFile("./my-plugin.js");
 
 // Install from URL
-await pluginRegistry.installFromURL('https://example.com/plugin.js');
+await pluginRegistry.installFromURL("https://example.com/plugin.js");
 
 // Install from package
-await pluginRegistry.installFromPackage('com.example.myplugin@1.0.0');
+await pluginRegistry.installFromPackage("com.example.myplugin@1.0.0");
 ```
 
 ### Publishing
@@ -420,46 +420,46 @@ await pluginRegistry.installFromPackage('com.example.myplugin@1.0.0');
 ```typescript
 const samsungOdinPlugin: Plugin = {
   manifest: {
-    id: 'com.bobby.samsung-odin',
-    name: 'Samsung Odin Mode Detection',
-    version: '1.0.0',
-    author: 'Bobby',
-    description: 'Detects Samsung devices in Odin download mode',
-    category: 'device-detection',
-    capabilities: ['detection'],
-    riskLevel: 'safe',
-    requiredPermissions: ['device:read'],
-    supportedPlatforms: ['android'],
-    supportedDevices: ['samsung'],
-    minimumSDKVersion: '1.0.0',
-    entryPoint: './index.js',
-    license: 'MIT',
+    id: "com.bobby.samsung-odin",
+    name: "Samsung Odin Mode Detection",
+    version: "1.0.0",
+    author: "Bobby",
+    description: "Detects Samsung devices in Odin download mode",
+    category: "device-detection",
+    capabilities: ["detection"],
+    riskLevel: "safe",
+    requiredPermissions: ["device:read"],
+    supportedPlatforms: ["android"],
+    supportedDevices: ["samsung"],
+    minimumSDKVersion: "1.0.0",
+    entryPoint: "./index.js",
+    license: "MIT",
     certification: {
-      certifiedBy: 'bobby',
-      status: 'certified',
-      signatureHash: 'sha256:abc123...',
+      certifiedBy: "bobby",
+      status: "certified",
+      signatureHash: "sha256:abc123...",
       certificationDate: Date.now(),
     },
   },
 
   async initialize(context, api) {
-    context.logger.info('Samsung Odin plugin initialized');
+    context.logger.info("Samsung Odin plugin initialized");
   },
 
   async detect(device) {
     // Check USB VID/PID for Samsung download mode
-    if (device.vendorId === '04e8' && device.productId === '685d') {
+    if (device.vendorId === "04e8" && device.productId === "685d") {
       return {
         detected: true,
         confidence: 1.0,
-        platform: 'android',
-        brand: 'samsung',
-        deviceMode: 'download',
-        capabilities: ['odin_flash', 'pit_flash', 'bootloader_flash'],
-        correlationBadge: 'CORRELATED',
+        platform: "android",
+        brand: "samsung",
+        deviceMode: "download",
+        capabilities: ["odin_flash", "pit_flash", "bootloader_flash"],
+        correlationBadge: "CORRELATED",
       };
     }
-    
+
     return { detected: false, confidence: 0 };
   },
 };
@@ -470,67 +470,67 @@ const samsungOdinPlugin: Plugin = {
 ```typescript
 const batteryDiagnosticsPlugin: Plugin = {
   manifest: {
-    id: 'com.bobby.battery-diag',
-    name: 'Battery Diagnostics',
-    version: '1.0.0',
-    author: 'Bobby',
-    description: 'Analyzes battery health and capacity',
-    category: 'diagnostics',
-    capabilities: ['diagnostics'],
-    riskLevel: 'safe',
-    requiredPermissions: ['device:read', 'device:command'],
-    supportedPlatforms: ['android', 'ios'],
-    minimumSDKVersion: '1.0.0',
-    entryPoint: './index.js',
-    license: 'MIT',
+    id: "com.bobby.battery-diag",
+    name: "Battery Diagnostics",
+    version: "1.0.0",
+    author: "Bobby",
+    description: "Analyzes battery health and capacity",
+    category: "diagnostics",
+    capabilities: ["diagnostics"],
+    riskLevel: "safe",
+    requiredPermissions: ["device:read", "device:command"],
+    supportedPlatforms: ["android", "ios"],
+    minimumSDKVersion: "1.0.0",
+    entryPoint: "./index.js",
+    license: "MIT",
   },
 
   async initialize(context, api) {
-    context.logger.info('Battery diagnostics plugin initialized');
+    context.logger.info("Battery diagnostics plugin initialized");
   },
 
   async diagnose(device) {
     const deviceInfo = await api.getDeviceInfo(device.serial);
-    
+
     // Execute battery health check
-    const result = await api.executeCommand('dumpsys', ['battery']);
-    
+    const result = await api.executeCommand("dumpsys", ["battery"]);
+
     const capacity = parseBatteryCapacity(result.stdout);
     const health = parseBatteryHealth(result.stdout);
     const temperature = parseBatteryTemp(result.stdout);
-    
+
     const findings: DiagnosticFinding[] = [];
-    
+
     if (capacity < 80) {
       findings.push({
-        category: 'battery',
-        severity: 'warning',
-        title: 'Battery Degradation',
+        category: "battery",
+        severity: "warning",
+        title: "Battery Degradation",
         description: `Battery capacity at ${capacity}%`,
-        resolution: 'Consider battery replacement',
+        resolution: "Consider battery replacement",
       });
     }
-    
+
     if (temperature > 45) {
       findings.push({
-        category: 'battery',
-        severity: 'error',
-        title: 'High Temperature',
+        category: "battery",
+        severity: "error",
+        title: "High Temperature",
         description: `Battery temperature: ${temperature}°C`,
-        resolution: 'Allow device to cool before operation',
+        resolution: "Allow device to cool before operation",
       });
     }
-    
+
     const healthScore = Math.min(capacity, 100 - (temperature - 25) * 2);
-    
+
     return {
       passed: capacity >= 80 && temperature < 45,
       findings,
       healthScore,
       recommendations: [
-        'Monitor battery health monthly',
-        'Avoid extreme temperatures',
-        'Use official charger',
+        "Monitor battery health monthly",
+        "Avoid extreme temperatures",
+        "Use official charger",
       ],
     };
   },

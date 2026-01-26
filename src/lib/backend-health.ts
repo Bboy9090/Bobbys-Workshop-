@@ -13,14 +13,26 @@ export interface BackendHealthStatus {
 
 export async function checkBackendHealth(): Promise<BackendHealthStatus> {
   try {
-    const response = await fetch(getAPIUrl('/api/health'), {
+    const response = await fetch(getAPIUrl('/api/v1/ready'), {
       signal: AbortSignal.timeout(5000),
     });
     
+    if (!response.ok) {
+      return {
+        isHealthy: false,
+        lastCheck: Date.now(),
+        error: `HTTP ${response.status}`,
+      };
+    }
+    
+    const data = await response.json();
+    // Handle envelope format
+    const envelope = data.ok !== undefined ? data : { ok: true, data };
+    
     return {
-      isHealthy: response.ok,
+      isHealthy: envelope.ok === true,
       lastCheck: Date.now(),
-      error: response.ok ? undefined : `HTTP ${response.status}`,
+      error: envelope.ok === false ? envelope.error?.message : undefined,
     };
   } catch (error) {
     return {
@@ -38,22 +50,56 @@ export function useBackendHealth(checkInterval: number = 30000): BackendHealthSt
   });
 
   useEffect(() => {
+    let isMounted = true;
+    let consecutiveFailures = 0;
+    const MAX_SILENT_FAILURES = 3; // Only log errors after 3 consecutive failures
+
     const checkHealth = async () => {
       try {
-        const response = await fetch(getAPIUrl('/api/health'), {
+        const response = await fetch(getAPIUrl('/api/v1/ready'), {
           signal: AbortSignal.timeout(5000),
         });
         
+        if (!isMounted) return;
+        
+        if (!response.ok) {
+          consecutiveFailures++;
+          setHealth({
+            isHealthy: false,
+            lastCheck: Date.now(),
+            error: consecutiveFailures > MAX_SILENT_FAILURES ? `HTTP ${response.status}` : undefined,
+          });
+          return;
+        }
+        
+        const data = await response.json();
+        // Handle envelope format
+        const envelope = data.ok !== undefined ? data : { ok: true, data };
+        
+        if (envelope.ok === true) {
+          consecutiveFailures = 0; // Reset on success
+        }
+        
+        if (!isMounted) return;
+        
         setHealth({
-          isHealthy: response.ok,
+          isHealthy: envelope.ok === true,
           lastCheck: Date.now(),
-          error: response.ok ? undefined : `HTTP ${response.status}`,
+          error: envelope.ok === false && consecutiveFailures > MAX_SILENT_FAILURES 
+            ? envelope.error?.message 
+            : undefined,
         });
       } catch (error) {
+        if (!isMounted) return;
+        
+        consecutiveFailures++;
         setHealth({
           isHealthy: false,
           lastCheck: Date.now(),
-          error: error instanceof Error ? error.message : 'Backend unavailable',
+          // Only show error after multiple failures to reduce noise
+          error: consecutiveFailures > MAX_SILENT_FAILURES 
+            ? (error instanceof Error ? error.message : 'Backend unavailable')
+            : undefined,
         });
       }
     };
@@ -61,10 +107,13 @@ export function useBackendHealth(checkInterval: number = 30000): BackendHealthSt
     // Check immediately
     checkHealth();
 
-    // Set up interval
-    const interval = setInterval(checkHealth, checkInterval);
+    // Set up interval - longer interval to reduce noise
+    const interval = setInterval(checkHealth, Math.max(checkInterval, 30000));
 
-    return () => clearInterval(interval);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [checkInterval]);
 
   return health;

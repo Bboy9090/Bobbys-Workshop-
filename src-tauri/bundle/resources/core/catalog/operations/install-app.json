@@ -1,0 +1,32 @@
+{
+  "operation": "install_app",
+  "displayName": "Install Application",
+  "description": "Install an APK file on the device",
+  "category": "app",
+  "riskLevel": "medium",
+  "requiresConfirmation": false,
+  "allowedRoles": ["owner", "admin", "technician"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    },
+    "apkPath": {
+      "type": "string",
+      "required": true,
+      "description": "Path to APK file (local or remote)"
+    },
+    "replaceExisting": {
+      "type": "boolean",
+      "required": false,
+      "default": false,
+      "description": "Replace existing app if installed"
+    }
+  },
+  "auditLogging": "standard",
+  "rateLimitPerMinute": 10,
+  "estimatedDuration": 15000
+}

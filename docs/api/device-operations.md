@@ -16,6 +16,7 @@ This document defines the complete API contract for all device operations in Pan
 ### 1. Device-Agnostic Primitives
 
 All operations exposed as generic primitives:
+
 - **inspect**: Gather device information
 - **provision**: Prepare device for operations
 - **enroll**: Register device in fleet management
@@ -32,6 +33,7 @@ All operations exposed as generic primitives:
 ### 3. Explicit Failure Modes
 
 Every endpoint documents:
+
 - Success response schema
 - Error response schema
 - Partial success handling
@@ -40,6 +42,7 @@ Every endpoint documents:
 ### 4. Verifiable Results
 
 Operations return:
+
 - Command executed (for audit trail)
 - Exit code
 - Stdout/stderr (truncated if large)
@@ -57,6 +60,7 @@ Operations return:
 Health check endpoint.
 
 **Response:**
+
 ```json
 {
   "status": "ok",
@@ -74,6 +78,7 @@ Health check endpoint.
 Get system information (OS, architecture, environment).
 
 **Response:**
+
 ```json
 {
   "platform": "linux",
@@ -90,7 +95,9 @@ Get system information (OS, architecture, environment).
     {
       "model": "Intel Core i7",
       "speed": 2400,
-      "times": { /* ... */ }
+      "times": {
+        /* ... */
+      }
     }
   ]
 }
@@ -105,6 +112,7 @@ Get system information (OS, architecture, environment).
 Get status of all system tools (ADB, Fastboot, Rust, Python, etc.).
 
 **Response:**
+
 ```json
 {
   "rust": {
@@ -135,6 +143,7 @@ Get status of all system tools (ADB, Fastboot, Rust, Python, etc.).
 ```
 
 **Failure Modes:**
+
 - Tool not installed: `installed: false`, no version/path
 - Tool present but not working: `installed: true`, `version: null`
 
@@ -147,6 +156,7 @@ Get status of all system tools (ADB, Fastboot, Rust, Python, etc.).
 List all ADB-detected devices with properties.
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -174,6 +184,7 @@ List all ADB-detected devices with properties.
 ```
 
 **Failure Modes:**
+
 - ADB not installed: `{ "success": false, "tool_available": false, "devices": [], "error": "adb not found in PATH" }`
 - No devices connected: `{ "success": true, "tool_available": true, "devices": [], "error": null }`
 - ADB server error: `{ "success": false, "tool_available": true, "devices": [], "error": "adb server failed to start" }`
@@ -185,6 +196,7 @@ List all ADB-detected devices with properties.
 List all Fastboot-detected devices.
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -201,6 +213,7 @@ List all Fastboot-detected devices.
 ```
 
 **Failure Modes:**
+
 - Fastboot not installed: `{ "success": false, "tool_available": false, "devices": [], "error": "fastboot not found in PATH" }`
 - No devices in fastboot mode: `{ "success": true, "tool_available": true, "devices": [], "error": null }`
 
@@ -211,16 +224,21 @@ List all Fastboot-detected devices.
 Unified Android device detection (ADB + Fastboot).
 
 **Response:**
+
 ```json
 {
   "success": true,
   "adb": {
     "available": true,
-    "devices": [ /* ... */ ]
+    "devices": [
+      /* ... */
+    ]
   },
   "fastboot": {
     "available": true,
-    "devices": [ /* ... */ ]
+    "devices": [
+      /* ... */
+    ]
   },
   "merged": [
     {
@@ -237,6 +255,7 @@ Unified Android device detection (ADB + Fastboot).
 ```
 
 **Failure Modes:**
+
 - Both tools unavailable: `{ "success": false, "adb": { "available": false }, "fastboot": { "available": false }, "merged": [] }`
 
 ---
@@ -246,9 +265,11 @@ Unified Android device detection (ADB + Fastboot).
 Scan USB devices using BootForgeUSB Rust library.
 
 **Query Parameters:**
+
 - `demo=true` (optional): Return demo data if CLI not available
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -271,6 +292,7 @@ Scan USB devices using BootForgeUSB Rust library.
 ```
 
 **Failure Modes:**
+
 - CLI not built: `{ "success": false, "cli_available": false, "error": "BootForgeUSB CLI not found", "devices": [] }`
 - Permission denied: `{ "success": false, "cli_available": true, "error": "USB permission denied", "devices": [] }`
 - No USB devices: `{ "success": true, "cli_available": true, "devices": [] }`
@@ -284,6 +306,7 @@ Scan USB devices using BootForgeUSB Rust library.
 Execute safe ADB command (whitelist enforced).
 
 **Request:**
+
 ```json
 {
   "command": "shell getprop ro.build.version.release",
@@ -292,12 +315,14 @@ Execute safe ADB command (whitelist enforced).
 ```
 
 **Allowed Commands:**
+
 - `devices`
 - `shell getprop`
 - `get-state`
 - `get-serialno`
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -309,6 +334,7 @@ Execute safe ADB command (whitelist enforced).
 ```
 
 **Failure Modes:**
+
 - Command not whitelisted: `{ "success": false, "error": "Command not allowed: rm -rf" }`
 - Device not found: `{ "success": false, "error": "Device ABC123XYZ not found" }`
 - ADB error: `{ "success": false, "error": "adb command failed", "stderr": "error: ..." }`
@@ -320,11 +346,13 @@ Execute safe ADB command (whitelist enforced).
 Flash partition via Fastboot (destructive, requires confirmation).
 
 **Request (multipart/form-data):**
+
 - `serial`: Device serial number
 - `partition`: Partition name (boot, recovery, system_a, vendor_b, etc.)
 - `image`: Partition image file (binary)
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -339,6 +367,7 @@ Flash partition via Fastboot (destructive, requires confirmation).
 ```
 
 **Failure Modes:**
+
 - Device not in fastboot: `{ "success": false, "error": "Device not found in fastboot mode" }`
 - Critical partition blocked: `{ "success": false, "error": "Cannot flash critical partition: bootloader" }`
 - Image validation failed: `{ "success": false, "error": "Image file corrupt or invalid format" }`
@@ -351,6 +380,7 @@ Flash partition via Fastboot (destructive, requires confirmation).
 Attempt bootloader unlock (requires OEM unlock enabled on device).
 
 **Request:**
+
 ```json
 {
   "serial": "DEF456UVW",
@@ -359,6 +389,7 @@ Attempt bootloader unlock (requires OEM unlock enabled on device).
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -371,6 +402,7 @@ Attempt bootloader unlock (requires OEM unlock enabled on device).
 ```
 
 **Failure Modes:**
+
 - Typed confirmation missing: `{ "success": false, "error": "Must type 'UNLOCK' exactly to confirm" }`
 - OEM unlock not enabled: `{ "success": false, "error": "OEM unlocking not allowed", "stderr": "FAILED (remote: 'oem unlock is not allowed')" }`
 
@@ -381,6 +413,7 @@ Attempt bootloader unlock (requires OEM unlock enabled on device).
 Reboot device from fastboot mode.
 
 **Request:**
+
 ```json
 {
   "serial": "DEF456UVW",
@@ -389,11 +422,13 @@ Reboot device from fastboot mode.
 ```
 
 **Valid Targets:**
+
 - `system`: Reboot to normal OS
 - `bootloader`: Reboot to bootloader/fastboot
 - `recovery`: Reboot to recovery mode
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -405,6 +440,7 @@ Reboot device from fastboot mode.
 ```
 
 **Failure Modes:**
+
 - Invalid target: `{ "success": false, "error": "Invalid reboot target: 'invalid'" }`
 - Device not found: `{ "success": false, "error": "Device not found in fastboot mode" }`
 
@@ -415,6 +451,7 @@ Reboot device from fastboot mode.
 Erase non-critical partition.
 
 **Request:**
+
 ```json
 {
   "serial": "DEF456UVW",
@@ -424,10 +461,12 @@ Erase non-critical partition.
 ```
 
 **Blocked Partitions:**
+
 - `boot`, `system`, `system_a`, `system_b`, `vendor`, `vendor_a`, `vendor_b`
 - `bootloader`, `radio`, `aboot`, `vbmeta`, `vbmeta_a`, `vbmeta_b`
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -439,6 +478,7 @@ Erase non-critical partition.
 ```
 
 **Failure Modes:**
+
 - Critical partition: `{ "success": false, "error": "Cannot erase critical partition: boot" }`
 - Typed confirmation missing: `{ "success": false, "error": "Must type 'RESET' exactly to confirm" }`
 
@@ -451,6 +491,7 @@ Erase non-critical partition.
 Check firmware version for connected device.
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -474,6 +515,7 @@ Check firmware version for connected device.
 ```
 
 **Failure Modes:**
+
 - Device not connected: `{ "success": false, "error": "Device ABC123XYZ not found" }`
 - Firmware database unavailable: `{ "success": true, "device": { ... }, "firmware_info": null, "warning": "Firmware database not accessible" }`
 
@@ -486,6 +528,7 @@ Check firmware version for connected device.
 Start flashing operation with live progress tracking.
 
 **Request:**
+
 ```json
 {
   "device_id": "ABC123XYZ",
@@ -497,6 +540,7 @@ Start flashing operation with live progress tracking.
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -508,6 +552,7 @@ Start flashing operation with live progress tracking.
 ```
 
 **WebSocket Progress Messages:**
+
 ```json
 {
   "type": "flash_progress",
@@ -524,6 +569,7 @@ Start flashing operation with live progress tracking.
 ```
 
 **Completion Message:**
+
 ```json
 {
   "type": "flash_completed",
@@ -535,6 +581,7 @@ Start flashing operation with live progress tracking.
 ```
 
 **Failure Modes:**
+
 - Image file missing: `{ "success": false, "error": "Image file not found at path" }`
 - Device not found: `{ "success": false, "error": "Device not in fastboot mode" }`
 - Flash failed (via WebSocket): `{ "type": "flash_failed", "job_id": "...", "error": "Partition write failed" }`
@@ -548,6 +595,7 @@ Start flashing operation with live progress tracking.
 Execute authorization trigger (user confirmation required for sensitive operations).
 
 **Request:**
+
 ```json
 {
   "trigger_id": "flash_firmware",
@@ -563,6 +611,7 @@ Execute authorization trigger (user confirmation required for sensitive operatio
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -575,6 +624,7 @@ Execute authorization trigger (user confirmation required for sensitive operatio
 ```
 
 **Failure Modes:**
+
 - Typed confirmation mismatch: `{ "success": false, "error": "Must type 'CONFIRM' exactly" }`
 - Device not found: `{ "success": false, "error": "Device ABC123XYZ not available" }`
 - Operation failed: `{ "success": false, "error": "Flash operation failed", "execution_time_ms": 2345 }`
@@ -586,10 +636,12 @@ Execute authorization trigger (user confirmation required for sensitive operatio
 Retrieve authorization trigger history.
 
 **Query Parameters:**
+
 - `limit` (optional): Max results (default: 100)
 - `offset` (optional): Pagination offset (default: 0)
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -619,10 +671,12 @@ Retrieve authorization trigger history.
 Real-time device hotplug events.
 
 **Message Types:**
+
 - `connected`: Device attached
 - `disconnected`: Device detached
 
 **Example:**
+
 ```json
 {
   "type": "connected",
@@ -643,6 +697,7 @@ Real-time device hotplug events.
 Real-time correlation tracking updates.
 
 **Message Types:**
+
 - `batch_update`: Full device list refresh
 - `device_connected`: New device added
 - `device_disconnected`: Device removed
@@ -683,9 +738,10 @@ All endpoints follow consistent error structure:
 ## Authentication
 
 **Current**: Open (no authentication required)  
-**⚠️ WARNING**: Current open authentication is for development only. **DO NOT use in production environments** without implementing proper authentication and authorization.  
+**⚠️ WARNING**: Current open authentication is for development only. **DO NOT use in production environments** without implementing proper authentication and authorization.
 
 **Security Implications of Open Mode:**
+
 - Any user with network access can execute operations
 - No audit trail of which user performed actions
 - No role-based access control
@@ -694,6 +750,7 @@ All endpoints follow consistent error structure:
 **Planned**: Bearer token authentication via `Authorization: Bearer <token>` header with RBAC support
 
 **Implementation Guidance:**
+
 - Phase 1 (Q1 2025): JWT-based authentication with user registration/login
 - Phase 2 (Q2 2025): Role-Based Access Control (RBAC) with permission levels
 - Phase 3 (Q2 2025): API key management for automation/integration
@@ -704,6 +761,7 @@ All endpoints follow consistent error structure:
 ## Versioning
 
 API version indicated in response headers:
+
 ```
 X-API-Version: 1.0
 ```
@@ -715,6 +773,7 @@ Breaking changes will increment major version and require `/api/v2/...` path pre
 ## Testing
 
 All endpoints have automated integration tests verifying:
+
 1. Success response schema
 2. All documented failure modes
 3. Edge cases (empty inputs, missing tools, permission errors)
@@ -725,6 +784,7 @@ All endpoints have automated integration tests verifying:
 ## Maintenance
 
 This API contract is updated:
+
 - **On every breaking change**: Document new error modes
 - **On feature addition**: Add new endpoint documentation
 - **Quarterly**: Review for accuracy and completeness

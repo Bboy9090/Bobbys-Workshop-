@@ -1,0 +1,38 @@
+{
+  "operation": "restore_device",
+  "displayName": "Restore Device from Backup",
+  "description": "Restore device from a previously created backup",
+  "category": "restore",
+  "riskLevel": "high",
+  "requiresConfirmation": true,
+  "allowedRoles": ["owner", "admin"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    },
+    "backupPath": {
+      "type": "string",
+      "required": true,
+      "description": "Path to backup directory"
+    },
+    "restoreApps": {
+      "type": "boolean",
+      "required": false,
+      "default": true,
+      "description": "Restore installed applications"
+    },
+    "restoreData": {
+      "type": "boolean",
+      "required": false,
+      "default": true,
+      "description": "Restore user data"
+    }
+  },
+  "auditLogging": "shadow",
+  "rateLimitPerMinute": 2,
+  "estimatedDuration": 300000
+}

@@ -31,262 +31,6 @@ import { PluginRegistrySync } from './PluginRegistrySync';
 import { PluginRegistryBrowser } from './PluginRegistryBrowser';
 import { PluginDependencyInstaller } from './PluginDependencyInstaller';
 
-const MOCK_PLUGINS_FALLBACK: Plugin[] = [
-  {
-    id: 'samsung-enhanced-diag',
-    name: 'Samsung Enhanced Diagnostics',
-    slug: 'samsung-enhanced-diag',
-    description: 'Advanced diagnostics for Samsung Galaxy devices with Knox status checks',
-    longDescription: 'Comprehensive diagnostic suite specifically designed for Samsung devices. Includes Knox warranty bit detection, bootloader status verification, and Samsung-specific sensor testing.',
-    category: 'diagnostic',
-    riskLevel: 'safe',
-    status: 'approved',
-    author: {
-      id: 'user_bobby',
-      username: 'bobby',
-      verified: true,
-      reputation: 98,
-      totalDownloads: 15420
-    },
-    capabilities: {
-      requiresUSB: true,
-      requiresRoot: false,
-      modifiesSystem: false,
-      platforms: ['android'],
-      permissions: ['USB_READ', 'DEVICE_INFO']
-    },
-    currentVersion: {
-      version: '2.3.1',
-      releaseDate: Date.now() - 604800000,
-      changelog: 'Added Knox 3.9 support, improved battery health detection',
-      downloadUrl: 'https://example.com/plugins/samsung-diag-2.3.1.zip',
-      hash: 'sha256:abc123...',
-      size: 2456789,
-      minAppVersion: '1.0.0'
-    },
-    versions: [],
-    testResults: [
-      { id: 't1', testName: 'Code Quality Scan', status: 'pass', duration: 1200, timestamp: Date.now() },
-      { id: 't2', testName: 'Security Audit', status: 'pass', duration: 3400, timestamp: Date.now() },
-      { id: 't3', testName: 'Platform Compatibility', status: 'pass', duration: 890, timestamp: Date.now() }
-    ],
-    certified: true,
-    certificationDate: Date.now() - 2592000000,
-    downloads: 15420,
-    rating: 4.8,
-    reviewCount: 342,
-    tags: ['samsung', 'knox', 'diagnostics', 'battery'],
-    screenshots: [],
-    documentation: 'https://docs.example.com/samsung-diag',
-    repository: 'https://github.com/bobby/samsung-diag',
-    license: 'MIT',
-    createdAt: Date.now() - 7776000000,
-    updatedAt: Date.now() - 604800000
-  },
-  {
-    id: 'xiaomi-edl-helper',
-    name: 'Xiaomi EDL Recovery Helper',
-    slug: 'xiaomi-edl-helper',
-    description: 'Automated EDL mode detection and recovery workflows for Xiaomi devices',
-    longDescription: 'Streamlines emergency download (EDL) mode operations for Xiaomi devices. Automates test point detection, provides guided recovery instructions, and validates firehose loaders.',
-    category: 'flashing',
-    riskLevel: 'expert-only',
-    status: 'approved',
-    author: {
-      id: 'user_tech_master',
-      username: 'tech_master',
-      verified: true,
-      reputation: 92,
-      totalDownloads: 8934
-    },
-    capabilities: {
-      requiresUSB: true,
-      requiresRoot: false,
-      modifiesSystem: true,
-      platforms: ['android'],
-      permissions: ['USB_READ', 'USB_WRITE', 'FLASH_FIRMWARE']
-    },
-    currentVersion: {
-      version: '1.8.2',
-      releaseDate: Date.now() - 259200000,
-      changelog: 'Added support for Redmi Note 12 series, improved error handling',
-      downloadUrl: 'https://example.com/plugins/xiaomi-edl-1.8.2.zip',
-      hash: 'sha256:def456...',
-      size: 4123456,
-      minAppVersion: '1.1.0'
-    },
-    versions: [],
-    testResults: [
-      { id: 't4', testName: 'Code Quality Scan', status: 'pass', duration: 1450, timestamp: Date.now() },
-      { id: 't5', testName: 'Security Audit', status: 'pass', duration: 2980, timestamp: Date.now() },
-      { id: 't6', testName: 'Platform Compatibility', status: 'pass', duration: 1120, timestamp: Date.now() }
-    ],
-    certified: true,
-    certificationDate: Date.now() - 5184000000,
-    downloads: 8934,
-    rating: 4.6,
-    reviewCount: 187,
-    tags: ['xiaomi', 'edl', 'recovery', 'advanced'],
-    screenshots: [],
-    documentation: 'https://docs.example.com/xiaomi-edl',
-    repository: 'https://github.com/techmaster/xiaomi-edl',
-    license: 'GPL-3.0',
-    createdAt: Date.now() - 15552000000,
-    updatedAt: Date.now() - 259200000
-  },
-  {
-    id: 'ios-checkra1n-automation',
-    name: 'iOS Checkra1n Automation',
-    slug: 'ios-checkra1n-automation',
-    description: 'Automated checkra1n workflows for A5-A11 devices',
-    longDescription: 'One-click checkra1n jailbreak automation with DFU mode helper, compatibility checking, and post-jailbreak verification. Educational resource for legitimate iOS research.',
-    category: 'workflow',
-    riskLevel: 'advanced',
-    status: 'approved',
-    author: {
-      id: 'user_ios_dev',
-      username: 'ios_dev',
-      verified: true,
-      reputation: 95,
-      totalDownloads: 12203
-    },
-    capabilities: {
-      requiresUSB: true,
-      requiresRoot: false,
-      modifiesSystem: true,
-      platforms: ['ios'],
-      permissions: ['USB_READ', 'USB_WRITE', 'BOOTROM_ACCESS']
-    },
-    currentVersion: {
-      version: '3.1.0',
-      releaseDate: Date.now() - 1209600000,
-      changelog: 'Updated for checkra1n 0.12.4, improved DFU detection',
-      downloadUrl: 'https://example.com/plugins/checkra1n-auto-3.1.0.zip',
-      hash: 'sha256:ghi789...',
-      size: 3567890,
-      minAppVersion: '1.0.0'
-    },
-    versions: [],
-    testResults: [
-      { id: 't7', testName: 'Code Quality Scan', status: 'pass', duration: 1890, timestamp: Date.now() },
-      { id: 't8', testName: 'Security Audit', status: 'pass', duration: 4120, timestamp: Date.now() },
-      { id: 't9', testName: 'Platform Compatibility', status: 'pass', duration: 1340, timestamp: Date.now() }
-    ],
-    certified: true,
-    certificationDate: Date.now() - 3456000000,
-    downloads: 12203,
-    rating: 4.9,
-    reviewCount: 289,
-    tags: ['ios', 'checkra1n', 'jailbreak', 'dfu'],
-    screenshots: [],
-    documentation: 'https://docs.example.com/checkra1n-auto',
-    license: 'MIT',
-    createdAt: Date.now() - 10368000000,
-    updatedAt: Date.now() - 1209600000
-  },
-  {
-    id: 'multi-brand-fastboot',
-    name: 'Universal Fastboot Tools',
-    slug: 'multi-brand-fastboot',
-    description: 'Unified fastboot interface for Google, OnePlus, Motorola, and more',
-    longDescription: 'Comprehensive fastboot toolkit supporting multiple OEMs with brand-specific optimizations. Includes partition management, variable reading, and safe flashing workflows.',
-    category: 'flashing',
-    riskLevel: 'moderate',
-    status: 'approved',
-    author: {
-      id: 'user_fastboot_pro',
-      username: 'fastboot_pro',
-      verified: true,
-      reputation: 89,
-      totalDownloads: 18765
-    },
-    capabilities: {
-      requiresUSB: true,
-      requiresRoot: false,
-      modifiesSystem: true,
-      platforms: ['android'],
-      permissions: ['USB_READ', 'USB_WRITE', 'FLASH_FIRMWARE']
-    },
-    currentVersion: {
-      version: '4.2.3',
-      releaseDate: Date.now() - 432000000,
-      changelog: 'Added Nothing Phone support, improved OnePlus detection',
-      downloadUrl: 'https://example.com/plugins/fastboot-4.2.3.zip',
-      hash: 'sha256:jkl012...',
-      size: 5678901,
-      minAppVersion: '1.0.0'
-    },
-    versions: [],
-    testResults: [
-      { id: 't10', testName: 'Code Quality Scan', status: 'pass', duration: 2100, timestamp: Date.now() },
-      { id: 't11', testName: 'Security Audit', status: 'pass', duration: 3890, timestamp: Date.now() },
-      { id: 't12', testName: 'Platform Compatibility', status: 'pass', duration: 1560, timestamp: Date.now() }
-    ],
-    certified: true,
-    certificationDate: Date.now() - 1728000000,
-    downloads: 18765,
-    rating: 4.7,
-    reviewCount: 421,
-    tags: ['fastboot', 'multi-brand', 'flashing', 'universal'],
-    screenshots: [],
-    documentation: 'https://docs.example.com/fastboot-tools',
-    repository: 'https://github.com/fastbootpro/universal-fastboot',
-    license: 'Apache-2.0',
-    createdAt: Date.now() - 20736000000,
-    updatedAt: Date.now() - 432000000
-  },
-  {
-    id: 'battery-health-pro',
-    name: 'Battery Health Pro',
-    slug: 'battery-health-pro',
-    description: 'Deep battery diagnostics with cycle count and degradation tracking',
-    longDescription: 'Professional battery health analysis tool providing cycle count estimation, capacity degradation tracking, and charge pattern recommendations. Works across Android and iOS.',
-    category: 'diagnostic',
-    riskLevel: 'safe',
-    status: 'testing',
-    author: {
-      id: 'user_battery_wizard',
-      username: 'battery_wizard',
-      verified: false,
-      reputation: 76,
-      totalDownloads: 3421
-    },
-    capabilities: {
-      requiresUSB: true,
-      requiresRoot: false,
-      modifiesSystem: false,
-      platforms: ['android', 'ios'],
-      permissions: ['USB_READ', 'BATTERY_INFO']
-    },
-    currentVersion: {
-      version: '1.0.0-beta.3',
-      releaseDate: Date.now() - 86400000,
-      changelog: 'Initial beta release, added iOS support',
-      downloadUrl: 'https://example.com/plugins/battery-health-1.0.0-beta.3.zip',
-      hash: 'sha256:mno345...',
-      size: 1234567,
-      minAppVersion: '1.2.0'
-    },
-    versions: [],
-    testResults: [
-      { id: 't13', testName: 'Code Quality Scan', status: 'pass', duration: 980, timestamp: Date.now() },
-      { id: 't14', testName: 'Security Audit', status: 'pass', duration: 2340, timestamp: Date.now() },
-      { id: 't15', testName: 'Platform Compatibility', status: 'fail', duration: 780, message: 'iOS 17 compatibility issues', timestamp: Date.now() }
-    ],
-    certified: false,
-    downloads: 3421,
-    rating: 4.3,
-    reviewCount: 67,
-    tags: ['battery', 'diagnostics', 'health', 'universal'],
-    screenshots: [],
-    documentation: 'https://docs.example.com/battery-health',
-    repository: 'https://github.com/batterywizard/health-pro',
-    license: 'MIT',
-    createdAt: Date.now() - 2592000000,
-    updatedAt: Date.now() - 86400000
-  }
-];
-
 export function PluginMarketplace() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<PluginSearchFilters>({
@@ -295,8 +39,9 @@ export function PluginMarketplace() {
   const [installedPlugins, setInstalledPlugins] = useKV<InstalledPlugin[]>('installed-plugins', []);
   const [selectedPlugin, setSelectedPlugin] = useState<Plugin | null>(null);
   const [activeTab, setActiveTab] = useState<'browse' | 'installed' | 'submit'>('browse');
-  const [plugins, setPlugins] = useState<Plugin[]>(MOCK_PLUGINS_FALLBACK);
+  const [plugins, setPlugins] = useState<Plugin[]>([]);
   const [loading, setLoading] = useState(false);
+  const [registryError, setRegistryError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<Map<string, PluginDownloadProgress>>(new Map());
   const [dependencyInstallDialog, setDependencyInstallDialog] = useState<{
     open: boolean;
@@ -313,13 +58,16 @@ export function PluginMarketplace() {
 
   const loadPlugins = async () => {
     setLoading(true);
+    setRegistryError(null);
     try {
       const results = await pluginAPI.searchPlugins(filters);
       setPlugins(results);
     } catch (error) {
       console.error('Failed to load plugins:', error);
-      toast.error('Failed to load plugins, showing local cache');
-      setPlugins(MOCK_PLUGINS_FALLBACK);
+      toast.error('Failed to load plugins from registry. Check backend connection.');
+      const message = error instanceof Error ? error.message : 'Registry unavailable';
+      setRegistryError(message);
+      setPlugins([]); // Truth-first: no mock fallback
     } finally {
       setLoading(false);
     }
@@ -497,6 +245,22 @@ export function PluginMarketplace() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
+            {/* Gated: Show explicit registry unavailable state when backend cannot be reached */}
+            {!loading && registryError && (
+              <Card className="p-12 text-center md:col-span-2">
+                <CloudArrowUp className="w-12 h-12 mx-auto mb-3 text-destructive" />
+                <p className="font-semibold text-destructive mb-1">Plugin registry unavailable</p>
+                <p className="text-muted-foreground mb-4">
+                  {registryError}. Ensure the backend is running at http://localhost:3001 and the registry API is configured.
+                </p>
+                <div className="flex items-center justify-center">
+                  <Button onClick={loadPlugins} variant="outline" className="gap-1.5">
+                    <ArrowsClockwise className="w-4 h-4" />
+                    Retry
+                  </Button>
+                </div>
+              </Card>
+            )}
             {filteredPlugins.map(plugin => {
               const isInstalled = installed.some(p => p.plugin.id === plugin.id);
               const downloadProgress = downloading.get(plugin.id);
@@ -607,10 +371,12 @@ export function PluginMarketplace() {
           </div>
 
           {filteredPlugins.length === 0 && (
-            <Card className="p-12 text-center">
-              <Package className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
-              <p className="text-muted-foreground">No plugins found matching your criteria</p>
-            </Card>
+            !registryError ? (
+              <Card className="p-12 text-center">
+                <Package className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
+                <p className="text-muted-foreground">No plugins found matching your criteria</p>
+              </Card>
+            ) : null
           )}
         </TabsContent>
 
@@ -817,7 +583,7 @@ function PluginSubmissionForm() {
 
           <Card className="p-4 bg-muted/50">
             <div className="flex gap-3">
-              <Sparkle className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+              <Sparkle className="w-5 h-5 text-primary shrink-0 mt-0.5" />
               <div className="text-sm space-y-2">
                 <p className="font-medium">Plugin Certification Process</p>
                 <ul className="text-muted-foreground space-y-1 list-disc list-inside">

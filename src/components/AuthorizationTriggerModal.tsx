@@ -18,7 +18,7 @@ import {
   XCircle 
 } from '@phosphor-icons/react';
 import type { AuthorizationTrigger } from '@/lib/authorization-triggers';
-import { executeTrigger, logTriggerAction } from '@/lib/authorization-triggers';
+import { executeTrigger } from '@/lib/authorization-triggers';
 import { useAuthorizationHistory } from '@/hooks/use-authorization-history';
 
 interface AuthorizationTriggerModalProps {
@@ -103,17 +103,6 @@ export function AuthorizationTriggerModal({
     const result = await executeTrigger(trigger, deviceId, additionalData);
     const executionTime = Date.now() - startTime;
 
-    await logTriggerAction(
-      trigger.id,
-      deviceId,
-      result.success ? 'approved' : 'rejected',
-      {
-        deviceName,
-        ...additionalData,
-        error: result.error,
-      }
-    );
-
     updateHistoryEntry(historyEntry.id, {
       status: result.success ? 'success' : 'failed',
       executionTime,
@@ -140,11 +129,7 @@ export function AuthorizationTriggerModal({
     }
   };
 
-  const handleCancel = async () => {
-    await logTriggerAction(trigger.id, deviceId, 'cancelled', {
-      deviceName,
-      ...additionalData,
-    });
+  const handleCancel = () => {
     handleClose();
   };
 

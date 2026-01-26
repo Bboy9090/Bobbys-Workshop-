@@ -26,6 +26,7 @@ The system calculates an overall Performance Score (0-100) based on:
 - **Average Speed** (30%): Actual transfer speeds relative to theoretical maximum
 
 **Score Interpretation:**
+
 - 80-100: Excellent performance
 - 60-79: Good performance
 - 40-59: Needs optimization
@@ -38,18 +39,21 @@ The profiler analyzes historical data and generates targeted optimization recomm
 #### Recommendation Categories
 
 1. **Hardware Issues**
+
    - USB cable/port problems
    - USB version bottlenecks
    - Connection stability issues
    - Physical hardware degradation
 
 2. **Software Optimization**
+
    - Driver updates needed
    - Tool version issues
    - Partition-specific problems
    - Firmware compatibility
 
 3. **Configuration Tuning**
+
    - System settings optimization
    - Power management adjustments
    - Buffer size configuration
@@ -135,10 +139,12 @@ For testing or demonstration:
 #### Slow Transfer Speeds (< 5 MB/s)
 
 **Symptoms:**
+
 - Flash operations taking much longer than expected
 - Average speeds below 5 MB/s
 
 **Solutions:**
+
 1. Verify USB 3.0 cable and port usage
 2. Try different USB ports (prefer rear panel on desktop)
 3. Check cable quality - replace if damaged
@@ -150,10 +156,12 @@ For testing or demonstration:
 #### High Speed Variance
 
 **Symptoms:**
+
 - Transfer speeds fluctuating wildly
 - Unpredictable flash durations
 
 **Solutions:**
+
 1. Check for loose USB connections
 2. Monitor and reduce CPU usage
 3. Disable USB power management
@@ -165,10 +173,12 @@ For testing or demonstration:
 #### USB 2.0 Bottleneck
 
 **Symptoms:**
+
 - Consistently low speeds across all operations
 - USB 2.0 detected in profiles
 
 **Solutions:**
+
 1. Upgrade to USB 3.0+ cable (blue connector)
 2. Verify device supports USB 3.0 in fastboot mode
 3. Use USB 3.0 port (blue or marked SS)
@@ -179,10 +189,12 @@ For testing or demonstration:
 #### Low Transfer Efficiency (< 60%)
 
 **Symptoms:**
+
 - High protocol overhead
 - Long preparation/verification times
 
 **Solutions:**
+
 1. Update fastboot drivers to latest version
 2. Increase USB transfer buffer size
 3. Disable real-time antivirus scanning for flash tools
@@ -194,10 +206,12 @@ For testing or demonstration:
 #### High Error Rate (> 10%)
 
 **Symptoms:**
+
 - Frequent flash failures
 - Retries and interruptions
 
 **Solutions:**
+
 1. Test with different USB cable
 2. Clean USB ports on both devices
 3. Maintain device battery above 50%
@@ -210,10 +224,12 @@ For testing or demonstration:
 #### Performance Degradation
 
 **Symptoms:**
+
 - Speeds decreasing over time
 - Recent operations slower than historical
 
 **Solutions:**
+
 1. Restart computer to clear resources
 2. Check for background OS updates
 3. Inspect USB cable for damage
@@ -275,6 +291,7 @@ For testing or demonstration:
 Calculated as: `(Actual Transfer Time / Total Operation Time) × 100`
 
 Factors reducing efficiency:
+
 - USB enumeration overhead
 - Device preparation time
 - Verification procedures
@@ -284,23 +301,25 @@ Factors reducing efficiency:
 ### Speed Variance
 
 Measures consistency of transfer rates:
+
 - Low variance (< 15%): Very stable
 - Medium variance (15-30%): Acceptable
 - High variance (> 30%): Problematic
 
 ### USB Version Impact
 
-| USB Version | Theoretical Max | Real-World Typical |
-|-------------|----------------|-------------------|
-| USB 2.0 | 60 MB/s | 10-30 MB/s |
-| USB 3.0 | 625 MB/s | 100-300 MB/s |
-| USB 3.1 Gen 2 | 1250 MB/s | 200-500 MB/s |
+| USB Version   | Theoretical Max | Real-World Typical |
+| ------------- | --------------- | ------------------ |
+| USB 2.0       | 60 MB/s         | 10-30 MB/s         |
+| USB 3.0       | 625 MB/s        | 100-300 MB/s       |
+| USB 3.1 Gen 2 | 1250 MB/s       | 200-500 MB/s       |
 
 ## Integration with Existing Tools
 
 ### Fastboot Flashing Panel
 
 Single partition flashing operations are automatically profiled with:
+
 - Real-time speed monitoring
 - Progress tracking with ETA
 - Automatic profile creation on completion
@@ -308,6 +327,7 @@ Single partition flashing operations are automatically profiled with:
 ### Batch Flashing Panel
 
 Batch operations create individual profiles for each partition:
+
 - Aggregate performance metrics
 - Per-partition performance comparison
 - Batch-level recommendations
@@ -315,6 +335,7 @@ Batch operations create individual profiles for each partition:
 ### Device Analytics Dashboard
 
 Profile data integrates with device analytics for:
+
 - Device-specific performance baselines
 - Historical trend analysis
 - Cross-device performance comparison
@@ -324,6 +345,7 @@ Profile data integrates with device analytics for:
 ### Speed Profile Time-Series
 
 Each operation captures a time-series of speed measurements:
+
 - Sample rate: ~10 Hz (100ms intervals)
 - Full operation coverage
 - Useful for identifying specific bottlenecks
@@ -332,6 +354,7 @@ Each operation captures a time-series of speed measurements:
 ### Confidence Scoring
 
 Recommendations include confidence scores (0-1):
+
 - Based on data quality and quantity
 - Higher confidence = more reliable recommendation
 - Updated as more data is collected
@@ -339,6 +362,7 @@ Recommendations include confidence scores (0-1):
 ### Trend Detection
 
 System automatically detects:
+
 - Improving performance over time
 - Declining performance trends
 - Stable performance patterns
@@ -347,6 +371,7 @@ System automatically detects:
 ### Device Profiling
 
 Multiple devices tracked separately:
+
 - Device-specific baselines
 - Model-specific recommendations
 - Comparative performance analysis
@@ -425,6 +450,7 @@ For issues or questions:
 ### Data Collection
 
 Profiles are captured by:
+
 - FlashProgressMonitor component
 - FastbootFlashingPanel integration
 - BatchFlashingPanel integration
@@ -433,6 +459,7 @@ Profiles are captured by:
 ### Performance Impact
 
 Profiling overhead:
+
 - < 1% CPU usage
 - ~1KB storage per profile
 - No impact on transfer speeds
@@ -441,6 +468,7 @@ Profiling overhead:
 ### Browser Compatibility
 
 Fully supported:
+
 - Chrome/Edge 90+
 - Firefox 88+
 - Safari 14+

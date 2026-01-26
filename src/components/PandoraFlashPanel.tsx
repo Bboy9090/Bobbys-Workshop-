@@ -18,6 +18,7 @@ import {
   CircleNotch
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { featureFlags } from '@/lib/featureFlags';
 
 interface FlashOperation {
   id: string;
@@ -32,7 +33,6 @@ interface FlashOperation {
 const API_BASE = 'http://localhost:3001';
 
 export function PandoraFlashPanel() {
-  const { isDemoMode } = useApp();
   const [operations, setOperations] = useState<FlashOperation[]>([]);
   const [history, setHistory] = useState<FlashOperation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -58,60 +58,10 @@ export function PandoraFlashPanel() {
     }
   };
 
-  const startDemoFlash = async () => {
-    if (!isDemoMode) {
-      toast.error('Flash operations require backend API connection');
-      return;
-    }
-    
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/flash/start`, { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        toast.success('Demo flash operation started (DEMO MODE)');
-        
-        const newOp: FlashOperation = {
-          id: Date.now().toString(),
-          device: '[DEMO] Simulated Device',
-          firmware: '[DEMO] Test Firmware v1.0',
-          status: 'running',
-          progress: 0,
-          startTime: Date.now(),
-        };
-        
-        setOperations(prev => [...prev, newOp]);
-        simulateProgress(newOp.id);
-        await loadHistory();
-      }
-    } catch (err) {
-      toast.error('Failed to start flash operation');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const simulateProgress = (opId: string) => {
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += Math.random() * 15;
-      if (progress >= 100) {
-        progress = 100;
-        clearInterval(interval);
-        setOperations(prev => 
-          prev.map(op => 
-            op.id === opId 
-              ? { ...op, status: 'completed' as const, progress: 100, endTime: Date.now() }
-              : op
-          )
-        );
-        toast.success('Flash operation completed');
-      } else {
-        setOperations(prev => 
-          prev.map(op => op.id === opId ? { ...op, progress } : op)
-        );
-      }
-    }, 500);
+  const startFlash = async () => {
+    toast.error('Flashing is disabled', {
+      description: 'This panel does not run simulated flash operations. Use the Universal Flash Station when flashing is enabled and the backend supports real operations.',
+    });
   };
 
   const pauseOperation = (opId: string) => {
@@ -155,13 +105,13 @@ export function PandoraFlashPanel() {
               </CardTitle>
               <CardDescription>Manage device firmware flashing operations</CardDescription>
             </div>
-            <Button onClick={startDemoFlash} disabled={loading || !isDemoMode}>
+            <Button onClick={startFlash} disabled={loading || !featureFlags.experimentalFlashing}>
               {loading ? (
                 <CircleNotch className="w-4 h-4 animate-spin" />
               ) : (
                 <Play className="w-4 h-4" weight="fill" />
               )}
-              {isDemoMode ? 'Start Demo Flash' : 'Connect Backend'}
+              {featureFlags.experimentalFlashing ? 'Start Flash' : 'Flashing Disabled'}
             </Button>
           </div>
         </CardHeader>
@@ -170,13 +120,9 @@ export function PandoraFlashPanel() {
             <EmptyState
               icon={<Lightning className="w-12 h-12" weight="duotone" />}
               title="No operations queued"
-              description={isDemoMode 
-                ? "Click 'Start Demo Flash' to simulate a flash operation (demo mode)"
-                : "Connect to backend API to start real flash operations"}
-              action={isDemoMode ? {
-                label: 'Start Demo Flash',
-                onClick: startDemoFlash
-              } : undefined}
+              description={featureFlags.experimentalFlashing
+                ? 'Backend flashing must be implemented to start real operations'
+                : 'Flashing is disabled in this build'}
             />
           ) : (
             <div className="space-y-3">

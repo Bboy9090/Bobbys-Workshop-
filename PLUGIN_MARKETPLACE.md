@@ -7,6 +7,7 @@ The Plugin Marketplace is a comprehensive community-driven ecosystem for extendi
 ## Features
 
 ### 🏪 Browse & Search
+
 - **Search**: Real-time text search across plugin names and descriptions
 - **Filters**:
   - Category (diagnostic, flashing, detection, workflow, automation, utility)
@@ -16,7 +17,9 @@ The Plugin Marketplace is a comprehensive community-driven ecosystem for extendi
 - **Sorting**: Popular, Recent, Rating, Name (A-Z)
 
 ### 🔌 Plugin Cards
+
 Each plugin displays:
+
 - Name & description
 - Certified badge (verified by Bobby's team)
 - Download count & star rating
@@ -27,7 +30,9 @@ Each plugin displays:
 - Status (approved, testing, pending, rejected)
 
 ### 📋 Plugin Details Modal
+
 Comprehensive plugin information:
+
 - Full description
 - Author info (username, verified status, reputation, total downloads)
 - **Automated Test Results**: Code quality scan, security audit, platform compatibility
@@ -37,6 +42,7 @@ Comprehensive plugin information:
 - Install button
 
 ### 💾 Installed Plugins
+
 - View all installed plugins
 - Enable/disable toggles
 - Uninstall functionality
@@ -44,7 +50,9 @@ Comprehensive plugin information:
 - Installation date
 
 ### ☁️ Submit Plugin
+
 Community submission form:
+
 - Plugin name & description
 - Category & risk level selection
 - Repository URL (optional)
@@ -60,9 +68,15 @@ interface Plugin {
   slug: string;
   description: string;
   longDescription: string;
-  category: 'diagnostic' | 'flashing' | 'detection' | 'workflow' | 'automation' | 'utility';
-  riskLevel: 'safe' | 'moderate' | 'advanced' | 'expert-only';
-  status: 'pending' | 'testing' | 'approved' | 'rejected' | 'suspended';
+  category:
+    | "diagnostic"
+    | "flashing"
+    | "detection"
+    | "workflow"
+    | "automation"
+    | "utility";
+  riskLevel: "safe" | "moderate" | "advanced" | "expert-only";
+  status: "pending" | "testing" | "approved" | "rejected" | "suspended";
   author: PluginAuthor;
   capabilities: PluginCapabilities;
   currentVersion: PluginVersion;
@@ -82,6 +96,7 @@ interface Plugin {
 ## Sample Plugins
 
 ### 1. Samsung Enhanced Diagnostics
+
 - **Category**: Diagnostic
 - **Risk**: Safe
 - **Features**: Knox status checks, bootloader verification, battery health
@@ -91,6 +106,7 @@ interface Plugin {
 - **Rating**: 4.8/5
 
 ### 2. Xiaomi EDL Recovery Helper
+
 - **Category**: Flashing
 - **Risk**: Expert-only
 - **Features**: EDL mode detection, test point guide, firehose validation
@@ -100,6 +116,7 @@ interface Plugin {
 - **Rating**: 4.6/5
 
 ### 3. iOS Checkra1n Automation
+
 - **Category**: Workflow
 - **Risk**: Advanced
 - **Features**: One-click jailbreak automation, DFU helper, compatibility checks
@@ -109,6 +126,7 @@ interface Plugin {
 - **Rating**: 4.9/5
 
 ### 4. Universal Fastboot Tools
+
 - **Category**: Flashing
 - **Risk**: Moderate
 - **Features**: Multi-brand support, partition management, safe workflows
@@ -118,6 +136,7 @@ interface Plugin {
 - **Rating**: 4.7/5
 
 ### 5. Battery Health Pro
+
 - **Category**: Diagnostic
 - **Risk**: Safe
 - **Features**: Cycle count, capacity tracking, charge recommendations
@@ -135,6 +154,7 @@ Every plugin submission goes through automated testing:
 3. **Platform Compatibility**: Device mode support, API compatibility, error handling
 
 Test results display:
+
 - ✓ Pass (green)
 - ✗ Fail (red) with error message
 - ⊘ Skip (gray)
@@ -151,11 +171,16 @@ Test results display:
 ## Storage & Persistence
 
 All installed plugins are stored in browser storage via `useKV`:
+
 ```typescript
-const [installedPlugins, setInstalledPlugins] = useKV<InstalledPlugin[]>('installed-plugins', []);
+const [installedPlugins, setInstalledPlugins] = useKV<InstalledPlugin[]>(
+  "installed-plugins",
+  [],
+);
 ```
 
 Data persists between sessions and includes:
+
 - Plugin metadata
 - Installed version
 - Installation date
@@ -165,22 +190,26 @@ Data persists between sessions and includes:
 ## Risk Level Guidelines
 
 ### Safe (Green)
+
 - Read-only operations
 - No system modifications
 - No root required
 - Diagnostic tools, info readers
 
 ### Moderate (Yellow)
+
 - Official firmware flashing
 - Standard recovery operations
 - Manufacturer-intended tools
 
 ### Advanced (Orange)
+
 - Custom firmware flashing
 - Bootloader manipulation
 - Requires technical knowledge
 
 ### Expert-Only (Red)
+
 - EDL/emergency modes
 - Low-level flash operations
 - High brick risk if misused
@@ -196,6 +225,7 @@ Data persists between sessions and includes:
 ## Future Enhancements
 
 ### Phase 1 (Current)
+
 - ✅ Browse & search marketplace
 - ✅ Install/uninstall plugins
 - ✅ Plugin submission form
@@ -203,6 +233,7 @@ Data persists between sessions and includes:
 - ✅ Local persistence via useKV
 
 ### Phase 2
+
 - [ ] Real backend API integration
 - [ ] Actual security scanning pipeline
 - [ ] User reviews & ratings
@@ -210,6 +241,7 @@ Data persists between sessions and includes:
 - [ ] Dependency management
 
 ### Phase 3
+
 - [ ] Plugin SDK with TypeScript templates
 - [ ] Developer documentation portal
 - [ ] CI/CD integration for submissions
@@ -219,6 +251,7 @@ Data persists between sessions and includes:
 ## UI Design
 
 ### Color Coding
+
 - **Success** (green): Safe plugins, passed tests, certified badge
 - **Warning** (yellow/amber): Moderate risk, testing status
 - **Error** (red): Expert-only risk, failed tests, rejected status
@@ -226,12 +259,14 @@ Data persists between sessions and includes:
 - **Muted** (gray): Metadata, secondary info, disabled states
 
 ### Layout
+
 - **Grid**: 2-column responsive grid on desktop, single column mobile
 - **Cards**: Hover effects with scale and border color transitions
 - **Modal**: Full-screen overlay for plugin details, scroll-locked
 - **Tabs**: 3-tab interface (Browse, Installed, Submit)
 
 ### Icons
+
 - Storefront (marketplace)
 - Package (plugins)
 - Download (installs)
@@ -245,22 +280,26 @@ Data persists between sessions and includes:
 ## Integration Points
 
 ### Authority Dashboard
+
 - Plugin manager panel shows installed plugins
 - Links to marketplace for browsing
 - Quick enable/disable toggles
 
 ### Settings Panel
+
 - Plugin preferences
 - Auto-update settings
 - Security preferences
 
 ### BobbysWorldHub
+
 - Featured marketplace card
 - Quick access to trending plugins
 
 ## Legal & Safety
 
 ### Plugin Submission Guidelines
+
 - No malicious code
 - No security bypasses
 - No pirated content
@@ -269,6 +308,7 @@ Data persists between sessions and includes:
 - Honest risk level assessment
 
 ### User Warnings
+
 - Risk level clearly displayed
 - Capability requirements shown
 - Test results transparent

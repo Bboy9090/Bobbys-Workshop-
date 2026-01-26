@@ -318,9 +318,13 @@
     "save_to": "repair_reports/warhammer-{timestamp}.json"
   },
   "metadata": {
+    "status": "done",
+    "pr_link": null,
+    "placeholder_found": false,
     "author": "Bobby's World Tools",
     "version": "1.0.0",
-    "created": "2025-12-16",
+    "created_at": 1734220800000,
+    "updated_at": 1734426000000,
     "tags": ["repair", "recovery", "firmware", "fastboot", "android", "warhammer", "advanced"],
     "workshop_vibe": "Heavy-duty repair station - bringing dead devices back to life",
     "legal_notice": "Use only on devices you own or have explicit authorization to repair. Unauthorized device modification may violate warranty and local laws."

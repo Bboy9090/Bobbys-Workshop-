@@ -278,7 +278,10 @@ export function DevModePanel() {
   const handleExecuteWorkflow = (workflowId: string) => {
     // Feature not yet implemented - workflow execution engine pending
     console.log(`[NOT IMPLEMENTED] Workflow execution requested: ${workflowId}`);
-    alert(`⚠️ Feature Not Available\n\nWorkflow "${workflowId}" execution is not yet implemented.\n\nThis feature requires integration with the workflow execution engine which is currently under development.`);
+    toast.info('Feature Not Available', {
+      description: `Workflow "${workflowId}" execution is not yet implemented. This feature requires integration with the workflow execution engine.`,
+      duration: 5000,
+    });
   };
 
   const mobileDevices = devices.filter(d => ['android', 'ios'].includes(d.deviceType));

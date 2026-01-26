@@ -1,0 +1,157 @@
+{
+  "version": "1.0.0",
+  "actions": [
+    {
+      "id": "system.usb.enumerate",
+      "name": "USB Device Enumeration",
+      "tool": "system",
+      "args": [],
+      "tags": ["scan", "readonly"],
+      "requires_gates": []
+    },
+    {
+      "id": "android.adb.devices",
+      "name": "ADB Device List",
+      "tool": "adb",
+      "args": ["devices", "-l"],
+      "tags": ["scan", "readonly"],
+      "requires_gates": []
+    },
+    {
+      "id": "android.adb.getprop",
+      "name": "ADB Get Properties",
+      "tool": "adb",
+      "args": ["shell", "getprop"],
+      "tags": ["diagnostics"],
+      "requires_gates": ["device_authorized"]
+    },
+    {
+      "id": "android.adb.bugreport",
+      "name": "ADB Bug Report",
+      "tool": "adb",
+      "args": ["bugreport"],
+      "tags": ["diagnostics"],
+      "requires_gates": ["device_authorized", "ownership_attested"]
+    },
+    {
+      "id": "android.adb.logcat.snapshot",
+      "name": "ADB Logcat Snapshot",
+      "tool": "adb",
+      "args": ["logcat", "-d"],
+      "tags": ["diagnostics"],
+      "requires_gates": ["device_authorized"]
+    },
+    {
+      "id": "android.fastboot.devices",
+      "name": "Fastboot Device List",
+      "tool": "fastboot",
+      "args": ["devices"],
+      "tags": ["scan", "readonly"],
+      "requires_gates": []
+    },
+    {
+      "id": "android.fastboot.getvar.all",
+      "name": "Fastboot Get Variables",
+      "tool": "fastboot",
+      "args": ["getvar", "all"],
+      "tags": ["diagnostics", "readonly"],
+      "requires_gates": []
+    },
+    {
+      "id": "ios.ideviceinfo.identity",
+      "name": "iOS Device Identity",
+      "tool": "ideviceinfo",
+      "args": ["-s", "-k", "ProductType", "-k", "ProductVersion", "-k", "UniqueDeviceID"],
+      "tags": ["scan", "readonly"],
+      "requires_gates": []
+    },
+    {
+      "id": "ios.irecovery.query",
+      "name": "iOS Recovery Mode Query",
+      "tool": "irecovery",
+      "args": ["-q"],
+      "tags": ["scan", "readonly"],
+      "requires_gates": []
+    },
+    {
+      "id": "device_intake_readonly",
+      "name": "Device Intake (Read-Only)",
+      "tool": "system",
+      "args": [],
+      "tags": ["scan", "readonly"],
+      "requires_gates": []
+    },
+    {
+      "id": "status_assessment_readonly",
+      "name": "Access Status Assessment (Read-Only)",
+      "tool": "system",
+      "args": [],
+      "tags": ["diagnostics", "readonly"],
+      "requires_gates": []
+    },
+    {
+      "id": "ownership_packet_collect",
+      "name": "Ownership Packet Collection",
+      "tool": "system",
+      "args": [],
+      "tags": ["verification"],
+      "requires_gates": ["ownership_attested"]
+    },
+    {
+      "id": "support_bundle_export",
+      "name": "Support Bundle Export",
+      "tool": "system",
+      "args": [],
+      "tags": ["export"],
+      "requires_gates": ["ownership_attested"]
+    },
+    {
+      "id": "official_handoff_links",
+      "name": "Official Recovery Hand-Off Links",
+      "tool": "system",
+      "args": [],
+      "tags": ["guidance"],
+      "requires_gates": []
+    },
+    {
+      "id": "bobby.emit.device_passports",
+      "name": "Emit Device Passports",
+      "tool": "system",
+      "args": [],
+      "tags": ["scan", "export"],
+      "requires_gates": []
+    },
+    {
+      "id": "bobby.report.android_diagnostics",
+      "name": "Android Diagnostics Report",
+      "tool": "system",
+      "args": [],
+      "tags": ["report", "export"],
+      "requires_gates": ["device_authorized"]
+    },
+    {
+      "id": "bobby.bundle.apple_support",
+      "name": "Apple Support Bundle",
+      "tool": "system",
+      "args": [],
+      "tags": ["export", "bundle"],
+      "requires_gates": ["ownership_attested"]
+    },
+    {
+      "id": "oem_restore_guidance",
+      "name": "OEM Restore Guidance",
+      "tool": "system",
+      "args": [],
+      "tags": ["guidance"],
+      "requires_gates": []
+    },
+    {
+      "id": "report_export",
+      "name": "Repair Report Export",
+      "tool": "system",
+      "args": [],
+      "tags": ["export", "report"],
+      "requires_gates": []
+    }
+  ]
+}

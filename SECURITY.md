@@ -1,31 +1,75 @@
-Thanks for helping make GitHub safe for everyone.
+# Security Model
 
-# Security
+## Threat Model
 
-GitHub takes the security of our software products and services seriously, including all of the open source code repositories managed through our GitHub organizations, such as [GitHub](https://github.com/GitHub).
+This application performs potentially destructive operations on Android devices (flashing firmware, unlocking bootloaders, erasing partitions). The security model is designed to:
 
-Even though [open source repositories are outside of the scope of our bug bounty program](https://bounty.github.com/index.html#scope) and therefore not eligible for bounty rewards, we will ensure that your finding gets passed along to the appropriate maintainers for remediation. 
+1. **Prevent accidental execution** - All destructive operations require explicit user confirmation
+2. **Prevent command injection** - All user input is validated and sanitized before use in system commands
+3. **Audit all operations** - All sensitive operations are logged for accountability
+4. **Restrict system access** - Tauri permissions are restricted to only what is necessary
 
-## Reporting Security Issues
+## Tauri Security Configuration
 
-If you believe you have found a security vulnerability in any GitHub-owned repository, please report it to us through coordinated disclosure.
+### Shell Permissions
 
-**Please do not report security vulnerabilities through public GitHub issues, discussions, or pull requests.**
+- **`shell.execute: false`** - Arbitrary shell command execution is DISABLED
+- **`shell.sidecar: true`** - Only pre-approved sidecar binaries can be executed (if needed)
+- **`shell.open: true`** - Opening URLs/files is allowed for user convenience
 
-Instead, please send an email to opensource-security[@]github.com.
+**Rationale:** Direct shell execution (`execute: true`) was a security risk. All commands must now go through the controlled backend API which validates input before execution.
 
-Please include as much of the information listed below as you can to help us better understand and resolve the issue:
+### File System Access
 
-  * The type of issue (e.g., buffer overflow, SQL injection, or cross-site scripting)
-  * Full paths of source file(s) related to the manifestation of the issue
-  * The location of the affected source code (tag/branch/commit or direct URL)
-  * Any special configuration required to reproduce the issue
-  * Step-by-step instructions to reproduce the issue
-  * Proof-of-concept or exploit code (if possible)
-  * Impact of the issue, including how an attacker might exploit the issue
+- **`fs.all: true`** with scope restrictions:
+  - `$APPDATA/**`, `$LOCALAPPDATA/**`, `$TEMP/**`, `$HOME/**`
+  
+**Rationale:** Application needs to read/write configuration and temporary files, but access is restricted to user-accessible directories.
 
-This information will help us triage your report more quickly.
+### HTTP Access
 
-## Policy
+- **`http.request: true`** with scope restrictions:
+  - `http://localhost:3001/**` (backend API)
+  - `https://dl.google.com/**` (Android platform tools downloads)
+  
+**Rationale:** Frontend needs to communicate with local backend API and download official Android tools.
 
-See [GitHub's Safe Harbor Policy](https://docs.github.com/en/site-policy/security-policies/github-bug-bounty-program-legal-safe-harbor#1-safe-harbor-terms)
+## Input Validation
+
+### Device Serial Numbers
+
+- **Format:** `^[a-zA-Z0-9._-]+$` (alphanumeric, dots, dashes, underscores only)
+- **Location:** Validated in both Tauri Rust code and Node.js backend
+
+### Partition Names
+
+- **Format:** `^[a-zA-Z0-9._-]+$` (alphanumeric, dots, dashes, underscores only)
+- **Allowlist:** Standard Android partitions are preferred (boot, system, vendor, etc.)
+- **Location:** Validated in Tauri Rust code with allowlist check
+
+### Command Execution
+
+- All commands use `Command::new()` with explicit arguments (no shell interpretation)
+- No user input is ever passed through a shell
+- All paths are validated before use
+
+## Operation Gates
+
+All destructive operations require:
+
+1. **Frontend confirmation dialog** - User must type the exact confirmation text
+2. **Backend validation** - Confirmation token is verified server-side
+3. **Device locking** - Per-device locks prevent concurrent operations
+4. **Audit logging** - All attempts (successful or denied) are logged
+
+## Security Checklist
+
+- [x] Tauri `shell.execute` disabled
+- [x] Device serial validation (regex)
+- [x] Partition name validation (regex + allowlist)
+- [x] Confirmation gates for destructive operations
+- [x] Device locks prevent race conditions
+- [x] Audit logging for sensitive operations
+- [x] No shell interpretation of user input
+- [x] File system access scoped to user directories
+- [x] HTTP access restricted to localhost + trusted domains

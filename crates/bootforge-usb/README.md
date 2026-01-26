@@ -28,11 +28,13 @@ cargo build --release
 ## Usage
 
 ### Scan USB Devices
+
 ```bash
 ./target/release/bootforge-cli scan
 ```
 
 ### Create BootForge USB
+
 ```bash
 ./target/release/bootforge-usb-builder --device /dev/sdb --private --password YOUR_PASSWORD
 ```

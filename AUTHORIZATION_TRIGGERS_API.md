@@ -1,6 +1,7 @@
 # Device Authorization Triggers - Backend API Guide
 
 ## Overview
+
 This document outlines all backend endpoints required to support device authorization triggering across Android, iOS, Samsung, Qualcomm, and MediaTek platforms.
 
 **Critical Requirement:** All responses must be based on **real command executions**. No simulated data, no ghost values, no fake "connected" statuses.
@@ -10,11 +11,13 @@ This document outlines all backend endpoints required to support device authoriz
 ## 🔐 Android/ADB Authorization Endpoints
 
 ### 1. Trigger ADB USB Debugging Authorization
+
 **Endpoint:** `POST /api/adb/trigger-auth`
 
 **Purpose:** Force the "Allow USB debugging?" dialog on Android device
 
 **Request Body:**
+
 ```json
 {
   "serial": "device_serial_number",
@@ -23,11 +26,13 @@ This document outlines all backend endpoints required to support device authoriz
 ```
 
 **Real Command Executed:**
+
 ```bash
 adb -s {serial} shell getprop ro.build.version.release
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -41,6 +46,7 @@ adb -s {serial} shell getprop ro.build.version.release
 ```
 
 **Failure Response (unauthorized):**
+
 ```json
 {
   "success": false,
@@ -55,11 +61,13 @@ adb -s {serial} shell getprop ro.build.version.release
 ---
 
 ### 2. Trigger File Transfer Authorization
+
 **Endpoint:** `POST /api/adb/trigger-file-auth`
 
 **Purpose:** Trigger file transfer permission dialog
 
 **Request Body:**
+
 ```json
 {
   "serial": "device_serial_number",
@@ -68,6 +76,7 @@ adb -s {serial} shell getprop ro.build.version.release
 ```
 
 **Real Command Executed:**
+
 ```bash
 # Create a temporary test file
 echo "test" > /tmp/auth_test_${serial}.txt
@@ -80,11 +89,13 @@ rm /tmp/auth_test_${serial}.txt
 ---
 
 ### 3. Trigger Backup Authorization
+
 **Endpoint:** `POST /api/adb/trigger-backup-auth`
 
 **Purpose:** Trigger backup authorization and encryption dialog
 
 **Request Body:**
+
 ```json
 {
   "serial": "device_serial_number"
@@ -92,6 +103,7 @@ rm /tmp/auth_test_${serial}.txt
 ```
 
 **Real Command Executed:**
+
 ```bash
 # Initiate a minimal backup request (no actual backup performed)
 adb -s {serial} backup -noapk -noshared com.android.settings
@@ -104,11 +116,13 @@ adb -s {serial} backup -noapk -noshared com.android.settings
 ## 🍎 iOS Device Authorization Endpoints
 
 ### 4. Trigger iOS Trust Computer Dialog
+
 **Endpoint:** `POST /api/ios/trigger-trust`
 
 **Purpose:** Trigger "Trust This Computer?" dialog on iOS device
 
 **Request Body:**
+
 ```json
 {
   "udid": "device_udid",
@@ -117,11 +131,13 @@ adb -s {serial} backup -noapk -noshared com.android.settings
 ```
 
 **Real Command Executed:**
+
 ```bash
 ideviceinfo -u {udid}
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -135,6 +151,7 @@ ideviceinfo -u {udid}
 ```
 
 **Failure Response (not trusted):**
+
 ```json
 {
   "success": false,
@@ -149,11 +166,13 @@ ideviceinfo -u {udid}
 ---
 
 ### 5. Trigger iOS Pairing Request
+
 **Endpoint:** `POST /api/ios/trigger-pairing`
 
 **Purpose:** Send pairing request to establish device connection
 
 **Request Body:**
+
 ```json
 {
   "udid": "device_udid",
@@ -162,11 +181,13 @@ ideviceinfo -u {udid}
 ```
 
 **Real Command Executed:**
+
 ```bash
 idevicepair -u {udid} pair
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -180,11 +201,13 @@ idevicepair -u {udid} pair
 ---
 
 ### 6. Trigger iOS Backup Encryption Authorization
+
 **Endpoint:** `POST /api/ios/trigger-backup-auth`
 
 **Purpose:** Trigger backup encryption authorization dialog
 
 **Request Body:**
+
 ```json
 {
   "udid": "device_udid"
@@ -192,6 +215,7 @@ idevicepair -u {udid} pair
 ```
 
 **Real Command Executed:**
+
 ```bash
 # Query backup encryption status (triggers authorization)
 idevicebackup2 -u {udid} info
@@ -202,11 +226,13 @@ idevicebackup2 -u {udid} info
 ---
 
 ### 7. Trigger DFU/Recovery Mode Entry
+
 **Endpoint:** `POST /api/ios/trigger-dfu`
 
 **Purpose:** Enter DFU or Recovery mode (shows warning on device)
 
 **Request Body:**
+
 ```json
 {
   "udid": "device_udid",
@@ -215,11 +241,13 @@ idevicebackup2 -u {udid} info
 ```
 
 **Real Command Executed:**
+
 ```bash
 ideviceenterrecovery {udid}
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -235,11 +263,13 @@ ideviceenterrecovery {udid}
 ## ⚡ Fastboot Authorization Endpoints
 
 ### 8. Verify Fastboot Unlock Status
+
 **Endpoint:** `POST /api/fastboot/verify-unlock`
 
 **Purpose:** Verify bootloader unlock status
 
 **Request Body:**
+
 ```json
 {
   "serial": "device_serial_number",
@@ -248,11 +278,13 @@ ideviceenterrecovery {udid}
 ```
 
 **Real Command Executed:**
+
 ```bash
 fastboot -s {serial} getvar unlocked
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -269,11 +301,13 @@ fastboot -s {serial} getvar unlocked
 ## 📱 Samsung Odin/Download Mode Endpoints
 
 ### 9. Verify Samsung Download Mode
+
 **Endpoint:** `POST /api/samsung/trigger-download-mode`
 
 **Purpose:** Verify Samsung Download Mode connectivity
 
 **Request Body:**
+
 ```json
 {
   "serial": "device_serial_number"
@@ -281,6 +315,7 @@ fastboot -s {serial} getvar unlocked
 ```
 
 **Real Command Executed:**
+
 ```bash
 # Using Heimdall for Samsung device detection
 heimdall detect
@@ -288,6 +323,7 @@ heimdall print-pit --no-reboot --verbose
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -308,11 +344,13 @@ heimdall print-pit --no-reboot --verbose
 ## 🔥 Qualcomm EDL Mode Endpoints
 
 ### 10. Verify EDL Mode Authorization
+
 **Endpoint:** `POST /api/qualcomm/trigger-edl-auth`
 
 **Purpose:** Verify Qualcomm EDL mode authorization
 
 **Request Body:**
+
 ```json
 {
   "serial": "device_serial_number"
@@ -320,12 +358,14 @@ heimdall print-pit --no-reboot --verbose
 ```
 
 **Real Command Executed:**
+
 ```bash
 # Using QDL/EDL tools to verify connection
 edl --loader={programmer.elf} --memory=ufs printgpt
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -346,11 +386,13 @@ edl --loader={programmer.elf} --memory=ufs printgpt
 ## 📲 MediaTek SP Flash Tool Endpoints
 
 ### 11. Verify MTK SP Flash Authorization
+
 **Endpoint:** `POST /api/mediatek/trigger-flash-auth`
 
 **Purpose:** Check MediaTek SP Flash Tool authorization
 
 **Request Body:**
+
 ```json
 {
   "serial": "device_serial_number"
@@ -358,12 +400,14 @@ edl --loader={programmer.elf} --memory=ufs printgpt
 ```
 
 **Real Command Executed:**
+
 ```bash
 # Using SP Flash Tool CLI or mtkclient
 python3 mtk_cli.py printgpt
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -384,12 +428,14 @@ python3 mtk_cli.py printgpt
 ## 🔧 Implementation Requirements
 
 ### 1. Real Command Execution
+
 - **Must use actual CLI tools:** `adb`, `fastboot`, `ideviceinfo`, `idevicepair`, `heimdall`, `edl`, `mtkclient`
 - **Must capture real stdout/stderr**
 - **Must return actual exit codes**
 - **No simulated responses**
 
 ### 2. Error Handling
+
 ```typescript
 // Backend error response structure
 {
@@ -405,12 +451,15 @@ python3 mtk_cli.py printgpt
 ```
 
 ### 3. Timeout Handling
+
 - Default timeout: 30 seconds
 - If command hangs, return timeout error
 - Do not fake success
 
 ### 4. Logging Requirements
+
 All authorization trigger requests must log:
+
 - Timestamp
 - Command executed
 - Exit code
@@ -419,6 +468,7 @@ All authorization trigger requests must log:
 - Device serial/UDID
 
 ### 5. Security Considerations
+
 - Validate all device serial/UDID inputs
 - Prevent command injection attacks
 - Sanitize file paths
@@ -450,19 +500,20 @@ All authorization trigger requests must log:
 The frontend `DeviceAuthorizationTriggersPanel` component expects these exact endpoint formats.
 
 **Usage Example:**
+
 ```typescript
-import { authTriggers } from '@/lib/device-authorization-triggers';
+import { authTriggers } from "@/lib/device-authorization-triggers";
 
 // Trigger ADB USB debugging authorization
-const result = await authTriggers.triggerADBUSBDebugging('serial123');
+const result = await authTriggers.triggerADBUSBDebugging("serial123");
 
 // Trigger iOS trust computer
-const iosResult = await authTriggers.triggerIOSTrustComputer('udid456');
+const iosResult = await authTriggers.triggerIOSTrustComputer("udid456");
 
 // Trigger all available authorizations for a platform
 const allResults = await authTriggers.triggerAllAvailableAuthorizations(
-  'serial123',
-  'android'
+  "serial123",
+  "android",
 );
 ```
 

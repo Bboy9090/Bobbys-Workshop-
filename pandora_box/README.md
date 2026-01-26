@@ -5,11 +5,13 @@ Hidden modules and advanced device operation tools.
 ## ⚠️ WARNING: AUTHORIZED USE ONLY ⚠️
 
 This directory contains powerful device exploitation and bypass tools intended **ONLY** for:
+
 - Devices you personally own
 - Devices with explicit written owner authorization
 - Professional repair contexts with proper documentation
 
 Unauthorized access to devices is **ILLEGAL** under:
+
 - Computer Fraud and Abuse Act (CFAA) - United States
 - Computer Misuse Act - United Kingdom
 - Similar laws in most jurisdictions
@@ -31,6 +33,7 @@ Unauthorized access to devices is **ILLEGAL** under:
 ## Tools
 
 Available tool categories:
+
 - iOS Tools (A5-A11): checkra1n, palera1n, lockra1n
 - iOS Tools (A12+): MinaCriss, iRemovalTools
 - Android Tools: FRP helpers, Magisk, TWRP

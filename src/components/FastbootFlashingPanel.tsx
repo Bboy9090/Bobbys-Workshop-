@@ -10,9 +10,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FlashProgressMonitor, type FlashProgress } from './FlashProgressMonitor';
+import { ConfirmationDialog } from './ConfirmationDialog';
 import { 
   Upload, 
-  Download, 
   ArrowClockwise, 
   LockKey,
   LockKeyOpen,
@@ -31,6 +31,9 @@ import {
 import { toast } from 'sonner';
 import { useKV } from '@github/spark/hooks';
 import type { AndroidDevice } from '@/types/android-devices';
+import { useAudioNotifications } from '@/hooks/use-audio-notifications';
+import { API_CONFIG, getAPIUrl } from '@/lib/apiConfig';
+import { DeviceStateGuide } from './DeviceStateGuide';
 
 interface PartitionInfo {
   name: string;
@@ -77,8 +80,17 @@ export function FastbootFlashingPanel() {
   const [operations, setOperations] = useKV<FlashOperation[]>('fastboot-flash-history', []);
   const [deviceInfo, setDeviceInfo] = useState<any>(null);
   const [currentProgress, setCurrentProgress] = useState<FlashProgress | null>(null);
-  const progressIntervalRef = useRef<NodeJS.Timeout | undefined>(undefined);
-
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const { handleJobStart, handleJobError, handleJobComplete } = useAudioNotifications();
+  
+  // Confirmation dialog states
+  const [showFlashConfirm, setShowFlashConfirm] = useState(false);
+  const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
+  const [showEraseConfirm, setShowEraseConfirm] = useState(false);
+  const [pendingFlash, setPendingFlash] = useState<(() => void) | null>(null);
+  const [pendingUnlock, setPendingUnlock] = useState<(() => void) | null>(null);
+  const [pendingErase, setPendingErase] = useState<{ partition: string; execute: () => void } | null>(null);
+  
   useEffect(() => {
     fetchDevices();
     const interval = setInterval(fetchDevices, 5000);
@@ -93,7 +105,7 @@ export function FastbootFlashingPanel() {
 
   const fetchDevices = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/fastboot/devices');
+      const response = await fetch(getAPIUrl(API_CONFIG.ENDPOINTS.FASTBOOT_DEVICES));
       if (response.ok) {
         const data = await response.json();
         setDevices(data.devices.map((d: any) => ({
@@ -109,7 +121,7 @@ export function FastbootFlashingPanel() {
 
   const fetchDeviceInfo = async (serial: string) => {
     try {
-      const response = await fetch(`http://localhost:3001/api/fastboot/device-info?serial=${serial}`);
+      const response = await fetch(`${getAPIUrl(API_CONFIG.ENDPOINTS.FASTBOOT_DEVICE_INFO)}?serial=${serial}`);
       if (response.ok) {
         const data = await response.json();
         setDeviceInfo(data);
@@ -137,12 +149,16 @@ export function FastbootFlashingPanel() {
       return;
     }
 
-    const partition = PARTITIONS.find(p => p.name === selectedPartition);
-    if (partition?.critical) {
-      const confirm = window.confirm(
-        `⚠️ WARNING: Flashing ${partition.displayName} is CRITICAL and may brick your device!\n\nAre you absolutely sure you want to continue?`
-      );
-      if (!confirm) return;
+    // Store the flash function and show confirmation dialog
+    setPendingFlash(() => async () => {
+      await executeFlash();
+    });
+    setShowFlashConfirm(true);
+  };
+
+  const executeFlash = async () => {
+    if (!selectedDevice || !selectedPartition || !selectedFile) {
+      return;
     }
 
     setLoading(true);
@@ -159,6 +175,9 @@ export function FastbootFlashingPanel() {
     };
 
     setOperations(prev => [operation, ...(prev || [])]);
+
+    // Start audio atmosphere for flash operation
+    handleJobStart(operationId);
 
     const startTime = Date.now();
     const totalBytes = selectedFile.size;
@@ -185,7 +204,6 @@ export function FastbootFlashingPanel() {
 
     progressIntervalRef.current = setInterval(() => {
       const currentTime = Date.now();
-      const elapsedSeconds = (currentTime - startTime) / 1000;
 
       const baseSpeed = 5 * 1024 * 1024;
       const speedVariation = Math.sin(currentTime / 1000) * 2 * 1024 * 1024;
@@ -228,8 +246,9 @@ export function FastbootFlashingPanel() {
       formData.append('serial', selectedDevice);
       formData.append('partition', selectedPartition);
       formData.append('file', selectedFile);
+      formData.append('confirmation', 'FLASH');
 
-      const response = await fetch('http://localhost:3001/api/fastboot/flash', {
+      const response = await fetch(getAPIUrl(API_CONFIG.ENDPOINTS.FASTBOOT_FLASH), {
         method: 'POST',
         body: formData
       });
@@ -248,6 +267,10 @@ export function FastbootFlashingPanel() {
             : op
         ));
         toast.success(`Successfully flashed ${selectedPartition}`);
+        
+        // Audio notification for successful completion
+        handleJobComplete();
+        
         setSelectedFile(null);
         
         setTimeout(() => {
@@ -268,6 +291,9 @@ export function FastbootFlashingPanel() {
       ));
       toast.error(`Flash failed: ${error.message}`);
       
+      // Audio notification for error
+      handleJobError();
+      
       setTimeout(() => {
         setCurrentProgress(null);
       }, 5000);
@@ -282,23 +308,24 @@ export function FastbootFlashingPanel() {
       return;
     }
 
-    const confirm = window.confirm(
-      '⚠️ CRITICAL WARNING: Unlocking the bootloader will:\n\n' +
-      '1. ERASE ALL DATA on the device\n' +
-      '2. Void your warranty\n' +
-      '3. Make the device less secure\n\n' +
-      'This action CANNOT be undone automatically.\n\n' +
-      'Are you absolutely sure you want to continue?'
-    );
+    // Store the unlock function and show confirmation dialog
+    setPendingUnlock(() => async () => {
+      await executeUnlock();
+    });
+    setShowUnlockConfirm(true);
+  };
 
-    if (!confirm) return;
+  const executeUnlock = async () => {
+    if (!selectedDevice) {
+      return;
+    }
 
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:3001/api/fastboot/unlock', {
+      const response = await fetch(getAPIUrl(API_CONFIG.ENDPOINTS.FASTBOOT_UNLOCK), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serial: selectedDevice })
+        body: JSON.stringify({ serial: selectedDevice, confirmation: 'UNLOCK' })
       });
 
       const data = await response.json();
@@ -315,6 +342,8 @@ export function FastbootFlashingPanel() {
       setLoading(false);
     }
   };
+
+  // Get the JSX return section to add confirmation dialogs
 
   const handleReboot = async (mode: 'system' | 'bootloader' | 'recovery') => {
     if (!selectedDevice) {
@@ -356,20 +385,30 @@ export function FastbootFlashingPanel() {
       return;
     }
 
-    const confirm = window.confirm(
-      `⚠️ WARNING: This will erase the ${partition} partition.\n\n` +
-      'All data in this partition will be permanently deleted.\n\n' +
-      'Continue?'
-    );
+    // Store the erase function and show confirmation dialog
+    setPendingErase({
+      partition,
+      execute: () => executeErase(partition)
+    });
+    setShowEraseConfirm(true);
+  };
 
-    if (!confirm) return;
+  const executeErase = async (partition: string) => {
+    if (!selectedDevice) {
+      return;
+    }
 
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:3001/api/fastboot/erase', {
+      const expectedConfirmation = `ERASE ${partition}`.toUpperCase();
+      const response = await fetch(getAPIUrl(API_CONFIG.ENDPOINTS.FASTBOOT_ERASE), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serial: selectedDevice, partition })
+        body: JSON.stringify({ 
+          serial: selectedDevice, 
+          partition,
+          confirmation: expectedConfirmation
+        })
       });
 
       const data = await response.json();
@@ -401,9 +440,6 @@ export function FastbootFlashingPanel() {
     return `${minutes}m ${seconds % 60}s`;
   };
 
-  const filteredPartitions = (category: string) => 
-    PARTITIONS.filter(p => category === 'all' || p.category === category);
-
   return (
     <>
       {currentProgress && (
@@ -434,6 +470,13 @@ export function FastbootFlashingPanel() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+        <div className="mb-4">
+          <DeviceStateGuide
+            requiredState="fastboot"
+            platform="android"
+            deviceName={devices.find(d => d.serial === selectedDevice)?.model || selectedDevice || 'Your Android device'}
+          />
+        </div>
         <Tabs defaultValue="flash" className="w-full">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="flash">
@@ -766,6 +809,69 @@ export function FastbootFlashingPanel() {
         </Tabs>
       </CardContent>
     </Card>
+
+      {/* Confirmation Dialogs */}
+      <ConfirmationDialog
+        open={showFlashConfirm}
+        onClose={() => {
+          setShowFlashConfirm(false);
+          setPendingFlash(null);
+        }}
+        onConfirm={() => {
+          if (pendingFlash) {
+            pendingFlash();
+            setShowFlashConfirm(false);
+            setPendingFlash(null);
+          }
+        }}
+        title="Confirm Flash Operation"
+        description={`You are about to flash the ${selectedPartition} partition. This operation can potentially brick your device if done incorrectly.`}
+        requiredText="FLASH"
+        warning={PARTITIONS.find(p => p.name === selectedPartition)?.critical 
+          ? "This is a CRITICAL partition. Flashing the wrong image will brick your device!" 
+          : "Ensure you have the correct firmware file for this device."}
+        danger={PARTITIONS.find(p => p.name === selectedPartition)?.critical || false}
+      />
+
+      <ConfirmationDialog
+        open={showUnlockConfirm}
+        onClose={() => {
+          setShowUnlockConfirm(false);
+          setPendingUnlock(null);
+        }}
+        onConfirm={() => {
+          if (pendingUnlock) {
+            pendingUnlock();
+            setShowUnlockConfirm(false);
+            setPendingUnlock(null);
+          }
+        }}
+        title="Unlock Bootloader"
+        description="This will ERASE ALL DATA on the device and void your warranty."
+        requiredText="UNLOCK"
+        warning="This operation cannot be undone. All user data will be permanently deleted. The device will be less secure after unlocking."
+        danger
+      />
+
+      <ConfirmationDialog
+        open={showEraseConfirm}
+        onClose={() => {
+          setShowEraseConfirm(false);
+          setPendingErase(null);
+        }}
+        onConfirm={() => {
+          if (pendingErase) {
+            pendingErase.execute();
+            setShowEraseConfirm(false);
+            setPendingErase(null);
+          }
+        }}
+        title={`Erase Partition: ${pendingErase?.partition || ''}`}
+        description={`This will permanently delete all data in the ${pendingErase?.partition || ''} partition.`}
+        requiredText={pendingErase ? `ERASE ${pendingErase.partition}`.toUpperCase() : ''}
+        warning="All data in this partition will be permanently deleted. This cannot be undone."
+        danger
+      />
     </>
   );
 }

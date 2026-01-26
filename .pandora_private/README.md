@@ -5,6 +5,7 @@ This directory contains **user-supplied tools** that are not part of the public 
 ## ⚠️ CRITICAL: This directory is GITIGNORED
 
 **NEVER commit:**
+
 - Tool binaries
 - Local manifests (tools.local.json)
 - Execution logs
@@ -25,12 +26,14 @@ This directory contains **user-supplied tools** that are not part of the public 
 ## How to Add a Local Tool
 
 ### 1. Copy Tool Binary
+
 ```bash
 cp /path/to/your/tool .pandora_private/tools/my_tool
 chmod +x .pandora_private/tools/my_tool
 ```
 
 ### 2. Compute SHA-256 Hash
+
 ```bash
 sha256sum .pandora_private/tools/my_tool
 ```
@@ -58,11 +61,13 @@ Edit `.pandora_private/manifests/tools.local.json`:
 ```
 
 ### 4. Execute with Validation
+
 ```bash
 python3 .pandora_private/scripts/run_local_tool.py my_tool --arg1 --arg2
 ```
 
 The runner will:
+
 1. ✅ Verify SHA-256 hash
 2. ✅ Require typed confirmation (if enabled)
 3. ✅ Execute the tool
@@ -71,13 +76,17 @@ The runner will:
 ## Security Features
 
 ### Hash Validation
+
 Every execution verifies the tool's SHA-256 hash matches the manifest. If the binary has been modified or corrupted, execution is blocked.
 
 ### Typed Confirmation
+
 Tools marked with `requires_confirmation: true` will prompt the user to type the tool ID exactly to proceed. This prevents accidental execution of destructive operations.
 
 ### Audit Logging
+
 Every tool execution creates a structured JSON log with:
+
 - Timestamp
 - Tool ID, name, path, and hash
 - Command and arguments
@@ -86,6 +95,7 @@ Every tool execution creates a structured JSON log with:
 - stdout/stderr preview
 
 ### No Stealth, No Background
+
 All operations are explicit. The user sees exactly what is being executed and when.
 
 ## Example: Add Samsung Odin Alternative
@@ -119,6 +129,7 @@ python3 .pandora_private/scripts/run_local_tool.py heimdall flash --pit some.pit
 ## Compliance
 
 This vault system is designed for **lawful repair and diagnostics**:
+
 - ✅ User-controlled tool storage
 - ✅ Hash-verified execution
 - ✅ Explicit confirmation for risky operations
@@ -128,6 +139,7 @@ This vault system is designed for **lawful repair and diagnostics**:
 ## Support
 
 For questions about Bobby Vault integration, see:
+
 - `/docs/ENTERPRISE_STANDARD.md`
 - `/docs/SECURITY_MODEL.md`
 - `/PANDORA_ENTERPRISE_BLUEPRINT.md`

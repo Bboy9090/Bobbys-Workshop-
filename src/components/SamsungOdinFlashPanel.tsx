@@ -12,7 +12,9 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { EmptyState } from './EmptyState';
 import { ErrorState } from './ErrorState';
+import { DeviceStateGuide } from './DeviceStateGuide';
 import { useApp } from '@/lib/app-context';
+import { getAPIUrl } from '@/lib/apiConfig';
 import {
   DeviceMobile,
   Lightning,
@@ -67,7 +69,6 @@ interface FirmwareFiles {
 }
 
 export function SamsungOdinFlashPanel() {
-  const { isDemoMode } = useApp();
   const [devices, setDevices] = useState<SamsungDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>('');
   const [operations, setOperations] = useState<OdinOperation[]>([]);
@@ -88,7 +89,7 @@ export function SamsungOdinFlashPanel() {
     setIsScanning(true);
     setError(null);
     try {
-      const response = await fetch('http://localhost:3001/api/odin/scan');
+      const response = await fetch(getAPIUrl('/api/odin/scan'));
       if (response.ok) {
         const data = await response.json();
         if (data.devices && data.devices.length > 0) {
@@ -102,26 +103,14 @@ export function SamsungOdinFlashPanel() {
         setError('Failed to scan for Samsung devices');
       }
     } catch (err) {
-      if (isDemoMode) {
-        const mockDevices: SamsungDevice[] = [
-          {
-            serial: '[DEMO] 0123456789ABCDEF',
-            port: 'COM4',
-            model: '[DEMO] SM-G998B (Galaxy S21 Ultra)',
-            chipset: 'Exynos 2100',
-            androidVersion: '13',
-            mode: 'download',
-            isKnoxTripped: false,
-            bootloaderVersion: 'G998BXXU5DVHG',
-          },
-        ];
-        setDevices(mockDevices);
-        toast.info('Running in demo mode with simulated devices');
-      } else {
-        setDevices([]);
-        setError('Backend API unavailable - cannot scan for Samsung devices');
-        console.error('Failed to scan devices:', err);
-      }
+      // No mock devices - show real error
+      setDevices([]);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Backend API unavailable: ${errorMessage}`);
+      console.error('Failed to scan Samsung devices:', err);
+      toast.error('Device scan failed', {
+        description: 'Cannot connect to backend API. Please ensure server is running on port 3001.',
+      });
     } finally {
       setIsScanning(false);
     }
@@ -363,6 +352,12 @@ export function SamsungOdinFlashPanel() {
               This cannot be reversed and affects warranty status, Samsung Pay, and some banking apps.
             </AlertDescription>
           </Alert>
+
+          <DeviceStateGuide
+            requiredState="download"
+            platform="android"
+            deviceName={selectedDeviceData?.model || selectedDeviceData?.serial || 'Your Samsung device'}
+          />
 
           <div className="flex items-center justify-between">
             <div className="space-y-1">

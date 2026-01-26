@@ -1,0 +1,330 @@
+/**
+ * Tools Manager - Manages bundled external tools
+ * 
+ * This module handles detection and execution of external tools that may be:
+ * 1. Bundled in tools/ directory
+ * 2. Available in system PATH
+ * 3. Downloadable/installable on demand
+ */
+
+import { execSync, spawnSync } from 'child_process';
+import { existsSync, statSync } from 'fs';
+import { join, dirname } from 'path';
+import { commandExistsInPath } from './utils/safe-exec.js';
+import { fileURLToPath } from 'url';
+import os from 'os';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const IS_WINDOWS = os.platform() === 'win32';
+
+// Base tools directory (tools/ in project root)
+const TOOLS_BASE_DIR = join(__dirname, '..', 'tools');
+
+/**
+ * Tool definitions - configuration for each external tool
+ */
+const TOOL_DEFINITIONS = {
+  // iOS Jailbreak Tools
+  checkra1n: {
+    name: 'checkra1n',
+    description: 'iOS jailbreak tool (checkm8 exploit)',
+    platforms: ['darwin', 'linux'], // macOS and Linux only
+    executable: IS_WINDOWS ? 'checkra1n.exe' : 'checkra1n',
+    downloadUrl: {
+      darwin: 'https://checkra.in/releases/beta/latest/macos',
+      linux: 'https://checkra.in/releases/beta/latest/linux'
+    },
+    versionCommand: '--version',
+    bundled: true // Can be bundled in tools/
+  },
+  palera1n: {
+    name: 'palera1n',
+    description: 'iOS jailbreak tool (supports newer devices)',
+    platforms: ['darwin', 'linux'],
+    executable: IS_WINDOWS ? 'palera1n.exe' : 'palera1n',
+    downloadUrl: {
+      darwin: 'https://github.com/palera1n/palera1n/releases/latest',
+      linux: 'https://github.com/palera1n/palera1n/releases/latest'
+    },
+    versionCommand: '--version',
+    bundled: true
+  },
+  
+  // Samsung Odin (Windows only)
+  odin: {
+    name: 'Odin',
+    description: 'Samsung firmware flashing tool',
+    platforms: ['win32'],
+    executable: 'Odin3.exe',
+    downloadUrl: {},
+    downloadNote: 'Manual install required. Provide a verified source for Odin before enabling downloads.',
+    bundled: true,
+    requiresDriver: true,
+    driverName: 'Samsung USB Driver'
+  },
+  heimdall: {
+    name: 'Heimdall',
+    description: 'Cross-platform Samsung firmware flashing tool (Odin alternative)',
+    platforms: ['darwin', 'linux', 'win32'],
+    executable: IS_WINDOWS ? 'heimdall.exe' : 'heimdall',
+    downloadUrl: {
+      darwin: 'https://github.com/Benjamin-Dobell/Heimdall/releases/latest',
+      linux: 'https://github.com/Benjamin-Dobell/Heimdall/releases/latest',
+      win32: 'https://github.com/Benjamin-Dobell/Heimdall/releases/latest'
+    },
+    versionCommand: 'version',
+    bundled: true
+  },
+  
+  // MediaTek SP Flash Tool
+  spflashtool: {
+    name: 'SP Flash Tool',
+    description: 'MediaTek device firmware flashing tool',
+    platforms: ['win32'],
+    executable: 'flash_tool.exe',
+    downloadUrl: {},
+    downloadNote: 'Manual install required. Provide a verified MediaTek SP Flash Tool source before enabling downloads.',
+    bundled: true,
+    requiresDriver: true,
+    driverName: 'MediaTek USB Driver'
+  },
+  
+  // Qualcomm EDL Tools
+  edl: {
+    name: 'Qualcomm EDL Tool',
+    description: 'Qualcomm Emergency Download Mode flashing tool',
+    platforms: ['darwin', 'linux', 'win32'],
+    executable: IS_WINDOWS ? 'edl.exe' : 'edl',
+    downloadUrl: {
+      darwin: 'https://github.com/bkerler/edl/releases/latest',
+      linux: 'https://github.com/bkerler/edl/releases/latest',
+      win32: 'https://github.com/bkerler/edl/releases/latest'
+    },
+    versionCommand: '--version',
+    bundled: true
+  },
+  qfil: {
+    name: 'QFIL',
+    description: 'Qualcomm Flash Image Loader (official tool)',
+    platforms: ['win32'],
+    executable: 'QFIL.exe',
+    downloadUrl: {},
+    downloadNote: 'Manual install required. Provide a verified Qualcomm QFIL source before enabling downloads.',
+    bundled: true,
+    requiresDriver: true,
+    driverName: 'Qualcomm USB Driver'
+  }
+};
+
+/**
+ * Determine whether a filesystem path points to an existing executable file according to platform rules.
+ * @param {string} path - Filesystem path to test.
+ * @returns {boolean} `true` if the path exists and is a file that is executable on the current platform (`exists` on Windows, has an execute bit on Unix), `false` otherwise.
+ */
+function toolExists(path) {
+  try {
+    if (existsSync(path)) {
+      const stats = statSync(path);
+      return stats.isFile() && (IS_WINDOWS || (stats.mode & parseInt('111', 8)) !== 0); // Executable on Unix
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get tool path - checks bundled location, then system PATH
+ */
+export function getToolPath(toolName) {
+  const tool = TOOL_DEFINITIONS[toolName];
+  if (!tool) {
+    return null;
+  }
+  
+  // Check if platform is supported
+  const currentPlatform = os.platform();
+  if (!tool.platforms.includes(currentPlatform)) {
+    return null;
+  }
+  
+  // 1. Check bundled location (tools/{toolName}/{executable})
+  const bundledPath = join(TOOLS_BASE_DIR, toolName, tool.executable);
+  if (toolExists(bundledPath)) {
+    return bundledPath;
+  }
+  
+  // 2. Check system PATH
+  if (commandExistsInPath(tool.executable)) {
+    return tool.executable; // Return as-is, system will resolve from PATH
+  }
+  
+  // 3. Check alternative names (for tools with multiple names)
+  if (toolName === 'odin' && commandExistsInPath('heimdall')) {
+    return 'heimdall'; // Suggest alternative
+  }
+  
+  return null;
+}
+
+/**
+ * Check if a tool is available
+ */
+export function isToolAvailable(toolName) {
+  const path = getToolPath(toolName);
+  return path !== null;
+}
+
+/**
+ * Retrieve metadata and availability for a named tool.
+ *
+ * Returns detailed information about the tool, including whether it is available on the current system,
+ * its resolved executable path (or null), supported platforms, detected version (if obtainable), driver
+ * requirements, download URL/note for the current platform, and whether the tool is bundled.
+ *
+ * @returns {Object|null} An object with the tool's information or `null` if the tool name is unknown.
+ *   The object contains:
+ *     - name: {string} the tool's canonical name.
+ *     - description: {string} a short description of the tool.
+ *     - available: {boolean} whether the tool is present on the system or bundled.
+ *     - path: {string|null} resolved executable path or `null` if not available.
+ *     - platforms: {string[]} platforms the tool supports.
+ *     - currentPlatform: {string} current runtime platform.
+ *     - supported: {boolean} whether the tool supports the current platform.
+ *     - version: {string|null} detected version string, or `null` if unavailable.
+ *     - requiresDriver: {boolean} whether the tool requires an OS driver.
+ *     - driverName: {string|null} suggested driver name, or `null`.
+ *     - downloadUrl: {string|null} platform-specific download URL, or `null`.
+ *     - downloadNote: {string|null} additional download/install guidance, or `null`.
+ *     - bundled: {boolean} whether the tool is bundled with the project.
+ */
+export function getToolInfo(toolName) {
+  const tool = TOOL_DEFINITIONS[toolName];
+  if (!tool) {
+    return null;
+  }
+  
+  const path = getToolPath(toolName);
+  const available = path !== null;
+  
+  let version = null;
+  if (available && tool.versionCommand) {
+    try {
+      const fullCommand = path.includes('/') || path.includes('\\') 
+        ? `"${path}" ${tool.versionCommand}` 
+        : `${path} ${tool.versionCommand}`;
+      version = execSync(fullCommand, { 
+        encoding: 'utf-8', 
+        timeout: 5000,
+        windowsHide: true
+      }).trim();
+    } catch {
+      // Version check failed, ignore
+    }
+  }
+  
+  return {
+    name: tool.name,
+    description: tool.description,
+    available,
+    path: available ? path : null,
+    platforms: tool.platforms,
+    currentPlatform: os.platform(),
+    supported: tool.platforms.includes(os.platform()),
+    version,
+    requiresDriver: tool.requiresDriver || false,
+    driverName: tool.driverName || null,
+    downloadUrl: tool.downloadUrl?.[os.platform()] || null,
+    downloadNote: tool.downloadNote || null,
+    bundled: tool.bundled || false
+  };
+}
+
+/**
+ * Get all available tools
+ */
+export function getAllToolsInfo() {
+  const tools = {};
+  for (const toolName of Object.keys(TOOL_DEFINITIONS)) {
+    tools[toolName] = getToolInfo(toolName);
+  }
+  return tools;
+}
+
+/**
+ * Run a configured external tool with the given arguments and capture its output.
+ *
+ * @param {string} toolName - Tool identifier as defined in TOOL_DEFINITIONS.
+ * @param {string[]} [args] - Command-line arguments to pass to the tool.
+ * @param {Object} [options] - spawnSync options to merge with the defaults (e.g., timeout, stdio).
+ * @returns {{success: boolean, stdout: string, stderr: string, exitCode: number}} An object describing the execution result:
+ *   - `success`: `true` if the process exited with code 0, `false` otherwise.
+ *   - `stdout`: captured standard output as a string.
+ *   - `stderr`: captured standard error as a string.
+ *   - `exitCode`: numeric exit code (0 when the process exited successfully).
+ * @throws {Error} If the tool is not available (not found for the current platform).
+ */
+export function executeTool(toolName, args = [], options = {}) {
+  const path = getToolPath(toolName);
+  if (!path) {
+    throw new Error(`Tool ${toolName} is not available`);
+  }
+  
+  // Use spawnSync instead of execSync to prevent console windows on Windows
+  const defaultOptions = {
+    encoding: 'utf-8',
+    timeout: 300000, // 5 minutes default
+    windowsHide: true,
+    shell: false, // Don't use shell to prevent console windows
+    stdio: ['ignore', 'pipe', 'pipe'], // Prevent console window, but capture output
+    ...options
+  };
+  
+  try {
+    const result = spawnSync(path, args, defaultOptions);
+    return {
+      success: result.status === 0,
+      stdout: result.stdout?.toString() || '',
+      stderr: result.stderr?.toString() || '',
+      exitCode: result.status || 0
+    };
+  } catch (error) {
+    return {
+      success: false,
+      stdout: error.stdout?.toString() || '',
+      stderr: error.stderr?.toString() || error.message,
+      exitCode: error.status || 1
+    };
+  }
+}
+
+/**
+ * Get tools directory structure info
+ */
+export function getToolsDirectoryInfo() {
+  const info = {
+    basePath: TOOLS_BASE_DIR,
+    exists: existsSync(TOOLS_BASE_DIR),
+    tools: {}
+  };
+  
+  if (!info.exists) {
+    return info;
+  }
+  
+  // Check each tool directory
+  for (const toolName of Object.keys(TOOL_DEFINITIONS)) {
+    const toolDir = join(TOOLS_BASE_DIR, toolName);
+    if (existsSync(toolDir)) {
+      const toolInfo = getToolInfo(toolName);
+      info.tools[toolName] = {
+        directory: toolDir,
+        available: toolInfo?.available || false,
+        path: toolInfo?.path || null
+      };
+    }
+  }
+  
+  return info;
+}

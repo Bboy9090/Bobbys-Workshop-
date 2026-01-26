@@ -1,8 +1,11 @@
-import { exec, execSync } from 'child_process';
+import { exec, spawnSync } from 'child_process';
+import { commandExistsInPath } from './utils/safe-exec.js';
 import { promisify } from 'util';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { getManagedPlatformToolsDir } from './platform-tools.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,6 +14,8 @@ const execAsync = promisify(exec);
 
 const COMMAND_TIMEOUT = 30000;
 
+const IS_WINDOWS = process.platform === 'win32';
+
 function sanitizeInput(input) {
   if (!input || typeof input !== 'string') {
     throw new Error('Invalid input');
@@ -18,20 +23,86 @@ function sanitizeInput(input) {
   return input.replace(/[^a-zA-Z0-9_\-:.]/g, '');
 }
 
-function commandExists(cmd) {
-  try {
-    execSync(`command -v ${cmd}`, { stdio: 'ignore', timeout: 2000 });
-    return true;
-  } catch {
-    return false;
+function quoteForShell(value) {
+  if (value === null || value === undefined) return '""';
+  const stringValue = String(value);
+  // Works for both cmd.exe and POSIX shells for our usage.
+  return `"${stringValue.replace(/"/g, '\\"')}"`;
+}
+
+function resolveToolPath(toolBaseName) {
+  const envVar = `${toolBaseName.toUpperCase()}_PATH`;
+  const explicitPath = process.env[envVar] || null;
+  if (explicitPath && fs.existsSync(explicitPath)) return explicitPath;
+
+  // Prefer app-managed Android platform-tools if present.
+  if (toolBaseName === 'adb' || toolBaseName === 'fastboot') {
+    const exeName = IS_WINDOWS ? `${toolBaseName}.exe` : toolBaseName;
+    const candidate = path.join(getManagedPlatformToolsDir(), exeName);
+    if (fs.existsSync(candidate)) return candidate;
   }
+
+  if (IS_WINDOWS) {
+    // Use native PATH check instead of where.exe to prevent console windows
+    if (!commandExistsInPath(toolBaseName)) {
+      return null;
+    }
+    // Find the actual path by checking PATH directories
+    const pathEnv = process.env.PATH || '';
+    const pathDirs = pathEnv.split(';');
+    const extensions = process.env.PATHEXT ? process.env.PATHEXT.split(';') : ['.exe', '.cmd', '.bat', '.com'];
+    
+    for (const dir of pathDirs) {
+      if (!dir) continue;
+      for (const ext of extensions) {
+        const fullPath = path.join(dir, toolBaseName + ext);
+        if (fs.existsSync(fullPath)) {
+          return fullPath;
+        }
+      }
+    }
+    return null;
+  }
+  
+  try {
+    const result = spawnSync('command', ['-v', toolBaseName], { 
+      stdio: 'pipe', 
+      timeout: 2000, 
+      encoding: 'utf8',
+      windowsHide: true,
+      shell: false
+    });
+    if (result.error || result.status !== 0) {
+      return null;
+    }
+    return (result.stdout || '').trim();
+  } catch {
+    return null;
+  }
+}
+
+function commandExists(cmd) {
+  return !!resolveToolPath(cmd);
+}
+
+function getToolCommand(toolBaseName) {
+  return resolveToolPath(toolBaseName) || toolBaseName;
+}
+
+function getPythonCommand() {
+  const python3 = resolveToolPath('python3');
+  if (python3) return python3;
+  const python = resolveToolPath('python');
+  if (python) return python;
+  return null;
 }
 
 async function executeCommand(command, timeoutMs = COMMAND_TIMEOUT) {
   try {
     const { stdout, stderr } = await execAsync(command, {
       timeout: timeoutMs,
-      encoding: 'utf8'
+      encoding: 'utf8',
+      windowsHide: true
     });
     return {
       success: true,
@@ -89,7 +160,8 @@ export class AuthorizationTriggers {
       return result;
     }
     
-    const command = `adb -s ${sanitizedSerial} shell getprop ro.build.version.release`;
+    const adbCmd = getToolCommand('adb');
+    const command = `${quoteForShell(adbCmd)} -s ${sanitizedSerial} shell getprop ro.build.version.release`;
     const execResult = await executeCommand(command);
     
     if (execResult.success) {
@@ -147,7 +219,7 @@ export class AuthorizationTriggers {
       return result;
     }
     
-    const tmpFile = `/tmp/auth_test_${sanitizedSerial}_${Date.now()}.txt`;
+    const tmpFile = path.join(os.tmpdir(), `pandora_auth_test_${sanitizedSerial}_${Date.now()}.txt`);
     try {
       fs.writeFileSync(tmpFile, 'Pandora Codex authorization test\n');
     } catch (error) {
@@ -163,7 +235,8 @@ export class AuthorizationTriggers {
       return result;
     }
     
-    const command = `adb -s ${sanitizedSerial} push ${tmpFile} /sdcard/Download/pandora_auth_test.txt`;
+    const adbCmd = getToolCommand('adb');
+    const command = `${quoteForShell(adbCmd)} -s ${sanitizedSerial} push ${quoteForShell(tmpFile)} /sdcard/Download/pandora_auth_test.txt`;
     const execResult = await executeCommand(command);
     
     try {
@@ -171,7 +244,7 @@ export class AuthorizationTriggers {
     } catch {}
     
     if (execResult.success) {
-      const cleanupCmd = `adb -s ${sanitizedSerial} shell rm /sdcard/Download/pandora_auth_test.txt`;
+      const cleanupCmd = `${quoteForShell(adbCmd)} -s ${sanitizedSerial} shell rm /sdcard/Download/pandora_auth_test.txt`;
       await executeCommand(cleanupCmd);
       
       const result = {
@@ -222,7 +295,8 @@ export class AuthorizationTriggers {
       return result;
     }
     
-    const command = `timeout 5 adb -s ${sanitizedSerial} backup -noapk -noshared com.android.settings`;
+    const adbCmd = getToolCommand('adb');
+    const command = `${quoteForShell(adbCmd)} -s ${sanitizedSerial} backup -noapk -noshared com.android.settings`;
     const execResult = await executeCommand(command, 10000);
     
     const result = {
@@ -262,11 +336,12 @@ export class AuthorizationTriggers {
       return result;
     }
     
-    const command = `adb -s ${sanitizedSerial} shell screencap -p /sdcard/pandora_screen_test.png`;
+    const adbCmd = getToolCommand('adb');
+    const command = `${quoteForShell(adbCmd)} -s ${sanitizedSerial} shell screencap -p /sdcard/pandora_screen_test.png`;
     const execResult = await executeCommand(command);
     
     if (execResult.success) {
-      const cleanupCmd = `adb -s ${sanitizedSerial} shell rm /sdcard/pandora_screen_test.png`;
+      const cleanupCmd = `${quoteForShell(adbCmd)} -s ${sanitizedSerial} shell rm /sdcard/pandora_screen_test.png`;
       await executeCommand(cleanupCmd);
       
       const result = {
@@ -421,7 +496,8 @@ export class AuthorizationTriggers {
       return result;
     }
     
-    const command = `timeout 10 idevicebackup2 -u ${sanitizedUdid} info`;
+    const idevicebackup2Cmd = getToolCommand('idevicebackup2');
+    const command = `${quoteForShell(idevicebackup2Cmd)} -u ${sanitizedUdid} info`;
     const execResult = await executeCommand(command, 15000);
     
     const result = {
@@ -502,7 +578,8 @@ export class AuthorizationTriggers {
       return result;
     }
     
-    const command = `fastboot -s ${sanitizedSerial} getvar unlocked 2>&1`;
+    const fastbootCmd = getToolCommand('fastboot');
+    const command = `${quoteForShell(fastbootCmd)} -s ${sanitizedSerial} getvar unlocked 2>&1`;
     const execResult = await executeCommand(command);
     
     const output = execResult.stdout + '\n' + execResult.stderr;
@@ -542,6 +619,7 @@ export class AuthorizationTriggers {
       return result;
     }
     
+    const fastbootCmd = getToolCommand('fastboot');
     const result = {
       success: false,
       message: 'DESTRUCTIVE OPERATION - Manual confirmation required',
@@ -550,8 +628,8 @@ export class AuthorizationTriggers {
       authorizationType: authType,
       deviceSerial: sanitizedSerial,
       warning: 'This will ERASE ALL DATA on the device',
-      manualCommand: `fastboot -s ${sanitizedSerial} oem unlock`,
-      alternativeCommand: `fastboot -s ${sanitizedSerial} flashing unlock`,
+      manualCommand: `${fastbootCmd} -s ${sanitizedSerial} oem unlock`,
+      alternativeCommand: `${fastbootCmd} -s ${sanitizedSerial} flashing unlock`,
       note: 'This endpoint returns the command for manual execution only. User must type UNLOCK to confirm.'
     };
     
@@ -624,15 +702,16 @@ export class AuthorizationTriggers {
   static async verifyQualcommEDL(serial) {
     const sanitizedSerial = sanitizeInput(serial);
     const authType = 'qualcomm_edl_mode';
-    
-    if (!commandExists('python3')) {
+
+    const pythonCmd = getPythonCommand();
+    if (!pythonCmd) {
       const result = {
         success: false,
         message: 'Python3 not installed on system',
         triggered: false,
         requiresUserAction: false,
         authorizationType: authType,
-        error: 'Command not found: python3',
+        error: 'Command not found: python3 (or python)',
         toolMissing: true
       };
       logAuthorizationTrigger({ action: 'verify_qualcomm_edl', serial: sanitizedSerial, ...result });
@@ -655,7 +734,7 @@ export class AuthorizationTriggers {
       return result;
     }
     
-    const command = `python3 ${edlToolPath} --help 2>&1`;
+    const command = `${quoteForShell(pythonCmd)} ${quoteForShell(edlToolPath)} --help 2>&1`;
     const execResult = await executeCommand(command);
     
     const result = {
@@ -666,7 +745,7 @@ export class AuthorizationTriggers {
       triggered: true,
       requiresUserAction: false,
       authorizationType: authType,
-      note: 'Use python3 edl.py printgpt to detect EDL device',
+      note: 'Use python (or python3) edl.py printgpt to detect EDL device',
       commandOutput: execResult.stdout.substring(0, 300),
       stderr: execResult.stderr,
       exitCode: execResult.exitCode,
@@ -680,15 +759,16 @@ export class AuthorizationTriggers {
   static async verifyMediatekFlash(serial) {
     const sanitizedSerial = sanitizeInput(serial);
     const authType = 'mediatek_sp_flash';
-    
-    if (!commandExists('python3')) {
+
+    const pythonCmd = getPythonCommand();
+    if (!pythonCmd) {
       const result = {
         success: false,
         message: 'Python3 not installed on system',
         triggered: false,
         requiresUserAction: false,
         authorizationType: authType,
-        error: 'Command not found: python3',
+        error: 'Command not found: python3 (or python)',
         toolMissing: true
       };
       logAuthorizationTrigger({ action: 'verify_mediatek_flash', serial: sanitizedSerial, ...result });
@@ -717,7 +797,7 @@ export class AuthorizationTriggers {
       triggered: true,
       requiresUserAction: false,
       authorizationType: authType,
-      note: 'Use python3 mtk_cli.py printgpt to detect MediaTek device',
+      note: 'Use python (or python3) mtk_cli.py printgpt to detect MediaTek device',
       deviceSerial: sanitizedSerial,
       toolPath: mtkClientPath
     };
@@ -744,17 +824,67 @@ export class AuthorizationTriggers {
       return result;
     }
     
+    if (!apkPath || typeof apkPath !== 'string') {
+      const result = {
+        success: false,
+        message: 'APK path required to trigger install authorization',
+        triggered: false,
+        requiresUserAction: true,
+        authorizationType: authType,
+        deviceSerial: sanitizedSerial,
+        error: 'Missing apkPath',
+        note: 'Provide a local APK path to initiate install prompt.'
+      };
+      logAuthorizationTrigger({ action: 'trigger_adb_install_auth', serial: sanitizedSerial, ...result });
+      return result;
+    }
+
+    const resolvedApkPath = path.resolve(apkPath);
+    if (!fs.existsSync(resolvedApkPath)) {
+      const result = {
+        success: false,
+        message: 'APK file not found',
+        triggered: false,
+        requiresUserAction: false,
+        authorizationType: authType,
+        deviceSerial: sanitizedSerial,
+        error: `APK not found at ${resolvedApkPath}`
+      };
+      logAuthorizationTrigger({ action: 'trigger_adb_install_auth', serial: sanitizedSerial, ...result });
+      return result;
+    }
+
+    const adbCmd = getToolCommand('adb');
+    const command = `${quoteForShell(adbCmd)} -s ${sanitizedSerial} install ${quoteForShell(resolvedApkPath)}`;
+    const execResult = await executeCommand(command, 60000);
+
+    if (execResult.success) {
+      const result = {
+        success: true,
+        message: 'APK install initiated - check device for install prompt',
+        triggered: true,
+        requiresUserAction: true,
+        authorizationType: authType,
+        deviceSerial: sanitizedSerial,
+        commandOutput: execResult.stdout,
+        stderr: execResult.stderr,
+        exitCode: execResult.exitCode
+      };
+      logAuthorizationTrigger({ action: 'trigger_adb_install_auth', serial: sanitizedSerial, ...result });
+      return result;
+    }
+
     const result = {
       success: false,
-      message: 'Install authorization test not implemented',
+      message: 'APK install failed to start',
       triggered: false,
-      requiresUserAction: true,
+      requiresUserAction: false,
       authorizationType: authType,
       deviceSerial: sanitizedSerial,
-      note: 'Requires actual APK file to trigger installation prompt',
-      manualCommand: `adb -s ${sanitizedSerial} install <path_to_apk>`
+      error: execResult.stderr || execResult.error,
+      commandOutput: execResult.stdout,
+      exitCode: execResult.exitCode
     };
-    
     logAuthorizationTrigger({ action: 'trigger_adb_install_auth', serial: sanitizedSerial, ...result });
     return result;
   }
@@ -777,7 +907,8 @@ export class AuthorizationTriggers {
       return result;
     }
     
-    const command = `adb -s ${sanitizedSerial} reboot recovery`;
+    const adbCmd = getToolCommand('adb');
+    const command = `${quoteForShell(adbCmd)} -s ${sanitizedSerial} reboot recovery`;
     const execResult = await executeCommand(command);
     
     const result = {
@@ -817,7 +948,8 @@ export class AuthorizationTriggers {
       return result;
     }
     
-    const command = `adb -s ${sanitizedSerial} reboot bootloader`;
+    const adbCmd = getToolCommand('adb');
+    const command = `${quoteForShell(adbCmd)} -s ${sanitizedSerial} reboot bootloader`;
     const execResult = await executeCommand(command);
     
     const result = {
@@ -857,7 +989,8 @@ export class AuthorizationTriggers {
       return result;
     }
     
-    const command = `adb -s ${sanitizedSerial} reboot edl`;
+    const adbCmd = getToolCommand('adb');
+    const command = `${quoteForShell(adbCmd)} -s ${sanitizedSerial} reboot edl`;
     const execResult = await executeCommand(command);
     
     const result = {
@@ -898,7 +1031,8 @@ export class AuthorizationTriggers {
       return result;
     }
     
-    const command = `adb -s ${sanitizedSerial} tcpip 5555`;
+    const adbCmd = getToolCommand('adb');
+    const command = `${quoteForShell(adbCmd)} -s ${sanitizedSerial} tcpip 5555`;
     const execResult = await executeCommand(command);
     
     const result = {
@@ -938,7 +1072,8 @@ export class AuthorizationTriggers {
       return result;
     }
     
-    const command = `adb -s ${sanitizedSerial} shell settings get global development_settings_enabled`;
+    const adbCmd = getToolCommand('adb');
+    const command = `${quoteForShell(adbCmd)} -s ${sanitizedSerial} shell settings get global development_settings_enabled`;
     const execResult = await executeCommand(command);
     
     const isEnabled = execResult.stdout.trim() === '1';
@@ -981,7 +1116,8 @@ export class AuthorizationTriggers {
       return result;
     }
     
-    const command = `adb devices -l`;
+    const adbCmd = getToolCommand('adb');
+    const command = `${quoteForShell(adbCmd)} devices -l`;
     const execResult = await executeCommand(command);
     
     const deviceLine = execResult.stdout.split('\n').find(line => line.includes(sanitizedSerial));

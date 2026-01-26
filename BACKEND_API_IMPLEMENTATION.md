@@ -9,12 +9,14 @@ The Bobby Dev Arsenal now includes a complete backend API server for **real syst
 ### 1. Express Backend Server (`/server`)
 
 A Node.js/Express API server that:
+
 - Executes system commands to detect installed tools
 - Returns real version numbers and installation status
 - Provides ADB device listing
 - Includes security features (timeouts, whitelisted commands)
 
 **Files:**
+
 - `/server/index.js` - Main Express server with all endpoints
 - `/server/package.json` - Server dependencies
 - `/server/README.md` - Complete API documentation
@@ -22,6 +24,7 @@ A Node.js/Express API server that:
 ### 2. API Configuration (`/src/lib/apiConfig.ts`)
 
 Centralized API configuration for the frontend:
+
 - Base URL configuration
 - All endpoint paths
 - Timeout settings
@@ -30,6 +33,7 @@ Centralized API configuration for the frontend:
 ### 3. Updated Detection Logic (`/src/lib/deviceDetection.ts`)
 
 Frontend detection now:
+
 - Makes real HTTP requests to backend API
 - Parses response and displays actual tool data
 - Shows clear error messages when backend is offline
@@ -38,18 +42,21 @@ Frontend detection now:
 ### 4. Updated Components
 
 **BobbyDevArsenalDashboard.tsx:**
+
 - Fetches real data from `/api/system-tools`
 - Shows loading states
 - Displays actual installed tools with versions
 - Clear error messaging when API unavailable
 
 **SystemToolsDetector.tsx:**
+
 - Already wired to use backend API
 - Shows real tool detection results
 
 ### 5. Package Scripts
 
 Added to root `package.json`:
+
 ```json
 {
   "server:install": "cd server && npm install",
@@ -76,6 +83,7 @@ npm run server:install
 ### Step 2: Start the Backend Server
 
 In one terminal:
+
 ```bash
 npm run server:dev
 ```
@@ -85,6 +93,7 @@ The server starts on **http://localhost:3001**
 ### Step 3: Start the Frontend
 
 In another terminal:
+
 ```bash
 npm run dev
 ```
@@ -94,6 +103,7 @@ The frontend starts on **http://localhost:5173**
 ### Step 4: See Real Detection
 
 Open http://localhost:5173 in your browser and:
+
 1. The System Tools panel will automatically detect installed tools
 2. Click "Refresh" to re-scan
 3. Only **actually installed** tools will show as "INSTALLED"
@@ -103,16 +113,16 @@ Open http://localhost:5173 in your browser and:
 
 ### Core Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/health` | Health check |
-| GET | `/api/system-tools` | All tool detection |
-| GET | `/api/system-tools/rust` | Rust toolchain only |
-| GET | `/api/system-tools/android` | ADB/Fastboot only |
-| GET | `/api/system-tools/python` | Python only |
-| GET | `/api/system-info` | System hardware info |
-| GET | `/api/adb/devices` | ADB devices list |
-| POST | `/api/adb/command` | Execute safe ADB command |
+| Method | Endpoint                    | Description              |
+| ------ | --------------------------- | ------------------------ |
+| GET    | `/api/health`               | Health check             |
+| GET    | `/api/system-tools`         | All tool detection       |
+| GET    | `/api/system-tools/rust`    | Rust toolchain only      |
+| GET    | `/api/system-tools/android` | ADB/Fastboot only        |
+| GET    | `/api/system-tools/python`  | Python only              |
+| GET    | `/api/system-info`          | System hardware info     |
+| GET    | `/api/adb/devices`          | ADB devices list         |
+| POST   | `/api/adb/command`          | Execute safe ADB command |
 
 See `/server/README.md` for full API documentation with request/response examples.
 
@@ -187,6 +197,7 @@ See `/server/README.md` for full API documentation with request/response example
 **Problem:** Frontend can't reach the backend.
 
 **Solution:**
+
 ```bash
 # Check if backend is running
 lsof -i :3001
@@ -198,6 +209,7 @@ npm run server:dev
 ### Port 3001 already in use
 
 **Solution:**
+
 ```bash
 npm run server:kill
 # Then restart
@@ -209,6 +221,7 @@ npm run server:dev
 **Problem:** Cached data or API mismatch.
 
 **Solution:**
+
 1. Stop both servers
 2. Clear browser cache
 3. Restart backend first, then frontend
@@ -219,6 +232,7 @@ npm run server:dev
 **Problem:** ADB not in PATH or devices not authorized.
 
 **Solution:**
+
 ```bash
 # Test ADB manually
 adb devices
@@ -231,18 +245,19 @@ npm run server:dev
 
 ## 📦 What's Real vs Browser-Limited
 
-| Feature | Where It Works | How |
-|---------|---------------|-----|
-| **System Tool Detection** | Backend API | ✅ Real - execSync() |
-| **Rust/Node/Python versions** | Backend API | ✅ Real - command execution |
-| **ADB device listing** | Backend API | ✅ Real - adb devices |
-| **USB device detection** | Frontend only | ✅ Real - WebUSB API |
-| **USB live monitoring** | Frontend only | ✅ Real - WebUSB events |
-| **Network scanning** | Future/Backend | 🚧 Placeholder for now |
+| Feature                       | Where It Works | How                         |
+| ----------------------------- | -------------- | --------------------------- |
+| **System Tool Detection**     | Backend API    | ✅ Real - execSync()        |
+| **Rust/Node/Python versions** | Backend API    | ✅ Real - command execution |
+| **ADB device listing**        | Backend API    | ✅ Real - adb devices       |
+| **USB device detection**      | Frontend only  | ✅ Real - WebUSB API        |
+| **USB live monitoring**       | Frontend only  | ✅ Real - WebUSB events     |
+| **Network scanning**          | Future/Backend | 🚧 Placeholder for now      |
 
 ## 🔄 Next Steps
 
 ### Immediate (Done ✅)
+
 - [x] Backend API server
 - [x] Real system tool detection
 - [x] ADB device listing
@@ -251,6 +266,7 @@ npm run server:dev
 - [x] Error handling
 
 ### Future Enhancements
+
 - [ ] Network device scanning endpoint
 - [ ] WebSocket for live tool detection updates
 - [ ] Docker container detection details
@@ -268,6 +284,7 @@ npm run server:dev
 ## 🎉 Summary
 
 You now have a **fully functional backend API** that:
+
 1. ✅ Detects real installed tools (Rust, Node, Python, Git, Docker, ADB, Fastboot)
 2. ✅ Returns actual version numbers
 3. ✅ Lists connected ADB devices

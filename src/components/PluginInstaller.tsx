@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { usePluginDependencies } from '@/hooks/use-plugin-dependencies';
 import type { RegistryPlugin } from '@/types/plugin-registry';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -90,6 +90,16 @@ export function PluginInstaller({ plugin, onInstallComplete, onCancel }: PluginI
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
   };
+
+  const computedStep = useMemo(() => {
+    if (installStatus.success && step === 'install') return 'complete';
+    if (dependencyStatus &&
+        dependencyStatus.resolution.conflicts.length === 0 &&
+        dependencyStatus.resolution.circularDependencies.length === 0) {
+      return 'confirm';
+    }
+    return step;
+  }, [dependencyStatus, installStatus.success, step]);
 
   const renderResolveStep = () => (
     <div className="space-y-4">
@@ -376,10 +386,10 @@ export function PluginInstaller({ plugin, onInstallComplete, onCancel }: PluginI
 
           <Separator />
 
-          {step === 'resolve' && renderResolveStep()}
-          {step === 'confirm' && renderConfirmStep()}
-          {step === 'install' && renderInstallStep()}
-          {step === 'complete' && renderCompleteStep()}
+          {computedStep === 'resolve' && renderResolveStep()}
+          {computedStep === 'confirm' && renderConfirmStep()}
+          {computedStep === 'install' && renderInstallStep()}
+          {computedStep === 'complete' && renderCompleteStep()}
         </div>
       </CardContent>
     </Card>

@@ -1,6 +1,7 @@
 # Backend Authorization Triggers API - Implementation Guide
 
 ## Overview
+
 This guide provides the complete backend implementation for all device authorization triggers in Bobby's World / Pandora Codex. Every endpoint executes **real commands** with **real results** - no simulated data.
 
 ---
@@ -8,6 +9,7 @@ This guide provides the complete backend implementation for all device authoriza
 ## 🏗️ Backend Stack
 
 ### Recommended Stack
+
 - **Runtime**: Node.js 20+ or Python 3.11+
 - **Framework**: Express.js or FastAPI
 - **Command Execution**: `child_process.execFile` (Node) or `subprocess.run` (Python)
@@ -20,12 +22,15 @@ This guide provides the complete backend implementation for all device authoriza
 ## 🔐 API Endpoint Reference
 
 ### Base URL
+
 ```
 http://localhost:8080/api
 ```
 
 ### Authentication
+
 All endpoints require:
+
 - `X-API-Key` header (for production)
 - Rate limiting: 10 requests per minute per device
 
@@ -40,6 +45,7 @@ All endpoints require:
 **Purpose**: Forces "Allow USB debugging?" dialog on Android device
 
 **Request**:
+
 ```json
 {
   "serial": "ABC123XYZ",
@@ -48,57 +54,61 @@ All endpoints require:
 ```
 
 **Backend Implementation (Node.js)**:
+
 ```javascript
-const { execFile } = require('child_process');
-const { promisify } = require('util');
+const { execFile } = require("child_process");
+const { promisify } = require("util");
 const execFileAsync = promisify(execFile);
 
-app.post('/api/adb/trigger-auth', async (req, res) => {
-  const { serial, command = 'shell getprop' } = req.body;
+app.post("/api/adb/trigger-auth", async (req, res) => {
+  const { serial, command = "shell getprop" } = req.body;
 
   if (!serial || !/^[A-Za-z0-9]{1,32}$/.test(serial)) {
     return res.status(400).json({
       success: false,
-      message: 'Invalid serial number format',
+      message: "Invalid serial number format",
       triggered: false,
     });
   }
 
   try {
-    const { stdout, stderr } = await execFileAsync('adb', [
-      '-s', serial,
-      'shell', 'getprop', 'ro.build.version.release'
-    ], { timeout: 5000 });
+    const { stdout, stderr } = await execFileAsync(
+      "adb",
+      ["-s", serial, "shell", "getprop", "ro.build.version.release"],
+      { timeout: 5000 },
+    );
 
     return res.json({
       success: true,
-      message: 'USB debugging authorization triggered. Check your device and tap "Allow".',
+      message:
+        'USB debugging authorization triggered. Check your device and tap "Allow".',
       triggered: true,
       requiresUserAction: true,
-      authorizationType: 'adb_usb_debugging',
+      authorizationType: "adb_usb_debugging",
       commandOutput: stdout.trim(),
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    if (error.stderr && error.stderr.includes('unauthorized')) {
+    if (error.stderr && error.stderr.includes("unauthorized")) {
       return res.json({
         success: true,
-        message: 'Authorization dialog triggered on device (device currently unauthorized)',
+        message:
+          "Authorization dialog triggered on device (device currently unauthorized)",
         triggered: true,
         requiresUserAction: true,
-        authorizationType: 'adb_usb_debugging',
-        note: 'Device is unauthorized - this is expected. The prompt should appear on the device.',
+        authorizationType: "adb_usb_debugging",
+        note: "Device is unauthorized - this is expected. The prompt should appear on the device.",
         timestamp: new Date().toISOString(),
       });
     }
 
-    if (error.code === 'ENOENT') {
+    if (error.code === "ENOENT") {
       return res.status(404).json({
         success: false,
-        message: 'ADB tool not installed on this system',
+        message: "ADB tool not installed on this system",
         triggered: false,
         toolMissing: true,
-        installGuide: 'https://developer.android.com/studio/command-line/adb',
+        installGuide: "https://developer.android.com/studio/command-line/adb",
       });
     }
 
@@ -112,6 +122,7 @@ app.post('/api/adb/trigger-auth', async (req, res) => {
 ```
 
 **Backend Implementation (Python/FastAPI)**:
+
 ```python
 import subprocess
 import re
@@ -129,7 +140,7 @@ class ADBAuthRequest(BaseModel):
 async def trigger_adb_auth(request: ADBAuthRequest):
     if not re.match(r'^[A-Za-z0-9]{1,32}$', request.serial):
         raise HTTPException(status_code=400, detail="Invalid serial number format")
-    
+
     try:
         result = subprocess.run(
             ['adb', '-s', request.serial, 'shell', 'getprop', 'ro.build.version.release'],
@@ -137,7 +148,7 @@ async def trigger_adb_auth(request: ADBAuthRequest):
             text=True,
             timeout=5
         )
-        
+
         return {
             "success": True,
             "message": "USB debugging authorization triggered. Check your device and tap 'Allow'.",
@@ -178,52 +189,55 @@ async def trigger_adb_auth(request: ADBAuthRequest):
 **Endpoint**: `POST /api/adb/trigger-file-auth`
 
 **Backend Implementation (Node.js)**:
-```javascript
-const fs = require('fs').promises;
-const path = require('path');
-const os = require('os');
 
-app.post('/api/adb/trigger-file-auth', async (req, res) => {
+```javascript
+const fs = require("fs").promises;
+const path = require("path");
+const os = require("os");
+
+app.post("/api/adb/trigger-file-auth", async (req, res) => {
   const { serial } = req.body;
 
   if (!serial || !/^[A-Za-z0-9]{1,32}$/.test(serial)) {
     return res.status(400).json({
       success: false,
-      message: 'Invalid serial number format',
+      message: "Invalid serial number format",
     });
   }
 
   const testFilePath = path.join(os.tmpdir(), `auth_test_${serial}.txt`);
 
   try {
-    await fs.writeFile(testFilePath, 'test\n');
+    await fs.writeFile(testFilePath, "test\n");
 
-    const { stdout, stderr } = await execFileAsync('adb', [
-      '-s', serial,
-      'push', testFilePath, '/sdcard/Download/'
-    ], { timeout: 10000 });
+    const { stdout, stderr } = await execFileAsync(
+      "adb",
+      ["-s", serial, "push", testFilePath, "/sdcard/Download/"],
+      { timeout: 10000 },
+    );
 
     await fs.unlink(testFilePath).catch(() => {});
 
     return res.json({
       success: true,
-      message: 'File transfer authorization triggered',
+      message: "File transfer authorization triggered",
       triggered: true,
       requiresUserAction: true,
-      authorizationType: 'adb_file_transfer',
+      authorizationType: "adb_file_transfer",
       commandOutput: stdout.trim(),
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
     await fs.unlink(testFilePath).catch(() => {});
 
-    if (error.stderr && error.stderr.includes('unauthorized')) {
+    if (error.stderr && error.stderr.includes("unauthorized")) {
       return res.json({
         success: true,
-        message: 'File transfer authorization dialog triggered (device needs authorization)',
+        message:
+          "File transfer authorization dialog triggered (device needs authorization)",
         triggered: true,
         requiresUserAction: true,
-        authorizationType: 'adb_file_transfer',
+        authorizationType: "adb_file_transfer",
         timestamp: new Date().toISOString(),
       });
     }
@@ -244,30 +258,32 @@ app.post('/api/adb/trigger-file-auth', async (req, res) => {
 **Endpoint**: `POST /api/adb/trigger-backup-auth`
 
 **Backend Implementation (Node.js)**:
+
 ```javascript
-app.post('/api/adb/trigger-backup-auth', async (req, res) => {
+app.post("/api/adb/trigger-backup-auth", async (req, res) => {
   const { serial } = req.body;
 
   if (!serial || !/^[A-Za-z0-9]{1,32}$/.test(serial)) {
     return res.status(400).json({
       success: false,
-      message: 'Invalid serial number format',
+      message: "Invalid serial number format",
     });
   }
 
   try {
-    const { stdout, stderr } = await execFileAsync('adb', [
-      '-s', serial,
-      'backup', '-noapk', '-noshared', 'com.android.settings'
-    ], { timeout: 10000 });
+    const { stdout, stderr } = await execFileAsync(
+      "adb",
+      ["-s", serial, "backup", "-noapk", "-noshared", "com.android.settings"],
+      { timeout: 10000 },
+    );
 
     return res.json({
       success: true,
-      message: 'Backup authorization dialog triggered on device',
+      message: "Backup authorization dialog triggered on device",
       triggered: true,
       requiresUserAction: true,
-      authorizationType: 'adb_backup',
-      note: 'User may be prompted for encryption password',
+      authorizationType: "adb_backup",
+      note: "User may be prompted for encryption password",
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
@@ -289,50 +305,53 @@ app.post('/api/adb/trigger-backup-auth', async (req, res) => {
 **Endpoint**: `POST /api/ios/trigger-trust`
 
 **Backend Implementation (Node.js)**:
+
 ```javascript
-app.post('/api/ios/trigger-trust', async (req, res) => {
+app.post("/api/ios/trigger-trust", async (req, res) => {
   const { udid } = req.body;
 
   if (!udid || !/^[a-f0-9]{40}$/i.test(udid)) {
     return res.status(400).json({
       success: false,
-      message: 'Invalid UDID format',
+      message: "Invalid UDID format",
     });
   }
 
   try {
-    const { stdout, stderr } = await execFileAsync('ideviceinfo', [
-      '-u', udid
-    ], { timeout: 10000 });
+    const { stdout, stderr } = await execFileAsync(
+      "ideviceinfo",
+      ["-u", udid],
+      { timeout: 10000 },
+    );
 
     return res.json({
       success: true,
-      message: 'iOS trust computer dialog triggered',
+      message: "iOS trust computer dialog triggered",
       triggered: true,
       requiresUserAction: true,
-      authorizationType: 'ios_trust_computer',
+      authorizationType: "ios_trust_computer",
       commandOutput: stdout.trim(),
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    if (error.stderr && error.stderr.includes('not trusted')) {
+    if (error.stderr && error.stderr.includes("not trusted")) {
       return res.json({
         success: true,
-        message: 'Trust This Computer dialog triggered (device not trusted)',
+        message: "Trust This Computer dialog triggered (device not trusted)",
         triggered: true,
         requiresUserAction: true,
-        authorizationType: 'ios_trust_computer',
-        note: 'User must tap Trust and enter passcode on device',
+        authorizationType: "ios_trust_computer",
+        note: "User must tap Trust and enter passcode on device",
         timestamp: new Date().toISOString(),
       });
     }
 
-    if (error.code === 'ENOENT') {
+    if (error.code === "ENOENT") {
       return res.status(404).json({
         success: false,
-        message: 'libimobiledevice tools not installed',
+        message: "libimobiledevice tools not installed",
         toolMissing: true,
-        installGuide: 'https://libimobiledevice.org/',
+        installGuide: "https://libimobiledevice.org/",
       });
     }
 
@@ -352,30 +371,35 @@ app.post('/api/ios/trigger-trust', async (req, res) => {
 **Endpoint**: `POST /api/ios/trigger-pairing`
 
 **Backend Implementation (Node.js)**:
+
 ```javascript
-app.post('/api/ios/trigger-pairing', async (req, res) => {
+app.post("/api/ios/trigger-pairing", async (req, res) => {
   const { udid } = req.body;
 
   if (!udid || !/^[a-f0-9]{40}$/i.test(udid)) {
     return res.status(400).json({
       success: false,
-      message: 'Invalid UDID format',
+      message: "Invalid UDID format",
     });
   }
 
   try {
-    const { stdout, stderr } = await execFileAsync('idevicepair', [
-      '-u', udid, 'pair'
-    ], { timeout: 30000 });
+    const { stdout, stderr } = await execFileAsync(
+      "idevicepair",
+      ["-u", udid, "pair"],
+      { timeout: 30000 },
+    );
 
     const successMatch = stdout.match(/SUCCESS: Paired with device/i);
 
     return res.json({
       success: !!successMatch,
-      message: successMatch ? 'Device paired successfully' : 'Pairing request sent',
+      message: successMatch
+        ? "Device paired successfully"
+        : "Pairing request sent",
       triggered: true,
       requiresUserAction: true,
-      authorizationType: 'ios_pairing',
+      authorizationType: "ios_pairing",
       commandOutput: stdout.trim(),
       timestamp: new Date().toISOString(),
     });
@@ -398,40 +422,43 @@ app.post('/api/ios/trigger-pairing', async (req, res) => {
 **Endpoint**: `POST /api/fastboot/verify-unlock`
 
 **Backend Implementation (Node.js)**:
+
 ```javascript
-app.post('/api/fastboot/verify-unlock', async (req, res) => {
+app.post("/api/fastboot/verify-unlock", async (req, res) => {
   const { serial } = req.body;
 
   if (!serial || !/^[A-Za-z0-9]{1,32}$/.test(serial)) {
     return res.status(400).json({
       success: false,
-      message: 'Invalid serial number format',
+      message: "Invalid serial number format",
     });
   }
 
   try {
-    const { stdout, stderr } = await execFileAsync('fastboot', [
-      '-s', serial, 'getvar', 'unlocked'
-    ], { timeout: 5000 });
+    const { stdout, stderr } = await execFileAsync(
+      "fastboot",
+      ["-s", serial, "getvar", "unlocked"],
+      { timeout: 5000 },
+    );
 
     const combined = stdout + stderr;
-    const unlocked = combined.toLowerCase().includes('unlocked: yes');
+    const unlocked = combined.toLowerCase().includes("unlocked: yes");
 
     return res.json({
       success: true,
-      message: unlocked ? 'Bootloader is unlocked' : 'Bootloader is locked',
+      message: unlocked ? "Bootloader is unlocked" : "Bootloader is locked",
       triggered: true,
       requiresUserAction: false,
-      authorizationType: 'fastboot_unlock',
+      authorizationType: "fastboot_unlock",
       unlocked,
       commandOutput: combined.trim(),
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    if (error.code === 'ENOENT') {
+    if (error.code === "ENOENT") {
       return res.status(404).json({
         success: false,
-        message: 'Fastboot tool not installed',
+        message: "Fastboot tool not installed",
         toolMissing: true,
       });
     }
@@ -454,40 +481,45 @@ app.post('/api/fastboot/verify-unlock', async (req, res) => {
 **Endpoint**: `POST /api/samsung/trigger-download-mode`
 
 **Backend Implementation (Node.js)**:
-```javascript
-app.post('/api/samsung/trigger-download-mode', async (req, res) => {
-  try {
-    const { stdout: detectOut } = await execFileAsync('heimdall', ['detect'], { timeout: 5000 });
 
-    if (!detectOut.toLowerCase().includes('device detected')) {
+```javascript
+app.post("/api/samsung/trigger-download-mode", async (req, res) => {
+  try {
+    const { stdout: detectOut } = await execFileAsync("heimdall", ["detect"], {
+      timeout: 5000,
+    });
+
+    if (!detectOut.toLowerCase().includes("device detected")) {
       return res.json({
         success: false,
-        message: 'No Samsung device detected in Download Mode',
+        message: "No Samsung device detected in Download Mode",
         triggered: true,
         requiresUserAction: false,
       });
     }
 
-    const { stdout: pitOut } = await execFileAsync('heimdall', [
-      'print-pit', '--no-reboot', '--verbose'
-    ], { timeout: 10000 });
+    const { stdout: pitOut } = await execFileAsync(
+      "heimdall",
+      ["print-pit", "--no-reboot", "--verbose"],
+      { timeout: 10000 },
+    );
 
     return res.json({
       success: true,
-      message: 'Samsung device in Download Mode verified',
+      message: "Samsung device in Download Mode verified",
       triggered: true,
       requiresUserAction: false,
-      authorizationType: 'odin_download_mode',
+      authorizationType: "odin_download_mode",
       commandOutput: pitOut.trim(),
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    if (error.code === 'ENOENT') {
+    if (error.code === "ENOENT") {
       return res.status(404).json({
         success: false,
-        message: 'Heimdall not installed',
+        message: "Heimdall not installed",
         toolMissing: true,
-        installGuide: 'https://github.com/Benjamin-Dobell/Heimdall',
+        installGuide: "https://github.com/Benjamin-Dobell/Heimdall",
       });
     }
 
@@ -509,38 +541,39 @@ app.post('/api/samsung/trigger-download-mode', async (req, res) => {
 **Endpoint**: `POST /api/qualcomm/trigger-edl-auth`
 
 **Backend Implementation (Node.js)**:
+
 ```javascript
-app.post('/api/qualcomm/trigger-edl-auth', async (req, res) => {
+app.post("/api/qualcomm/trigger-edl-auth", async (req, res) => {
   const { serial, programmer } = req.body;
 
   if (!programmer) {
     return res.status(400).json({
       success: false,
-      message: 'Programmer file path required for EDL mode',
+      message: "Programmer file path required for EDL mode",
     });
   }
 
   try {
-    const { stdout, stderr } = await execFileAsync('edl', [
-      `--loader=${programmer}`,
-      '--memory=ufs',
-      'printgpt'
-    ], { timeout: 15000 });
+    const { stdout, stderr } = await execFileAsync(
+      "edl",
+      [`--loader=${programmer}`, "--memory=ufs", "printgpt"],
+      { timeout: 15000 },
+    );
 
     return res.json({
       success: true,
-      message: 'EDL mode device detected and authorized',
+      message: "EDL mode device detected and authorized",
       triggered: true,
       requiresUserAction: false,
-      authorizationType: 'edl_authorized_connection',
+      authorizationType: "edl_authorized_connection",
       commandOutput: stdout.trim(),
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    if (error.code === 'ENOENT') {
+    if (error.code === "ENOENT") {
       return res.status(404).json({
         success: false,
-        message: 'EDL tools not installed',
+        message: "EDL tools not installed",
         toolMissing: true,
       });
     }
@@ -559,6 +592,7 @@ app.post('/api/qualcomm/trigger-edl-auth', async (req, res) => {
 ## 🔧 Audit Logging
 
 ### Audit Log Schema (SQLite)
+
 ```sql
 CREATE TABLE authorization_audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -581,32 +615,37 @@ CREATE INDEX idx_auth_type ON authorization_audit(authorization_type);
 ```
 
 ### Logging Function (Node.js)
+
 ```javascript
-const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('.pandora_private/audit.db');
+const sqlite3 = require("sqlite3").verbose();
+const db = new sqlite3.Database(".pandora_private/audit.db");
 
 async function logAuthorization(data) {
   return new Promise((resolve, reject) => {
-    db.run(`
+    db.run(
+      `
       INSERT INTO authorization_audit (
         timestamp, authorization_type, device_serial, command_executed,
         exit_code, stdout, stderr, success, user_response, ip_address
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      new Date().toISOString(),
-      data.authorizationType,
-      data.deviceSerial,
-      data.commandExecuted,
-      data.exitCode || 0,
-      data.stdout || '',
-      data.stderr || '',
-      data.success ? 1 : 0,
-      data.userResponse || null,
-      data.ipAddress || null
-    ], (err) => {
-      if (err) reject(err);
-      else resolve();
-    });
+    `,
+      [
+        new Date().toISOString(),
+        data.authorizationType,
+        data.deviceSerial,
+        data.commandExecuted,
+        data.exitCode || 0,
+        data.stdout || "",
+        data.stderr || "",
+        data.success ? 1 : 0,
+        data.userResponse || null,
+        data.ipAddress || null,
+      ],
+      (err) => {
+        if (err) reject(err);
+        else resolve();
+      },
+    );
   });
 }
 ```
@@ -616,43 +655,48 @@ async function logAuthorization(data) {
 ## 🔒 Security Best Practices
 
 ### Input Validation
+
 ```javascript
 function validateSerial(serial) {
-  if (typeof serial !== 'string') return false;
+  if (typeof serial !== "string") return false;
   if (serial.length < 1 || serial.length > 32) return false;
   if (!/^[A-Za-z0-9]+$/.test(serial)) return false;
   return true;
 }
 
 function validateUDID(udid) {
-  if (typeof udid !== 'string') return false;
+  if (typeof udid !== "string") return false;
   if (!/^[a-f0-9]{40}$/i.test(udid)) return false;
   return true;
 }
 ```
 
 ### Command Injection Prevention
-```javascript
-const { execFile } = require('child_process');
 
-execFile('adb', ['-s', serial, 'shell', 'echo', userInput], (error, stdout) => {
-  
-});
+```javascript
+const { execFile } = require("child_process");
+
+execFile(
+  "adb",
+  ["-s", serial, "shell", "echo", userInput],
+  (error, stdout) => {},
+);
 ```
 
 ### Rate Limiting (Express)
+
 ```javascript
-const rateLimit = require('express-rate-limit');
+const rateLimit = require("express-rate-limit");
 
 const authLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
-  message: 'Too many authorization requests, please try again later',
+  message: "Too many authorization requests, please try again later",
   keyGenerator: (req) => req.body.serial || req.ip,
 });
 
-app.use('/api/adb/trigger-auth', authLimiter);
-app.use('/api/ios/trigger-trust', authLimiter);
+app.use("/api/adb/trigger-auth", authLimiter);
+app.use("/api/ios/trigger-trust", authLimiter);
 ```
 
 ---
@@ -660,6 +704,7 @@ app.use('/api/ios/trigger-trust', authLimiter);
 ## 🚀 Testing Commands
 
 ### Test ADB Authorization
+
 ```bash
 curl -X POST http://localhost:8080/api/adb/trigger-auth \
   -H "Content-Type: application/json" \
@@ -667,6 +712,7 @@ curl -X POST http://localhost:8080/api/adb/trigger-auth \
 ```
 
 ### Test iOS Trust
+
 ```bash
 curl -X POST http://localhost:8080/api/ios/trigger-trust \
   -H "Content-Type: application/json" \
@@ -674,6 +720,7 @@ curl -X POST http://localhost:8080/api/ios/trigger-trust \
 ```
 
 ### Test Fastboot Unlock
+
 ```bash
 curl -X POST http://localhost:8080/api/fastboot/verify-unlock \
   -H "Content-Type: application/json" \
@@ -685,10 +732,10 @@ curl -X POST http://localhost:8080/api/fastboot/verify-unlock \
 ## 📝 Complete Server Example (Node.js)
 
 ```javascript
-const express = require('express');
-const { execFile } = require('child_process');
-const { promisify } = require('util');
-const rateLimit = require('express-rate-limit');
+const express = require("express");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
+const rateLimit = require("express-rate-limit");
 
 const app = express();
 const execFileAsync = promisify(execFile);
@@ -700,14 +747,10 @@ const authLimiter = rateLimit({
   max: 10,
 });
 
-app.post('/api/adb/trigger-auth', authLimiter, async (req, res) => {
-  
-});
-
-
+app.post("/api/adb/trigger-auth", authLimiter, async (req, res) => {});
 
 app.listen(8080, () => {
-  console.log('Authorization triggers API running on port 8080');
+  console.log("Authorization triggers API running on port 8080");
 });
 ```
 

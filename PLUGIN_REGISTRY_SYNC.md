@@ -9,12 +9,14 @@ Bobby's World now includes a **live plugin registry sync system** that automatic
 ### Components
 
 1. **Plugin Registry API** (`/src/lib/plugin-registry-api.ts`)
+
    - Core API client for registry communication
    - Handles manifest fetching, plugin search, downloads, and verification
    - Built-in caching with configurable expiry
    - Auto-sync with configurable intervals
 
 2. **Registry Types** (`/src/types/plugin-registry.ts`)
+
    - `RegistryPlugin`: Full plugin metadata from registry
    - `RegistryManifest`: Complete registry snapshot
    - `RegistrySyncStatus`: Sync operation status
@@ -22,11 +24,13 @@ Bobby's World now includes a **live plugin registry sync system** that automatic
    - `RegistryConfig`: Configuration options
 
 3. **React Hooks** (`/src/hooks/use-plugin-registry.ts`)
+
    - `usePluginRegistry()`: Main registry operations
    - `usePluginDownload()`: Download with progress tracking
    - `usePluginUpdates()`: Automatic update checking
 
 4. **UI Components**
+
    - `PluginRegistrySync`: Sync status and control panel
    - `PluginRegistryBrowser`: Browse and search registry plugins
    - Integration into `PluginMarketplace`
@@ -52,27 +56,27 @@ Bobby's World now includes a **live plugin registry sync system** that automatic
 const manifest = await pluginRegistry.fetchManifest();
 
 // Search plugins with filters
-const results = await pluginRegistry.searchPlugins('battery', {
-  category: 'diagnostic',
-  platform: 'android',
-  certified: true
+const results = await pluginRegistry.searchPlugins("battery", {
+  category: "diagnostic",
+  platform: "android",
+  certified: true,
 });
 
 // Check for updates
 const updates = await pluginRegistry.checkForUpdates([
-  { id: 'battery-health-pro', version: '3.2.0' }
+  { id: "battery-health-pro", version: "3.2.0" },
 ]);
 
 // Download plugin with progress
 const blob = await pluginRegistry.downloadPlugin(
-  'battery-health-pro',
-  (progress) => console.log(`${progress}%`)
+  "battery-health-pro",
+  (progress) => console.log(`${progress}%`),
 );
 
 // Verify signature
 const isValid = await pluginRegistry.verifyPluginSignature(
-  'battery-health-pro',
-  'aabbccdd11223344'
+  "battery-health-pro",
+  "aabbccdd11223344",
 );
 ```
 
@@ -102,22 +106,22 @@ const isValid = await pluginRegistry.verifyPluginSignature(
 
 ```typescript
 const config: RegistryConfig = {
-  apiUrl: 'https://registry.bobbysworld.dev/api',  // Registry API base URL
-  syncInterval: 3600000,                            // Auto-sync interval (1 hour)
-  autoSync: true,                                   // Enable auto-sync
-  allowUncertified: false,                          // Filter uncertified plugins
-  cacheExpiry: 86400000,                            // Cache expiry (24 hours)
+  apiUrl: "https://registry.bobbysworld.dev/api", // Registry API base URL
+  syncInterval: 3600000, // Auto-sync interval (1 hour)
+  autoSync: true, // Enable auto-sync
+  allowUncertified: false, // Filter uncertified plugins
+  cacheExpiry: 86400000, // Cache expiry (24 hours)
 };
 ```
 
 ### Update Configuration
 
 ```typescript
-import pluginRegistry from '@/lib/plugin-registry-api';
+import pluginRegistry from "@/lib/plugin-registry-api";
 
 pluginRegistry.updateConfig({
-  syncInterval: 1800000,  // Change to 30 minutes
-  autoSync: true
+  syncInterval: 1800000, // Change to 30 minutes
+  autoSync: true,
 });
 ```
 
@@ -194,15 +198,15 @@ Returns filtered plugin list:
 Check for available updates:
 
 **Request:**
+
 ```json
 {
-  "installed": [
-    { "id": "battery-health-pro", "version": "3.2.0" }
-  ]
+  "installed": [{ "id": "battery-health-pro", "version": "3.2.0" }]
 }
 ```
 
 **Response:**
+
 ```json
 [
   {
@@ -224,6 +228,7 @@ Returns plugin package as blob with `Content-Length` header for progress trackin
 Verify plugin signature:
 
 **Request:**
+
 ```json
 {
   "checksum": "aabbccdd11223344"
@@ -231,6 +236,7 @@ Verify plugin signature:
 ```
 
 **Response:**
+
 ```json
 {
   "valid": true
@@ -244,12 +250,14 @@ Verify plugin signature:
 The `PluginMarketplace` component now includes:
 
 1. **Registry Sync Panel** at the top
+
    - Shows last sync time
    - Displays sync status (syncing, success, error)
    - Manual sync button
    - Sync statistics
 
 2. **Registry Browser** below sync panel
+
    - Search bar with filters
    - Category and platform dropdowns
    - Certified-only checkbox
@@ -267,18 +275,18 @@ import { usePluginRegistry } from '@/hooks/use-plugin-registry';
 
 function MyComponent() {
   const { syncStatus, sync, fetchManifest, isLoading } = usePluginRegistry();
-  
+
   // Manual sync
   const handleSync = async () => {
     await sync();
   };
-  
+
   // Load plugins
   const loadPlugins = async () => {
     const manifest = await fetchManifest();
     console.log(manifest.plugins);
   };
-  
+
   return (
     <div>
       <p>Status: {syncStatus.status}</p>
@@ -304,7 +312,7 @@ The mock server simulates a real registry API:
 ### Initialize Mock Server
 
 ```typescript
-import { setupMockRegistryAPI } from '@/lib/mock-plugin-registry-server';
+import { setupMockRegistryAPI } from "@/lib/mock-plugin-registry-server";
 
 // Call once on app start
 setupMockRegistryAPI();
@@ -345,6 +353,7 @@ This intercepts fetch requests to `registry.bobbysworld.dev/api` and handles the
 ### Sync Fails
 
 Check:
+
 1. Registry API URL is correct
 2. Network connectivity
 3. CORS headers if using real backend
@@ -353,6 +362,7 @@ Check:
 ### Plugins Not Appearing
 
 Check:
+
 1. Sync completed successfully
 2. Filters not excluding plugins
 3. Cache not stale (clear and retry)
@@ -361,6 +371,7 @@ Check:
 ### Downloads Fail
 
 Check:
+
 1. Plugin ID is correct
 2. Download URL is accessible
 3. Sufficient storage space

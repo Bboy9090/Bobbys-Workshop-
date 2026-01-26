@@ -7,11 +7,14 @@ BootForgeUSB v0.2 is now integrated into Pandora Codex as the flagship "detect a
 ## Key Improvements in v0.2
 
 ### 1. Per-Device Correlation
-- **v0.1**: System-level detection ("adb sees *a* device")
-- **v0.2**: Device-specific correlation ("adb sees *this* device by serial")
+
+- **v0.1**: System-level detection ("adb sees _a_ device")
+- **v0.2**: Device-specific correlation ("adb sees _this_ device by serial")
 
 ### 2. Enhanced Evidence Structure
+
 Every device record now includes:
+
 - `matched_tool_ids[]` - Which tool IDs matched this specific device
 - `interface_hints[]` - Full interface descriptor information
 - Detailed correlation notes explaining confidence boost
@@ -19,6 +22,7 @@ Every device record now includes:
 ### 3. Correlation Rules (Conservative)
 
 #### Direct Serial Match (Highest Confidence)
+
 ```
 IF usb.serial == tool_device_id
   THEN confidence = 0.94
@@ -27,6 +31,7 @@ IF usb.serial == tool_device_id
 ```
 
 #### Single-Candidate Heuristic
+
 ```
 IF count(likely_android_usb_devices) == 1
    AND count(adb.device_ids) == 1
@@ -36,6 +41,7 @@ IF count(likely_android_usb_devices) == 1
 ```
 
 #### iOS UDID Correlation
+
 ```
 IF count(apple_usb_devices) == 1
    AND count(idevice_id.device_ids) == 1
@@ -71,6 +77,7 @@ IF count(apple_usb_devices) == 1
 ## Usage Examples
 
 ### CLI Usage
+
 ```bash
 # Build
 cd libs/bootforgeusb
@@ -109,6 +116,7 @@ cargo build --release
 ```
 
 ### Python Integration (Pandora Agent)
+
 ```python
 import bootforgeusb
 import json
@@ -122,57 +130,58 @@ for device in devices:
     print(f"Platform: {device['platform_hint']}")
     print(f"Mode: {device['mode']}")
     print(f"Confidence: {device['confidence']:.2%}")
-    
+
     # Check if device was correlated to tool output
     if device['matched_tool_ids']:
         print(f"Matched Tool IDs: {', '.join(device['matched_tool_ids'])}")
-    
+
     # Display evidence
     usb = device['evidence']['usb']
     print(f"USB: {usb['vid']}:{usb['pid']} ({usb.get('product', 'Unknown')})")
-    
+
     # Display correlation notes
     for note in device['notes']:
         print(f"  📋 {note}")
 ```
 
 ### Backend API Integration (Node)
+
 ```javascript
 // server/api/devices.ts
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { exec } from "child_process";
+import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
 export async function scanDevices() {
   try {
-    const { stdout } = await execAsync(
-      '/path/to/bootforgeusb scan',
-      { timeout: 5000 }
-    );
-    
+    const { stdout } = await execAsync("/path/to/bootforgeusb scan", {
+      timeout: 5000,
+    });
+
     const devices = JSON.parse(stdout);
-    
-    return devices.map(device => ({
+
+    return devices.map((device) => ({
       uid: device.device_uid,
       platform: device.platform_hint,
       mode: device.mode,
       confidence: device.confidence,
       matchedToolIds: device.matched_tool_ids,
       evidence: device.evidence,
-      notes: device.notes
+      notes: device.notes,
     }));
   } catch (error) {
-    console.error('BootForgeUSB scan failed:', error);
+    console.error("BootForgeUSB scan failed:", error);
     return [];
   }
 }
 ```
 
 ### React Component Integration
+
 ```typescript
 // src/hooks/use-bootforge-devices.ts
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
 
 interface BootForgeDevice {
   device_uid: string;
@@ -192,14 +201,14 @@ export function useBootForgeDevices(refreshInterval = 3000) {
   useEffect(() => {
     async function fetchDevices() {
       try {
-        const response = await fetch('/api/bootforge/scan');
-        if (!response.ok) throw new Error('Failed to scan devices');
-        
+        const response = await fetch("/api/bootforge/scan");
+        if (!response.ok) throw new Error("Failed to scan devices");
+
         const data = await response.json();
         setDevices(data);
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown error');
+        setError(err instanceof Error ? err.message : "Unknown error");
       } finally {
         setLoading(false);
       }
@@ -207,7 +216,7 @@ export function useBootForgeDevices(refreshInterval = 3000) {
 
     fetchDevices();
     const interval = setInterval(fetchDevices, refreshInterval);
-    
+
     return () => clearInterval(interval);
   }, [refreshInterval]);
 
@@ -251,7 +260,7 @@ export function DeviceDossier({ device }: { device: BootForgeDevice }) {
           <span className="text-muted-foreground">Platform:</span>
           <span className="font-medium capitalize">{device.platform_hint}</span>
         </div>
-        
+
         <div className="flex items-center gap-2 text-sm">
           <span className="text-muted-foreground">Mode:</span>
           <span className="font-medium">{device.mode.replace(/_/g, ' ')}</span>
@@ -283,6 +292,7 @@ export function DeviceDossier({ device }: { device: BootForgeDevice }) {
 ## Building and Deployment
 
 ### Development Build
+
 ```bash
 cd libs/bootforgeusb
 
@@ -298,6 +308,7 @@ cargo test
 ```
 
 ### Production Build
+
 ```bash
 # Build optimized release
 cargo build --release
@@ -310,6 +321,7 @@ pip install target/wheels/bootforgeusb-*.whl
 ```
 
 ### CI/CD Integration
+
 ```yaml
 # .github/workflows/bootforgeusb.yml
 name: BootForgeUSB Build
@@ -317,7 +329,7 @@ name: BootForgeUSB Build
 on:
   push:
     paths:
-      - 'libs/bootforgeusb/**'
+      - "libs/bootforgeusb/**"
 
 jobs:
   build:
@@ -328,22 +340,22 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          
+
       - name: Install libusb (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get install -y libusb-1.0-0-dev
-        
+
       - name: Build
         run: |
           cd libs/bootforgeusb
           cargo build --release
           cargo test --release
-          
+
       - name: Build Python Binding
         run: |
           pip install maturin
@@ -354,6 +366,7 @@ jobs:
 ## Troubleshooting
 
 ### No Devices Detected
+
 ```bash
 # Check USB permissions (Linux)
 sudo usermod -a -G plugdev $USER
@@ -367,6 +380,7 @@ RUST_LOG=debug ./target/release/bootforgeusb scan
 ```
 
 ### Tool Confirmers Not Working
+
 ```bash
 # Verify tools are in PATH
 which adb
@@ -383,6 +397,7 @@ ls -l $(which adb)
 ```
 
 ### Python Binding Issues
+
 ```bash
 # Reinstall binding
 pip uninstall bootforgeusb

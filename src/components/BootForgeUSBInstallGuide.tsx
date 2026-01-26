@@ -5,14 +5,14 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { 
-  Download, 
-  Terminal, 
+import {
+  Download,
+  Terminal,
   CheckCircle,
   Copy,
   Lightning
 } from '@phosphor-icons/react';
-import { toast } from 'sonner';
+import { copyTextToClipboard } from '@/lib/clipboard';
 
 interface InstallStep {
   title: string;
@@ -66,16 +66,18 @@ const optionalTools: InstallStep[] = [
 ];
 
 function CopyButton({ text }: { text: string }) {
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(text);
-    toast.success('Command copied to clipboard');
+  const copyToClipboard = async () => {
+    await copyTextToClipboard(text, {
+      successMessage: 'Command copied to clipboard',
+      unavailableMessage: 'Clipboard access is unavailable. Please copy the command manually.'
+    });
   };
 
   return (
     <Button
       size="sm"
       variant="ghost"
-      onClick={copyToClipboard}
+      onClick={() => void copyToClipboard()}
       className="h-7 px-2"
     >
       <Copy className="w-3 h-3" />

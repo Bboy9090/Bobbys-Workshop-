@@ -151,7 +151,9 @@ function SidebarProvider({
   )
 }
 
-function Sidebar({
+const INITIAL_WIDTH = `${50 + Math.floor(Math.random() * 40)}%`;
+
+export function Sidebar({
   side = "left",
   variant = "sidebar",
   collapsible = "offcanvas",
