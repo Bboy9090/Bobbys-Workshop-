@@ -13,6 +13,7 @@ This implementation provides real-time device hotplug event notifications using 
 A comprehensive React hook that manages WebSocket connections and device event streams.
 
 **Features:**
+
 - Automatic connection management with configurable auto-connect
 - Exponential backoff reconnection strategy (max 5 attempts)
 - Event buffering (stores last 100 events)
@@ -21,6 +22,7 @@ A comprehensive React hook that manages WebSocket connections and device event s
 - Heartbeat/ping-pong support
 
 **API:**
+
 ```typescript
 const {
   isConnected,       // boolean - WebSocket connection status
@@ -41,15 +43,16 @@ const {
 ```
 
 **Event Types:**
+
 ```typescript
 interface DeviceHotplugEvent {
-  type: 'connected' | 'disconnected';
-  device_uid: string;                   // e.g., "usb:05ac:12a8:bus3:addr12"
-  platform_hint: string;                // 'ios' | 'android' | 'unknown'
-  mode: string;                         // device mode (e.g., 'ios_dfu_likely')
-  confidence: number;                   // 0.0 - 1.0
-  timestamp: string;                    // ISO 8601 timestamp
-  display_name: string;                 // human-readable device name
+  type: "connected" | "disconnected";
+  device_uid: string; // e.g., "usb:05ac:12a8:bus3:addr12"
+  platform_hint: string; // 'ios' | 'android' | 'unknown'
+  mode: string; // device mode (e.g., 'ios_dfu_likely')
+  confidence: number; // 0.0 - 1.0
+  timestamp: string; // ISO 8601 timestamp
+  display_name: string; // human-readable device name
 }
 
 interface HotplugStats {
@@ -65,6 +68,7 @@ interface HotplugStats {
 A full-featured UI for monitoring real-time device events.
 
 **Features:**
+
 - Real-time event stream display with timestamps
 - Connection status indicator
 - Statistics dashboard (connections, disconnections, current devices, total events)
@@ -83,6 +87,7 @@ The backend server must implement a WebSocket endpoint at `/ws/device-events` th
 
 1. Accepts WebSocket connections
 2. Sends device hotplug events in the following format:
+
 ```json
 {
   "type": "device_event",
@@ -99,6 +104,7 @@ The backend server must implement a WebSocket endpoint at `/ws/device-events` th
 ```
 
 3. Supports ping/pong heartbeat messages:
+
 ```json
 // Server sends:
 { "type": "ping" }
@@ -112,9 +118,9 @@ The backend server must implement a WebSocket endpoint at `/ws/device-events` th
 ### Node.js/Express with `ws` library
 
 ```javascript
-const express = require('express');
-const http = require('http');
-const WebSocket = require('ws');
+const express = require("express");
+const http = require("http");
+const WebSocket = require("ws");
 
 const app = express();
 const server = http.createServer(app);
@@ -122,30 +128,30 @@ const wss = new WebSocket.Server({ server });
 
 const clients = new Set();
 
-wss.on('connection', (ws) => {
-  console.log('Client connected to device event stream');
+wss.on("connection", (ws) => {
+  console.log("Client connected to device event stream");
   clients.add(ws);
 
   // Send ping every 30 seconds
   const pingInterval = setInterval(() => {
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'ping' }));
+      ws.send(JSON.stringify({ type: "ping" }));
     }
   }, 30000);
 
-  ws.on('message', (message) => {
+  ws.on("message", (message) => {
     try {
       const data = JSON.parse(message.toString());
-      if (data.type === 'pong') {
-        console.log('Received pong from client');
+      if (data.type === "pong") {
+        console.log("Received pong from client");
       }
     } catch (err) {
-      console.error('Invalid message from client:', err);
+      console.error("Invalid message from client:", err);
     }
   });
 
-  ws.on('close', () => {
-    console.log('Client disconnected from device event stream');
+  ws.on("close", () => {
+    console.log("Client disconnected from device event stream");
     clients.delete(ws);
     clearInterval(pingInterval);
   });
@@ -154,7 +160,7 @@ wss.on('connection', (ws) => {
 // Function to broadcast device events to all connected clients
 function broadcastDeviceEvent(event) {
   const message = JSON.stringify({
-    type: 'device_event',
+    type: "device_event",
     event: event,
   });
 
@@ -168,32 +174,32 @@ function broadcastDeviceEvent(event) {
 // Example: Simulate device connect event
 function simulateDeviceConnect() {
   broadcastDeviceEvent({
-    type: 'connected',
-    device_uid: 'usb:18d1:4ee7:bus1:addr5',
-    platform_hint: 'android',
-    mode: 'android_adb_confirmed',
+    type: "connected",
+    device_uid: "usb:18d1:4ee7:bus1:addr5",
+    platform_hint: "android",
+    mode: "android_adb_confirmed",
     confidence: 0.94,
     timestamp: new Date().toISOString(),
-    display_name: 'Pixel 7 (ADB Mode)',
+    display_name: "Pixel 7 (ADB Mode)",
   });
 }
 
 // Example: Simulate device disconnect event
 function simulateDeviceDisconnect() {
   broadcastDeviceEvent({
-    type: 'disconnected',
-    device_uid: 'usb:18d1:4ee7:bus1:addr5',
-    platform_hint: 'android',
-    mode: 'android_adb_confirmed',
+    type: "disconnected",
+    device_uid: "usb:18d1:4ee7:bus1:addr5",
+    platform_hint: "android",
+    mode: "android_adb_confirmed",
     confidence: 0.94,
     timestamp: new Date().toISOString(),
-    display_name: 'Pixel 7 (ADB Mode)',
+    display_name: "Pixel 7 (ADB Mode)",
   });
 }
 
 server.listen(3001, () => {
-  console.log('Server listening on port 3001');
-  console.log('WebSocket endpoint: ws://localhost:3001/ws/device-events');
+  console.log("Server listening on port 3001");
+  console.log("WebSocket endpoint: ws://localhost:3001/ws/device-events");
 });
 ```
 
@@ -202,28 +208,29 @@ server.listen(3001, () => {
 To integrate with your existing BootForgeUSB Rust implementation:
 
 1. **Poll-based monitoring** (simple approach):
+
 ```javascript
-const { exec } = require('child_process');
+const { exec } = require("child_process");
 
 let lastDeviceList = [];
 
 function checkDevices() {
-  exec('bootforgeusb-cli scan --json', (error, stdout) => {
+  exec("bootforgeusb-cli scan --json", (error, stdout) => {
     if (error) {
-      console.error('BootForgeUSB scan failed:', error);
+      console.error("BootForgeUSB scan failed:", error);
       return;
     }
 
     try {
       const currentDevices = JSON.parse(stdout);
-      const currentUIDs = new Set(currentDevices.map(d => d.device_uid));
-      const lastUIDs = new Set(lastDeviceList.map(d => d.device_uid));
+      const currentUIDs = new Set(currentDevices.map((d) => d.device_uid));
+      const lastUIDs = new Set(lastDeviceList.map((d) => d.device_uid));
 
       // Detect new connections
-      currentDevices.forEach(device => {
+      currentDevices.forEach((device) => {
         if (!lastUIDs.has(device.device_uid)) {
           broadcastDeviceEvent({
-            type: 'connected',
+            type: "connected",
             device_uid: device.device_uid,
             platform_hint: device.platform_hint,
             mode: device.mode,
@@ -235,10 +242,10 @@ function checkDevices() {
       });
 
       // Detect disconnections
-      lastDeviceList.forEach(device => {
+      lastDeviceList.forEach((device) => {
         if (!currentUIDs.has(device.device_uid)) {
           broadcastDeviceEvent({
-            type: 'disconnected',
+            type: "disconnected",
             device_uid: device.device_uid,
             platform_hint: device.platform_hint,
             mode: device.mode,
@@ -251,7 +258,7 @@ function checkDevices() {
 
       lastDeviceList = currentDevices;
     } catch (err) {
-      console.error('Failed to parse BootForgeUSB output:', err);
+      console.error("Failed to parse BootForgeUSB output:", err);
     }
   });
 }
@@ -260,10 +267,10 @@ function checkDevices() {
 setInterval(checkDevices, 1000);
 
 function generateDisplayName(device) {
-  const manufacturer = device.evidence?.usb?.manufacturer || '';
-  const product = device.evidence?.usb?.product || '';
-  const mode = device.mode.replace(/_/g, ' ');
-  
+  const manufacturer = device.evidence?.usb?.manufacturer || "";
+  const product = device.evidence?.usb?.product || "";
+  const mode = device.mode.replace(/_/g, " ");
+
   if (manufacturer && product) {
     return `${manufacturer} ${product} (${mode})`;
   }
@@ -274,6 +281,7 @@ function generateDisplayName(device) {
 2. **Native USB event monitoring** (advanced approach):
 
 For production systems, implement native USB hotplug monitoring in Rust using:
+
 - **Linux**: `libudev` for uevents
 - **macOS**: `IOKit` notifications
 - **Windows**: `SetupAPI` device notifications
@@ -330,6 +338,7 @@ function CustomDeviceMonitor() {
 ### Reconnection Strategy
 
 The hook implements exponential backoff reconnection:
+
 - Attempt 1: 1 second delay
 - Attempt 2: 2 seconds delay
 - Attempt 3: 4 seconds delay
@@ -344,6 +353,7 @@ Events are stored in a rolling buffer of 100 items. When new events arrive, the 
 ### Statistics Tracking
 
 Real-time statistics are maintained:
+
 - **Total Connections**: Cumulative count of all device connect events
 - **Total Disconnections**: Cumulative count of all device disconnect events
 - **Current Devices**: Net count of currently connected devices
@@ -352,6 +362,7 @@ Real-time statistics are maintained:
 ### Toast Notifications
 
 When enabled (default), the system shows toast notifications:
+
 - **Success (Green)**: Device connected
 - **Info (Blue)**: Device disconnected
 - **Success (Green)**: WebSocket connected
@@ -363,7 +374,7 @@ When enabled (default), the system shows toast notifications:
 
 ```typescript
 const { isConnected } = useDeviceHotplug({
-  wsUrl: 'ws://custom-server:8080/device-stream',
+  wsUrl: "ws://custom-server:8080/device-stream",
 });
 ```
 
@@ -405,22 +416,22 @@ You can create a mock WebSocket server for development:
 
 ```javascript
 // mock-ws-server.js
-const WebSocket = require('ws');
-const wss = new WebSocket.Server({ port: 3001, path: '/ws/device-events' });
+const WebSocket = require("ws");
+const wss = new WebSocket.Server({ port: 3001, path: "/ws/device-events" });
 
-wss.on('connection', (ws) => {
-  console.log('Mock client connected');
+wss.on("connection", (ws) => {
+  console.log("Mock client connected");
 
   // Simulate device events every 10 seconds
   const interval = setInterval(() => {
-    const eventType = Math.random() > 0.5 ? 'connected' : 'disconnected';
+    const eventType = Math.random() > 0.5 ? "connected" : "disconnected";
     const event = {
-      type: 'device_event',
+      type: "device_event",
       event: {
         type: eventType,
         device_uid: `usb:${Math.random().toString(16).slice(2, 6)}:test`,
-        platform_hint: Math.random() > 0.5 ? 'android' : 'ios',
-        mode: 'test_mode',
+        platform_hint: Math.random() > 0.5 ? "android" : "ios",
+        mode: "test_mode",
         confidence: 0.85 + Math.random() * 0.15,
         timestamp: new Date().toISOString(),
         display_name: `Test Device ${Math.floor(Math.random() * 100)}`,
@@ -429,12 +440,14 @@ wss.on('connection', (ws) => {
     ws.send(JSON.stringify(event));
   }, 10000);
 
-  ws.on('close', () => {
+  ws.on("close", () => {
     clearInterval(interval);
   });
 });
 
-console.log('Mock WebSocket server running on ws://localhost:3001/ws/device-events');
+console.log(
+  "Mock WebSocket server running on ws://localhost:3001/ws/device-events",
+);
 ```
 
 Run with: `node mock-ws-server.js`

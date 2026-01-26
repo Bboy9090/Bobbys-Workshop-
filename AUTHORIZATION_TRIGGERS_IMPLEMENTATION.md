@@ -1,9 +1,11 @@
 # Authorization Triggers API - Complete Implementation
 
 ## Overview
+
 This document provides complete implementation details for all 27 authorization trigger endpoints. **All endpoints execute real device commands** with no simulated responses.
 
 ## Base URL
+
 ```
 http://localhost:3001/api/authorization
 ```
@@ -13,11 +15,13 @@ http://localhost:3001/api/authorization
 ## 🔐 Android/ADB Authorization Triggers (11 Endpoints)
 
 ### 1. Trigger ADB USB Debugging Authorization
+
 **Endpoint:** `POST /api/authorization/adb/trigger-usb-debugging`
 
 **Purpose:** Force the "Allow USB debugging?" dialog on Android device
 
 **Request:**
+
 ```json
 {
   "serial": "ABC123XYZ"
@@ -25,11 +29,13 @@ http://localhost:3001/api/authorization
 ```
 
 **Real Command Executed:**
+
 ```bash
 adb -s ABC123XYZ shell getprop ro.build.version.release
 ```
 
 **Success Response:**
+
 ```json
 {
   "success": true,
@@ -46,6 +52,7 @@ adb -s ABC123XYZ shell getprop ro.build.version.release
 ```
 
 **Unauthorized Response:**
+
 ```json
 {
   "success": false,
@@ -61,11 +68,13 @@ adb -s ABC123XYZ shell getprop ro.build.version.release
 ---
 
 ### 2. Trigger File Transfer Authorization
+
 **Endpoint:** `POST /api/authorization/adb/trigger-file-transfer`
 
 **Purpose:** Trigger file transfer permission dialog
 
 **Request:**
+
 ```json
 {
   "serial": "ABC123XYZ"
@@ -73,6 +82,7 @@ adb -s ABC123XYZ shell getprop ro.build.version.release
 ```
 
 **Real Command Executed:**
+
 ```bash
 echo "Pandora Codex authorization test" > /tmp/auth_test_ABC123XYZ_1234567890.txt
 adb -s ABC123XYZ push /tmp/auth_test_ABC123XYZ_1234567890.txt /sdcard/Download/pandora_auth_test.txt
@@ -85,11 +95,13 @@ adb -s ABC123XYZ shell rm /sdcard/Download/pandora_auth_test.txt
 ---
 
 ### 3. Trigger Backup Authorization
+
 **Endpoint:** `POST /api/authorization/adb/trigger-backup`
 
 **Purpose:** Trigger backup authorization and encryption dialog
 
 **Request:**
+
 ```json
 {
   "serial": "ABC123XYZ"
@@ -97,11 +109,13 @@ adb -s ABC123XYZ shell rm /sdcard/Download/pandora_auth_test.txt
 ```
 
 **Real Command Executed:**
+
 ```bash
 timeout 5 adb -s ABC123XYZ backup -noapk -noshared com.android.settings
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -117,9 +131,11 @@ timeout 5 adb -s ABC123XYZ backup -noapk -noshared com.android.settings
 ---
 
 ### 4. Trigger Screen Capture Permission
+
 **Endpoint:** `POST /api/authorization/adb/trigger-screen-capture`
 
 **Request:**
+
 ```json
 {
   "serial": "ABC123XYZ"
@@ -127,6 +143,7 @@ timeout 5 adb -s ABC123XYZ backup -noapk -noshared com.android.settings
 ```
 
 **Real Command Executed:**
+
 ```bash
 adb -s ABC123XYZ shell screencap -p /sdcard/pandora_screen_test.png
 adb -s ABC123XYZ shell rm /sdcard/pandora_screen_test.png
@@ -135,9 +152,11 @@ adb -s ABC123XYZ shell rm /sdcard/pandora_screen_test.png
 ---
 
 ### 5. Trigger Install from Computer
+
 **Endpoint:** `POST /api/authorization/adb/trigger-install`
 
 **Request:**
+
 ```json
 {
   "serial": "ABC123XYZ",
@@ -146,6 +165,7 @@ adb -s ABC123XYZ shell rm /sdcard/pandora_screen_test.png
 ```
 
 **Response:**
+
 ```json
 {
   "success": false,
@@ -162,9 +182,11 @@ adb -s ABC123XYZ shell rm /sdcard/pandora_screen_test.png
 ---
 
 ### 6. Trigger WiFi ADB Debugging
+
 **Endpoint:** `POST /api/authorization/adb/trigger-wifi-adb`
 
 **Request:**
+
 ```json
 {
   "serial": "ABC123XYZ"
@@ -172,11 +194,13 @@ adb -s ABC123XYZ shell rm /sdcard/pandora_screen_test.png
 ```
 
 **Real Command Executed:**
+
 ```bash
 adb -s ABC123XYZ tcpip 5555
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -192,9 +216,11 @@ adb -s ABC123XYZ tcpip 5555
 ---
 
 ### 7. Verify Developer Options
+
 **Endpoint:** `POST /api/authorization/adb/verify-developer-options`
 
 **Request:**
+
 ```json
 {
   "serial": "ABC123XYZ"
@@ -202,11 +228,13 @@ adb -s ABC123XYZ tcpip 5555
 ```
 
 **Real Command Executed:**
+
 ```bash
 adb -s ABC123XYZ shell settings get global development_settings_enabled
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -222,9 +250,11 @@ adb -s ABC123XYZ shell settings get global development_settings_enabled
 ---
 
 ### 8. Check USB Debugging Status
+
 **Endpoint:** `POST /api/authorization/adb/check-debugging-status`
 
 **Request:**
+
 ```json
 {
   "serial": "ABC123XYZ"
@@ -232,11 +262,13 @@ adb -s ABC123XYZ shell settings get global development_settings_enabled
 ```
 
 **Real Command Executed:**
+
 ```bash
 adb devices -l
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -253,9 +285,11 @@ adb devices -l
 ---
 
 ### 9. Reboot to Recovery
+
 **Endpoint:** `POST /api/authorization/adb/reboot-recovery`
 
 **Request:**
+
 ```json
 {
   "serial": "ABC123XYZ"
@@ -263,11 +297,13 @@ adb devices -l
 ```
 
 **Real Command Executed:**
+
 ```bash
 adb -s ABC123XYZ reboot recovery
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -283,9 +319,11 @@ adb -s ABC123XYZ reboot recovery
 ---
 
 ### 10. Reboot to Bootloader
+
 **Endpoint:** `POST /api/authorization/adb/reboot-bootloader`
 
 **Request:**
+
 ```json
 {
   "serial": "ABC123XYZ"
@@ -293,6 +331,7 @@ adb -s ABC123XYZ reboot recovery
 ```
 
 **Real Command Executed:**
+
 ```bash
 adb -s ABC123XYZ reboot bootloader
 ```
@@ -300,9 +339,11 @@ adb -s ABC123XYZ reboot bootloader
 ---
 
 ### 11. Reboot to EDL
+
 **Endpoint:** `POST /api/authorization/adb/reboot-edl`
 
 **Request:**
+
 ```json
 {
   "serial": "ABC123XYZ"
@@ -310,11 +351,13 @@ adb -s ABC123XYZ reboot bootloader
 ```
 
 **Real Command Executed:**
+
 ```bash
 adb -s ABC123XYZ reboot edl
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -333,9 +376,11 @@ adb -s ABC123XYZ reboot edl
 ## 🍎 iOS Device Authorization Triggers (6 Endpoints)
 
 ### 12. Trigger iOS Trust Computer Dialog
+
 **Endpoint:** `POST /api/authorization/ios/trigger-trust-computer`
 
 **Request:**
+
 ```json
 {
   "udid": "00008030-001234567890ABCD"
@@ -343,11 +388,13 @@ adb -s ABC123XYZ reboot edl
 ```
 
 **Real Command Executed:**
+
 ```bash
 ideviceinfo -u 00008030-001234567890ABCD
 ```
 
 **Not Trusted Response:**
+
 ```json
 {
   "success": false,
@@ -364,9 +411,11 @@ ideviceinfo -u 00008030-001234567890ABCD
 ---
 
 ### 13. Trigger iOS Pairing Request
+
 **Endpoint:** `POST /api/authorization/ios/trigger-pairing`
 
 **Request:**
+
 ```json
 {
   "udid": "00008030-001234567890ABCD"
@@ -374,11 +423,13 @@ ideviceinfo -u 00008030-001234567890ABCD
 ```
 
 **Real Command Executed:**
+
 ```bash
 idevicepair -u 00008030-001234567890ABCD pair
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -394,9 +445,11 @@ idevicepair -u 00008030-001234567890ABCD pair
 ---
 
 ### 14. Trigger iOS Backup Encryption Authorization
+
 **Endpoint:** `POST /api/authorization/ios/trigger-backup-encryption`
 
 **Request:**
+
 ```json
 {
   "udid": "00008030-001234567890ABCD"
@@ -404,6 +457,7 @@ idevicepair -u 00008030-001234567890ABCD pair
 ```
 
 **Real Command Executed:**
+
 ```bash
 timeout 10 idevicebackup2 -u 00008030-001234567890ABCD info
 ```
@@ -411,9 +465,11 @@ timeout 10 idevicebackup2 -u 00008030-001234567890ABCD info
 ---
 
 ### 15. Trigger DFU/Recovery Mode Entry
+
 **Endpoint:** `POST /api/authorization/ios/trigger-dfu`
 
 **Request:**
+
 ```json
 {
   "udid": "00008030-001234567890ABCD"
@@ -421,11 +477,13 @@ timeout 10 idevicebackup2 -u 00008030-001234567890ABCD info
 ```
 
 **Real Command Executed:**
+
 ```bash
 ideviceenterrecovery 00008030-001234567890ABCD
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -442,9 +500,11 @@ ideviceenterrecovery 00008030-001234567890ABCD
 ---
 
 ### 16. Trigger iOS App Installation Trust
+
 **Endpoint:** `POST /api/authorization/ios/trigger-app-install`
 
 **Request:**
+
 ```json
 {
   "udid": "00008030-001234567890ABCD"
@@ -452,6 +512,7 @@ ideviceenterrecovery 00008030-001234567890ABCD
 ```
 
 **Response:**
+
 ```json
 {
   "success": false,
@@ -468,9 +529,11 @@ ideviceenterrecovery 00008030-001234567890ABCD
 ---
 
 ### 17. Trigger iOS Developer Trust
+
 **Endpoint:** `POST /api/authorization/ios/trigger-developer-trust`
 
 **Request:**
+
 ```json
 {
   "udid": "00008030-001234567890ABCD"
@@ -478,6 +541,7 @@ ideviceenterrecovery 00008030-001234567890ABCD
 ```
 
 **Response:**
+
 ```json
 {
   "success": false,
@@ -502,9 +566,11 @@ ideviceenterrecovery 00008030-001234567890ABCD
 ## ⚡ Fastboot Authorization Triggers (2 Endpoints)
 
 ### 18. Verify Fastboot Unlock Status
+
 **Endpoint:** `POST /api/authorization/fastboot/verify-unlock`
 
 **Request:**
+
 ```json
 {
   "serial": "FASTBOOT123"
@@ -512,11 +578,13 @@ ideviceenterrecovery 00008030-001234567890ABCD
 ```
 
 **Real Command Executed:**
+
 ```bash
 fastboot -s FASTBOOT123 getvar unlocked 2>&1
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -532,9 +600,11 @@ fastboot -s FASTBOOT123 getvar unlocked 2>&1
 ---
 
 ### 19. Trigger Fastboot OEM Unlock (DESTRUCTIVE)
+
 **Endpoint:** `POST /api/authorization/fastboot/trigger-oem-unlock`
 
 **Request:**
+
 ```json
 {
   "serial": "FASTBOOT123"
@@ -542,6 +612,7 @@ fastboot -s FASTBOOT123 getvar unlocked 2>&1
 ```
 
 **Response:**
+
 ```json
 {
   "success": false,
@@ -562,9 +633,11 @@ fastboot -s FASTBOOT123 getvar unlocked 2>&1
 ## 📱 Samsung Odin/Download Mode Triggers (1 Endpoint)
 
 ### 20. Verify Samsung Download Mode
+
 **Endpoint:** `POST /api/authorization/samsung/trigger-download-mode`
 
 **Request:**
+
 ```json
 {
   "serial": "SAMSUNG123"
@@ -572,12 +645,14 @@ fastboot -s FASTBOOT123 getvar unlocked 2>&1
 ```
 
 **Real Commands Executed:**
+
 ```bash
 heimdall detect
 heimdall print-pit --no-reboot --verbose
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -598,9 +673,11 @@ heimdall print-pit --no-reboot --verbose
 ## 🔥 Qualcomm EDL Mode Triggers (1 Endpoint)
 
 ### 21. Verify Qualcomm EDL Mode Authorization
+
 **Endpoint:** `POST /api/authorization/qualcomm/verify-edl`
 
 **Request:**
+
 ```json
 {
   "serial": "QUALCOMM123"
@@ -608,11 +685,13 @@ heimdall print-pit --no-reboot --verbose
 ```
 
 **Real Command Executed:**
+
 ```bash
 python3 /path/to/edl/edl.py --help 2>&1
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -630,9 +709,11 @@ python3 /path/to/edl/edl.py --help 2>&1
 ## 📲 MediaTek SP Flash Tool Triggers (1 Endpoint)
 
 ### 22. Verify MediaTek SP Flash Authorization
+
 **Endpoint:** `POST /api/authorization/mediatek/verify-flash`
 
 **Request:**
+
 ```json
 {
   "serial": "MTK123"
@@ -640,6 +721,7 @@ python3 /path/to/edl/edl.py --help 2>&1
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -658,12 +740,15 @@ python3 /path/to/edl/edl.py --help 2>&1
 ## 📋 Utility Endpoints
 
 ### 23. Get All Available Triggers
+
 **Endpoint:** `GET /api/authorization/triggers?platform={platform}`
 
 **Query Parameters:**
+
 - `platform` (optional): `android`, `ios`, `fastboot`, `samsung`, `qualcomm`, `mediatek`, or `all` (default)
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -686,9 +771,11 @@ python3 /path/to/edl/edl.py --help 2>&1
 ---
 
 ### 24. Trigger All Available Authorizations
+
 **Endpoint:** `POST /api/authorization/trigger-all`
 
 **Request:**
+
 ```json
 {
   "deviceId": "ABC123XYZ",
@@ -697,6 +784,7 @@ python3 /path/to/edl/edl.py --help 2>&1
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -724,6 +812,7 @@ python3 /path/to/edl/edl.py --help 2>&1
 ## Error Responses
 
 ### Tool Not Installed
+
 ```json
 {
   "success": false,
@@ -738,6 +827,7 @@ python3 /path/to/edl/edl.py --help 2>&1
 ```
 
 ### Command Timeout
+
 ```json
 {
   "success": false,
@@ -749,6 +839,7 @@ python3 /path/to/edl/edl.py --help 2>&1
 ```
 
 ### Device Not Found
+
 ```json
 {
   "success": false,
@@ -764,11 +855,13 @@ python3 /path/to/edl/edl.py --help 2>&1
 ## Audit Logging
 
 All authorization trigger executions are logged to:
+
 ```
 .pandora_private/logs/authorization-triggers-{YYYY-MM-DD}.log
 ```
 
 **Log Entry Format:**
+
 ```json
 {
   "timestamp": "2025-01-XX...",
@@ -816,12 +909,14 @@ All authorization trigger executions are logged to:
 ## Quick Start
 
 1. **Start the backend server:**
+
 ```bash
 cd server
 node index.js
 ```
 
 2. **Trigger ADB USB debugging:**
+
 ```bash
 curl -X POST http://localhost:3001/api/authorization/adb/trigger-usb-debugging \
   -H "Content-Type: application/json" \
@@ -829,11 +924,13 @@ curl -X POST http://localhost:3001/api/authorization/adb/trigger-usb-debugging \
 ```
 
 3. **Get all available triggers:**
+
 ```bash
 curl http://localhost:3001/api/authorization/triggers
 ```
 
 4. **Trigger all Android authorizations:**
+
 ```bash
 curl -X POST http://localhost:3001/api/authorization/trigger-all \
   -H "Content-Type: application/json" \

@@ -1,0 +1,381 @@
+/**
+ * BOBBY'S WORKSHOP DESIGN TOKENS
+ * 
+ * 90s / Early 2000s Bronx Apartment Tech Workshop
+ * East Coast Hip-Hop Discipline
+ * Wu-Tang / Big Pun Energy
+ * Bugs Bunny Intelligence
+ * Yankee Stadium Standards
+ * 
+ * No corporate SaaS drift.
+ * No fake minimalism.
+ * Everything physical, earned, alive.
+ */
+
+:root {
+  /* ========================================
+     WORKSHOP SURFACES
+     Like worn workbench tops and concrete floors
+     ======================================== */
+  
+  --workshop-midnight: #0a0a0c;
+  --workshop-concrete: #12141a;
+  --workshop-steel: #1a1d26;
+  --workshop-tin: #252833;
+  --workshop-aluminum: #2d323f;
+  
+  /* ========================================
+     SPRAY PAINT PALETTE
+     The tags on the walls, the markers on the desk
+     ======================================== */
+  
+  --spray-cyan: #2dd4ff;
+  --spray-magenta: #ff3dbb;
+  --spray-yellow: #ffd400;
+  --spray-lime: #35ff9a;
+  --spray-orange: #ff8a3d;
+  --spray-violet: #9d4edd;
+  
+  /* ========================================
+     INK LEVELS
+     From bold headers to fine print
+     ======================================== */
+  
+  --ink-primary: #ededed;
+  --ink-secondary: #b8b8b8;
+  --ink-muted: #6b7280;
+  --ink-faded: #4b5563;
+  --ink-ghost: #374151;
+  
+  /* ========================================
+     STATE COLORS
+     Clear signals, no ambiguity
+     ======================================== */
+  
+  --state-success: #22c55e;
+  --state-success-muted: #166534;
+  --state-warning: #eab308;
+  --state-warning-muted: #854d0e;
+  --state-danger: #ef4444;
+  --state-danger-muted: #991b1b;
+  --state-info: #3b82f6;
+  --state-info-muted: #1e40af;
+  
+  /* ========================================
+     PANEL & BORDERS
+     The edges of components, like metal casings
+     ======================================== */
+  
+  --panel-border: #2a2d38;
+  --panel-border-focus: #3d4251;
+  --panel-border-active: var(--spray-cyan);
+  
+  /* ========================================
+     GLOW EFFECTS
+     Subtle, earned, not gratuitous
+     ======================================== */
+  
+  --glow-cyan: 0 0 20px rgba(45, 212, 255, 0.3);
+  --glow-magenta: 0 0 20px rgba(255, 61, 187, 0.3);
+  --glow-danger: 0 0 20px rgba(239, 68, 68, 0.4);
+  --glow-success: 0 0 20px rgba(34, 197, 94, 0.3);
+  
+  /* ========================================
+     TYPOGRAPHY
+     Monospace for data. Sans for prose.
+     ======================================== */
+  
+  --font-display: 'Bebas Neue', 'Impact', sans-serif;
+  --font-body: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'Space Mono', 'Menlo', 'Monaco', monospace;
+  
+  /* ========================================
+     SPACING RHYTHM
+     Consistent, intentional gaps
+     ======================================== */
+  
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --space-3xl: 64px;
+  
+  /* ========================================
+     CORNER RADII
+     Slightly rounded, not bubbly
+     ======================================== */
+  
+  --radius-none: 0;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+  
+  /* ========================================
+     TRANSITIONS
+     Snappy, not sluggish
+     ======================================== */
+  
+  --transition-fast: 100ms ease-out;
+  --transition-normal: 200ms ease-out;
+  --transition-slow: 300ms ease-out;
+  
+  /* ========================================
+     Z-INDEX LAYERS
+     Clear hierarchy
+     ======================================== */
+  
+  --z-base: 0;
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-modal: 30;
+  --z-popover: 40;
+  --z-toast: 50;
+  --z-overlay: 100;
+}
+
+/* ========================================
+   TAILWIND UTILITY MAPPINGS
+   ======================================== */
+
+@theme {
+  /* Workshop surfaces */
+  --color-midnight-room: var(--workshop-midnight);
+  --color-basement-concrete: var(--workshop-concrete);
+  --color-workbench-steel: var(--workshop-steel);
+  --color-panel: var(--panel-border);
+  
+  /* Spray paint */
+  --color-spray-cyan: var(--spray-cyan);
+  --color-spray-magenta: var(--spray-magenta);
+  --color-spray-yellow: var(--spray-yellow);
+  --color-spray-lime: var(--spray-lime);
+  --color-spray-orange: var(--spray-orange);
+  --color-spray-violet: var(--spray-violet);
+  
+  /* Ink */
+  --color-ink-primary: var(--ink-primary);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faded: var(--ink-faded);
+  --color-ink-ghost: var(--ink-ghost);
+  
+  /* States */
+  --color-state-success: var(--state-success);
+  --color-state-warning: var(--state-warning);
+  --color-state-danger: var(--state-danger);
+  --color-state-info: var(--state-info);
+  
+  /* Typography */
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
+}
+
+/* ========================================
+   COMPONENT FOUNDATIONS
+   ======================================== */
+
+/* Cards - like metal equipment casings */
+.workshop-card {
+  background: var(--workshop-steel);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-lg);
+}
+
+.workshop-card:hover {
+  border-color: var(--panel-border-focus);
+}
+
+.workshop-card:focus-within {
+  border-color: var(--panel-border-active);
+  box-shadow: var(--glow-cyan);
+}
+
+/* Panels - recessed areas */
+.workshop-panel {
+  background: var(--workshop-concrete);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+}
+
+/* Buttons - tactile, industrial */
+.workshop-button {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-normal);
+}
+
+.workshop-button-primary {
+  background: var(--spray-cyan);
+  color: var(--workshop-midnight);
+}
+
+.workshop-button-primary:hover {
+  background: color-mix(in srgb, var(--spray-cyan) 85%, white);
+  box-shadow: var(--glow-cyan);
+}
+
+.workshop-button-danger {
+  background: var(--state-danger);
+  color: white;
+}
+
+.workshop-button-danger:hover {
+  background: color-mix(in srgb, var(--state-danger) 85%, white);
+  box-shadow: var(--glow-danger);
+}
+
+/* Input fields - like equipment readouts */
+.workshop-input {
+  background: var(--workshop-concrete);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  color: var(--ink-primary);
+  font-family: var(--font-mono);
+  transition: all var(--transition-normal);
+}
+
+.workshop-input:focus {
+  border-color: var(--spray-cyan);
+  box-shadow: var(--glow-cyan);
+  outline: none;
+}
+
+/* Labels - stenciled markings */
+.workshop-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+/* Status indicators - LED-like */
+.workshop-status {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+}
+
+.workshop-status-online {
+  background: var(--state-success);
+  box-shadow: 0 0 8px var(--state-success);
+}
+
+.workshop-status-offline {
+  background: var(--ink-ghost);
+}
+
+.workshop-status-warning {
+  background: var(--state-warning);
+  box-shadow: 0 0 8px var(--state-warning);
+}
+
+.workshop-status-danger {
+  background: var(--state-danger);
+  box-shadow: 0 0 8px var(--state-danger);
+  animation: pulse-danger 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-danger {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ========================================
+   SECRET ROOM AESTHETICS
+   Darker, more intense
+   ======================================== */
+
+.secret-room {
+  --surface: #08080a;
+  --border: #1a1a20;
+  --accent: var(--spray-magenta);
+}
+
+.secret-room-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  position: relative;
+}
+
+.secret-room-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 61, 187, 0.03) 0%,
+    transparent 50%
+  );
+  pointer-events: none;
+}
+
+/* ========================================
+   TERMINAL AESTHETIC
+   Like old CRT monitors
+   ======================================== */
+
+.terminal-output {
+  background: #000;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  padding: var(--space-md);
+  color: var(--spray-lime);
+}
+
+.terminal-output .prompt {
+  color: var(--spray-cyan);
+}
+
+.terminal-output .error {
+  color: var(--state-danger);
+}
+
+.terminal-output .success {
+  color: var(--state-success);
+}
+
+/* ========================================
+   GRAFFITI TAGS
+   Decorative, not distracting
+   ======================================== */
+
+.graffiti-tag {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  background: linear-gradient(
+    135deg,
+    var(--spray-cyan) 0%,
+    var(--spray-magenta) 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ========================================
+   NO ANIMATION BY DEFAULT
+   Respect the user, respect the system
+   ======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -46,10 +46,10 @@ export function useAndroidDevices(autoRefresh: boolean = false, refreshInterval:
     loading,
     error,
     refresh: fetchDevices,
-    adbAvailable: data?.sources.adb.available || false,
-    fastbootAvailable: data?.sources.fastboot.available || false,
-    adbCount: data?.sources.adb.count || 0,
-    fastbootCount: data?.sources.fastboot.count || 0,
+    adbAvailable: data?.sources?.adb?.available || false,
+    fastbootAvailable: data?.sources?.fastboot?.available || false,
+    adbCount: data?.sources?.adb?.count || 0,
+    fastbootCount: data?.sources?.fastboot?.count || 0,
   };
 }
 

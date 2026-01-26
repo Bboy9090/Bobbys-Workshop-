@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,18 +26,18 @@ export function PluginRegistryBrowser() {
   const [platformFilter, setPlatformFilter] = useState<string>('all');
   const [certifiedOnly, setCertifiedOnly] = useState(false);
 
-  useEffect(() => {
-    loadPlugins();
-  }, []);
-
-  const loadPlugins = async () => {
+  const loadPlugins = useCallback(async () => {
     try {
       const manifest = await fetchManifest();
       setPlugins(manifest.plugins);
-    } catch (error) {
+    } catch {
       toast.error('Failed to load plugins from registry');
     }
-  };
+  }, [fetchManifest, setPlugins]);
+
+  useEffect(() => {
+    loadPlugins();
+  }, [loadPlugins]);
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) {

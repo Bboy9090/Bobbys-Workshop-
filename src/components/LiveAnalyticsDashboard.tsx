@@ -1,133 +1,99 @@
-// Live Analytics Dashboard
-// Real-time monitoring and analytics powered by WebSockets
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Activity, TrendingUp, TrendingDown, Zap, Clock, 
-  AlertCircle, CheckCircle, Server, Wifi 
-} from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Progress } from '@/components/ui/progress';
+import {
+  Activity,
+  DeviceMobile,
+  TrendUp,
+  Clock,
+  Cpu,
+  HardDrive,
+  Zap,
+  WifiHigh,
+  CheckCircle,
+  XCircle,
+  Circle
+} from '@phosphor-icons/react';
+import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
-interface MetricData {
-  timestamp: number;
-  value: number;
-}
+const WS_URL = import.meta.env.VITE_ANALYTICS_WS_URL || 'ws://localhost:3001/ws/analytics';
 
-interface AnalyticsData {
-  activeDevices: number;
-  totalRequests: number;
-  successRate: number;
-  avgResponseTime: number;
-  errorCount: number;
-  throughput: number;
+interface DeviceMetrics {
+  deviceId: string;
+  deviceName: string;
+  platform: 'android' | 'ios' | 'windows' | 'iot' | 'unknown';
+  status: 'online' | 'offline' | 'busy';
   cpuUsage: number;
   memoryUsage: number;
+  storageUsage: number;
+  temperature: number;
+  batteryLevel?: number;
+  networkLatency: number;
+  lastUpdate: number;
+  workflows: {
+    running: number;
+    completed: number;
+    failed: number;
+  };
 }
 
-interface LiveEvent {
+interface WorkflowEvent {
   id: string;
-  timestamp: Date;
-  type: 'info' | 'success' | 'warning' | 'error';
-  message: string;
-  details?: any;
+  workflowName: string;
+  deviceId: string;
+  status: 'started' | 'running' | 'completed' | 'failed';
+  progress: number;
+  currentStep: string;
+  timestamp: number;
 }
 
 export function LiveAnalyticsDashboard() {
-  const [analytics, setAnalytics] = useState<AnalyticsData>({
-    activeDevices: 0,
-    totalRequests: 0,
-    successRate: 0,
-    avgResponseTime: 0,
-    errorCount: 0,
-    throughput: 0,
-    cpuUsage: 0,
-    memoryUsage: 0
-  });
-
-  const [events, setEvents] = useState<LiveEvent[]>([]);
-  const [metricHistory, setMetricHistory] = useState<{
-    requests: MetricData[];
-    responseTime: MetricData[];
-    throughput: MetricData[];
-  }>({
-    requests: [],
-    responseTime: [],
-    throughput: []
-  });
-
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'disconnected'>('connecting');
+  const [devices, setDevices] = useState<Map<string, DeviceMetrics>>(new Map());
+  const [workflowEvents, setWorkflowEvents] = useState<WorkflowEvent[]>([]);
+  const [historicalData, setHistoricalData] = useState<any[]>([]);
+  const [isConnected, setIsConnected] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const MAX_HISTORY_LENGTH = 60; // Keep 60 data points
 
+  // WebSocket connection for real-time updates
   useEffect(() => {
-    // Connect to WebSocket for live analytics
     const connectWebSocket = () => {
       try {
-        const ws = new WebSocket('ws://localhost:3001/ws/analytics');
+        const ws = new WebSocket(WS_URL);
         wsRef.current = ws;
 
         ws.onopen = () => {
-          console.log('WebSocket connected for analytics');
-          setConnectionStatus('connected');
-          
-          // Request initial analytics data
-          ws.send(JSON.stringify({ type: 'request_snapshot' }));
+          console.log('[LiveAnalytics] WebSocket connected');
+          setIsConnected(true);
         };
 
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-
-            if (data.type === 'analytics_update') {
-              setAnalytics(prev => ({
-                ...prev,
-                ...data.metrics
-              }));
-
-              // Update metric history
-              const timestamp = Date.now();
-              setMetricHistory(prev => {
-                const addDataPoint = (arr: MetricData[], value: number) => {
-                  const newArr = [...arr, { timestamp, value }];
-                  return newArr.slice(-MAX_HISTORY_LENGTH);
-                };
-
-                return {
-                  requests: addDataPoint(prev.requests, data.metrics.totalRequests || 0),
-                  responseTime: addDataPoint(prev.responseTime, data.metrics.avgResponseTime || 0),
-                  throughput: addDataPoint(prev.throughput, data.metrics.throughput || 0)
-                };
-              });
-            } else if (data.type === 'event') {
-              const newEvent: LiveEvent = {
-                id: `${Date.now()}-${Math.random()}`,
-                timestamp: new Date(data.timestamp || Date.now()),
-                type: data.level || 'info',
-                message: data.message,
-                details: data.details
-              };
-
-              setEvents(prev => [newEvent, ...prev].slice(0, 100));
-            }
+            handleWebSocketMessage(data);
           } catch (error) {
-            console.error('Error parsing WebSocket message:', error);
+            console.error('[LiveAnalytics] Error parsing message:', error);
           }
         };
 
         ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
-          setConnectionStatus('disconnected');
+          console.error('[LiveAnalytics] WebSocket error:', error);
+          setIsConnected(false);
         };
 
         ws.onclose = () => {
-          console.log('WebSocket closed, reconnecting...');
-          setConnectionStatus('disconnected');
+          console.log('[LiveAnalytics] WebSocket disconnected');
+          setIsConnected(false);
           
           // Reconnect after 3 seconds
           setTimeout(connectWebSocket, 3000);
         };
       } catch (error) {
-        console.error('Error connecting WebSocket:', error);
-        setConnectionStatus('disconnected');
-        setTimeout(connectWebSocket, 3000);
+        console.error('[LiveAnalytics] Connection error:', error);
       }
     };
 
@@ -140,270 +106,440 @@ export function LiveAnalyticsDashboard() {
     };
   }, []);
 
-  const renderMetricCard = (
-    title: string,
-    value: string | number,
-    icon: React.ReactNode,
-    trend?: 'up' | 'down' | 'neutral',
-    trendValue?: string
-  ) => {
-    const getTrendColor = () => {
-      if (!trend) return '';
-      return trend === 'up' ? 'text-green-500' : trend === 'down' ? 'text-red-500' : 'text-neutral-500';
-    };
+  const handleWebSocketMessage = useCallback((data: any) => {
+    switch (data.type) {
+      case 'device_metrics':
+        setDevices(prev => {
+          const updated = new Map(prev);
+          updated.set(data.deviceId, {
+            ...data.metrics,
+            deviceId: data.deviceId,
+            lastUpdate: Date.now()
+          });
+          return updated;
+        });
+        
+        // Update historical data
+        setHistoricalData(prev => {
+          const newData = [...prev, {
+            timestamp: new Date().toLocaleTimeString(),
+            cpu: data.metrics.cpuUsage,
+            memory: data.metrics.memoryUsage,
+            storage: data.metrics.storageUsage,
+            temperature: data.metrics.temperature
+          }];
+          return newData.slice(-30); // Keep last 30 data points
+        });
+        break;
 
-    const getTrendIcon = () => {
-      if (trend === 'up') return <TrendingUp className="w-4 h-4" />;
-      if (trend === 'down') return <TrendingDown className="w-4 h-4" />;
-      return null;
-    };
+      case 'workflow_event':
+        setWorkflowEvents(prev => {
+          const updated = [...prev];
+          const existingIndex = updated.findIndex(e => e.id === data.event.id);
+          
+          if (existingIndex >= 0) {
+            updated[existingIndex] = { ...data.event, timestamp: Date.now() };
+          } else {
+            updated.unshift({ ...data.event, timestamp: Date.now() });
+          }
+          
+          return updated.slice(0, 50); // Keep last 50 events
+        });
+        break;
 
-    return (
-      <div className="bg-neutral-2 border border-neutral-6 rounded-lg p-4 hover:border-accent-7 transition-colors">
-        <div className="flex items-start justify-between mb-2">
-          <div className="p-2 bg-accent-3 rounded-lg">
-            {icon}
-          </div>
-          {trend && (
-            <div className={`flex items-center gap-1 ${getTrendColor()}`}>
-              {getTrendIcon()}
-              {trendValue && <span className="text-xs font-medium">{trendValue}</span>}
-            </div>
-          )}
-        </div>
-        <h3 className="text-xs font-medium text-fg-secondary mt-3">{title}</h3>
-        <p className="text-2xl font-bold text-fg mt-1">{value}</p>
-      </div>
-    );
-  };
+      case 'device_disconnected':
+        setDevices(prev => {
+          const updated = new Map(prev);
+          const device = updated.get(data.deviceId);
+          if (device) {
+            updated.set(data.deviceId, { ...device, status: 'offline' });
+          }
+          return updated;
+        });
+        break;
+    }
+  }, []);
 
-  const renderMiniChart = (data: MetricData[], color: string) => {
-    if (data.length < 2) return null;
-
-    const maxValue = Math.max(...data.map(d => d.value), 1);
-    const points = data.map((d, i) => {
-      const x = (i / (data.length - 1)) * 100;
-      const y = 100 - (d.value / maxValue) * 80;
-      return `${x},${y}`;
-    }).join(' ');
-
-    return (
-      <svg className="w-full h-16" viewBox="0 0 100 100" preserveAspectRatio="none">
-        <polyline
-          points={points}
-          fill="none"
-          stroke={color}
-          strokeWidth="2"
-          vectorEffect="non-scaling-stroke"
-        />
-      </svg>
-    );
-  };
-
-  const getEventIcon = (type: LiveEvent['type']) => {
-    switch (type) {
-      case 'success':
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'error':
-        return <AlertCircle className="w-4 h-4 text-red-500" />;
-      case 'warning':
-        return <AlertCircle className="w-4 h-4 text-yellow-500" />;
-      default:
-        return <Activity className="w-4 h-4 text-blue-500" />;
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'online': return 'text-green-500';
+      case 'offline': return 'text-gray-500';
+      case 'busy': return 'text-yellow-500';
+      default: return 'text-gray-400';
     }
   };
 
-  const getEventBgColor = (type: LiveEvent['type']) => {
-    switch (type) {
-      case 'success':
-        return 'bg-green-500/10 border-green-500/20';
-      case 'error':
-        return 'bg-red-500/10 border-red-500/20';
-      case 'warning':
-        return 'bg-yellow-500/10 border-yellow-500/20';
-      default:
-        return 'bg-blue-500/10 border-blue-500/20';
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'online': return <CheckCircle className="w-4 h-4" />;
+      case 'offline': return <XCircle className="w-4 h-4" />;
+      case 'busy': return <Circle className="w-4 h-4" />;
+      default: return <Circle className="w-4 h-4" />;
     }
   };
+
+  const getPlatformIcon = (platform: string) => {
+    switch (platform) {
+      case 'android':
+      case 'ios':
+        return <DeviceMobile className="w-5 h-5" />;
+      case 'windows':
+      case 'iot':
+        return <Cpu className="w-5 h-5" />;
+      default:
+        return <Activity className="w-5 h-5" />;
+    }
+  };
+
+  const devicesArray = Array.from(devices.values());
+  const selectedDeviceData = selectedDevice ? devices.get(selectedDevice) : null;
 
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-fg">Live Analytics</h2>
-          <p className="text-sm text-fg-secondary mt-1">
-            Real-time system monitoring and performance metrics
-          </p>
+          <h1 className="text-3xl font-bold">Live Analytics</h1>
+          <p className="text-muted-foreground">Real-time device and workflow monitoring</p>
         </div>
-
         <div className="flex items-center gap-2">
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
-            connectionStatus === 'connected'
-              ? 'bg-green-500/20 text-green-500'
-              : connectionStatus === 'connecting'
-              ? 'bg-yellow-500/20 text-yellow-500'
-              : 'bg-red-500/20 text-red-500'
-          }`}>
-            <div className={`w-2 h-2 rounded-full animate-pulse ${
-              connectionStatus === 'connected'
-                ? 'bg-green-500'
-                : connectionStatus === 'connecting'
-                ? 'bg-yellow-500'
-                : 'bg-red-500'
-            }`} />
-            {connectionStatus === 'connected' ? 'Live' : connectionStatus === 'connecting' ? 'Connecting' : 'Disconnected'}
-          </div>
+          <Badge variant={isConnected ? 'default' : 'destructive'}>
+            {isConnected ? 'Connected' : 'Disconnected'}
+          </Badge>
+          <Badge variant="outline">
+            {devicesArray.length} Device{devicesArray.length !== 1 ? 's' : ''}
+          </Badge>
         </div>
       </div>
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {renderMetricCard(
-          'Active Devices',
-          analytics.activeDevices,
-          <Server className="w-5 h-5 text-accent-11" />
-        )}
-        
-        {renderMetricCard(
-          'Total Requests',
-          analytics.totalRequests.toLocaleString(),
-          <Activity className="w-5 h-5 text-accent-11" />,
-          'up',
-          '+12%'
-        )}
-        
-        {renderMetricCard(
-          'Success Rate',
-          `${analytics.successRate.toFixed(1)}%`,
-          <CheckCircle className="w-5 h-5 text-accent-11" />,
-          analytics.successRate > 95 ? 'up' : 'down',
-          analytics.successRate > 95 ? 'Excellent' : 'Warning'
-        )}
-        
-        {renderMetricCard(
-          'Avg Response Time',
-          `${analytics.avgResponseTime.toFixed(0)}ms`,
-          <Clock className="w-5 h-5 text-accent-11" />,
-          analytics.avgResponseTime < 100 ? 'up' : 'down',
-          analytics.avgResponseTime < 100 ? 'Fast' : 'Slow'
-        )}
-      </div>
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="devices">Devices</TabsTrigger>
+          <TabsTrigger value="workflows">Workflows</TabsTrigger>
+          <TabsTrigger value="metrics">Metrics</TabsTrigger>
+        </TabsList>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="bg-neutral-2 border border-neutral-6 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-fg mb-2">Request Volume</h3>
-          <div className="text-xs text-fg-secondary mb-3">Last 60 seconds</div>
-          {renderMiniChart(metricHistory.requests, '#2FD3FF')}
-        </div>
+        {/* Overview Tab */}
+        <TabsContent value="overview" className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Devices</CardTitle>
+                <DeviceMobile className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{devicesArray.length}</div>
+                <p className="text-xs text-muted-foreground">
+                  {devicesArray.filter(d => d.status === 'online').length} online
+                </p>
+              </CardContent>
+            </Card>
 
-        <div className="bg-neutral-2 border border-neutral-6 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-fg mb-2">Response Time</h3>
-          <div className="text-xs text-fg-secondary mb-3">Average latency</div>
-          {renderMiniChart(metricHistory.responseTime, '#2ECC71')}
-        </div>
-
-        <div className="bg-neutral-2 border border-neutral-6 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-fg mb-2">Throughput</h3>
-          <div className="text-xs text-fg-secondary mb-3">Requests per second</div>
-          {renderMiniChart(metricHistory.throughput, '#F1C40F')}
-        </div>
-      </div>
-
-      {/* System Metrics */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-neutral-2 border border-neutral-6 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-fg mb-4">System Resources</h3>
-          
-          <div className="space-y-4">
-            <div>
-              <div className="flex items-center justify-between text-sm mb-2">
-                <span className="text-fg-secondary">CPU Usage</span>
-                <span className="text-fg font-medium">{analytics.cpuUsage.toFixed(1)}%</span>
-              </div>
-              <div className="w-full h-2 bg-neutral-5 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-accent-9 transition-all duration-300"
-                  style={{ width: `${analytics.cpuUsage}%` }}
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between text-sm mb-2">
-                <span className="text-fg-secondary">Memory Usage</span>
-                <span className="text-fg font-medium">{analytics.memoryUsage.toFixed(1)}%</span>
-              </div>
-              <div className="w-full h-2 bg-neutral-5 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-green-500 transition-all duration-300"
-                  style={{ width: `${analytics.memoryUsage}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-neutral-2 border border-neutral-6 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-fg mb-4">API Statistics</h3>
-          
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-fg-secondary">Throughput</p>
-              <p className="text-xl font-bold text-fg mt-1">
-                {analytics.throughput.toFixed(1)} <span className="text-sm text-fg-secondary">req/s</span>
-              </p>
-            </div>
-            
-            <div>
-              <p className="text-xs text-fg-secondary">Error Count</p>
-              <p className="text-xl font-bold text-fg mt-1">
-                {analytics.errorCount}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Live Event Feed */}
-      <div className="bg-neutral-2 border border-neutral-6 rounded-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-fg">Live Event Feed</h3>
-          <span className="text-xs text-fg-secondary">{events.length} events</span>
-        </div>
-
-        <div className="space-y-2 max-h-96 overflow-y-auto">
-          {events.length === 0 ? (
-            <div className="text-center py-8 text-fg-secondary">
-              <Activity className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">No events yet</p>
-            </div>
-          ) : (
-            events.map(event => (
-              <div
-                key={event.id}
-                className={`flex items-start gap-3 p-3 border rounded-lg ${getEventBgColor(event.type)}`}
-              >
-                <div className="mt-0.5">{getEventIcon(event.type)}</div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-fg">{event.message}</p>
-                  {event.details && (
-                    <p className="text-xs text-fg-secondary mt-1 truncate">
-                      {JSON.stringify(event.details)}
-                    </p>
-                  )}
-                  <p className="text-xs text-fg-secondary mt-1">
-                    {event.timestamp.toLocaleTimeString()}
-                  </p>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Active Workflows</CardTitle>
+                <Activity className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {workflowEvents.filter(w => w.status === 'running').length}
                 </div>
-              </div>
-            ))
+                <p className="text-xs text-muted-foreground">
+                  {workflowEvents.filter(w => w.status === 'completed').length} completed
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Avg CPU Usage</CardTitle>
+                <Cpu className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {devicesArray.length > 0
+                    ? Math.round(devicesArray.reduce((acc, d) => acc + d.cpuUsage, 0) / devicesArray.length)
+                    : 0}%
+                </div>
+                <Progress 
+                  value={devicesArray.length > 0
+                    ? devicesArray.reduce((acc, d) => acc + d.cpuUsage, 0) / devicesArray.length
+                    : 0}
+                  className="mt-2"
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Avg Memory</CardTitle>
+                <HardDrive className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {devicesArray.length > 0
+                    ? Math.round(devicesArray.reduce((acc, d) => acc + d.memoryUsage, 0) / devicesArray.length)
+                    : 0}%
+                </div>
+                <Progress 
+                  value={devicesArray.length > 0
+                    ? devicesArray.reduce((acc, d) => acc + d.memoryUsage, 0) / devicesArray.length
+                    : 0}
+                  className="mt-2"
+                />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Real-time charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>CPU Usage Trend</CardTitle>
+                <CardDescription>Last 30 measurements</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={historicalData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="timestamp" />
+                    <YAxis />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="cpu" stroke="#2FD3FF" strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Memory & Storage</CardTitle>
+                <CardDescription>Resource utilization</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={200}>
+                  <AreaChart data={historicalData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="timestamp" />
+                    <YAxis />
+                    <Tooltip />
+                    <Area type="monotone" dataKey="memory" stackId="1" stroke="#2ECC71" fill="#2ECC71" fillOpacity={0.6} />
+                    <Area type="monotone" dataKey="storage" stackId="1" stroke="#F1C40F" fill="#F1C40F" fillOpacity={0.6} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Devices Tab */}
+        <TabsContent value="devices" className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {devicesArray.map(device => (
+              <Card 
+                key={device.deviceId} 
+                className={`cursor-pointer transition-all hover:shadow-lg ${
+                  selectedDevice === device.deviceId ? 'ring-2 ring-primary' : ''
+                }`}
+                onClick={() => setSelectedDevice(device.deviceId)}
+              >
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {getPlatformIcon(device.platform)}
+                      <CardTitle className="text-lg">{device.deviceName}</CardTitle>
+                    </div>
+                    <div className={`flex items-center gap-1 ${getStatusColor(device.status)}`}>
+                      {getStatusIcon(device.status)}
+                      <span className="text-xs font-medium capitalize">{device.status}</span>
+                    </div>
+                  </div>
+                  <CardDescription className="font-mono text-xs">{device.deviceId}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">CPU</span>
+                      <span className="font-medium">{device.cpuUsage}%</span>
+                    </div>
+                    <Progress value={device.cpuUsage} />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Memory</span>
+                      <span className="font-medium">{device.memoryUsage}%</span>
+                    </div>
+                    <Progress value={device.memoryUsage} />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-2 text-xs">
+                    <div className="flex items-center gap-1">
+                      <Zap className="w-3 h-3" />
+                      <span>{device.temperature}°C</span>
+                    </div>
+                    {device.batteryLevel !== undefined && (
+                      <div className="flex items-center gap-1">
+                        <Activity className="w-3 h-3" />
+                        <span>{device.batteryLevel}%</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1">
+                      <WifiHigh className="w-3 h-3" />
+                      <span>{device.networkLatency}ms</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      <span>{new Date(device.lastUpdate).toLocaleTimeString()}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t">
+                    <Badge variant="outline" className="text-xs">
+                      {device.workflows.running} Running
+                    </Badge>
+                    <Badge variant="outline" className="text-xs">
+                      {device.workflows.completed} Done
+                    </Badge>
+                    {device.workflows.failed > 0 && (
+                      <Badge variant="destructive" className="text-xs">
+                        {device.workflows.failed} Failed
+                      </Badge>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+
+            {devicesArray.length === 0 && (
+              <Card className="col-span-full">
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <DeviceMobile className="w-16 h-16 text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">No devices connected</p>
+                  <p className="text-sm text-muted-foreground mt-2">Connect a device to see live analytics</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Workflows Tab */}
+        <TabsContent value="workflows" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Workflow Events</CardTitle>
+              <CardDescription>Live workflow execution updates</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-[500px]">
+                <div className="space-y-3">
+                  {workflowEvents.map(event => (
+                    <Card key={event.id} className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <Activity className="w-4 h-4" />
+                          <span className="font-medium">{event.workflowName}</span>
+                        </div>
+                        <Badge variant={
+                          event.status === 'completed' ? 'default' :
+                          event.status === 'failed' ? 'destructive' :
+                          'secondary'
+                        }>
+                          {event.status}
+                        </Badge>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-sm text-muted-foreground">
+                          Device: {event.deviceId}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Step: {event.currentStep}
+                        </p>
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span>Progress</span>
+                            <span>{event.progress}%</span>
+                          </div>
+                          <Progress value={event.progress} />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(event.timestamp).toLocaleString()}
+                        </p>
+                      </div>
+                    </Card>
+                  ))}
+
+                  {workflowEvents.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-12">
+                      <Activity className="w-16 h-16 text-muted-foreground mb-4" />
+                      <p className="text-muted-foreground">No workflow events</p>
+                      <p className="text-sm text-muted-foreground mt-2">Execute a workflow to see live updates</p>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Metrics Tab */}
+        <TabsContent value="metrics" className="space-y-4">
+          {selectedDeviceData ? (
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Device Details: {selectedDeviceData.deviceName}</CardTitle>
+                  <CardDescription>Real-time metrics and performance data</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">CPU Usage</p>
+                      <p className="text-2xl font-bold">{selectedDeviceData.cpuUsage}%</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">Memory</p>
+                      <p className="text-2xl font-bold">{selectedDeviceData.memoryUsage}%</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">Storage</p>
+                      <p className="text-2xl font-bold">{selectedDeviceData.storageUsage}%</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">Temperature</p>
+                      <p className="text-2xl font-bold">{selectedDeviceData.temperature}°C</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4">Historical Performance</h3>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={historicalData.slice(-10)}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="timestamp" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="cpu" fill="#2FD3FF" name="CPU %" />
+                        <Bar dataKey="memory" fill="#2ECC71" name="Memory %" />
+                        <Bar dataKey="temperature" fill="#E74C3C" name="Temp °C" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <TrendUp className="w-16 h-16 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">Select a device to view detailed metrics</p>
+              </CardContent>
+            </Card>
           )}
-        </div>
-      </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
-
-export default LiveAnalyticsDashboard;

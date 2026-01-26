@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getWSUrl } from '@/lib/apiConfig';
 
 export type CorrelationBadge = 'CORRELATED' | 'SYSTEM-CONFIRMED' | 'LIKELY' | 'UNCONFIRMED' | 'CORRELATED (WEAK)';
 
@@ -39,7 +40,7 @@ interface CorrelationWebSocketMessage {
   payload?: any;
 }
 
-export function useCorrelationTracking(wsUrl: string = 'ws://localhost:3001/correlation') {
+export function useCorrelationTracking(wsUrl: string = getWSUrl('/ws/correlation')) {
   const [devices, setDevices] = useState<Map<string, DeviceCorrelation>>(new Map());
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);

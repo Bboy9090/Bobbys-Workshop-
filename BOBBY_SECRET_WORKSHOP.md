@@ -93,6 +93,7 @@ npm run dev
 ```
 
 The Trapdoor API will be available at:
+
 - `http://localhost:3001/api/trapdoor/*`
 
 ## 🔐 Trapdoor API Endpoints
@@ -199,16 +200,19 @@ Workflows are defined in JSON format with the following structure:
 ### Available Workflows
 
 #### Android Workflows
+
 - **adb-diagnostics** - Comprehensive device diagnostics via ADB
 - **fastboot-unlock** - Bootloader unlock via Fastboot
 - **partition-mapping** - Map device partition layout
 
 #### iOS Workflows
+
 - **restore** - Full iOS device restore
 - **dfu-detection** - Detect and verify DFU mode
 - **diagnostics** - Comprehensive iOS diagnostics
 
 #### Bypass Workflows
+
 - **frp-bypass** - Factory Reset Protection bypass (requires authorization)
 
 ### Creating Custom Workflows
@@ -239,6 +243,7 @@ Shadow logs can only be decrypted with the master encryption key. Use the Shadow
 ### Log Entry Format
 
 Shadow logs contain:
+
 ```json
 {
   "timestamp": "2024-12-16T00:00:00.000Z",
@@ -257,43 +262,49 @@ Shadow logs contain:
 ### TrapdoorControlPanel
 
 Execute sensitive operations with proper authorization:
+
 - FRP Bypass
 - Bootloader Unlock
 - Custom Workflows
 
 **Usage:**
-```tsx
-import { TrapdoorControlPanel } from '@/components/TrapdoorControlPanel';
 
-<TrapdoorControlPanel />
+```tsx
+import { TrapdoorControlPanel } from "@/components/TrapdoorControlPanel";
+
+<TrapdoorControlPanel />;
 ```
 
 ### ShadowLogsViewer
 
 View encrypted shadow logs (admin only):
+
 - Browse logs by date
 - View operation details
 - Audit trail inspection
 
 **Usage:**
-```tsx
-import { ShadowLogsViewer } from '@/components/ShadowLogsViewer';
 
-<ShadowLogsViewer />
+```tsx
+import { ShadowLogsViewer } from "@/components/ShadowLogsViewer";
+
+<ShadowLogsViewer />;
 ```
 
 ### WorkflowExecutionConsole
 
 Browse and execute available workflows:
+
 - View all workflows
 - Execute workflows
 - Monitor execution results
 
 **Usage:**
-```tsx
-import { WorkflowExecutionConsole } from '@/components/WorkflowExecutionConsole';
 
-<WorkflowExecutionConsole />
+```tsx
+import { WorkflowExecutionConsole } from "@/components/WorkflowExecutionConsole";
+
+<WorkflowExecutionConsole />;
 ```
 
 ## ⚖️ Legal & Ethical Guidelines
@@ -301,11 +312,13 @@ import { WorkflowExecutionConsole } from '@/components/WorkflowExecutionConsole'
 ### ⚠️ WARNING: AUTHORIZED USE ONLY
 
 This software is intended **ONLY** for:
+
 - Devices you personally own
 - Devices with explicit written owner authorization
 - Professional repair contexts with proper documentation
 
 ### What is ILLEGAL:
+
 ❌ Bypassing FRP on devices you don't own  
 ❌ Removing MDM from enterprise devices without authorization  
 ❌ Enabling device theft or unauthorized access  
@@ -313,10 +326,11 @@ This software is intended **ONLY** for:
 ❌ Violating Computer Misuse Act (UK) or similar laws
 
 ### Legal Compliance:
+
 ✅ All operations are logged for audit purposes  
 ✅ User authorization is required for destructive operations  
 ✅ Shadow logs provide compliance evidence  
-✅ Anonymous mode available for legitimate privacy needs  
+✅ Anonymous mode available for legitimate privacy needs
 
 **The developers assume NO LIABILITY for misuse of this software.**
 
@@ -358,7 +372,7 @@ curl -X POST http://localhost:3001/api/trapdoor/workflow/execute \
 Shadow logs are automatically rotated after 90 days. To manually trigger rotation:
 
 ```javascript
-import ShadowLogger from './core/lib/shadow-logger.js';
+import ShadowLogger from "./core/lib/shadow-logger.js";
 const logger = new ShadowLogger();
 await logger.rotateLogs({ shadow: 90, public: 30 });
 ```
@@ -411,12 +425,14 @@ tar -czf shadow-logs-backup-$(date +%Y%m%d).tar.gz logs/shadow/
 ## 🤝 Contributing
 
 We welcome contributions that:
+
 - Add legitimate device repair workflows
 - Improve security and audit logging
 - Enhance documentation
 - Fix bugs
 
 We will **NOT** accept contributions that:
+
 - Enable unauthorized device access
 - Bypass security without proper authorization
 - Support illegal activities
@@ -430,7 +446,7 @@ This software is provided "as is" for educational and legitimate repair purposes
 ---
 
 **Bobby's Secret Workshop**  
-*Professional Device Management & Repair Toolkit*
+_Professional Device Management & Repair Toolkit_
 
 🔓 **Advanced operations for authorized technicians only**  
 **Use responsibly. Repair ethically. Respect the law.**

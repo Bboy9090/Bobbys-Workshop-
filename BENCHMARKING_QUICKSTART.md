@@ -21,19 +21,24 @@ Benchmarking happens automatically during active monitoring:
 The benchmarks tab shows three main sections:
 
 #### Overall Performance Summary
+
 - **Overall Score**: Your aggregated performance (0-100)
 - **Industry Ranking**: Your percentile compared to typical systems
 - **Standards Met**: How many benchmarks you're meeting or exceeding
 
 #### Benchmark Results
+
 View detailed comparisons for each metric:
+
 - Current value and rating (Optimal/Good/Acceptable/Poor)
 - Percentile ranking
 - Industry standard thresholds
 - Actionable recommendations for improvement
 
 #### Industry Comparison
+
 See how you stack up:
+
 - Your performance vs. industry average
 - Gap to top performers
 - Trend indicators (above/below average)
@@ -41,6 +46,7 @@ See how you stack up:
 ### Step 4: Save Your Session
 
 Click **Save Session** to preserve your results for:
+
 - Historical tracking
 - Before/after comparisons
 - Performance trend analysis
@@ -48,32 +54,36 @@ Click **Save Session** to preserve your results for:
 ### Step 5: Export Data
 
 Click **Export** to download JSON data for:
+
 - Sharing with support teams
 - External analysis
 - Documentation
 
 ## Understanding Your Performance Score
 
-| Score | Rating | Meaning |
-|-------|--------|---------|
-| 90-100 | Exceptional | Exceeding industry standards |
-| 75-89 | Good | Meeting industry standards |
-| 50-74 | Fair | Room for improvement |
-| 0-49 | Needs Improvement | Significant optimization needed |
+| Score  | Rating            | Meaning                         |
+| ------ | ----------------- | ------------------------------- |
+| 90-100 | Exceptional       | Exceeding industry standards    |
+| 75-89  | Good              | Meeting industry standards      |
+| 50-74  | Fair              | Room for improvement            |
+| 0-49   | Needs Improvement | Significant optimization needed |
 
 ## Common Benchmarks Explained
 
 ### Sequential Write Speed
+
 **What it measures**: Sustained data transfer rate during large writes  
 **Optimal**: 400+ MB/s (USB 3.2 Gen 2)  
 **Common issues**: USB 2.0 connection, poor cable quality, USB hub bottleneck
 
 ### CPU Usage During Flash
+
 **What it measures**: Processor utilization during operations  
 **Optimal**: <20%  
 **Common issues**: Inefficient drivers, background processes, malware
 
 ### USB Bus Utilization
+
 **What it measures**: How much of your USB bandwidth is being used  
 **Optimal**: 80-95%  
 **Common issues**: Small buffer sizes, CPU bottleneck, driver overhead
@@ -117,7 +127,7 @@ A: You need at least one set of benchmark results to export
 ## Best Practices
 
 1. **Establish a baseline**: Run benchmarks on a fresh system first
-2. **Test consistently**: Use similar operations for comparable results  
+2. **Test consistently**: Use similar operations for comparable results
 3. **One change at a time**: Modify one setting, then re-test
 4. **Document everything**: Save sessions before and after changes
 5. **Share successes**: Export data from successful optimizations

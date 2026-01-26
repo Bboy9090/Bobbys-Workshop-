@@ -9,28 +9,33 @@ The Batch Flashing Panel provides advanced functionality to flash multiple firmw
 ### Core Capabilities
 
 1. **Sequential Multi-Partition Flashing**
+
    - Queue multiple partitions to flash in a single batch session
    - Automatic sequential execution with progress tracking
    - Support for all standard Android partitions (boot, system, vendor, recovery, etc.)
 
 2. **Advanced Configuration Options**
+
    - **Continue on Error**: Choose whether to continue flashing remaining partitions if one fails
    - **Verify After Flash**: Optional verification step after each partition flash
    - **Auto Reboot**: Automatically reboot device after successful completion
 
 3. **Real-Time Progress Monitoring**
+
    - Overall batch progress indicator
    - Per-partition status tracking (pending, flashing, success, failed, skipped)
    - Live status updates with visual feedback
    - Duration tracking for each operation
 
 4. **Queue Management**
+
    - Add/remove partitions from the queue
    - Reorder partitions with up/down controls
    - File selection per partition
    - Visual indication of file size and names
 
 5. **Safety Features**
+
    - Critical partition warnings before flashing
    - Confirmation dialogs for dangerous operations
    - Cannot remove items currently being flashed
@@ -45,6 +50,7 @@ The Batch Flashing Panel provides advanced functionality to flash multiple firmw
 ## Supported Partitions
 
 ### Critical Partitions (Require Extra Confirmation)
+
 - **boot**: Kernel and ramdisk
 - **system**: Android system image
 - **vendor**: Vendor-specific files
@@ -55,6 +61,7 @@ The Batch Flashing Panel provides advanced functionality to flash multiple firmw
 - **super**: Dynamic partition container
 
 ### Standard Partitions
+
 - **recovery**: Recovery partition
 - **product**: Product-specific files
 - **system_ext**: System extensions
@@ -63,6 +70,7 @@ The Batch Flashing Panel provides advanced functionality to flash multiple firmw
 - **persist**: Persistent data partition
 
 ### User Data Partitions
+
 - **userdata**: User data and apps
 - **cache**: System cache
 
@@ -87,6 +95,7 @@ The Batch Flashing Panel provides advanced functionality to flash multiple firmw
 ### 3. Select Firmware Files
 
 For each partition in the queue:
+
 1. Click the file input field
 2. Select the corresponding `.img` or `.bin` file
 3. Verify the file name and size are displayed correctly
@@ -107,6 +116,7 @@ For each partition in the queue:
 ### 6. Monitor Progress
 
 The panel displays:
+
 - **Overall Progress**: Total completion percentage
 - **Per-Partition Status**: Individual flash status with icons
   - ⚪ Pending
@@ -120,6 +130,7 @@ The panel displays:
 ### 7. Review Results
 
 After completion:
+
 - View success/failure counts
 - Review any error messages
 - Check session history for records
@@ -174,12 +185,14 @@ After completion:
 ## Error Handling
 
 ### Continue on Error (Enabled)
+
 - Failed partitions are marked as failed
 - Remaining partitions continue to flash
 - Final summary shows all successes and failures
 - Useful for non-critical flashing scenarios
 
 ### Continue on Error (Disabled - Default)
+
 - First failure stops the entire batch
 - Remaining partitions are marked as skipped
 - More conservative approach
@@ -190,18 +203,22 @@ After completion:
 ### ⚠️ Critical Warnings
 
 1. **Bootloader Must Be Unlocked**
+
    - Device must be in fastboot mode with unlocked bootloader
    - Flashing with locked bootloader will fail
 
 2. **Correct Files Required**
+
    - Always verify you have the correct firmware files for your device
    - Wrong files can brick your device
 
 3. **Critical Partitions**
+
    - Extra confirmation required for: bootloader, boot, system, vendor, radio, vbmeta
    - Incorrectly flashing these can make device unbootable
 
 4. **Power During Flashing**
+
    - Ensure device has sufficient battery (>50%)
    - Do not disconnect USB during flashing
    - Power loss during critical partition flash can brick device
@@ -224,6 +241,7 @@ The batch flashing panel uses the following backend endpoints:
 ## Data Persistence
 
 Session history is stored using the Spark KV store:
+
 - Key: `batch-flash-history`
 - Max stored sessions: Latest 10
 - Data includes: device serial, timestamp, duration, partition list, success/fail counts
@@ -231,24 +249,28 @@ Session history is stored using the Spark KV store:
 ## Troubleshooting
 
 ### Device Not Detected
+
 - Ensure device is in fastboot mode
 - Check USB connection
 - Verify fastboot is installed (`fastboot devices`)
 - Try different USB port/cable
 
 ### Flash Operation Fails
+
 - Verify bootloader is unlocked
 - Check file integrity (correct .img for device)
 - Ensure partition name matches device partition table
 - Review backend logs for detailed error
 
 ### Files Not Uploading
+
 - Check file size (must be reasonable)
 - Verify file format (.img or .bin)
 - Ensure sufficient disk space on server
 - Check backend upload directory permissions
 
 ### Batch Gets Stuck
+
 - Refresh the page
 - Restart the backend server
 - Reboot device to fastboot mode
@@ -267,16 +289,19 @@ Session history is stored using the Spark KV store:
 ## Advanced Features
 
 ### Partition Ordering
+
 - Some devices require specific flash order
 - Typically: bootloader → firmware → system partitions → user data
 - Use reorder controls to adjust sequence
 
 ### Verification
+
 - When enabled, adds small delay after each flash
 - Recommended for critical partitions
 - Can extend total flash time
 
 ### Session Recovery
+
 - If page refreshes, session is lost (flashing stops)
 - History is preserved in KV store
 - Can review past sessions even after page reload

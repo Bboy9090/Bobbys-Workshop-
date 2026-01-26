@@ -7,11 +7,13 @@ This document describes the complete backend API integration for all flashing op
 ## Architecture
 
 ### Frontend Components
+
 - **Flash API Client** (`src/lib/flash-api.ts`) - TypeScript client for all flash operations
 - **React Hook** (`src/hooks/use-flash-operations.ts`) - React hook providing flash operations state management
 - **API Configuration** (`src/lib/apiConfig.ts`) - Centralized API endpoint configuration
 
 ### Backend Server
+
 - **Express Server** (`server/index.js`) - Node.js/Express backend with comprehensive flash endpoints
 - **WebSocket Support** - Real-time progress updates for active flash operations
 - **Device Detection** - Real ADB and Fastboot device scanning
@@ -21,9 +23,11 @@ This document describes the complete backend API integration for all flashing op
 ### Device Management
 
 #### `GET /api/flash/devices`
+
 Scan and list all connected flashable devices (ADB + Fastboot).
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -47,12 +51,15 @@ Scan and list all connected flashable devices (ADB + Fastboot).
 ```
 
 #### `GET /api/flash/devices/:serial`
+
 Get detailed information about a specific device.
 
 **Parameters:**
+
 - `serial` - Device serial number
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -70,12 +77,15 @@ Get detailed information about a specific device.
 ```
 
 #### `GET /api/flash/devices/:serial/partitions`
+
 Get list of available partitions for a device.
 
 **Parameters:**
+
 - `serial` - Device serial number
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -88,9 +98,11 @@ Get list of available partitions for a device.
 ### Flash Operations
 
 #### `POST /api/flash/start`
+
 Start a new flash operation.
 
 **Request Body:**
+
 ```json
 {
   "deviceSerial": "ABC123XYZ",
@@ -121,6 +133,7 @@ Start a new flash operation.
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -133,12 +146,15 @@ Start a new flash operation.
 ```
 
 #### `POST /api/flash/pause/:jobId`
+
 Pause an active flash operation.
 
 **Parameters:**
+
 - `jobId` - Flash job ID
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -148,12 +164,15 @@ Pause an active flash operation.
 ```
 
 #### `POST /api/flash/resume/:jobId`
+
 Resume a paused flash operation.
 
 **Parameters:**
+
 - `jobId` - Flash job ID
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -163,12 +182,15 @@ Resume a paused flash operation.
 ```
 
 #### `POST /api/flash/cancel/:jobId`
+
 Cancel a flash operation.
 
 **Parameters:**
+
 - `jobId` - Flash job ID
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -178,12 +200,15 @@ Cancel a flash operation.
 ```
 
 #### `GET /api/flash/status/:jobId`
+
 Get current status of a flash operation.
 
 **Parameters:**
+
 - `jobId` - Flash job ID
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -208,9 +233,11 @@ Get current status of a flash operation.
 ```
 
 #### `GET /api/flash/operations/active`
+
 Get all active flash operations.
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -236,12 +263,15 @@ Get all active flash operations.
 ```
 
 #### `GET /api/flash/history`
+
 Get flash operation history.
 
 **Query Parameters:**
+
 - `limit` (optional) - Maximum number of entries to return (default: 50)
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -268,9 +298,11 @@ Get flash operation history.
 ### Validation
 
 #### `POST /api/flash/validate-image`
+
 Validate a flash image file before flashing.
 
 **Request Body:**
+
 ```json
 {
   "filePath": "/path/to/boot.img"
@@ -278,6 +310,7 @@ Validate a flash image file before flashing.
 ```
 
 **Response:**
+
 ```json
 {
   "valid": true,
@@ -298,6 +331,7 @@ Connect to this WebSocket endpoint to receive real-time progress updates for a s
 **Messages Received:**
 
 #### Progress Update
+
 ```json
 {
   "type": "progress",
@@ -315,6 +349,7 @@ Connect to this WebSocket endpoint to receive real-time progress updates for a s
 ```
 
 #### Completed
+
 ```json
 {
   "type": "completed",
@@ -327,6 +362,7 @@ Connect to this WebSocket endpoint to receive real-time progress updates for a s
 ```
 
 #### Failed
+
 ```json
 {
   "type": "failed",
@@ -382,7 +418,7 @@ function FlashPanel() {
         autoReboot: true
       }
     });
-    
+
     if (jobId) {
       console.log('Flash started:', jobId);
     }
@@ -393,17 +429,17 @@ function FlashPanel() {
       <button onClick={scanDevices} disabled={isScanning}>
         {isScanning ? 'Scanning...' : 'Scan Devices'}
       </button>
-      
+
       {devices.map(device => (
         <div key={device.serial}>
           {device.model} - {device.serial}
         </div>
       ))}
-      
+
       <button onClick={handleFlash} disabled={isLoading || devices.length === 0}>
         Start Flash
       </button>
-      
+
       {activeOperations.map(op => (
         <div key={op.jobId}>
           Job: {op.jobId} - Progress: {op.progress}%
@@ -419,42 +455,39 @@ function FlashPanel() {
 ### Using the API Client Directly
 
 ```typescript
-import { flashAPI } from '@/lib/flash-api';
+import { flashAPI } from "@/lib/flash-api";
 
 async function flashDevice() {
   try {
     const devices = await flashAPI.scanDevices();
-    console.log('Found devices:', devices);
-    
+    console.log("Found devices:", devices);
+
     if (devices.length > 0) {
       const response = await flashAPI.startFlash({
         deviceSerial: devices[0].serial,
         deviceBrand: devices[0].brand,
-        flashMethod: 'fastboot',
+        flashMethod: "fastboot",
         partitions: [
           {
-            name: 'boot',
-            imagePath: '/path/to/boot.img',
-            verify: true
-          }
+            name: "boot",
+            imagePath: "/path/to/boot.img",
+            verify: true,
+          },
         ],
         options: {
           verifyAfterFlash: true,
-          autoReboot: true
-        }
+          autoReboot: true,
+        },
       });
-      
-      console.log('Flash job started:', response.jobId);
-      
-      const ws = flashAPI.connectProgressWebSocket(
-        response.jobId,
-        (data) => {
-          console.log('Progress update:', data);
-        }
-      );
+
+      console.log("Flash job started:", response.jobId);
+
+      const ws = flashAPI.connectProgressWebSocket(response.jobId, (data) => {
+        console.log("Progress update:", data);
+      });
     }
   } catch (error) {
-    console.error('Flash operation failed:', error);
+    console.error("Flash operation failed:", error);
   }
 }
 ```
@@ -493,12 +526,14 @@ VITE_API_URL=http://localhost:3001
 ## Dependencies
 
 ### Backend
+
 - `express` - Web server framework
 - `ws` - WebSocket implementation
 - `cors` - Cross-origin resource sharing
 - `multer` - File upload handling (for image uploads)
 
 ### Frontend
+
 - `@github/spark/hooks` - Spark runtime hooks (useKV for persistence)
 - `sonner` - Toast notifications
 

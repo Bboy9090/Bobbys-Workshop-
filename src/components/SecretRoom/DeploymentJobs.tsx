@@ -1,14 +1,22 @@
 import React from 'react';
-import { Card, Badge, EmptyState } from '@pandora-codex/ui-kit';
-import type { Device } from '@pandora-codex/shared-types';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/EmptyState';
 import { Upload } from 'lucide-react';
+
+interface Device {
+  id: string;
+  name?: string;
+  model?: string;
+  status?: string;
+}
 
 interface DeploymentJobsProps {
   devices: Device[];
 }
 
 export const DeploymentJobs: React.FC<DeploymentJobsProps> = () => {
-  const jobs: any[] = []; // Would fetch from API in real implementation
+  const jobs: any[] = [];
 
   if (jobs.length === 0) {
     return (
@@ -22,31 +30,36 @@ export const DeploymentJobs: React.FC<DeploymentJobsProps> = () => {
 
   return (
     <div className="space-y-4">
-      <Card title="Deployment Jobs">
-        <div className="space-y-3">
-          {jobs.map((job: any) => (
-            <div key={job.id} className="p-4 border border-gray-200 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-medium">{job.name}</h4>
-                  <p className="text-sm text-gray-600">{job.device}</p>
+      <Card>
+        <CardHeader>
+          <CardTitle>Deployment Jobs</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {jobs.map((job: any) => (
+              <div key={job.id} className="p-4 border border-border rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium">{job.name}</h4>
+                    <p className="text-sm text-muted-foreground">{job.device}</p>
+                  </div>
+                  <Badge variant={job.status === 'completed' ? 'secondary' : 'outline'}>
+                    {job.status}
+                  </Badge>
                 </div>
-                <Badge variant={job.status === 'completed' ? 'success' : 'info'}>
-                  {job.status}
-                </Badge>
-              </div>
-              <div className="mt-2">
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-blue-600 h-2 rounded-full"
-                    style={{ width: `${job.progress}%` }}
-                  />
+                <div className="mt-2">
+                  <div className="w-full bg-secondary rounded-full h-2">
+                    <div
+                      className="bg-primary h-2 rounded-full"
+                      style={{ width: `${job.progress}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">{job.progress}% complete</p>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">{job.progress}% complete</p>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </CardContent>
       </Card>
     </div>
   );

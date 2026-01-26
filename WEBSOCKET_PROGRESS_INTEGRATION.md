@@ -25,7 +25,7 @@ Flash Operations Engine (Pandora Agent / BootForge USB)
 Location: `src/hooks/use-flash-progress-websocket.ts`
 
 ```typescript
-import { useFlashProgressWebSocket } from '@/hooks/use-flash-progress-websocket';
+import { useFlashProgressWebSocket } from "@/hooks/use-flash-progress-websocket";
 
 const {
   isConnected,
@@ -39,7 +39,7 @@ const {
   clearJob,
   clearAllJobs,
 } = useFlashProgressWebSocket({
-  url: 'ws://localhost:3001/flash-progress',
+  url: "ws://localhost:3001/flash-progress",
   reconnectDelay: 3000,
   maxReconnectAttempts: 5,
   enableNotifications: true,
@@ -52,6 +52,7 @@ const {
 Location: `src/components/LiveProgressMonitor.tsx`
 
 This component provides a full UI for monitoring live flash operations:
+
 - Connection status indicator
 - Active job cards with progress bars
 - Real-time transfer speed display
@@ -64,6 +65,7 @@ This component provides a full UI for monitoring live flash operations:
 ### Message Types
 
 #### 1. Flash Started
+
 ```json
 {
   "type": "flash_started",
@@ -76,6 +78,7 @@ This component provides a full UI for monitoring live flash operations:
 ```
 
 #### 2. Flash Progress
+
 ```json
 {
   "type": "flash_progress",
@@ -92,6 +95,7 @@ This component provides a full UI for monitoring live flash operations:
 ```
 
 #### 3. Flash Completed
+
 ```json
 {
   "type": "flash_completed",
@@ -102,6 +106,7 @@ This component provides a full UI for monitoring live flash operations:
 ```
 
 #### 4. Flash Failed
+
 ```json
 {
   "type": "flash_failed",
@@ -113,6 +118,7 @@ This component provides a full UI for monitoring live flash operations:
 ```
 
 #### 5. Flash Paused
+
 ```json
 {
   "type": "flash_paused",
@@ -123,6 +129,7 @@ This component provides a full UI for monitoring live flash operations:
 ```
 
 #### 6. Flash Resumed
+
 ```json
 {
   "type": "flash_resumed",
@@ -133,6 +140,7 @@ This component provides a full UI for monitoring live flash operations:
 ```
 
 #### 7. Ping/Pong (Keep-Alive)
+
 ```json
 {
   "type": "ping",
@@ -141,6 +149,7 @@ This component provides a full UI for monitoring live flash operations:
 ```
 
 Server responds with:
+
 ```json
 {
   "type": "pong",
@@ -165,16 +174,16 @@ class FlashProgressManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
         self.active_jobs = {}
-    
+
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
         print(f"Client connected. Total connections: {len(self.active_connections)}")
-    
+
     def disconnect(self, websocket: WebSocket):
         self.active_connections.remove(websocket)
         print(f"Client disconnected. Total connections: {len(self.active_connections)}")
-    
+
     async def broadcast(self, message: dict):
         """Broadcast message to all connected clients"""
         disconnected = []
@@ -183,11 +192,11 @@ class FlashProgressManager:
                 await connection.send_json(message)
             except:
                 disconnected.append(connection)
-        
+
         for connection in disconnected:
             self.disconnect(connection)
-    
-    async def send_progress_update(self, job_id: str, device_id: str, progress: float, 
+
+    async def send_progress_update(self, job_id: str, device_id: str, progress: float,
                                    stage: str, bytes_transferred: int, total_bytes: int,
                                    transfer_speed: float, eta: float):
         """Send progress update for a specific job"""
@@ -204,7 +213,7 @@ class FlashProgressManager:
             "timestamp": int(datetime.now().timestamp() * 1000)
         }
         await self.broadcast(message)
-    
+
     async def flash_started(self, job_id: str, device_id: str, total_bytes: int):
         """Notify that a flash operation has started"""
         message = {
@@ -216,7 +225,7 @@ class FlashProgressManager:
             "timestamp": int(datetime.now().timestamp() * 1000)
         }
         await self.broadcast(message)
-    
+
     async def flash_completed(self, job_id: str, device_id: str):
         """Notify that a flash operation completed successfully"""
         message = {
@@ -226,7 +235,7 @@ class FlashProgressManager:
             "timestamp": int(datetime.now().timestamp() * 1000)
         }
         await self.broadcast(message)
-    
+
     async def flash_failed(self, job_id: str, device_id: str, error: str):
         """Notify that a flash operation failed"""
         message = {
@@ -247,7 +256,7 @@ async def flash_progress_endpoint(websocket: WebSocket):
         while True:
             data = await websocket.receive_text()
             message = json.loads(data)
-            
+
             # Handle ping
             if message.get("type") == "ping":
                 await websocket.send_json({
@@ -266,36 +275,36 @@ async def perform_flash_operation(job_id: str, device_id: str, image_path: str):
     """
     total_bytes = 4294967296  # 4GB example
     bytes_per_chunk = 10485760  # 10MB chunks
-    
+
     # Notify start
     await manager.flash_started(job_id, device_id, total_bytes)
-    
+
     try:
         bytes_transferred = 0
         while bytes_transferred < total_bytes:
             # Simulate flash write
             await asyncio.sleep(0.5)
             bytes_transferred += bytes_per_chunk
-            
+
             progress = (bytes_transferred / total_bytes) * 100
             transfer_speed = 21250000  # ~20MB/s
             eta = (total_bytes - bytes_transferred) / transfer_speed
-            
+
             stage = "Writing system partition"
             if progress < 10:
                 stage = "Initializing"
             elif progress > 95:
                 stage = "Finalizing"
-            
+
             # Send progress update
             await manager.send_progress_update(
                 job_id, device_id, progress, stage,
                 bytes_transferred, total_bytes, transfer_speed, eta
             )
-        
+
         # Notify completion
         await manager.flash_completed(job_id, device_id)
-        
+
     except Exception as e:
         # Notify failure
         await manager.flash_failed(job_id, device_id, str(e))
@@ -305,20 +314,20 @@ async def perform_flash_operation(job_id: str, device_id: str, image_path: str):
 async def start_flash(device_id: str, partition: str):
     import uuid
     job_id = f"job_{uuid.uuid4().hex[:8]}"
-    
+
     # Start flash in background
     asyncio.create_task(perform_flash_operation(
         job_id, device_id, f"/path/to/{partition}.img"
     ))
-    
+
     return {"jobId": job_id, "status": "started"}
 ```
 
 ### Node.js WebSocket Server
 
 ```javascript
-const WebSocket = require('ws');
-const express = require('express');
+const WebSocket = require("ws");
+const express = require("express");
 const app = express();
 
 const wss = new WebSocket.Server({ port: 3001 });
@@ -331,10 +340,10 @@ class FlashProgressManager {
   broadcast(message) {
     const data = JSON.stringify({
       ...message,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
 
-    this.clients.forEach(client => {
+    this.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
         client.send(data);
       }
@@ -343,18 +352,26 @@ class FlashProgressManager {
 
   flashStarted(jobId, deviceId, totalBytes) {
     this.broadcast({
-      type: 'flash_started',
+      type: "flash_started",
       jobId,
       deviceId,
-      stage: 'Initializing',
-      totalBytes
+      stage: "Initializing",
+      totalBytes,
     });
   }
 
-  sendProgress(jobId, deviceId, progress, stage, bytesTransferred, 
-               totalBytes, transferSpeed, eta) {
+  sendProgress(
+    jobId,
+    deviceId,
+    progress,
+    stage,
+    bytesTransferred,
+    totalBytes,
+    transferSpeed,
+    eta,
+  ) {
     this.broadcast({
-      type: 'flash_progress',
+      type: "flash_progress",
       jobId,
       deviceId,
       progress,
@@ -362,50 +379,52 @@ class FlashProgressManager {
       bytesTransferred,
       totalBytes,
       transferSpeed,
-      estimatedTimeRemaining: eta
+      estimatedTimeRemaining: eta,
     });
   }
 
   flashCompleted(jobId, deviceId) {
     this.broadcast({
-      type: 'flash_completed',
+      type: "flash_completed",
       jobId,
-      deviceId
+      deviceId,
     });
   }
 
   flashFailed(jobId, deviceId, error) {
     this.broadcast({
-      type: 'flash_failed',
+      type: "flash_failed",
       jobId,
       deviceId,
-      error
+      error,
     });
   }
 }
 
 const manager = new FlashProgressManager();
 
-wss.on('connection', (ws) => {
+wss.on("connection", (ws) => {
   manager.clients.add(ws);
   console.log(`Client connected. Total: ${manager.clients.size}`);
 
-  ws.on('message', (data) => {
+  ws.on("message", (data) => {
     try {
       const message = JSON.parse(data);
-      
-      if (message.type === 'ping') {
-        ws.send(JSON.stringify({
-          type: 'pong',
-          timestamp: Date.now()
-        }));
+
+      if (message.type === "ping") {
+        ws.send(
+          JSON.stringify({
+            type: "pong",
+            timestamp: Date.now(),
+          }),
+        );
       }
     } catch (err) {
-      console.error('Message parse error:', err);
+      console.error("Message parse error:", err);
     }
   });
 
-  ws.on('close', () => {
+  ws.on("close", () => {
     manager.clients.delete(ws);
     console.log(`Client disconnected. Total: ${manager.clients.size}`);
   });
@@ -415,47 +434,53 @@ wss.on('connection', (ws) => {
 async function performFlash(jobId, deviceId, imagePath) {
   const totalBytes = 4294967296; // 4GB
   const chunkSize = 10485760; // 10MB
-  
+
   manager.flashStarted(jobId, deviceId, totalBytes);
-  
+
   let bytesTransferred = 0;
-  
+
   const interval = setInterval(() => {
     bytesTransferred += chunkSize;
-    
+
     if (bytesTransferred >= totalBytes) {
       clearInterval(interval);
       manager.flashCompleted(jobId, deviceId);
       return;
     }
-    
+
     const progress = (bytesTransferred / totalBytes) * 100;
     const transferSpeed = 21250000;
     const eta = (totalBytes - bytesTransferred) / transferSpeed;
-    
-    let stage = 'Writing system partition';
-    if (progress < 10) stage = 'Initializing';
-    else if (progress > 95) stage = 'Finalizing';
-    
+
+    let stage = "Writing system partition";
+    if (progress < 10) stage = "Initializing";
+    else if (progress > 95) stage = "Finalizing";
+
     manager.sendProgress(
-      jobId, deviceId, progress, stage,
-      bytesTransferred, totalBytes, transferSpeed, eta
+      jobId,
+      deviceId,
+      progress,
+      stage,
+      bytesTransferred,
+      totalBytes,
+      transferSpeed,
+      eta,
     );
   }, 500);
 }
 
-app.post('/api/flash/start', (req, res) => {
+app.post("/api/flash/start", (req, res) => {
   const jobId = `job_${Math.random().toString(36).substr(2, 9)}`;
   const { deviceId, partition } = req.body;
-  
+
   performFlash(jobId, deviceId, `/path/to/${partition}.img`);
-  
-  res.json({ jobId, status: 'started' });
+
+  res.json({ jobId, status: "started" });
 });
 
 app.listen(3000, () => {
-  console.log('HTTP server on port 3000');
-  console.log('WebSocket server on port 3001');
+  console.log("HTTP server on port 3000");
+  console.log("WebSocket server on port 3001");
 });
 ```
 
@@ -468,7 +493,7 @@ from bootforgeusb import FlashOperation
 
 async def flash_with_progress(device_id: str, partition: str, image_path: str, job_id: str):
     flash_op = FlashOperation(device_id, partition, image_path)
-    
+
     # Register progress callback
     async def on_progress(progress_data):
         await manager.send_progress_update(
@@ -481,11 +506,11 @@ async def flash_with_progress(device_id: str, partition: str, image_path: str, j
             transfer_speed=progress_data['transfer_speed'],
             eta=progress_data['eta']
         )
-    
+
     flash_op.on_progress(on_progress)
-    
+
     await manager.flash_started(job_id, device_id, flash_op.total_bytes)
-    
+
     try:
         await flash_op.execute()
         await manager.flash_completed(job_id, device_id)
@@ -529,7 +554,7 @@ async def simulate_flash():
             "totalBytes": 1000000,
             "timestamp": int(time.time() * 1000)
         }))
-        
+
         # Simulate progress
         for i in range(0, 101, 10):
             await asyncio.sleep(1)
@@ -545,7 +570,7 @@ async def simulate_flash():
                 "estimatedTimeRemaining": (100 - i),
                 "timestamp": int(time.time() * 1000)
             }))
-        
+
         # Complete
         await websocket.send(json.dumps({
             "type": "flash_completed",
@@ -562,17 +587,19 @@ asyncio.run(simulate_flash())
 ### Production Configuration
 
 1. **Use WSS (Secure WebSocket) in production**:
+
    ```javascript
    const wss = new WebSocket.Server({
      server: httpsServer,
-     path: '/flash-progress'
+     path: "/flash-progress",
    });
    ```
 
 2. **Configure CORS**:
+
    ```python
    from fastapi.middleware.cors import CORSMiddleware
-   
+
    app.add_middleware(
        CORSMiddleware,
        allow_origins=["https://yourdomain.com"],
@@ -583,6 +610,7 @@ asyncio.run(simulate_flash())
    ```
 
 3. **Add authentication**:
+
    ```python
    @app.websocket("/flash-progress")
    async def flash_progress_endpoint(websocket: WebSocket, token: str = Query(...)):
@@ -590,7 +618,7 @@ asyncio.run(simulate_flash())
        if not verify_token(token):
            await websocket.close(code=1008, reason="Unauthorized")
            return
-       
+
        await manager.connect(websocket)
        # ... rest of handler
    ```

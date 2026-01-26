@@ -13,17 +13,16 @@ import {
   DownloadSimple
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { API_CONFIG, getAPIUrl } from '@/lib/apiConfig';
 
 interface PerformanceMetrics {
-  speed: number;
-  cpu: number;
-  memory: number;
-  usb: number;
-  disk: number;
+  speed: number | null;
+  cpu: number | null;
+  memory: number | null;
+  usb: number | null;
+  disk: number | null;
   timestamp: number;
 }
-
-const API_BASE = 'http://localhost:3001';
 
 export function PandoraMonitorPanel() {
   const [monitoring, setMonitoring] = useState(false);
@@ -41,19 +40,23 @@ export function PandoraMonitorPanel() {
 
   const startMonitoring = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/monitor/start`, { method: 'POST' });
+      const res = await fetch(getAPIUrl(API_CONFIG.ENDPOINTS.MONITOR_START), { method: 'POST' });
       if (res.ok) {
         setMonitoring(true);
         toast.success('Performance monitoring started');
         
         intervalRef.current = window.setInterval(async () => {
           try {
-            const metricsRes = await fetch(`${API_BASE}/api/monitor/live`);
+            const metricsRes = await fetch(getAPIUrl(API_CONFIG.ENDPOINTS.MONITOR_LIVE));
             if (metricsRes.ok) {
               const data = await metricsRes.json();
               if (data.status !== 'not monitoring') {
                 const newMetrics: PerformanceMetrics = {
-                  ...data,
+                  speed: typeof data.speed === 'number' ? data.speed : null,
+                  cpu: typeof data.cpu === 'number' ? data.cpu : null,
+                  memory: typeof data.memory === 'number' ? data.memory : null,
+                  usb: typeof data.usb === 'number' ? data.usb : null,
+                  disk: typeof data.disk === 'number' ? data.disk : null,
                   timestamp: Date.now()
                 };
                 setMetrics(newMetrics);
@@ -70,11 +73,18 @@ export function PandoraMonitorPanel() {
     }
   };
 
-  const stopMonitoring = () => {
+  const stopMonitoring = async () => {
     if (intervalRef.current) {
       window.clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
+
+    try {
+      await fetch(getAPIUrl(API_CONFIG.ENDPOINTS.MONITOR_STOP), { method: 'POST' });
+    } catch (err) {
+      console.error('Failed to stop monitoring:', err);
+    }
+
     setMonitoring(false);
     toast.info('Monitoring stopped');
   };
@@ -158,9 +168,9 @@ export function PandoraMonitorPanel() {
                   <CardContent className="pt-6">
                     <div className="flex items-center justify-between mb-2">
                       <div className="text-sm text-muted-foreground">Transfer Speed</div>
-                      <Gauge className={`w-4 h-4 ${getStatusColor(metrics.speed, { good: 30, warning: 50 })}`} weight="duotone" />
+                      <Gauge className={`w-4 h-4 ${getStatusColor(metrics.speed ?? 0, { good: 30, warning: 50 })}`} weight="duotone" />
                     </div>
-                    <div className="text-3xl font-bold">{metrics.speed.toFixed(2)}</div>
+                    <div className="text-3xl font-bold">{typeof metrics.speed === 'number' ? metrics.speed.toFixed(2) : '--'}</div>
                     <div className="text-xs text-muted-foreground mt-1">MB/s</div>
                     <div className="text-xs text-muted-foreground mt-2">
                       Baseline: 21.25 MB/s
@@ -172,9 +182,9 @@ export function PandoraMonitorPanel() {
                   <CardContent className="pt-6">
                     <div className="flex items-center justify-between mb-2">
                       <div className="text-sm text-muted-foreground">CPU Usage</div>
-                      <Cpu className={`w-4 h-4 ${getStatusColor(metrics.cpu, { good: 50, warning: 80 })}`} weight="duotone" />
+                      <Cpu className={`w-4 h-4 ${getStatusColor(metrics.cpu ?? 0, { good: 50, warning: 80 })}`} weight="duotone" />
                     </div>
-                    <div className="text-3xl font-bold">{metrics.cpu}</div>
+                    <div className="text-3xl font-bold">{typeof metrics.cpu === 'number' ? metrics.cpu : '--'}</div>
                     <div className="text-xs text-muted-foreground mt-1">%</div>
                   </CardContent>
                 </Card>
@@ -183,9 +193,9 @@ export function PandoraMonitorPanel() {
                   <CardContent className="pt-6">
                     <div className="flex items-center justify-between mb-2">
                       <div className="text-sm text-muted-foreground">Memory Usage</div>
-                      <HardDrive className={`w-4 h-4 ${getStatusColor(metrics.memory, { good: 50, warning: 80 })}`} weight="duotone" />
+                      <HardDrive className={`w-4 h-4 ${getStatusColor(metrics.memory ?? 0, { good: 50, warning: 80 })}`} weight="duotone" />
                     </div>
-                    <div className="text-3xl font-bold">{metrics.memory}</div>
+                    <div className="text-3xl font-bold">{typeof metrics.memory === 'number' ? metrics.memory : '--'}</div>
                     <div className="text-xs text-muted-foreground mt-1">%</div>
                   </CardContent>
                 </Card>
@@ -194,9 +204,9 @@ export function PandoraMonitorPanel() {
                   <CardContent className="pt-6">
                     <div className="flex items-center justify-between mb-2">
                       <div className="text-sm text-muted-foreground">USB Utilization</div>
-                      <Badge variant="outline">{metrics.usb}%</Badge>
+                      <Badge variant="outline">{typeof metrics.usb === 'number' ? `${metrics.usb}%` : 'N/A'}</Badge>
                     </div>
-                    <div className="text-3xl font-bold">{metrics.usb}</div>
+                    <div className="text-3xl font-bold">{typeof metrics.usb === 'number' ? metrics.usb : '--'}</div>
                     <div className="text-xs text-muted-foreground mt-1">%</div>
                   </CardContent>
                 </Card>
@@ -205,9 +215,9 @@ export function PandoraMonitorPanel() {
                   <CardContent className="pt-6">
                     <div className="flex items-center justify-between mb-2">
                       <div className="text-sm text-muted-foreground">Disk I/O</div>
-                      <Badge variant="outline">{metrics.disk}%</Badge>
+                      <Badge variant="outline">{typeof metrics.disk === 'number' ? `${metrics.disk}%` : 'N/A'}</Badge>
                     </div>
-                    <div className="text-3xl font-bold">{metrics.disk}</div>
+                    <div className="text-3xl font-bold">{typeof metrics.disk === 'number' ? metrics.disk : '--'}</div>
                     <div className="text-xs text-muted-foreground mt-1">%</div>
                   </CardContent>
                 </Card>
@@ -246,11 +256,11 @@ export function PandoraMonitorPanel() {
                         <div
                           key={idx}
                           className="flex-1 bg-primary/20 hover:bg-primary/40 transition-colors relative group"
-                          style={{ height: `${m.speed * 2}%` }}
-                          title={`${m.speed.toFixed(2)} MB/s`}
+                          style={{ height: `${(typeof m.speed === 'number' ? m.speed : 0) * 2}%` }}
+                          title={typeof m.speed === 'number' ? `${m.speed.toFixed(2)} MB/s` : 'N/A'}
                         >
                           <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-popover border border-border rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                            {m.speed.toFixed(2)} MB/s
+                            {typeof m.speed === 'number' ? `${m.speed.toFixed(2)} MB/s` : 'N/A'}
                           </div>
                         </div>
                       ))}

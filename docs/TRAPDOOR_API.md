@@ -2,156 +2,31 @@
 
 ## Overview
 
-The Trapdoor API provides secure, admin-only endpoints for executing sensitive device operations, managing workflows, and accessing encrypted audit logs.
-
-**Base URL:** `http://localhost:3001/api/trapdoor`
+The Trapdoor API provides secure REST endpoints for sensitive device operations, including FRP bypass, bootloader unlocking, and workflow execution. All operations require admin-level authentication and are logged with AES-256 encrypted shadow logs for compliance and audit purposes.
 
 ## Authentication
 
 All Trapdoor API endpoints require admin authentication via API key.
 
-### Header Required
-```
-x-api-key: <ADMIN_API_KEY>
-```
+### Headers
 
-Set the admin key via environment variable:
-```bash
-export ADMIN_API_KEY=your-secure-key-here
+```
+X-API-Key: <admin-api-key>
 ```
 
-## Rate Limiting
-
-The API enforces strict rate limiting to prevent abuse:
-- **Window:** 60 seconds
-- **Max Requests:** 30 per window per client IP
-- **Response:** `429 Too Many Requests` when limit exceeded
+Set the `ADMIN_API_KEY` environment variable on the server, or use the default `dev-admin-key` for development.
 
 ## Endpoints
 
-### 1. List Workflows
+### 1. Execute FRP Bypass Workflow
 
-Get all available workflows across all categories.
+Execute Factory Reset Protection bypass workflow on authorized devices.
 
-**Request:**
-```http
-GET /api/trapdoor/workflows
-```
+**Endpoint:** `POST /api/trapdoor/frp`
 
-**Response:**
+**Request Body:**
+
 ```json
-{
-  "success": true,
-  "workflows": [
-    {
-      "id": "adb-diagnostics",
-      "name": "ADB Device Diagnostics",
-      "category": "android",
-      "platform": "android",
-      "risk_level": "low",
-      "estimated_duration": "2-3 minutes"
-    }
-  ]
-}
-```
-
----
-
-### 2. Execute Workflow
-
-Execute a single workflow on a device.
-
-**Request:**
-```http
-POST /api/trapdoor/workflow/execute
-Content-Type: application/json
-
-{
-  "category": "android",
-  "workflowId": "adb-diagnostics",
-  "deviceSerial": "ABC123XYZ",
-  "authorization": {
-    "confirmed": true,
-    "userInput": "AUTHORIZED"
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "workflow": "ADB Device Diagnostics",
-  "results": [
-    {
-      "stepId": "device-info",
-      "stepName": "Device Information",
-      "success": true,
-      "duration": 1234,
-      "output": "..."
-    }
-  ]
-}
-```
-
----
-
-### 3. Batch Execute Workflows
-
-Execute multiple workflows in sequence (max 10 per batch).
-
-**Request:**
-```http
-POST /api/trapdoor/batch/execute
-Content-Type: application/json
-
-{
-  "workflows": [
-    {
-      "category": "android",
-      "workflowId": "adb-diagnostics",
-      "deviceSerial": "DEVICE-001"
-    },
-    {
-      "category": "ios",
-      "workflowId": "diagnostics",
-      "deviceSerial": "DEVICE-002"
-    }
-  ],
-  "authorization": {
-    "confirmed": true,
-    "userInput": "BATCH_AUTHORIZED"
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "batchSize": 2,
-  "successCount": 2,
-  "failureCount": 0,
-  "results": [...]
-}
-```
-
-**Limits:**
-- Maximum 10 workflows per batch
-- All workflows execute sequentially
-- Individual workflow timeouts apply
-
----
-
-### 4. FRP Bypass Workflow
-
-Execute FRP (Factory Reset Protection) bypass workflow.
-
-**Request:**
-```http
-POST /api/trapdoor/frp
-Content-Type: application/json
-
 {
   "deviceSerial": "ABC123XYZ",
   "authorization": {
@@ -162,28 +37,35 @@ Content-Type: application/json
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
-  "workflow": "FRP Bypass",
-  "results": [...]
+  "workflow": "FRP Bypass Workflow",
+  "results": [
+    {
+      "stepId": "verify-frp-status",
+      "stepName": "Verify FRP Status",
+      "stepIndex": 0,
+      "success": true,
+      "output": "...",
+      "timestamp": "2024-01-01T12:00:00.000Z"
+    }
+  ]
 }
 ```
 
-**⚠️ Legal Notice:**
-Only use this endpoint on devices you own or have explicit authorization to modify.
+**Legal Notice:** FRP bypass is only legal on devices you own or have explicit written authorization to service.
 
----
+### 2. Execute Bootloader Unlock Workflow
 
-### 5. Bootloader Unlock Workflow
+Unlock device bootloader (WARNING: Erases all data).
 
-Execute bootloader unlock workflow (ERASES ALL DATA).
+**Endpoint:** `POST /api/trapdoor/unlock`
 
-**Request:**
-```http
-POST /api/trapdoor/unlock
-Content-Type: application/json
+**Request Body:**
 
+```json
 {
   "deviceSerial": "ABC123XYZ",
   "authorization": {
@@ -193,249 +75,308 @@ Content-Type: application/json
 }
 ```
 
+**Response:** Same structure as FRP bypass response.
+
+### 3. Execute Custom Workflow
+
+Execute any available workflow by category and ID.
+
+**Endpoint:** `POST /api/trapdoor/workflow/execute`
+
+**Request Body:**
+
+```json
+{
+  "category": "android",
+  "workflowId": "adb-diagnostics",
+  "deviceSerial": "ABC123XYZ",
+  "authorization": {
+    "confirmed": true,
+    "userInput": "I AUTHORIZE THIS OPERATION"
+  }
+}
+```
+
 **Response:**
+
 ```json
 {
   "success": true,
-  "workflow": "Bootloader Unlock",
+  "workflow": "ADB Device Diagnostics",
   "results": [...]
 }
 ```
 
-**⚠️ Warning:**
-This operation **ERASES ALL DATA** on the device. Ensure backups are complete before proceeding.
+### 4. List Available Workflows
 
----
+Get all available workflows across all categories.
 
-### 6. Get Shadow Logs
-
-Retrieve encrypted shadow logs for a specific date (admin only).
-
-**Request:**
-```http
-GET /api/trapdoor/logs/shadow?date=2025-12-17
-```
+**Endpoint:** `GET /api/trapdoor/workflows`
 
 **Response:**
+
 ```json
 {
   "success": true,
-  "date": "2025-12-17",
+  "workflows": [
+    {
+      "id": "android-adb-diagnostics",
+      "name": "ADB Device Diagnostics",
+      "platform": "android",
+      "category": "diagnostics",
+      "risk_level": "low",
+      "requires_authorization": false
+    }
+  ]
+}
+```
+
+### 5. Retrieve Shadow Logs
+
+Access encrypted audit logs for a specific date.
+
+**Endpoint:** `GET /api/trapdoor/logs/shadow?date=2024-01-01`
+
+**Query Parameters:**
+
+- `date` (optional): Date in YYYY-MM-DD format. Defaults to today.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "date": "2024-01-01",
   "entries": [
     {
-      "timestamp": "2025-12-17T10:30:00.000Z",
+      "timestamp": "2024-01-01T12:00:00.000Z",
       "operation": "frp_bypass_requested",
       "deviceSerial": "ABC123XYZ",
       "userId": "192.168.1.100",
       "authorization": "I OWN THIS DEVICE",
       "success": true,
-      "metadata": {...}
+      "metadata": {},
+      "tampered": false,
+      "recordVersion": "1.0"
     }
   ],
-  "count": 42
+  "count": 1,
+  "totalEntries": 1,
+  "tamperedEntries": 0
 }
 ```
 
-**Notes:**
-- Logs are encrypted with AES-256-GCM at rest
-- 90-day retention policy automatically enforced
-- Each entry includes timestamp, operation, device, user, and authorization details
+### 6. Get Shadow Log Statistics
 
----
+Retrieve statistics about shadow and public logs.
 
-### 7. Monitoring Statistics
-
-Get API usage statistics and monitoring data.
-
-**Request:**
-```http
-GET /api/trapdoor/monitoring/stats
-```
+**Endpoint:** `GET /api/trapdoor/logs/stats`
 
 **Response:**
+
 ```json
 {
   "success": true,
-  "timestamp": "2025-12-17T12:00:00.000Z",
-  "apiUsage": {
-    "totalRequests": 1547,
-    "successfulRequests": 1520,
-    "failedRequests": 27,
-    "throttledRequests": 12,
-    "requestsByEndpoint": {
-      "/workflows": 523,
-      "/workflow/execute": 305
-    }
-  },
-  "rateLimiting": {
-    "windowSize": "60s",
-    "maxRequestsPerWindow": 30,
-    "activeClients": 5
-  },
-  "logging": {
-    "shadowLogFiles": 15,
-    "publicLogFiles": 12,
+  "stats": {
+    "shadowLogs": 5,
+    "publicLogs": 12,
     "retentionDays": 90,
-    "encryptionAlgorithm": "AES-256-GCM"
+    "anonymousMode": false,
+    "logDirectory": "/path/to/.shadow-logs"
   }
 }
 ```
 
----
+### 7. Manually Rotate Logs
 
-### 8. Cleanup Old Logs
+Trigger log rotation based on retention policy.
 
-Manually trigger cleanup of old shadow logs (beyond retention period).
-
-**Request:**
-```http
-POST /api/trapdoor/logs/cleanup
-```
+**Endpoint:** `POST /api/trapdoor/logs/rotate`
 
 **Response:**
+
 ```json
 {
-  "success": true
+  "success": true,
+  "message": "Log rotation completed"
 }
 ```
 
-**Notes:**
-- Deletes shadow logs older than retention policy (90 days)
-- Automatic cleanup also runs daily
-- Cannot be undone
+### 8. Execute Batch Commands
 
----
+Execute multiple workflows in sequence with optional throttling.
 
-## Error Responses
+**Endpoint:** `POST /api/trapdoor/batch/execute`
 
-### 403 Unauthorized
+**Request Body:**
+
 ```json
 {
-  "error": "Unauthorized",
-  "message": "Admin access required"
+  "deviceSerial": "ABC123XYZ",
+  "throttle": 1000,
+  "commands": [
+    {
+      "category": "android",
+      "workflowId": "adb-diagnostics",
+      "authorization": null
+    },
+    {
+      "category": "mobile",
+      "workflowId": "battery-health",
+      "authorization": null
+    }
+  ]
 }
 ```
 
-### 429 Too Many Requests
+**Query Parameters:**
+
+- `throttle` (optional): Milliseconds to wait between commands. Default: 0.
+
+**Response:**
+
 ```json
 {
-  "error": "Too Many Requests",
-  "message": "Rate limit exceeded. Please try again later.",
-  "retryAfter": 45
+  "success": true,
+  "totalCommands": 2,
+  "results": [
+    {
+      "index": 0,
+      "command": {...},
+      "result": {
+        "success": true,
+        "workflow": "ADB Device Diagnostics",
+        "results": [...]
+      },
+      "timestamp": "2024-01-01T12:00:00.000Z"
+    }
+  ]
 }
 ```
 
-### 400 Bad Request
+## Shadow Logging
+
+### Encryption
+
+All sensitive operations are logged to encrypted shadow logs using:
+
+- **Algorithm**: AES-256-GCM
+- **Key Derivation**: PBKDF2 with 100,000 iterations
+- **Authentication**: GCM authentication tag
+- **Tamper Detection**: SHA-256 hash of entry data
+
+### Configuration
+
+Set the encryption key via environment variable:
+
+```bash
+export SHADOW_LOG_KEY="your-secure-encryption-key-here"
+```
+
+### Log Retention
+
+- **Default Retention**: 90 days
+- **Archive Location**: `.shadow-logs/archive/`
+- **Automatic Rotation**: Daily check for old logs
+- **Manual Rotation**: `/api/trapdoor/logs/rotate`
+
+### Anonymous Mode
+
+Enable anonymous mode to hash all user identifiers:
+
+```javascript
+const logger = new ShadowLogger({ anonymousMode: true });
+```
+
+## Error Handling
+
+All endpoints return consistent error responses:
+
 ```json
 {
-  "error": "Missing required parameters",
-  "required": ["category", "workflowId", "deviceSerial"]
+  "error": "Error type",
+  "message": "Detailed error message"
 }
 ```
 
-### 500 Internal Server Error
-```json
-{
-  "error": "Internal server error",
-  "message": "Workflow execution failed: ..."
-}
-```
+**HTTP Status Codes:**
 
----
+- `200`: Success
+- `400`: Bad Request (missing parameters)
+- `403`: Unauthorized (invalid API key)
+- `404`: Not Found (workflow or logs not found)
+- `500`: Internal Server Error
 
-## Security Features
+## Security Best Practices
 
-### 1. AES-256 Encryption
-All sensitive operations are logged to encrypted shadow logs using AES-256-GCM encryption with authentication tags.
-
-### 2. Append-Only Logs
-Shadow logs are append-only to prevent tampering and maintain audit trail integrity.
-
-### 3. Rate Limiting
-Strict rate limiting prevents API abuse and brute force attempts.
-
-### 4. Admin-Only Access
-All endpoints require valid admin API key for authentication.
-
-### 5. Authorization Tracking
-Every sensitive operation requires explicit user authorization, which is logged with the operation details.
-
----
+1. **Never commit API keys** - Use environment variables
+2. **Rotate encryption keys** regularly for production
+3. **Monitor shadow logs** for unauthorized access attempts
+4. **Verify device ownership** before executing sensitive operations
+5. **Use HTTPS** in production environments
+6. **Implement rate limiting** on sensitive endpoints
+7. **Regular security audits** of log files
 
 ## Example Usage
 
-### Using cURL
-
-```bash
-# List workflows
-curl -H "x-api-key: dev-admin-key" \
-  http://localhost:3001/api/trapdoor/workflows
-
-# Execute workflow
-curl -X POST \
-  -H "x-api-key: dev-admin-key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "category": "android",
-    "workflowId": "adb-diagnostics",
-    "deviceSerial": "ABC123XYZ"
-  }' \
-  http://localhost:3001/api/trapdoor/workflow/execute
-
-# Get monitoring stats
-curl -H "x-api-key: dev-admin-key" \
-  http://localhost:3001/api/trapdoor/monitoring/stats
-```
-
-### Using JavaScript/Fetch
+### Node.js
 
 ```javascript
-const ADMIN_KEY = 'dev-admin-key';
-const API_BASE = 'http://localhost:3001/api/trapdoor';
+const axios = require("axios");
 
-// List workflows
-const workflows = await fetch(`${API_BASE}/workflows`, {
-  headers: { 'x-api-key': ADMIN_KEY }
-}).then(r => r.json());
+async function executeFRPBypass(deviceSerial) {
+  try {
+    const response = await axios.post(
+      "http://localhost:3001/api/trapdoor/frp",
+      {
+        deviceSerial,
+        authorization: {
+          confirmed: true,
+          userInput: "I OWN THIS DEVICE",
+        },
+      },
+      {
+        headers: {
+          "X-API-Key": "your-admin-key",
+        },
+      },
+    );
 
-// Execute workflow
-const result = await fetch(`${API_BASE}/workflow/execute`, {
-  method: 'POST',
-  headers: {
-    'x-api-key': ADMIN_KEY,
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    category: 'android',
-    workflowId: 'adb-diagnostics',
-    deviceSerial: 'ABC123XYZ'
-  })
-}).then(r => r.json());
+    return response.data;
+  } catch (error) {
+    console.error("FRP bypass failed:", error.response.data);
+  }
+}
 ```
 
----
+### cURL
 
-## Best Practices
+```bash
+curl -X POST http://localhost:3001/api/trapdoor/frp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-admin-key" \
+  -d '{
+    "deviceSerial": "ABC123XYZ",
+    "authorization": {
+      "confirmed": true,
+      "userInput": "I OWN THIS DEVICE"
+    }
+  }'
+```
 
-1. **Secure API Keys**: Never commit API keys to version control. Use environment variables.
+## Compliance
 
-2. **Authorization Tracking**: Always include explicit authorization in sensitive operations.
+Shadow logging provides:
 
-3. **Rate Limit Awareness**: Implement exponential backoff when receiving 429 responses.
+- **Audit Trail**: Complete record of all sensitive operations
+- **Tamper Detection**: SHA-256 hashes detect unauthorized modifications
+- **Encryption**: AES-256 protects sensitive data at rest
+- **Non-repudiation**: Timestamped, authenticated records
+- **Data Retention**: Configurable retention policies for compliance
 
-4. **Log Review**: Regularly review shadow logs for unauthorized access attempts.
+## Support
 
-5. **Batch Operations**: Use batch execute for multiple devices to reduce API calls.
+For issues or questions:
 
-6. **Error Handling**: Implement proper error handling for all API responses.
-
----
-
-## Changelog
-
-### v1.0.0 (2025-12-17)
-- Initial Trapdoor API release
-- AES-256 shadow logging
-- Rate limiting and throttling
-- Batch workflow execution
-- Monitoring statistics endpoint
+- GitHub Issues: https://github.com/Bboy9090/Bobbys_World_Tools/issues
+- Documentation: See README.md and BOBBY_SECRET_WORKSHOP.md

@@ -7,6 +7,7 @@ The Snapshot Retention system provides automatic backup management and lifecycle
 ## Features
 
 ### Automatic Snapshots
+
 - **Device States**: Capture device configuration and status at any point
 - **Diagnostic Results**: Store diagnostic test outputs with metadata
 - **Flash Operations**: Record all flashing operations with progress data
@@ -15,6 +16,7 @@ The Snapshot Retention system provides automatic backup management and lifecycle
 - **Workspace Backups**: Periodic backup of user workspace data
 
 ### Retention Policies
+
 - **Configurable Rules**: Define custom retention policies per snapshot type
 - **Age-Based Deletion**: Automatically delete snapshots older than specified age
 - **Count-Based Limits**: Keep only N most recent snapshots per type
@@ -23,7 +25,9 @@ The Snapshot Retention system provides automatic backup management and lifecycle
 - **Minimum Retention**: Always keep at least N snapshots regardless of age
 
 ### Policy Configuration
+
 Each retention policy includes:
+
 - **Name**: Human-readable policy name
 - **Enabled**: Toggle policy on/off
 - **Snapshot Types**: Which snapshot types this policy applies to
@@ -37,6 +41,7 @@ Each retention policy includes:
 ## Default Policies
 
 ### Critical Data - Keep Forever
+
 - **Types**: Evidence bundles, Flash operations
 - **Max Age**: Forever (-1)
 - **Max Count**: Unlimited (-1)
@@ -46,6 +51,7 @@ Each retention policy includes:
 Never automatically delete critical forensic evidence or flash operation records.
 
 ### Diagnostic Results - 90 Days
+
 - **Types**: Diagnostic results
 - **Max Age**: 90 days
 - **Max Count**: 500 snapshots
@@ -56,6 +62,7 @@ Never automatically delete critical forensic evidence or flash operation records
 Keep diagnostic results for 90 days, automatically compress after 1 week.
 
 ### Device States - 30 Days
+
 - **Types**: Device states
 - **Max Age**: 30 days
 - **Max Count**: 200 snapshots
@@ -66,6 +73,7 @@ Keep diagnostic results for 90 days, automatically compress after 1 week.
 Device state snapshots retained for 30 days, compressed after 1 week.
 
 ### Workspace Backups - 7 Days
+
 - **Types**: Workspace backups
 - **Max Age**: 7 days
 - **Max Count**: 50 snapshots
@@ -76,6 +84,7 @@ Device state snapshots retained for 30 days, compressed after 1 week.
 Weekly workspace backup rotation with 3-day compression threshold.
 
 ### Plugin Configs - 14 Days
+
 - **Types**: Plugin configurations
 - **Max Age**: 14 days
 - **Max Count**: 100 snapshots
@@ -90,47 +99,35 @@ Two-week plugin configuration history with quick compression.
 ### Creating Snapshots
 
 ```typescript
-import { snapshotManager } from '@/lib/snapshot-manager';
+import { snapshotManager } from "@/lib/snapshot-manager";
 
 // Capture device state
-await snapshotManager.createSnapshot(
-  'device-state',
-  deviceData,
-  {
-    deviceId: 'device-123',
-    deviceSerial: 'ABC123XYZ',
-    deviceModel: 'Pixel 7 Pro',
-    priority: 'high',
-    tags: ['android', 'adb-authorized'],
-    metadata: {
-      adbStatus: 'authorized',
-      batteryLevel: 85,
-    }
-  }
-);
+await snapshotManager.createSnapshot("device-state", deviceData, {
+  deviceId: "device-123",
+  deviceSerial: "ABC123XYZ",
+  deviceModel: "Pixel 7 Pro",
+  priority: "high",
+  tags: ["android", "adb-authorized"],
+  metadata: {
+    adbStatus: "authorized",
+    batteryLevel: 85,
+  },
+});
 
 // Capture diagnostic result
-await snapshotManager.createSnapshot(
-  'diagnostic-result',
-  diagnosticData,
-  {
-    deviceSerial: 'ABC123XYZ',
-    priority: 'normal',
-    tags: ['battery-test', 'passed'],
-  }
-);
+await snapshotManager.createSnapshot("diagnostic-result", diagnosticData, {
+  deviceSerial: "ABC123XYZ",
+  priority: "normal",
+  tags: ["battery-test", "passed"],
+});
 
 // Capture flash operation
-await snapshotManager.createSnapshot(
-  'flash-operation',
-  flashData,
-  {
-    deviceSerial: 'ABC123XYZ',
-    priority: 'critical',
-    tags: ['system-image', 'successful'],
-    retainUntil: Date.now() + (365 * 24 * 60 * 60 * 1000), // Keep 1 year
-  }
-);
+await snapshotManager.createSnapshot("flash-operation", flashData, {
+  deviceSerial: "ABC123XYZ",
+  priority: "critical",
+  tags: ["system-image", "successful"],
+  retainUntil: Date.now() + 365 * 24 * 60 * 60 * 1000, // Keep 1 year
+});
 ```
 
 ### Querying Snapshots
@@ -141,22 +138,22 @@ const all = await snapshotManager.listSnapshots();
 
 // Filter by type
 const diagnostics = await snapshotManager.listSnapshots({
-  type: 'diagnostic-result'
+  type: "diagnostic-result",
 });
 
 // Filter by device
 const deviceSnapshots = await snapshotManager.listSnapshots({
-  deviceSerial: 'ABC123XYZ'
+  deviceSerial: "ABC123XYZ",
 });
 
 // Filter by date range
 const recent = await snapshotManager.listSnapshots({
-  minTimestamp: Date.now() - (7 * 24 * 60 * 60 * 1000) // Last 7 days
+  minTimestamp: Date.now() - 7 * 24 * 60 * 60 * 1000, // Last 7 days
 });
 
 // Filter by tags
 const tagged = await snapshotManager.listSnapshots({
-  tags: ['android', 'successful']
+  tags: ["android", "successful"],
 });
 ```
 
@@ -168,14 +165,14 @@ const policies = await snapshotManager.listPolicies();
 
 // Update a policy
 await snapshotManager.updatePolicy({
-  id: 'diagnostics-90days',
-  name: 'Diagnostic Results - 90 Days',
+  id: "diagnostics-90days",
+  name: "Diagnostic Results - 90 Days",
   enabled: true,
-  snapshotTypes: ['diagnostic-result'],
+  snapshotTypes: ["diagnostic-result"],
   maxAge: 90 * 24 * 60 * 60 * 1000,
   maxCount: 500,
   minRetainCount: 10,
-  priority: 'high',
+  priority: "high",
   compressAfterDays: 7,
   autoDeleteEnabled: true,
 });
@@ -204,7 +201,7 @@ function MyComponent() {
   } = useSnapshotManager();
 
   // snapshots, policies, and stats automatically loaded and reactive
-  
+
   return (
     <div>
       <p>Total Snapshots: {stats?.totalSnapshots}</p>
@@ -218,6 +215,7 @@ function MyComponent() {
 ## Storage
 
 All snapshots and policies are stored in browser localStorage via the Spark KV API:
+
 - **Key**: `bobby-snapshots` - All snapshot data
 - **Key**: `bobby-retention-policies` - Policy configurations
 - **Key**: `bobby-retention-actions` - Audit log (last 1000 actions)
@@ -225,6 +223,7 @@ All snapshots and policies are stored in browser localStorage via the Spark KV A
 ## Statistics
 
 The system tracks:
+
 - **Total Snapshots**: Count of all snapshots
 - **Total Size**: Storage space used (in bytes)
 - **Snapshots by Type**: Breakdown by snapshot type
@@ -235,6 +234,7 @@ The system tracks:
 ## Audit Trail
 
 Every retention action is logged:
+
 - **Action Type**: delete, compress, archive, retain
 - **Snapshot ID**: Target snapshot
 - **Reason**: Why action was taken
@@ -263,12 +263,15 @@ const json = await snapshotManager.exportSnapshots(['snapshot-1', 'snapshot-2'])
 ## UI Components
 
 ### SnapshotRetentionPanel
+
 Main management interface with three tabs:
+
 1. **Snapshots**: Browse, filter, and manage snapshots
 2. **Retention Policies**: Configure lifecycle rules
 3. **Recent Activity**: View audit trail
 
 Features:
+
 - Live statistics dashboard
 - Type filtering
 - Manual deletion
@@ -279,43 +282,51 @@ Features:
 ## Integration Points
 
 ### Device Diagnostics
+
 Automatically snapshot diagnostic results:
+
 ```typescript
 // After running diagnostics
-await snapshotManager.createSnapshot('diagnostic-result', results, {
+await snapshotManager.createSnapshot("diagnostic-result", results, {
   deviceSerial: device.serial,
-  tags: ['battery-health', testResult.status],
+  tags: ["battery-health", testResult.status],
 });
 ```
 
 ### Flash Operations
+
 Capture flash progress and results:
+
 ```typescript
 // After flash completes
-await snapshotManager.createSnapshot('flash-operation', flashData, {
+await snapshotManager.createSnapshot("flash-operation", flashData, {
   deviceSerial: device.serial,
-  priority: 'critical',
-  tags: [device.platform, 'flash-success'],
+  priority: "critical",
+  tags: [device.platform, "flash-success"],
 });
 ```
 
 ### Plugin System
+
 Backup plugin configurations:
+
 ```typescript
 // When plugin settings change
-await snapshotManager.createSnapshot('plugin-config', pluginState, {
-  tags: [plugin.id, 'config-update'],
+await snapshotManager.createSnapshot("plugin-config", pluginState, {
+  tags: [plugin.id, "config-update"],
 });
 ```
 
 ### Evidence Bundles
+
 Archive signed evidence:
+
 ```typescript
 // Create evidence bundle snapshot
-await snapshotManager.createSnapshot('evidence-bundle', bundle, {
+await snapshotManager.createSnapshot("evidence-bundle", bundle, {
   deviceSerial: device.serial,
-  priority: 'critical',
-  tags: ['signed', 'forensic'],
+  priority: "critical",
+  tags: ["signed", "forensic"],
   retainUntil: -1, // Keep forever
 });
 ```
@@ -333,6 +344,7 @@ await snapshotManager.createSnapshot('evidence-bundle', bundle, {
 ## Automatic Policy Application
 
 Policies are automatically applied:
+
 - After creating a new snapshot
 - When manually triggered via UI
 - Can be integrated into scheduled tasks

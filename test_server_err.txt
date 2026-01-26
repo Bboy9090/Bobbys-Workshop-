@@ -1,0 +1,12 @@
+[ShadowLogger] No SHADOW_LOG_KEY set - using random key (logs will not persist)
+[ShadowLogger] No SHADOW_LOG_KEY set - using random key (logs will not persist)
+[ShadowLogger] No SHADOW_LOG_KEY set - using random key (logs will not persist)
+[ShadowLogger] No SHADOW_LOG_KEY set - using random key (logs will not persist)
+[ShadowLogger] No SHADOW_LOG_KEY set - using random key (logs will not persist)
+[ShadowLogger] No SHADOW_LOG_KEY set - using random key (logs will not persist)
+[ShadowLogger] No SHADOW_LOG_KEY set - using random key (logs will not persist)
+[ShadowLogger] No SHADOW_LOG_KEY set - using random key (logs will not persist)
+[RetryCircuit] WARNING: No circuit breaker found for general, executing without protection
+[RetryCircuit] WARNING: No circuit breaker found for general, executing without protection
+[RetryCircuit] WARNING: No circuit breaker found for general, executing without protection
+[RetryCircuit] WARNING: No circuit breaker found for general, executing without protection

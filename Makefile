@@ -36,6 +36,11 @@ help:
 	@echo "  make pandora:build    Build Pandora Core packages"
 	@echo "  make pandora:typecheck Run TypeScript type checking"
 	@echo ""
+	@echo "$(GREEN)macOS Build:$(NC)"
+	@echo "  make macos:build      Build macOS .app bundle"
+	@echo "  make macos:dmg        Create macOS .dmg installer"
+	@echo "  make macos:clean      Clean macOS build artifacts"
+	@echo ""
 	@echo "$(GREEN)Maintenance:$(NC)"
 	@echo "  make clean            Clean all build artifacts"
 	@echo "  make lint             Run linters"
@@ -208,6 +213,43 @@ format:
 		cd libs/bootforgeusb && cargo fmt; \
 	fi
 	@echo "$(GREEN)✓ Rust code formatted$(NC)"
+
+# ============================================================================
+# macOS Build (Tauri)
+# ============================================================================
+
+macos:build:
+	@echo "$(BLUE)Building macOS .app bundle...$(NC)"
+	@if [[ "$$OSTYPE" == "darwin"* ]]; then \
+		./scripts/build-macos-app.sh; \
+	else \
+		echo "$(YELLOW)⚠ macOS builds can only be created on macOS systems$(NC)"; \
+		echo "$(YELLOW)   Current OS: $$OSTYPE$(NC)"; \
+		echo ""; \
+		echo "$(BLUE)To build for macOS:$(NC)"; \
+		echo "  1. Clone this repo on a Mac"; \
+		echo "  2. Run: make macos:build"; \
+		echo "  3. Or use GitHub Actions for automated builds"; \
+	fi
+
+macos:dmg:
+	@echo "$(BLUE)Creating macOS DMG installer...$(NC)"
+	@if [[ "$$OSTYPE" == "darwin"* ]]; then \
+		./scripts/create-macos-dmg.sh; \
+	else \
+		echo "$(YELLOW)⚠ DMG creation can only be done on macOS systems$(NC)"; \
+	fi
+
+macos:clean:
+	@echo "$(BLUE)Cleaning macOS build artifacts...$(NC)"
+	@if [ -d "src-tauri/target" ]; then \
+		rm -rf src-tauri/target/release/bundle/macos; \
+		rm -rf src-tauri/target/x86_64-apple-darwin/release/bundle/macos; \
+		rm -rf src-tauri/target/aarch64-apple-darwin/release/bundle/macos; \
+		echo "$(GREEN)✓ macOS build artifacts cleaned$(NC)"; \
+	else \
+		echo "$(YELLOW)No macOS build artifacts found$(NC)"; \
+	fi
 
 # ============================================================================
 # Cleanup

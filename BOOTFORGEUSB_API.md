@@ -61,12 +61,14 @@ This document details the backend API endpoints for **BootForgeUSB**, the advanc
 Executes the BootForgeUSB CLI to enumerate USB devices, classify them as iOS/Android/unknown, and correlate with tool-level confirmations (adb/fastboot/idevice_id).
 
 #### Request
+
 ```http
 GET /api/bootforgeusb/scan HTTP/1.1
 Host: localhost:3001
 ```
 
 #### Response (Success - 200)
+
 ```json
 {
   "success": true,
@@ -163,9 +165,7 @@ Host: localhost:3001
           }
         }
       },
-      "notes": [
-        "Correlated: adb device id matches USB serial."
-      ],
+      "notes": ["Correlated: adb device id matches USB serial."],
       "matched_tool_ids": ["ABC123456"]
     }
   ],
@@ -175,6 +175,7 @@ Host: localhost:3001
 ```
 
 #### Response (CLI Not Available - 503)
+
 ```json
 {
   "error": "BootForgeUSB not available",
@@ -185,6 +186,7 @@ Host: localhost:3001
 ```
 
 #### Response (Scan Timeout - 504)
+
 ```json
 {
   "error": "BootForgeUSB scan timeout",
@@ -194,6 +196,7 @@ Host: localhost:3001
 ```
 
 #### Response (Scan Failed - 500)
+
 ```json
 {
   "error": "BootForgeUSB scan failed",
@@ -204,6 +207,7 @@ Host: localhost:3001
 ```
 
 #### Notes
+
 - Timeout: 10 seconds
 - Max buffer: 10 MB (for large device lists)
 - Returns empty device array if no devices detected
@@ -218,12 +222,14 @@ Host: localhost:3001
 Returns comprehensive status of the BootForgeUSB CLI, Rust build environment, system tools (adb/fastboot/idevice_id), and library information.
 
 #### Request
+
 ```http
 GET /api/bootforgeusb/status HTTP/1.1
 Host: localhost:3001
 ```
 
 #### Response (200)
+
 ```json
 {
   "available": true,
@@ -250,6 +256,7 @@ Host: localhost:3001
 ```
 
 #### Fields
+
 - `available`: Boolean indicating if CLI is ready to use
 - `cli.installed`: Whether `bootforgeusb-cli` command exists in PATH
 - `buildEnvironment.canBuild`: Whether Rust toolchain is present for building
@@ -265,15 +272,18 @@ Host: localhost:3001
 Scans all devices and returns the device matching the provided UID.
 
 #### Request
+
 ```http
 GET /api/bootforgeusb/devices/usb:18d1:4ee7:bus1:addr5 HTTP/1.1
 Host: localhost:3001
 ```
 
 #### URL Parameters
+
 - `uid` (required): Device UID from scan results (e.g., `usb:18d1:4ee7:bus1:addr5`)
 
 #### Response (Found - 200)
+
 ```json
 {
   "success": true,
@@ -282,7 +292,9 @@ Host: localhost:3001
     "platform_hint": "android",
     "mode": "android_adb_confirmed",
     "confidence": 0.94,
-    "evidence": { /* full evidence object */ },
+    "evidence": {
+      /* full evidence object */
+    },
     "notes": ["Correlated: adb device id matches USB serial."],
     "matched_tool_ids": ["ABC123456"]
   },
@@ -291,6 +303,7 @@ Host: localhost:3001
 ```
 
 #### Response (Not Found - 404)
+
 ```json
 {
   "error": "Device not found",
@@ -299,6 +312,7 @@ Host: localhost:3001
 ```
 
 #### Response (CLI Not Available - 503)
+
 ```json
 {
   "error": "BootForgeUSB not available",
@@ -315,12 +329,14 @@ Host: localhost:3001
 Scans devices and returns correlation analysis showing which devices were matched via tool confirmation, USB heuristics, or system-level detection.
 
 #### Request
+
 ```http
 GET /api/bootforgeusb/correlate HTTP/1.1
 Host: localhost:3001
 ```
 
 #### Response (200)
+
 ```json
 {
   "success": true,
@@ -335,9 +351,7 @@ Host: localhost:3001
         "method": "usb_heuristic",
         "confidence_boost": 0,
         "matched_ids": [],
-        "details": [
-          "USB-only classification, tool confirmation unavailable"
-        ]
+        "details": ["USB-only classification, tool confirmation unavailable"]
       }
     },
     {
@@ -349,9 +363,7 @@ Host: localhost:3001
         "method": "tool_confirmed",
         "confidence_boost": 0.15,
         "matched_ids": ["ABC123456"],
-        "details": [
-          "Correlated via 1 tool ID(s)"
-        ]
+        "details": ["Correlated via 1 tool ID(s)"]
       }
     }
   ],
@@ -364,6 +376,7 @@ Host: localhost:3001
 ```
 
 #### Correlation Methods
+
 - `tool_confirmed`: Device matched via tool ID (adb serial, fastboot ID, iOS UDID)
 - `system_level`: Tool sees devices but can't match to specific USB record
 - `usb_heuristic`: USB-only classification (VID/PID/interface patterns)
@@ -378,12 +391,14 @@ Host: localhost:3001
 Compiles the Rust library and installs the CLI tool. Returns streaming JSON updates during the build process.
 
 #### Request
+
 ```http
 POST /api/bootforgeusb/build HTTP/1.1
 Host: localhost:3001
 ```
 
 #### Response (Streaming - 200)
+
 Chunked transfer encoding with multiple JSON objects:
 
 ```json
@@ -393,6 +408,7 @@ Chunked transfer encoding with multiple JSON objects:
 ```
 
 #### Response (Cargo Not Available - 503)
+
 ```json
 {
   "error": "Rust toolchain not available",
@@ -401,6 +417,7 @@ Chunked transfer encoding with multiple JSON objects:
 ```
 
 #### Response (Source Not Found - 404)
+
 ```json
 {
   "error": "BootForgeUSB source not found",
@@ -409,11 +426,19 @@ Chunked transfer encoding with multiple JSON objects:
 ```
 
 #### Response (Build Failed - 200 with error status)
+
 ```json
-{"status":"failed","error":"Build failed","details":"error message","stderr":"stderr output","timestamp":"2024-01-15T10:30:50.123Z"}
+{
+  "status": "failed",
+  "error": "Build failed",
+  "details": "error message",
+  "stderr": "stderr output",
+  "timestamp": "2024-01-15T10:30:50.123Z"
+}
 ```
 
 #### Notes
+
 - Build timeout: 5 minutes
 - Install timeout: 1 minute
 - Requires Rust toolchain (rustc + cargo)
@@ -427,13 +452,13 @@ Chunked transfer encoding with multiple JSON objects:
 
 ```typescript
 interface DeviceRecord {
-  device_uid: string;           // Unique identifier (usb:VID:PID:busN:addrN)
-  platform_hint: string;        // "ios" | "android" | "unknown"
-  mode: string;                 // Detailed mode (see Mode Classification)
-  confidence: number;           // 0.0 to 1.0 confidence score
-  evidence: Evidence;           // Full evidence object
-  notes: string[];              // Human-readable classification notes
-  matched_tool_ids: string[];   // Tool IDs that matched this device
+  device_uid: string; // Unique identifier (usb:VID:PID:busN:addrN)
+  platform_hint: string; // "ios" | "android" | "unknown"
+  mode: string; // Detailed mode (see Mode Classification)
+  confidence: number; // 0.0 to 1.0 confidence score
+  evidence: Evidence; // Full evidence object
+  notes: string[]; // Human-readable classification notes
+  matched_tool_ids: string[]; // Tool IDs that matched this device
 }
 ```
 
@@ -446,20 +471,20 @@ interface Evidence {
 }
 
 interface USBEvidence {
-  vid: string;                  // Vendor ID (hex, e.g., "05ac")
-  pid: string;                  // Product ID (hex, e.g., "12a8")
-  manufacturer: string | null;  // Manufacturer string
-  product: string | null;       // Product string
-  serial: string | null;        // Serial number
-  bus: number;                  // USB bus number
-  address: number;              // USB device address
+  vid: string; // Vendor ID (hex, e.g., "05ac")
+  pid: string; // Product ID (hex, e.g., "12a8")
+  manufacturer: string | null; // Manufacturer string
+  product: string | null; // Product string
+  serial: string | null; // Serial number
+  bus: number; // USB bus number
+  address: number; // USB device address
   interface_hints: InterfaceHint[];
 }
 
 interface InterfaceHint {
-  class: number;                // USB interface class
-  subclass: number;             // USB interface subclass
-  protocol: number;             // USB interface protocol
+  class: number; // USB interface class
+  subclass: number; // USB interface subclass
+  protocol: number; // USB interface protocol
 }
 
 interface ToolsEvidence {
@@ -469,10 +494,10 @@ interface ToolsEvidence {
 }
 
 interface ToolProbe {
-  present: boolean;             // Tool installed on system
-  seen: boolean;                // Tool sees at least one device
-  raw: string;                  // Raw command output
-  device_ids: string[];         // Parsed device identifiers
+  present: boolean; // Tool installed on system
+  seen: boolean; // Tool sees at least one device
+  raw: string; // Raw command output
+  device_ids: string[]; // Parsed device identifiers
 }
 ```
 
@@ -481,29 +506,32 @@ interface ToolProbe {
 ## Mode Classification
 
 ### iOS Modes
+
 - `ios_normal_confirmed` - iOS device in normal mode (confirmed via idevice_id)
 - `ios_recovery_likely` - Likely iOS recovery mode (USB-only detection)
 - `ios_dfu_likely` - Likely iOS DFU mode (USB-only detection)
 
 ### Android Modes
+
 - `android_adb_confirmed` - Android device with ADB active (tool-confirmed)
 - `android_fastboot_confirmed` - Android device in fastboot/bootloader (tool-confirmed)
 - `android_recovery_adb_confirmed` - Android recovery with ADB sideload (tool-confirmed)
 - `android_usb_likely` - Likely Android device (USB-only detection)
 
 ### Unknown
+
 - `unknown_usb` - Unrecognized or unclassified USB device
 
 ---
 
 ## Confidence Scoring
 
-| Confidence Range | Meaning | Typical Cause |
-|-----------------|---------|---------------|
-| 0.90 - 1.00 | High confidence | Tool-confirmed via serial match or single-candidate correlation |
-| 0.75 - 0.89 | Medium confidence | USB heuristics match known patterns (Apple VID, Google VID, vendor interfaces) |
-| 0.55 - 0.74 | Low confidence | Generic USB detection, no strong classification signals |
-| < 0.55 | Very low | Unknown device with minimal information |
+| Confidence Range | Meaning           | Typical Cause                                                                  |
+| ---------------- | ----------------- | ------------------------------------------------------------------------------ |
+| 0.90 - 1.00      | High confidence   | Tool-confirmed via serial match or single-candidate correlation                |
+| 0.75 - 0.89      | Medium confidence | USB heuristics match known patterns (Apple VID, Google VID, vendor interfaces) |
+| 0.55 - 0.74      | Low confidence    | Generic USB detection, no strong classification signals                        |
+| < 0.55           | Very low          | Unknown device with minimal information                                        |
 
 ---
 
@@ -518,20 +546,20 @@ const API_BASE = 'http://localhost:3001';
 
 function MyComponent() {
   const [devices, setDevices] = useState([]);
-  
+
   async function scanDevices() {
     const res = await fetch(`${API_BASE}/api/bootforgeusb/scan`);
     const data = await res.json();
-    
+
     if (data.success) {
       setDevices(data.devices);
     }
   }
-  
+
   useEffect(() => {
     scanDevices();
   }, []);
-  
+
   return (
     <div>
       {devices.map(device => (
@@ -595,6 +623,7 @@ curl http://localhost:3001/api/bootforgeusb/status | jq '.available'
 ### 3. Install System Tools (Optional but Recommended)
 
 **ADB/Fastboot (Android)**
+
 ```bash
 # Debian/Ubuntu
 sudo apt-get install android-sdk-platform-tools
@@ -604,6 +633,7 @@ brew install android-platform-tools
 ```
 
 **idevice tools (iOS)**
+
 ```bash
 # Debian/Ubuntu
 sudo apt-get install libimobiledevice-utils
@@ -618,12 +648,12 @@ brew install libimobiledevice
 
 ### Common Errors
 
-| Error | Cause | Solution |
-|-------|-------|----------|
-| "BootForgeUSB not available" | CLI not installed | Build and install from `libs/bootforgeusb` |
-| "Rust toolchain not available" | cargo not in PATH | Install Rust: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
-| "Device scan timeout" | USB enumeration hung | Retry scan, check USB permissions |
-| "Device not found" | Invalid UID or device disconnected | Re-scan to get current device list |
+| Error                          | Cause                              | Solution                                                                        |
+| ------------------------------ | ---------------------------------- | ------------------------------------------------------------------------------- |
+| "BootForgeUSB not available"   | CLI not installed                  | Build and install from `libs/bootforgeusb`                                      |
+| "Rust toolchain not available" | cargo not in PATH                  | Install Rust: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
+| "Device scan timeout"          | USB enumeration hung               | Retry scan, check USB permissions                                               |
+| "Device not found"             | Invalid UID or device disconnected | Re-scan to get current device list                                              |
 
 ### Frontend Error Handling
 
@@ -632,24 +662,24 @@ async function scanWithErrorHandling() {
   try {
     const res = await fetch(`${API_BASE}/api/bootforgeusb/scan`);
     const data = await res.json();
-    
+
     if (!res.ok) {
       if (res.status === 503) {
-        console.error('BootForgeUSB not installed:', data.message);
+        console.error("BootForgeUSB not installed:", data.message);
         // Show installation instructions
       } else if (res.status === 504) {
-        console.error('Scan timeout, retrying...');
+        console.error("Scan timeout, retrying...");
         // Retry scan
       } else {
-        console.error('Scan failed:', data.error);
+        console.error("Scan failed:", data.error);
       }
       return;
     }
-    
+
     // Success
     setDevices(data.devices);
   } catch (err) {
-    console.error('Network error:', err);
+    console.error("Network error:", err);
     // Show "backend unavailable" message
   }
 }
@@ -713,6 +743,7 @@ async function scanWithErrorHandling() {
 ## Changelog
 
 ### v0.2.0 (Current)
+
 - ✅ Device correlation via tool IDs
 - ✅ Per-device confidence scoring
 - ✅ Correlation analysis endpoint
@@ -720,6 +751,7 @@ async function scanWithErrorHandling() {
 - ✅ Enhanced tool evidence with device_ids
 
 ### v0.1.0
+
 - Initial USB device enumeration
 - Basic iOS/Android classification
 - System-level tool detection
@@ -730,6 +762,7 @@ async function scanWithErrorHandling() {
 ## Support
 
 For issues or questions:
+
 1. Check troubleshooting section above
 2. Review related documentation
 3. Check API status endpoint for diagnostics

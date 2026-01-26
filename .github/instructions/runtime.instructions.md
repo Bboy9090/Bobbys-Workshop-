@@ -10,5 +10,6 @@ applyTo: "**/*.{ts,tsx,js,py}"
 - Platform-specific behavior must be guarded.
 
 If implementation isn't ready:
+
 - hide/disable OR gate behind EXPERIMENTAL (OFF by default)
 - return a hard error explaining why unavailable

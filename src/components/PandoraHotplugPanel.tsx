@@ -12,6 +12,7 @@ import {
   ArrowsClockwise
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import { getWSUrl } from '@/lib/apiConfig';
 
 interface HotplugEvent {
   type: 'connected' | 'disconnected';
@@ -21,7 +22,8 @@ interface HotplugEvent {
   productId?: string;
 }
 
-const WS_URL = 'ws://localhost:3001/ws/hotplug';
+// Server exposes device events at /ws/device-events
+const WS_URL = getWSUrl('/ws/device-events');
 
 export function PandoraHotplugPanel() {
   const [events, setEvents] = useState<HotplugEvent[]>([]);
@@ -29,14 +31,17 @@ export function PandoraHotplugPanel() {
   const [reconnecting, setReconnecting] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const shouldReconnectRef = useRef(true);
 
   const connectedDevices = events.filter(e => e.type === 'connected').length;
   const disconnectedDevices = events.filter(e => e.type === 'disconnected').length;
 
   useEffect(() => {
+    shouldReconnectRef.current = true;
     connectWebSocket();
 
     return () => {
+      shouldReconnectRef.current = false;
       if (wsRef.current) {
         wsRef.current.close();
       }
@@ -59,9 +64,14 @@ export function PandoraHotplugPanel() {
       ws.onmessage = (msg) => {
         try {
           const data = JSON.parse(msg.data);
+
+          // Normalize server payloads (server uses device_uid + type).
           const event: HotplugEvent = {
-            ...data,
-            timestamp: Date.now(),
+            type: data.type,
+            deviceId: data.device_uid || data.deviceId || 'unknown',
+            timestamp: data.timestamp || Date.now(),
+            vendorId: data.vendorId ? String(data.vendorId) : undefined,
+            productId: data.productId ? String(data.productId) : undefined,
           };
           
           setEvents(prev => [event, ...prev].slice(0, 100));
@@ -86,7 +96,7 @@ export function PandoraHotplugPanel() {
         setReconnecting(true);
         
         reconnectTimeoutRef.current = window.setTimeout(() => {
-          if (!connected) {
+          if (shouldReconnectRef.current) {
             connectWebSocket();
           }
         }, 3000);

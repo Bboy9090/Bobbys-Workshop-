@@ -9,6 +9,7 @@ Pandora Codex is built on a foundation of **truth and evidence**. Every claim mu
 ## The Problem with "Simulated Success"
 
 Many development tools show "success" indicators without actually verifying outcomes:
+
 - ❌ "Device detected" when no real device is present
 - ❌ "Flash completed" when no flash was performed
 - ❌ "Tool installed" when the tool doesn't actually work
@@ -25,31 +26,33 @@ If we can't verify something, we don't claim it:
 ```typescript
 // ❌ BAD
 const device = {
-  connected: true,  // Is it though?
-  mode: "fastboot",  // How do you know?
-  confidence: 1.0    // Never 100% without proof
-}
+  connected: true, // Is it though?
+  mode: "fastboot", // How do you know?
+  confidence: 1.0, // Never 100% without proof
+};
 
 // ✅ GOOD
 const device = {
   device_uid: "usb:18d1:4ee7:bus3:addr5",
-  mode: "android_adb_confirmed",  // Seen in `adb devices`
-  confidence: 0.92,  // Realistic based on evidence
+  mode: "android_adb_confirmed", // Seen in `adb devices`
+  confidence: 0.92, // Realistic based on evidence
   evidence: {
-    usb: { /* raw USB descriptors */ },
+    usb: {
+      /* raw USB descriptors */
+    },
     tools: {
       adb: {
         present: true,
         seen: true,
-        raw: "ABC123    device product:..."
-      }
-    }
+        raw: "ABC123    device product:...",
+      },
+    },
   },
   notes: [
     "Confirmed via adb devices output",
-    "Serial number matches USB device"
-  ]
-}
+    "Serial number matches USB device",
+  ],
+};
 ```
 
 ### Evidence-Based Classification
@@ -57,12 +60,14 @@ const device = {
 Every device detection must include:
 
 1. **Confidence Score** (0.0 to 1.0)
+
    - 0.5-0.7: USB signature matches known pattern
    - 0.7-0.85: USB + interface class hints
    - 0.85-0.95: Tool confirmer saw device
    - 0.95-1.0: Multiple confirmers + full evidence
 
 2. **Evidence Bundle**
+
    - Raw USB descriptors (VID, PID, manufacturer, product, serial)
    - Tool outputs (adb, fastboot, idevice_id)
    - Classification notes explaining reasoning
@@ -83,10 +88,12 @@ return {
   recommendations: [
     "Install adb: https://developer.android.com/tools",
     "Enable USB debugging on device",
-    "Check device appears in 'adb devices'"
+    "Check device appears in 'adb devices'",
   ],
-  partial_evidence: { /* what we DO know */ }
-}
+  partial_evidence: {
+    /* what we DO know */
+  },
+};
 ```
 
 ## Audit Logging Requirements
@@ -116,6 +123,7 @@ Every action must create a structured audit log:
 ### What Gets Logged
 
 ✅ **Always Log:**
+
 - Command executed (full command line)
 - Arguments (sanitized of secrets)
 - Exit code
@@ -126,6 +134,7 @@ Every action must create a structured audit log:
 - Device state before/after
 
 ❌ **Never Log:**
+
 - Passwords or API keys
 - Personal data (beyond device serial for tracking)
 - Proprietary firmware contents (hash only)
@@ -137,17 +146,18 @@ The UI must show **real** tool status:
 ```typescript
 interface ToolHealthStatus {
   tool_id: string;
-  installed: boolean;        // Actually checked
-  version: string | null;    // Actual version output
-  path: string | null;       // Where it's found
+  installed: boolean; // Actually checked
+  version: string | null; // Actual version output
+  path: string | null; // Where it's found
   last_success: Date | null; // Last successful use
   last_error: string | null; // Last failure message
-  permissions_ok: boolean;   // Real permission check
+  permissions_ok: boolean; // Real permission check
   permissions_issues: string[]; // Specific problems
 }
 ```
 
 Display this openly in the UI:
+
 - ✅ Green checkmark only when tool actually works
 - ⚠️ Yellow warning when tool present but never succeeded
 - ❌ Red X when tool missing with install guidance
@@ -159,9 +169,9 @@ Policies must be **evaluated before execution**, not after:
 ```typescript
 // ❌ BAD
 async function flashPartition() {
-  await executeFlash();  // Hope for the best
+  await executeFlash(); // Hope for the best
   if (userRole !== "admin") {
-    showError("Unauthorized");  // Too late!
+    showError("Unauthorized"); // Too late!
   }
 }
 
@@ -173,21 +183,21 @@ async function flashPartition() {
     risk_level: "destructive",
     device_state: device.mode,
   });
-  
+
   if (!policy.allowed) {
     return {
       status: "policy_denied",
-      reason: policy.deny_reason
+      reason: policy.deny_reason,
     };
   }
-  
+
   if (policy.requirements.includes("typed_confirmation")) {
     const confirmed = await getUserConfirmation();
     if (!confirmed) {
       return { status: "cancelled" };
     }
   }
-  
+
   // Now execute
   const result = await executeFlash();
   await createAuditLog(result);
@@ -207,8 +217,8 @@ Users must understand what we know vs. what we guess:
   {device.confidence < 0.85 && (
     <Alert variant="warning">
       <AlertTriangle />
-      Device classification based on USB signature only.
-      Install adb/fastboot for confirmation.
+      Device classification based on USB signature only. Install adb/fastboot
+      for confirmation.
     </Alert>
   )}
   <EvidenceButton onClick={() => showEvidence(device)} />
@@ -217,12 +227,12 @@ Users must understand what we know vs. what we guess:
 
 ### Language Guidelines
 
-| Confidence | Language | Example |
-|------------|----------|---------|
-| < 0.7 | "appears to be", "signature suggests" | "Appears to be iPhone in DFU mode" |
-| 0.7-0.85 | "likely", "probably" | "Likely Android device in ADB mode" |
-| 0.85-0.95 | "confirmed by [tool]" | "Confirmed by adb devices" |
-| > 0.95 | "verified", "confirmed" | "Verified: Pixel 6 in fastboot mode" |
+| Confidence | Language                              | Example                              |
+| ---------- | ------------------------------------- | ------------------------------------ |
+| < 0.7      | "appears to be", "signature suggests" | "Appears to be iPhone in DFU mode"   |
+| 0.7-0.85   | "likely", "probably"                  | "Likely Android device in ADB mode"  |
+| 0.85-0.95  | "confirmed by [tool]"                 | "Confirmed by adb devices"           |
+| > 0.95     | "verified", "confirmed"               | "Verified: Pixel 6 in fastboot mode" |
 
 ## Testing Against Truth
 
@@ -232,17 +242,17 @@ Our test suite validates real detection:
 test("no fake device detection", async () => {
   // Disconnect all USB devices
   const devices = await detectDevices();
-  
+
   // Should return empty array, not fake devices
   expect(devices).toEqual([]);
   expect(devices).not.toContain(
-    expect.objectContaining({ mode: "android_adb_confirmed" })
+    expect.objectContaining({ mode: "android_adb_confirmed" }),
   );
 });
 
 test("confidence matches reality", async () => {
   const device = await detectDevice();
-  
+
   // If confidence > 0.85, tool confirmation must exist
   if (device.confidence > 0.85) {
     expect(device.evidence.tools).toHaveProperty("adb.seen", true);
@@ -269,9 +279,11 @@ test("confidence matches reality", async () => {
 
 ```json
 {
-  "status": "success",  // LIE
-  "devices": [/* fake device */],
-  "note": "Showing demo device"  // Hidden admission
+  "status": "success", // LIE
+  "devices": [
+    /* fake device */
+  ],
+  "note": "Showing demo device" // Hidden admission
 }
 ```
 
@@ -301,4 +313,4 @@ This standard protects you legally and commercially:
 
 ---
 
-*Part of the Pandora Codex Enterprise Framework*
+_Part of the Pandora Codex Enterprise Framework_

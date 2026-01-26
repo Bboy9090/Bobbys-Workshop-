@@ -11,32 +11,39 @@ The Pandora Codex performance benchmarking system provides comprehensive compari
 The system includes benchmarks across multiple categories based on official specifications and industry research:
 
 #### Flash Speed
+
 - **Sequential Write Speed**: USB 3.2 Gen 2 (400+ MB/s optimal) down to USB 2.0 (<40 MB/s poor)
 - **Random Write IOPS**: NVMe-class (10,000+ IOPS) to legacy storage (<1,000 IOPS)
 - **Fastboot Flash Throughput**: Modern device standards (300+ MB/s optimal)
 
 #### USB Bandwidth
+
 - **Bus Utilization**: Optimal usage of available bandwidth (80-95% ideal)
 - **Protocol Overhead**: Efficiency of USB protocol implementation (<10% optimal)
 
 #### CPU Efficiency
+
 - **CPU Usage During Flash**: Resource consumption during operations (<20% optimal)
 - **CPU Efficiency Score**: Throughput per CPU percentage (>15 MB/s per CPU% optimal)
 
 #### Memory Usage
+
 - **Memory Footprint**: Peak memory consumption (<100 MB optimal)
 - **Memory Leak Rate**: Growth rate indicating potential leaks (<1 MB/min optimal)
 
 #### Latency
+
 - **Command Response Time**: Device response latency (<50ms optimal)
 - **End-to-End Latency**: Total operation time (<100ms optimal)
 
 #### Reliability
+
 - **Success Rate**: Operations completing without errors (>99.5% optimal)
 - **Retry Rate**: Operations requiring retry (<0.5% optimal)
 - **Connection Stability**: Uptime during operations (>99.9% optimal)
 
 #### Power Efficiency
+
 - **Power Consumption**: Average power draw (<4.5W USB 3.0 optimal)
 - **Energy Efficiency**: Data transferred per joule (>100 MB/J optimal)
 
@@ -53,6 +60,7 @@ As you perform flash operations, the system automatically:
 ### 3. Performance Score
 
 An overall performance score (0-100) that aggregates all benchmark results:
+
 - **90-100**: Exceptional performance, exceeding industry standards
 - **75-89**: Good performance, meeting industry standards
 - **50-74**: Fair performance, room for improvement
@@ -61,6 +69,7 @@ An overall performance score (0-100) that aggregates all benchmark results:
 ### 4. Industry Comparison View
 
 Detailed comparisons showing:
+
 - **Your Performance**: Current measured values
 - **Industry Average**: Typical performance in the category
 - **Top Performer**: Best-in-class performance targets
@@ -70,6 +79,7 @@ Detailed comparisons showing:
 ### 5. Session History
 
 Track benchmark results over time:
+
 - Save benchmark sessions with complete results
 - Compare current performance to historical data
 - Identify performance degradation or improvements
@@ -100,21 +110,25 @@ Each benchmark result shows:
 ### Interpreting Ratings
 
 #### Optimal (100 points)
+
 Your performance exceeds or meets the highest industry standards. No action needed.
 
 **Example**: Sequential Write Speed > 400 MB/s (USB 3.2 Gen 2 specification)
 
 #### Good (75 points)
+
 Your performance meets typical industry standards but there's room for improvement.
 
 **Example**: Sequential Write Speed 200-400 MB/s (USB 3.1 range)
 
 #### Acceptable (50 points)
+
 Your performance is functional but below industry average. Optimization recommended.
 
 **Example**: Sequential Write Speed 40-200 MB/s (USB 3.0 range)
 
 #### Poor (25 points)
+
 Your performance is significantly below standards. Immediate optimization needed.
 
 **Example**: Sequential Write Speed < 40 MB/s (USB 2.0 or throttled)
@@ -122,6 +136,7 @@ Your performance is significantly below standards. Immediate optimization needed
 ### Saving Sessions
 
 Click **Save Session** to store your current benchmark results. This enables:
+
 - Historical performance tracking
 - Before/after optimization comparisons
 - Performance trend analysis
@@ -130,12 +145,14 @@ Click **Save Session** to store your current benchmark results. This enables:
 ### Exporting Data
 
 Click **Export** to download a JSON file containing:
+
 - Current benchmark results
 - Overall performance score
 - Last 10 saved sessions
 - Timestamp and metadata
 
 Use exported data for:
+
 - Sharing results with support teams
 - Creating performance reports
 - Analyzing trends in external tools
@@ -144,30 +161,39 @@ Use exported data for:
 ## Optimization Workflow
 
 ### 1. Establish Baseline
+
 Run a benchmark session on your typical flash operation to establish your current performance.
 
 ### 2. Identify Issues
+
 Review benchmark results focusing on metrics rated "Acceptable" or "Poor":
+
 - Read the recommendations provided for each metric
 - Prioritize based on severity and impact
 - Note the industry standards you're trying to reach
 
 ### 3. Apply Optimizations
+
 Implement recommended changes:
+
 - **USB Issues**: Upgrade cables, use different ports, avoid hubs
 - **CPU Issues**: Close background applications, update drivers
 - **Memory Issues**: Reduce buffer sizes, check for leaks
 - **Bandwidth Issues**: Tune buffer sizes, disable power management
 
 ### 4. Re-Test
+
 After applying optimizations:
+
 - Run another benchmark session
 - Compare new results to baseline
 - Verify improvements in targeted metrics
 - Document successful optimizations
 
 ### 5. Iterate
+
 Continue the process:
+
 - Address remaining sub-optimal metrics
 - Fine-tune configurations
 - Track progress over time
@@ -190,16 +216,19 @@ All benchmarks are based on official specifications and industry research:
 The benchmarking system integrates with:
 
 ### Performance Optimizer
+
 - Recommendations cross-reference benchmark data
 - Optimization priorities based on benchmark ratings
 - Success validation through benchmark improvement
 
 ### Automated Testing
+
 - Test cases validate benchmark calculation accuracy
 - Performance regression detection
 - Continuous validation of optimization effectiveness
 
 ### Real-Time Monitor
+
 - Live benchmark comparison during active operations
 - Bottleneck detection correlated with benchmark ratings
 - Historical baseline comparison
@@ -214,40 +243,48 @@ import {
   evaluateAgainstBenchmark,
   calculatePercentile,
   generateRecommendation,
-  getBenchmarksByCategory
-} from '@/lib/industry-benchmarks';
+  getBenchmarksByCategory,
+} from "@/lib/industry-benchmarks";
 
 // Get all benchmarks for a category
-const flashBenchmarks = getBenchmarksByCategory('flash_speed');
+const flashBenchmarks = getBenchmarksByCategory("flash_speed");
 
 // Evaluate a value against benchmark
-const rating = evaluateAgainstBenchmark('Sequential Write Speed', 350);
+const rating = evaluateAgainstBenchmark("Sequential Write Speed", 350);
 // Returns: 'good' or 'optimal' or 'acceptable' or 'poor'
 
 // Calculate percentile ranking
-const percentile = calculatePercentile('Sequential Write Speed', 350);
+const percentile = calculatePercentile("Sequential Write Speed", 350);
 // Returns: number 0-100
 
 // Get recommendation for improvement
-const recommendation = generateRecommendation('Sequential Write Speed', 45, 'poor');
+const recommendation = generateRecommendation(
+  "Sequential Write Speed",
+  45,
+  "poor",
+);
 // Returns: string with actionable advice
 ```
 
 ## Troubleshooting
 
 ### "No benchmark data to save"
+
 **Cause**: No active monitoring session or metrics available  
 **Solution**: Start a flash operation first, then save the session
 
 ### Benchmark results seem inaccurate
+
 **Cause**: Metrics may be simulated or test data  
 **Solution**: Ensure real device operations are running, not simulated tests
 
 ### Can't export data
+
 **Cause**: No benchmark results available  
 **Solution**: Run at least one benchmark session first
 
 ### Performance ratings don't match expectations
+
 **Cause**: Benchmarks are based on ideal conditions  
 **Solution**: Review system load, connection quality, and device capabilities
 
@@ -275,6 +312,7 @@ Planned improvements to the benchmarking system:
 ## Support
 
 For questions or issues with the benchmarking system:
+
 - Review the documentation in the app's help section
 - Check the GitHub issues for known problems
 - Submit bug reports with exported benchmark data

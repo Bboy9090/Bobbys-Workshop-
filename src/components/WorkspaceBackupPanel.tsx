@@ -22,6 +22,16 @@ import {
 import { toast } from 'sonner';
 import { useWorkspaceBackup, BackupInterval } from '@/hooks/use-workspace-backup';
 import { useEffect, useState } from 'react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export function WorkspaceBackupPanel() {
   const {
@@ -35,6 +45,8 @@ export function WorkspaceBackupPanel() {
   } = useWorkspaceBackup();
 
   const [timeRemaining, setTimeRemaining] = useState<string>('');
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const [pendingRestoreId, setPendingRestoreId] = useState<string | null>(null);
 
   useEffect(() => {
     const updateTime = () => {
@@ -67,12 +79,19 @@ export function WorkspaceBackupPanel() {
   };
 
   const handleRestore = async (snapshotId: string) => {
-    if (!confirm('Restore workspace from this backup? Current state will be replaced.')) return;
+    setPendingRestoreId(snapshotId);
+    setRestoreDialogOpen(true);
+  };
+
+  const confirmRestore = async () => {
+    if (!pendingRestoreId) return;
     
-    const result = await restoreBackup(snapshotId);
+    setRestoreDialogOpen(false);
+    const result = await restoreBackup(pendingRestoreId);
     if (result.success) {
       setTimeout(() => window.location.reload(), 1500);
     }
+    setPendingRestoreId(null);
   };
 
   const intervalLabels: Record<BackupInterval, string> = {
@@ -370,6 +389,21 @@ export function WorkspaceBackupPanel() {
           </div>
         </CardContent>
       </Card>
+
+      <AlertDialog open={restoreDialogOpen} onOpenChange={setRestoreDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restore Workspace Backup</AlertDialogTitle>
+            <AlertDialogDescription>
+              Restore workspace from this backup? Current state will be replaced. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingRestoreId(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRestore}>Restore</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -139,19 +139,23 @@ pandora-codex/
 ## Documentation
 
 ### Getting Started
+
 - [README_PANDORA.md](./README_PANDORA.md) - Feature overview and current capabilities
 - [BOBBY_DEV_ARSENAL.md](./BOBBY_DEV_ARSENAL.md) - Development environment setup
 
 ### Enterprise Architecture
+
 - [PANDORA_ENTERPRISE_BLUEPRINT.md](./PANDORA_ENTERPRISE_BLUEPRINT.md) - Complete architecture and philosophy
 - [docs/NO_ILLUSION_AUDIT.md](./docs/NO_ILLUSION_AUDIT.md) - Truth-based detection standards
 - [docs/SHOP_PLAYBOOK.md](./docs/SHOP_PLAYBOOK.md) - Real-world repair shop workflows
 
 ### Component Documentation
+
 - [libs/bootforgeusb/README.md](./libs/bootforgeusb/README.md) - Rust device detection library
 - [.pandora_private/README.md](./.pandora_private/README.md) - Bobby Vault local tools guide
 
 ### Existing Features
+
 - [ADB_FASTBOOT_DETECTION.md](./ADB_FASTBOOT_DETECTION.md) - Android device detection
 - [FASTBOOT_FLASHING.md](./FASTBOOT_FLASHING.md) - Firmware operations
 - [PERFORMANCE_BENCHMARKING.md](./PERFORMANCE_BENCHMARKING.md) - Industry standards
@@ -216,6 +220,7 @@ Policy Evaluation:
 ## Commands Reference
 
 ### Make Commands
+
 ```bash
 make help              # Show all available commands
 make install           # Install all dependencies
@@ -231,6 +236,7 @@ make clean             # Clean build artifacts
 ```
 
 ### NPM Scripts
+
 ```bash
 npm run dev                    # Start Vite dev server
 npm run build                  # Build production bundle
@@ -241,6 +247,7 @@ npm run server:start           # Start backend API
 ```
 
 ### BootForgeUSB CLI
+
 ```bash
 # After building with `make bootforge:build`
 ./libs/bootforgeusb/target/release/bootforgeusb scan
@@ -249,6 +256,7 @@ npm run server:start           # Start backend API
 ```
 
 ### Bobby Vault
+
 ```bash
 # Run local tool with hash validation
 python3 .pandora_private/scripts/run_local_tool.py <tool_id> [args...]
@@ -260,6 +268,7 @@ python3 .pandora_private/scripts/run_local_tool.py heimdall flash --pit device.p
 ## Roadmap
 
 ### Phase 0 - Foundations (In Progress)
+
 - [x] Enterprise architecture documentation
 - [x] BootForgeUSB Rust library structure
 - [x] Pandora Core TypeScript schemas
@@ -271,6 +280,7 @@ python3 .pandora_private/scripts/run_local_tool.py heimdall flash --pit device.p
 - [ ] Integration with existing UI
 
 ### Phase 1 - MVP
+
 - [ ] Device Dossier UI with confidence display
 - [ ] Tool Health Monitor dashboard
 - [ ] Job Queue implementation
@@ -279,6 +289,7 @@ python3 .pandora_private/scripts/run_local_tool.py heimdall flash --pit device.p
 - [ ] Replace simulated detection with BootForgeUSB
 
 ### Phase 2 - Pro
+
 - [ ] Device profiles per brand/chipset
 - [ ] Workflow automation for safe operations
 - [ ] Team-based RBAC
@@ -286,6 +297,7 @@ python3 .pandora_private/scripts/run_local_tool.py heimdall flash --pit device.p
 - [ ] Signed evidence bundles
 
 ### Phase 3 - Enterprise
+
 - [ ] Full policy engine with custom rules
 - [ ] Signed plugin system
 - [ ] Audit retention and export
@@ -308,12 +320,14 @@ See [PANDORA_ENTERPRISE_BLUEPRINT.md](./PANDORA_ENTERPRISE_BLUEPRINT.md) for arc
 ## Security
 
 ### What This Is
+
 - ✅ Lawful device repair and diagnostics framework
 - ✅ Audit-compliant evidence collection
 - ✅ Safety gates for destructive operations
 - ✅ Customer authorization workflow
 
 ### What This Is NOT
+
 - ❌ Bypassing security without authorization
 - ❌ FRP/iCloud removal without proof of ownership
 - ❌ Theft or fraud enablement
@@ -338,4 +352,4 @@ The Spark Template files and resources from GitHub are licensed under the MIT li
 
 **Part of the Bobby Dev Arsenal. Built for truth. Designed for transparency. Engineered for evidence.**
 
-*Enterprise-grade device operations with zero illusions.*
+_Enterprise-grade device operations with zero illusions._

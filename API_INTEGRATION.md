@@ -33,10 +33,12 @@ The server runs on **http://localhost:3001** by default.
 ### Flash Operations
 
 **GET `/api/flash/history`**
+
 - Returns array of past flash operations
 - No authentication required
 
 **POST `/api/flash/start`**
+
 - Starts a new demo flash operation
 - Returns operation entry with ID and timestamp
 - Response: `{ status: 'started', entry: {...} }`
@@ -44,17 +46,21 @@ The server runs on **http://localhost:3001** by default.
 ### Performance Monitoring
 
 **POST `/api/monitor/start`**
+
 - Activates performance monitoring
 - Response: `{ status: 'monitoring started', active: true }`
 
 **POST `/api/monitor/stop`**
+
 - Stops performance monitoring
 - Response: `{ status: 'monitoring stopped', active: false }`
 
 **GET `/api/monitor/live`**
+
 - Returns current performance metrics
 - Polls every 2 seconds when monitoring is active
 - Response:
+
 ```json
 {
   "speed": "25.43",
@@ -71,8 +77,10 @@ The server runs on **http://localhost:3001** by default.
 ### Automated Testing
 
 **POST `/api/tests/run`**
+
 - Executes the automated test suite
 - Response:
+
 ```json
 {
   "id": 1234567890,
@@ -95,13 +103,16 @@ The server runs on **http://localhost:3001** by default.
 ```
 
 **GET `/api/tests/results`**
+
 - Returns test history (last 20 runs)
 
 ### Benchmark Standards
 
 **GET `/api/standards`**
+
 - Returns industry benchmark reference data
 - Response:
+
 ```json
 {
   "standards": [
@@ -125,9 +136,11 @@ The server runs on **http://localhost:3001** by default.
 ### Hotplug Events
 
 **WebSocket `ws://localhost:3001/ws/device-events`**
+
 - Live stream of device connection/disconnection events
 - Automatically sends events every 8 seconds (demo mode)
 - Event format:
+
 ```json
 {
   "type": "connected",
@@ -146,18 +159,22 @@ The server runs on **http://localhost:3001** by default.
 ### Device Detection (Existing)
 
 **GET `/api/system-tools`**
+
 - Detects installed development tools
 - Returns versions of Rust, Node, Python, Git, Docker, ADB, Fastboot
 
 **GET `/api/adb/devices`**
+
 - Lists connected Android devices via ADB
 - Returns device properties, modes, and correlation data
 
 **GET `/api/fastboot/devices`**
+
 - Lists devices in bootloader mode
 - Returns bootloader information and unlock status
 
 **GET `/api/bootforgeusb/scan`**
+
 - Scans USB devices using BootForgeUSB
 - Provides platform detection and correlation
 
@@ -168,12 +185,14 @@ The server runs on **http://localhost:3001** by default.
 **Location:** `src/components/PandoraFlashPanel.tsx`
 
 **Features:**
+
 - Fetches flash history from backend on mount
 - Starts demo flash operations via API
 - Shows real-time progress tracking
 - Automatically refreshes history after completion
 
 **API Integration:**
+
 - `useEffect` → Fetches `/api/flash/history` on load
 - `startDemoFlash()` → POSTs to `/api/flash/start`
 - Auto-refreshes history after operation completes
@@ -183,12 +202,14 @@ The server runs on **http://localhost:3001** by default.
 **Location:** `src/components/RealTimeFlashMonitor.tsx`
 
 **Features:**
+
 - Connects to backend monitoring API
 - Polls live metrics every 2 seconds
 - Displays transfer speed, CPU, memory, USB, disk I/O
 - Detects bottlenecks based on real data
 
 **API Integration:**
+
 - `startMonitoring()` → POSTs to `/api/monitor/start`
 - `startMetricsCollection()` → Polls `/api/monitor/live` every 2s
 - `stopMonitoring()` → POSTs to `/api/monitor/stop`
@@ -198,12 +219,14 @@ The server runs on **http://localhost:3001** by default.
 **Location:** `src/components/AutomatedTestingDashboard.tsx`
 
 **Features:**
+
 - Runs automated tests via backend
 - Shows progress indicator
 - Displays test results with pass/fail status
 - Saves test history to local storage
 
 **API Integration:**
+
 - `runTests()` → POSTs to `/api/tests/run`
 - Maps backend response to frontend TestResult format
 - Uses `useKV` to persist test history
@@ -213,12 +236,14 @@ The server runs on **http://localhost:3001** by default.
 **Location:** `src/components/LiveDeviceHotplugMonitor.tsx`
 
 **Features:**
+
 - Connects to WebSocket for real-time device events
 - Shows connection/disconnection events
 - Displays correlation badges
 - Audio notifications for device events
 
 **API Integration:**
+
 - Uses `useDeviceHotplug` hook
 - Auto-connects to `ws://localhost:3001/ws/device-events`
 - Handles WebSocket reconnection
@@ -232,7 +257,7 @@ The server runs on **http://localhost:3001** by default.
 
 ```typescript
 export const API_CONFIG = {
-  BASE_URL: import.meta.env.VITE_API_URL || 'http://localhost:3001',
+  BASE_URL: import.meta.env.VITE_API_URL || "http://localhost:3001",
   ENDPOINTS: {
     // ... all endpoints
   },
@@ -249,6 +274,7 @@ VITE_API_URL=http://localhost:3001
 ```
 
 For production:
+
 ```bash
 VITE_API_URL=https://your-api-server.com
 ```
@@ -267,11 +293,13 @@ All components include error handling for API failures:
 ### Running Locally
 
 Terminal 1 - Backend:
+
 ```bash
 npm run server:dev
 ```
 
 Terminal 2 - Frontend:
+
 ```bash
 npm run dev
 ```
@@ -303,7 +331,7 @@ curl http://localhost:3001/api/standards
 Use a WebSocket client or browser console:
 
 ```javascript
-const ws = new WebSocket('ws://localhost:3001/ws/device-events');
+const ws = new WebSocket("ws://localhost:3001/ws/device-events");
 ws.onmessage = (event) => console.log(JSON.parse(event.data));
 ```
 
@@ -319,11 +347,13 @@ ws.onmessage = (event) => console.log(JSON.parse(event.data));
 ### Frontend Configuration
 
 1. Update `.env.production`:
+
 ```bash
 VITE_API_URL=https://your-api-domain.com
 ```
 
 2. Build frontend:
+
 ```bash
 npm run build
 ```
@@ -335,6 +365,7 @@ npm run build
 ### "Backend may be offline" error
 
 **Solution:** Ensure backend server is running on port 3001
+
 ```bash
 npm run server:dev
 ```
@@ -342,6 +373,7 @@ npm run server:dev
 ### WebSocket connection failed
 
 **Solution:** Check that WebSocket path is correct and server supports WS
+
 - Path: `/ws/device-events`
 - URL: `ws://localhost:3001/ws/device-events`
 
@@ -351,7 +383,8 @@ npm run server:dev
 
 ### "Failed to fetch" errors
 
-**Solution:** 
+**Solution:**
+
 1. Verify backend is running
 2. Check API_CONFIG.BASE_URL in `src/lib/apiConfig.ts`
 3. Ensure no proxy/firewall blocking port 3001

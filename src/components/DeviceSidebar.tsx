@@ -59,15 +59,15 @@ export function DeviceSidebar({ collapsed, onToggle }: DeviceSidebarProps) {
 
     return (
         <aside 
-            className={`border-r border-border bg-card transition-all duration-300 ${
+            className={`border-r border-border phone-box transition-all duration-300 ${
                 collapsed ? 'w-16' : 'w-64'
             }`}
         >
             <div className="h-full flex flex-col">
-                <div className="h-12 border-b border-border flex items-center justify-between px-4">
+                <div className="h-12 border-b border-border flex items-center justify-between px-4 graffiti-tag">
                     {!collapsed && (
                         <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                            Devices
+                            📱 Devices
                         </h2>
                     )}
                     <Button
@@ -90,7 +90,7 @@ export function DeviceSidebar({ collapsed, onToggle }: DeviceSidebarProps) {
                                     ) : (
                                         <>
                                             <DeviceMobile className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                                            <p>No devices connected</p>
+                                            <p>No phones in the box</p>
                                         </>
                                     )}
                                 </div>
@@ -100,7 +100,7 @@ export function DeviceSidebar({ collapsed, onToggle }: DeviceSidebarProps) {
                         {devices.map((device) => (
                             <button
                                 key={device.serial}
-                                className="w-full text-left rounded-md hover:bg-accent/10 transition-colors p-2"
+                                className="w-full text-left rounded-md hover:bg-accent/10 transition-colors p-2 device-card-console phone-stack"
                             >
                                 <div className="flex items-start gap-2">
                                     <div className="mt-0.5">
@@ -115,13 +115,13 @@ export function DeviceSidebar({ collapsed, onToggle }: DeviceSidebarProps) {
                                                 {device.source && (
                                                     <Badge 
                                                         variant="outline" 
-                                                        className="text-xs px-1 py-0 h-4"
+                                                        className="text-xs px-1 py-0 h-4 sticker-worn"
                                                     >
                                                         {device.source}
                                                     </Badge>
                                                 )}
                                             </div>
-                                            <p className="text-xs font-mono text-muted-foreground truncate">
+                                            <p className="text-xs font-mono text-muted-foreground truncate console-text">
                                                 {device.serial}
                                             </p>
                                         </div>
@@ -132,10 +132,10 @@ export function DeviceSidebar({ collapsed, onToggle }: DeviceSidebarProps) {
                     </div>
                 </ScrollArea>
 
-                <div className="border-t border-border p-2">
+                <div className="border-t border-border p-2 laundry-texture">
                     {!collapsed && (
                         <div className="text-xs font-mono text-muted-foreground px-2">
-                            {devices.length} {devices.length === 1 ? 'device' : 'devices'}
+                            📦 {devices.length} {devices.length === 1 ? 'device' : 'devices'}
                         </div>
                     )}
                 </div>

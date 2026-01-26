@@ -1,5 +1,7 @@
+@import './styles/design-tokens.css';
 @import 'tailwindcss';
 @import "tw-animate-css";
+@import './styles/workshop-vibe.css';
 
 @layer base {
   * {

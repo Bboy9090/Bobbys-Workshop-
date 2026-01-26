@@ -1,0 +1,49 @@
+appId: com.bboy9090.bobbysworkshop
+productName: Bobbys Workshop
+directories:
+  buildResources: build
+  output: dist-electron
+files:
+  - dist/**/*
+  - electron/**/*
+  - server/**/*
+  - core/**/*
+  - runtime/**/*
+  - package.json
+  - "!node_modules/**/*"
+  - "!**/*.{md,ts,map}"
+extraResources:
+  - from: server
+    to: resources/server
+    filter:
+      - "**/*"
+  - from: core
+    to: resources/core
+    filter:
+      - "**/*"
+  - from: runtime
+    to: resources/runtime
+    filter:
+      - "**/*"
+win:
+  target:
+    - nsis
+    - msi
+  icon: public/icon.ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+mac:
+  target:
+    - dmg
+    - zip
+  icon: public/icon.icns
+  category: public.app-category.developer-tools
+linux:
+  target:
+    - AppImage
+    - deb
+  icon: public/icon.png
+  category: Development

@@ -9,9 +9,11 @@ Bobby's World Tools now includes a comprehensive device connectivity detection s
 ### Core Components
 
 #### 1. `probeDevice.ts` - Multi-Protocol Device Probing
+
 The central module for device detection across all supported protocols.
 
 **Features:**
+
 - Unified device detection API
 - Parallel probing across multiple protocols
 - Automatic capability detection
@@ -19,27 +21,30 @@ The central module for device detection across all supported protocols.
 - Device state correlation
 
 **Key Functions:**
+
 ```typescript
 // Probe all connected devices
 const devices = await probeDevices({
   includeUSB: true,
   includeAndroid: true,
   includeiOS: true,
-  timeout: 10000
+  timeout: 10000,
 });
 
 // Monitor for device connect/disconnect
 const cleanup = createDeviceMonitor(
-  (device) => console.log('Connected:', device),
-  (deviceId) => console.log('Disconnected:', deviceId),
-  3000 // poll interval
+  (device) => console.log("Connected:", device),
+  (deviceId) => console.log("Disconnected:", deviceId),
+  3000, // poll interval
 );
 ```
 
 #### 2. `usbClassDetection.ts` - Enhanced USB Classification
+
 Provides detailed USB device class detection with mobile device support.
 
 **Enhanced Features:**
+
 - MTP (Media Transfer Protocol) detection for Android
 - PTP (Picture Transfer Protocol) for cameras and iOS
 - ADB interface detection (Android Debug Bridge)
@@ -47,6 +52,7 @@ Provides detailed USB device class detection with mobile device support.
 - iOS usbmuxd protocol recognition
 
 **Detected Mobile Capabilities:**
+
 - Android Debug Bridge (ADB)
 - Android Fastboot
 - iOS Device (iTunes/libimobiledevice)
@@ -54,9 +60,11 @@ Provides detailed USB device class detection with mobile device support.
 - PTP Photo Import
 
 #### 3. `DevModePanel.tsx` - Visual Device Management
+
 React component providing a comprehensive UI for device detection and workflow management.
 
 **Features:**
+
 - Real-time device list with auto-refresh
 - Device capability visualization
 - Workflow launcher interface
@@ -152,32 +160,36 @@ Each detected device includes a `capabilities` array describing available operat
 
 ```typescript
 interface DeviceCapability {
-  id: string;              // Unique capability ID
-  name: string;            // Human-readable name
-  description: string;     // Detailed description
-  available: boolean;      // Whether capability is currently available
-  protocols: string[];     // Required protocols (e.g., 'adb', 'fastboot')
+  id: string; // Unique capability ID
+  name: string; // Human-readable name
+  description: string; // Detailed description
+  available: boolean; // Whether capability is currently available
+  protocols: string[]; // Required protocols (e.g., 'adb', 'fastboot')
 }
 ```
 
 ### Example Capabilities
 
 **Android (ADB Mode):**
+
 - `adb-shell` - Execute shell commands
 - `app-install` - Install/manage apps
 - `file-transfer` - Transfer files via ADB
 - `debugging` - Debug applications
 
 **Android (Fastboot Mode):**
+
 - `fastboot-flash` - Flash firmware partitions
 - `bootloader-unlock` - Unlock/lock bootloader
 - `custom-rom` - Install custom firmware
 
 **iOS (Normal Mode):**
+
 - `ios-backup` - Create/restore backups
 - `ios-diagnostics` - Run diagnostics
 
 **iOS (DFU Mode):**
+
 - `dfu-restore` - Firmware restore
 - `jailbreak` - Jailbreak operations (checkra1n/palera1n)
 
@@ -190,6 +202,7 @@ interface DeviceCapability {
 **Location:** `/workflows/mobile/vessel-sanctum.json`
 
 **Features:**
+
 - 15-step diagnostic process
 - Platform-specific commands (Android/iOS)
 - Hardware sensor testing
@@ -204,6 +217,7 @@ interface DeviceCapability {
 **Risk Level:** Low (read-only operations)
 
 **Usage:**
+
 ```typescript
 import { DevModePanel } from '@/components/DevModePanel';
 
@@ -218,6 +232,7 @@ import { DevModePanel } from '@/components/DevModePanel';
 **Location:** `/workflows/mobile/warhammer.json`
 
 **Features:**
+
 - Emergency device recovery
 - Firmware flashing (boot, system, vendor, recovery)
 - Bootloader unlock/lock operations
@@ -231,10 +246,11 @@ import { DevModePanel } from '@/components/DevModePanel';
 **Risk Level:** High (destructive operations)
 
 **Prerequisites:**
+
 - Device owner authorization
 - Bootloader must be unlockable
 - Firmware files available
-- >50% battery charge
+- > 50% battery charge
 - Stable USB connection
 
 **Warning:** ⚠️ DATA LOSS MAY OCCUR
@@ -246,6 +262,7 @@ import { DevModePanel } from '@/components/DevModePanel';
 **Location:** `/workflows/mobile/quick-diagnostics.json`
 
 **Features:**
+
 - Device detection
 - Battery level check
 - Storage availability check
@@ -262,6 +279,7 @@ import { DevModePanel } from '@/components/DevModePanel';
 **Location:** `/workflows/mobile/battery-health.json`
 
 **Features:**
+
 - Full battery statistics
 - Cycle count tracking
 - Capacity analysis
@@ -307,15 +325,15 @@ stopMonitoring();
 
 ```typescript
 interface ProbeResult {
-  deviceId: string;                    // Unique device identifier
-  deviceName: string;                  // Human-readable name
-  deviceType: 'android' | 'ios' | 'usb' | 'network' | 'unknown';
-  connectionType: 'adb' | 'fastboot' | 'usb' | 'network' | 'ios' | 'webusb';
-  state: 'connected' | 'disconnected' | 'unauthorized' | 'offline' | 'unknown';
-  capabilities: DeviceCapability[];    // Available operations
-  properties: Record<string, any>;     // Device-specific properties
-  detectionMethod: string;             // How device was detected
-  timestamp: number;                   // Detection timestamp
+  deviceId: string; // Unique device identifier
+  deviceName: string; // Human-readable name
+  deviceType: "android" | "ios" | "usb" | "network" | "unknown";
+  connectionType: "adb" | "fastboot" | "usb" | "network" | "ios" | "webusb";
+  state: "connected" | "disconnected" | "unauthorized" | "offline" | "unknown";
+  capabilities: DeviceCapability[]; // Available operations
+  properties: Record<string, any>; // Device-specific properties
+  detectionMethod: string; // How device was detected
+  timestamp: number; // Detection timestamp
 }
 ```
 
@@ -324,16 +342,18 @@ interface ProbeResult {
 ### Example 1: List All Connected Devices
 
 ```typescript
-import { probeDevices } from '@/lib/probeDevice';
+import { probeDevices } from "@/lib/probeDevice";
 
 async function listDevices() {
   const devices = await probeDevices();
-  
+
   console.log(`Found ${devices.length} devices:`);
-  devices.forEach(device => {
+  devices.forEach((device) => {
     console.log(`- ${device.deviceName} (${device.connectionType})`);
     console.log(`  State: ${device.state}`);
-    console.log(`  Capabilities: ${device.capabilities.map(c => c.name).join(', ')}`);
+    console.log(
+      `  Capabilities: ${device.capabilities.map((c) => c.name).join(", ")}`,
+    );
   });
 }
 ```
@@ -341,7 +361,7 @@ async function listDevices() {
 ### Example 2: Monitor Device Connections
 
 ```typescript
-import { createDeviceMonitor } from '@/lib/probeDevice';
+import { createDeviceMonitor } from "@/lib/probeDevice";
 
 const cleanup = createDeviceMonitor(
   (device) => {
@@ -352,7 +372,7 @@ const cleanup = createDeviceMonitor(
     console.log(`Device disconnected: ${deviceId}`);
     // Clean up resources, update UI, etc.
   },
-  5000 // Check every 5 seconds
+  5000, // Check every 5 seconds
 );
 
 // When done:
@@ -362,15 +382,15 @@ cleanup();
 ### Example 3: Check Device Capabilities
 
 ```typescript
-import { probeDevices } from '@/lib/probeDevice';
+import { probeDevices } from "@/lib/probeDevice";
 
 async function checkADBCapability() {
   const devices = await probeDevices({ includeAndroid: true });
-  
-  const adbDevices = devices.filter(device => 
-    device.capabilities.some(cap => cap.id === 'adb-shell' && cap.available)
+
+  const adbDevices = devices.filter((device) =>
+    device.capabilities.some((cap) => cap.id === "adb-shell" && cap.available),
   );
-  
+
   console.log(`${adbDevices.length} devices support ADB shell`);
   return adbDevices;
 }
@@ -383,13 +403,16 @@ The connectivity detection system requires backend services to be running:
 ### Required Endpoints
 
 **Android Detection:**
+
 - `GET /api/android/devices` - List ADB/Fastboot devices
 - `GET /api/fastboot/devices` - List Fastboot-only devices
 
 **iOS Detection:**
+
 - `GET /api/ios/scan` - Scan for iOS devices via libimobiledevice
 
 **System Tools:**
+
 - `GET /api/system/tools` - Check installed tools (ADB, Fastboot, etc.)
 
 ### Starting Backend Services
@@ -409,17 +432,20 @@ npm start
 ### Device Not Detected
 
 **Android:**
+
 1. Ensure USB debugging is enabled on device
 2. Accept authorization prompt on device
 3. Check `adb devices` in terminal
 4. Try different USB cable/port
 
 **iOS:**
+
 1. Install libimobiledevice: `brew install libimobiledevice` (macOS)
 2. Trust computer on iOS device
 3. Check `idevice_id -l` in terminal
 
 **USB:**
+
 1. Use Chrome, Edge, or Opera (WebUSB support)
 2. Grant browser USB permissions
 3. Check browser console for errors
@@ -482,4 +508,4 @@ Potential areas for expansion:
 ---
 
 **Part of Bobby's World Tools - Workshop Toolkit**  
-*Professional device connectivity detection with 90s workshop charm*
+_Professional device connectivity detection with 90s workshop charm_

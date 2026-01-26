@@ -1,5 +1,5 @@
-import { AutomatedTestingDashboard } from "../AutomatedTestingDashboard";
-import { PluginDependencyGraph } from "../PluginDependencyGraph";
+import { PandoraTestsPanel } from "../PandoraTestsPanel";
+import { EmptyState } from "../EmptyState";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { 
     TestTube, 
@@ -42,7 +42,7 @@ export function TestsTab() {
                 </TabsList>
 
                 <TabsContent value="suite" className="mt-4">
-                    <AutomatedTestingDashboard />
+                    <PandoraTestsPanel />
                 </TabsContent>
 
                 <TabsContent value="performance" className="mt-4">
@@ -58,7 +58,11 @@ export function TestsTab() {
                 </TabsContent>
 
                 <TabsContent value="dependencies" className="mt-4">
-                    <PluginDependencyGraph />
+                    <EmptyState
+                        icon={<GitBranch className="w-12 h-12" weight="duotone" />}
+                        title="Dependency graph disabled"
+                        description="The previous dependency graph used simulated install/update state. Hook this up to a real plugin registry + installed-state API before re-enabling."
+                    />
                 </TabsContent>
             </Tabs>
         </div>

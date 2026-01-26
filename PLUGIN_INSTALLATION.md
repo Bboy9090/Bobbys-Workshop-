@@ -9,6 +9,7 @@ Bobby's World now features a **comprehensive live plugin installation system** w
 ### Core Components
 
 1. **PluginDependencyResolver** (`src/lib/plugin-dependency-resolver.ts`)
+
    - Resolves dependency trees automatically
    - Detects version conflicts
    - Identifies circular dependencies
@@ -16,12 +17,14 @@ Bobby's World now features a **comprehensive live plugin installation system** w
    - Manages download and installation
 
 2. **PluginRegistryAPI** (`src/lib/plugin-registry-api.ts`)
+
    - Fetches plugin manifests from registry
    - Downloads plugin packages
    - Verifies plugin signatures
    - Manages cache and sync
 
 3. **usePluginDependencies** Hook (`src/hooks/use-plugin-dependencies.ts`)
+
    - React hook for dependency management
    - Provides reactive state for resolution and installation
    - Handles progress tracking
@@ -34,6 +37,7 @@ Bobby's World now features a **comprehensive live plugin installation system** w
 ## Installation Flow
 
 ### Step 1: Resolution
+
 - **Automatic**: Starts immediately when component mounts
 - Analyzes dependency tree for target plugin
 - Checks installed plugins for compatibility
@@ -41,11 +45,13 @@ Bobby's World now features a **comprehensive live plugin installation system** w
 - Calculates total download size
 
 **Visual Indicators:**
+
 - Animated progress indicator
 - Step tracker showing current phase
 - Error alerts for resolution failures
 
 ### Step 2: Confirmation
+
 - **Manual**: Requires user approval
 - Displays installation plan with all dependencies
 - Shows install order (dependencies first, target last)
@@ -53,11 +59,13 @@ Bobby's World now features a **comprehensive live plugin installation system** w
 - Highlights any conflicts or circular dependencies
 
 **User Actions:**
+
 - Review dependencies
 - Approve installation
 - Cancel if needed
 
 ### Step 3: Installation
+
 - **Automatic**: Downloads and installs in order
 - For each dependency:
   1. **Download**: Fetch from registry with progress
@@ -66,6 +74,7 @@ Bobby's World now features a **comprehensive live plugin installation system** w
   4. **Update**: Mark as installed
 
 **Visual Indicators:**
+
 - Overall progress bar
 - Current plugin being processed
 - Status badges (downloading, verifying, installing, completed, failed)
@@ -73,6 +82,7 @@ Bobby's World now features a **comprehensive live plugin installation system** w
 - Live error messages
 
 ### Step 4: Complete
+
 - Shows installation summary
 - Lists successfully installed plugins
 - Displays any errors encountered
@@ -83,6 +93,7 @@ Bobby's World now features a **comprehensive live plugin installation system** w
 ### Version Satisfaction
 
 Supports semantic versioning with:
+
 - Exact: `1.2.3`
 - Caret: `^1.2.3` (allows patch and minor updates)
 - Tilde: `~1.2.3` (allows patch updates only)
@@ -93,6 +104,7 @@ Supports semantic versioning with:
 ### Conflict Detection
 
 Identifies when:
+
 - Multiple plugins require different versions of the same dependency
 - Installed plugin version doesn't satisfy new requirements
 - Version ranges don't overlap
@@ -100,6 +112,7 @@ Identifies when:
 ### Circular Dependency Detection
 
 Uses depth-first search to find dependency cycles:
+
 ```
 A → B → C → A  (circular)
 ```
@@ -107,6 +120,7 @@ A → B → C → A  (circular)
 ### Installation Order
 
 Topological sort ensures dependencies install before dependents:
+
 ```
 Installation Order:
 1. core-utils (dependency)
@@ -140,7 +154,7 @@ const handleInstall = async (plugin: Plugin) => {
       onCancel={handleCancel}
     />
   </DialogContent>
-</Dialog>
+</Dialog>;
 ```
 
 ## Progress Tracking
@@ -149,30 +163,33 @@ The system provides detailed progress information:
 
 ```typescript
 interface InstallProgress {
-  current: number;           // Current plugin number
-  total: number;             // Total plugins to install
-  currentPlugin: string;     // Plugin being processed
-  status: 'downloading' | 'installing' | 'verifying' | 'completed' | 'failed';
-  message: string;           // Human-readable status
-  error?: string;            // Error message if failed
+  current: number; // Current plugin number
+  total: number; // Total plugins to install
+  currentPlugin: string; // Plugin being processed
+  status: "downloading" | "installing" | "verifying" | "completed" | "failed";
+  message: string; // Human-readable status
+  error?: string; // Error message if failed
 }
 ```
 
 ## Error Handling
 
 ### Resolution Errors
+
 - Missing dependencies (not found in registry)
 - Version conflicts
 - Circular dependencies
 - Network failures
 
 ### Installation Errors
+
 - Download failures
 - Signature verification failures
 - Storage errors
 - Individual plugin installation failures
 
 **Recovery:**
+
 - Clear error messages
 - Option to retry
 - Partial installations preserved
@@ -181,19 +198,23 @@ interface InstallProgress {
 ## Security Features
 
 ### Signature Verification
+
 Every downloaded plugin is verified:
+
 1. Calculate SHA-256 hash of downloaded package
 2. Send hash to registry for verification
 3. Reject installation if signature doesn't match
 
 ### Safe Storage
+
 Plugins stored in Spark KV with metadata:
+
 ```typescript
 {
   id: string;
   version: string;
-  data: string;  // base64-encoded plugin package
-  installedAt: string;  // ISO timestamp
+  data: string; // base64-encoded plugin package
+  installedAt: string; // ISO timestamp
 }
 ```
 
@@ -202,11 +223,13 @@ Plugins stored in Spark KV with metadata:
 ### Visual Progress Indicators
 
 **Step Tracker**
+
 ```
 [✓] Resolve → [●] Confirm → [ ] Install → [ ] Complete
 ```
 
 **Status Icons**
+
 - 🕐 Clock: Resolving/loading
 - ✓ Check: Success
 - ✗ Cross: Error
@@ -216,6 +239,7 @@ Plugins stored in Spark KV with metadata:
 - ⬇️ Download: Downloading
 
 ### Color Coding
+
 - **Success**: Green (success/20)
 - **Primary**: Cyan (primary)
 - **Warning**: Amber (warning)
@@ -223,6 +247,7 @@ Plugins stored in Spark KV with metadata:
 - **Muted**: Gray (muted)
 
 ### Animations
+
 - **Pulse**: Active installation steps
 - **Bounce**: Download indicator
 - **Spin**: Resolution/loading
@@ -232,7 +257,7 @@ Plugins stored in Spark KV with metadata:
 ### Basic Installation
 
 ```tsx
-import { PluginDependencyInstaller } from '@/components/PluginDependencyInstaller';
+import { PluginDependencyInstaller } from "@/components/PluginDependencyInstaller";
 
 function MyComponent() {
   return (
@@ -242,13 +267,13 @@ function MyComponent() {
       version="2.3.1"
       onInstallComplete={(success) => {
         if (success) {
-          console.log('Installation succeeded');
+          console.log("Installation succeeded");
         } else {
-          console.log('Installation failed');
+          console.log("Installation failed");
         }
       }}
       onCancel={() => {
-        console.log('Installation cancelled');
+        console.log("Installation cancelled");
       }}
     />
   );
@@ -258,7 +283,7 @@ function MyComponent() {
 ### With Hook
 
 ```tsx
-import { usePluginDependencies } from '@/hooks/use-plugin-dependencies';
+import { usePluginDependencies } from "@/hooks/use-plugin-dependencies";
 
 function MyComponent() {
   const {
@@ -270,27 +295,27 @@ function MyComponent() {
 
   const handleInstall = async () => {
     // Resolve dependencies first
-    const resolution = await resolveDependencies('plugin-id', '1.0.0');
-    
+    const resolution = await resolveDependencies("plugin-id", "1.0.0");
+
     // Check for conflicts
     if (resolution.conflicts.length > 0) {
-      console.error('Dependency conflicts detected');
+      console.error("Dependency conflicts detected");
       return;
     }
 
     // Install with progress tracking
     const result = await installWithDependencies(
-      'plugin-id',
-      '1.0.0',
+      "plugin-id",
+      "1.0.0",
       (progress) => {
         console.log(`${progress.status}: ${progress.message}`);
-      }
+      },
     );
 
     if (result.success) {
-      console.log('Installed:', result.installed);
+      console.log("Installed:", result.installed);
     } else {
-      console.error('Errors:', result.errors);
+      console.error("Errors:", result.errors);
     }
   };
 
@@ -304,11 +329,11 @@ function MyComponent() {
 
 ```typescript
 const config: RegistryConfig = {
-  apiUrl: 'https://registry.bobbysworld.dev/api',
-  syncInterval: 3600000,      // Sync every hour
-  autoSync: true,              // Auto-sync on start
-  allowUncertified: false,     // Require certification
-  cacheExpiry: 86400000,       // Cache for 24 hours
+  apiUrl: "https://registry.bobbysworld.dev/api",
+  syncInterval: 3600000, // Sync every hour
+  autoSync: true, // Auto-sync on start
+  allowUncertified: false, // Require certification
+  cacheExpiry: 86400000, // Cache for 24 hours
 };
 ```
 
@@ -318,9 +343,9 @@ const config: RegistryConfig = {
 const policy: PluginSecurityPolicy = {
   allowUncertified: false,
   requireSignature: true,
-  allowedRiskLevels: ['safe', 'moderate'],
+  allowedRiskLevels: ["safe", "moderate"],
   maxExecutionsPerDay: 100,
-  requireUserConfirmationFor: ['high', 'critical'],
+  requireUserConfirmationFor: ["high", "critical"],
   blocklist: [],
   allowlist: [],
   sandboxEnabled: true,
@@ -331,6 +356,7 @@ const policy: PluginSecurityPolicy = {
 ## Future Enhancements
 
 ### Planned Features
+
 - [ ] Rollback capability for failed installations
 - [ ] Differential updates (download only changed files)
 - [ ] Parallel downloads (multiple dependencies at once)
@@ -341,6 +367,7 @@ const policy: PluginSecurityPolicy = {
 - [ ] Delta compression for updates
 
 ### Performance Optimizations
+
 - [ ] Aggressive caching of dependency trees
 - [ ] Pre-resolution for popular plugins
 - [ ] Background downloads
@@ -351,24 +378,29 @@ const policy: PluginSecurityPolicy = {
 ### Common Issues
 
 **"Dependency conflicts detected"**
+
 - Different plugins require incompatible versions
 - Solution: Update plugins to use compatible versions
 
 **"Circular dependencies detected"**
+
 - Plugins depend on each other in a cycle
 - Solution: Break the cycle or use interface plugins
 
 **"Signature verification failed"**
+
 - Downloaded package doesn't match registry hash
 - Solution: Retry download or report to plugin author
 
 **"Installation failed: storage error"**
+
 - KV storage quota exceeded
 - Solution: Uninstall unused plugins
 
 ## API Reference
 
 See the TypeScript definitions in:
+
 - `src/types/plugin-sdk.ts` - Plugin manifest and SDK types
 - `src/types/plugin-registry.ts` - Registry types
 - `src/lib/plugin-dependency-resolver.ts` - Resolver implementation
@@ -377,6 +409,7 @@ See the TypeScript definitions in:
 ## Support
 
 For issues or questions:
+
 - Check the plugin dependency graph visualization
 - Review the audit logs in the plugin manager
 - Contact the plugin author

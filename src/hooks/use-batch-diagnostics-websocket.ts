@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { getWSUrl } from '@/lib/apiConfig';
 
 export interface BatchDiagnosticProgressEvent {
   type: 'progress' | 'complete' | 'error' | 'device_start' | 'device_complete' | 'operation_start' | 'operation_complete' | 'batch_start' | 'batch_complete';
@@ -27,7 +28,7 @@ export interface BatchDiagnosticConfig {
 }
 
 const DEFAULT_CONFIG: Required<BatchDiagnosticConfig> = {
-  wsUrl: 'ws://localhost:3001/ws/batch-diagnostics',
+  wsUrl: getWSUrl('/ws/batch-diagnostics'),
   reconnectInterval: 3000,
   maxReconnectAttempts: 10,
   heartbeatInterval: 30000,

@@ -1,14 +1,17 @@
 # ADB Authorization Trigger Feature
 
 ## Overview
+
 This feature allows you to trigger the USB debugging authorization/trust dialog on Android devices that are connected but showing as "unauthorized" in ADB.
 
 ## How It Works
 
 ### The Problem
+
 When you connect an Android device via USB with USB debugging enabled, the device requires user authorization before ADB commands can be executed. The device will show as "unauthorized" until the user taps "Allow" on the authorization dialog that appears on the phone.
 
 ### The Solution
+
 This feature adds a **"Trigger Authorization Dialog"** button that appears on unauthorized devices in the ADB/Fastboot detector panel. When clicked:
 
 1. The frontend sends a request to the backend API
@@ -20,9 +23,11 @@ This feature adds a **"Trigger Authorization Dialog"** button that appears on un
 ## Backend Implementation
 
 ### API Endpoint
+
 **POST** `/api/adb/trigger-auth`
 
 **Request Body:**
+
 ```json
 {
   "serial": "device_serial_number"
@@ -30,6 +35,7 @@ This feature adds a **"Trigger Authorization Dialog"** button that appears on un
 ```
 
 **Response (Success):**
+
 ```json
 {
   "success": true,
@@ -40,6 +46,7 @@ This feature adds a **"Trigger Authorization Dialog"** button that appears on un
 ```
 
 **Response (Error):**
+
 ```json
 {
   "success": false,
@@ -49,12 +56,15 @@ This feature adds a **"Trigger Authorization Dialog"** button that appears on un
 ```
 
 ### Backend Logic
+
 The backend attempts to execute a harmless command on the device:
+
 ```bash
 adb -s <serial> shell echo "auth_trigger"
 ```
 
 This command will:
+
 - Fail with "unauthorized" error (expected) - but this failure triggers the authorization dialog on the device
 - Return the error, which we handle gracefully
 - Show a success message to the user because triggering the dialog is the goal, not executing the command
@@ -66,7 +76,7 @@ This command will:
 1. **Authorization Alert**: When a device is in "unauthorized" state, an alert appears explaining the situation
 2. **Trigger Button**: A prominent button labeled "Trigger Authorization Dialog" with a hand-tap icon
 3. **Loading State**: While the request is processing, the button shows "Requesting Authorization..." with a pulsing icon
-4. **Toast Notifications**: 
+4. **Toast Notifications**:
    - Initial notification: "Check your device" with instructions
    - Success: Confirms the prompt was sent
    - Error: Shows any issues that occurred
@@ -86,18 +96,22 @@ This command will:
 ## Usage
 
 ### For Android Devices
+
 This feature works for any Android device that:
+
 - Has USB debugging enabled in Developer Options
 - Is connected via USB
 - Shows as "unauthorized" in ADB
 
 ### When to Use
+
 - First time connecting a device to a new computer
 - After revoking USB debugging authorizations on the device
 - When the trust dialog didn't appear automatically
 - When you need to re-authorize after security changes
 
 ### Limitations
+
 - Only works for ADB devices (not Fastboot/bootloader mode)
 - Requires ADB to be installed on the system
 - Device must be physically connected via USB
@@ -106,7 +120,9 @@ This feature works for any Android device that:
 ## Technical Details
 
 ### Error Handling
+
 The implementation handles several error cases:
+
 - **ADB not installed**: Returns 404 error
 - **Missing serial number**: Returns 400 error with validation message
 - **Device offline**: Detects offline state and provides specific guidance
@@ -114,6 +130,7 @@ The implementation handles several error cases:
 - **Other errors**: Returns 500 error with descriptive message
 
 ### Security Considerations
+
 - This feature only triggers the authorization dialog; it doesn't bypass security
 - The user must physically interact with their device to grant authorization
 - Each authorization is tied to the computer's RSA key
@@ -121,6 +138,7 @@ The implementation handles several error cases:
 - The "Always allow from this computer" checkbox lets users trust permanently
 
 ## Future Enhancements
+
 - Add support for iOS devices with similar trust prompt triggering
 - Show the device's RSA key fingerprint before authorization
 - Add option to revoke all authorizations from the UI

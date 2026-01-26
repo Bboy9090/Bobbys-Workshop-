@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
+import { useApp } from '@/lib/app-context';
 
 export interface FlashProgressMessage {
   type: 'flash_started' | 'flash_progress' | 'flash_completed' | 'flash_failed' | 'flash_paused' | 'flash_resumed' | 'ping' | 'pong';
@@ -46,6 +47,11 @@ export function useFlashProgressWebSocket(config: FlashProgressWebSocketConfig) 
     enableNotifications = true,
     autoConnect = true,
   } = config;
+  
+  const { backendAvailable } = useApp();
+  const isBackendReady = backendAvailable;
+  // Disable notifications when backend is unavailable
+  const shouldNotify = enableNotifications && isBackendReady;
 
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
@@ -94,7 +100,7 @@ export function useFlashProgressWebSocket(config: FlashProgressWebSocketConfig) 
             return next;
           });
 
-          if (enableNotifications) {
+          if (shouldNotify) {
             toast.info(`Flash started: ${message.deviceId}`, {
               description: 'Device flashing operation initiated',
             });
@@ -138,7 +144,7 @@ export function useFlashProgressWebSocket(config: FlashProgressWebSocketConfig) 
             return next;
           });
 
-          if (enableNotifications) {
+          if (shouldNotify) {
             toast.success(`Flash completed: ${message.deviceId}`, {
               description: 'Device flashing operation finished successfully',
             });
@@ -161,7 +167,7 @@ export function useFlashProgressWebSocket(config: FlashProgressWebSocketConfig) 
             return next;
           });
 
-          if (enableNotifications) {
+          if (shouldNotify) {
             toast.error(`Flash failed: ${message.deviceId}`, {
               description: message.error || 'Device flashing operation failed',
             });
@@ -183,7 +189,7 @@ export function useFlashProgressWebSocket(config: FlashProgressWebSocketConfig) 
             return next;
           });
 
-          if (enableNotifications) {
+          if (shouldNotify) {
             toast.warning(`Flash paused: ${message.deviceId}`);
           }
         }
@@ -203,7 +209,7 @@ export function useFlashProgressWebSocket(config: FlashProgressWebSocketConfig) 
             return next;
           });
 
-          if (enableNotifications) {
+          if (shouldNotify) {
             toast.info(`Flash resumed: ${message.deviceId}`);
           }
         }
@@ -215,10 +221,17 @@ export function useFlashProgressWebSocket(config: FlashProgressWebSocketConfig) 
       default:
         console.warn('Unknown WebSocket message type:', message.type);
     }
-  }, [enableNotifications]);
+  }, [shouldNotify]);
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) {
+      return;
+    }
+
+    if (!isBackendReady) {
+      clearReconnectTimeout();
+      clearPingInterval();
+      setConnectionStatus('disconnected');
       return;
     }
 
@@ -234,7 +247,7 @@ export function useFlashProgressWebSocket(config: FlashProgressWebSocketConfig) 
         setConnectionStatus('connected');
         setReconnectAttempts(0);
         
-        if (enableNotifications) {
+        if (shouldNotify) {
           toast.success('Connected to flash progress server');
         }
 
@@ -265,13 +278,25 @@ export function useFlashProgressWebSocket(config: FlashProgressWebSocketConfig) 
         setConnectionStatus('disconnected');
         clearPingInterval();
 
+        // Only attempt reconnection if backend is still ready
+        if (!isBackendReady) {
+          clearReconnectTimeout();
+          return;
+        }
+
         if (reconnectAttempts < maxReconnectAttempts) {
           reconnectTimeoutRef.current = setTimeout(() => {
-            setReconnectAttempts(prev => prev + 1);
-            connect();
+            // Check again before reconnecting (backend might have gone offline)
+            if (isBackendReady) {
+              setReconnectAttempts(prev => prev + 1);
+              connect();
+            } else {
+              clearReconnectTimeout();
+            }
           }, reconnectDelay);
         } else {
-          if (enableNotifications) {
+          // Only show error toast once when max attempts reached
+          if (shouldNotify && reconnectAttempts === maxReconnectAttempts) {
             toast.error('Connection lost', {
               description: 'Max reconnection attempts reached',
             });
@@ -282,7 +307,7 @@ export function useFlashProgressWebSocket(config: FlashProgressWebSocketConfig) 
       console.error('Failed to create WebSocket:', error);
       setConnectionStatus('error');
     }
-  }, [url, reconnectAttempts, maxReconnectAttempts, reconnectDelay, enableNotifications, handleMessage, clearReconnectTimeout, clearPingInterval]);
+  }, [url, reconnectAttempts, maxReconnectAttempts, reconnectDelay, shouldNotify, handleMessage, clearReconnectTimeout, clearPingInterval, isBackendReady]);
 
   const disconnect = useCallback(() => {
     clearReconnectTimeout();
@@ -322,14 +347,17 @@ export function useFlashProgressWebSocket(config: FlashProgressWebSocketConfig) 
   }, []);
 
   useEffect(() => {
-    if (autoConnect) {
+    if (autoConnect && isBackendReady) {
       connect();
+    } else {
+      disconnect();
+      setReconnectAttempts(0);
     }
 
     return () => {
       disconnect();
     };
-  }, [autoConnect, connect, disconnect]);
+  }, [autoConnect, isBackendReady, connect, disconnect]);
 
   return {
     isConnected,

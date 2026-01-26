@@ -5,6 +5,7 @@
 Pandora Codex is a **unified, vendor-agnostic, truth-first device operations platform** that provides lawful, enterprise-grade device management for both Android and iOS devices through a single interface.
 
 **What Makes Pandora Superior:**
+
 1. Unified multi-platform console (Android + iOS in one tool)
 2. Truth-first design (every claim backed by verifiable evidence, no fake outputs or simulated success)
 3. Vendor-agnostic architecture (no cloud lock-in)
@@ -23,6 +24,7 @@ Pandora Codex is a **unified, vendor-agnostic, truth-first device operations pla
 ### Current State (Industry Pain Points)
 
 **For Repair Shops:**
+
 - Need 5+ different tools: Apple Configurator (iOS), Odin (Samsung), SP Flash Tool (MediaTek), Fastboot (Google), EDL tools (Qualcomm)
 - Each tool has different interface, workflow, and terminology
 - No unified audit trail across tools
@@ -30,6 +32,7 @@ Pandora Codex is a **unified, vendor-agnostic, truth-first device operations pla
 - Fake "success" messages in some tools (operation fails silently)
 
 **For IT Departments:**
+
 - MDM/UEM platforms expensive ($5-15/device/month)
 - Cloud dependency for basic USB provisioning
 - Vendor lock-in (switching MDM vendors is painful)
@@ -37,12 +40,14 @@ Pandora Codex is a **unified, vendor-agnostic, truth-first device operations pla
 - Cannot work in air-gapped environments
 
 **For Developers:**
+
 - Command-line tools (adb, fastboot) lack GUI for non-technical users
 - No progress visibility for long operations (flashing takes minutes with no feedback)
 - Manual correlation between USB devices and tool IDs
 - No audit trail for security-sensitive operations
 
 **For Compliance Officers:**
+
 - No unified audit trail across device platforms
 - Evidence bundles difficult to generate and verify
 - Chain-of-custody tracking manual and error-prone
@@ -54,7 +59,7 @@ Pandora Codex is a **unified, vendor-agnostic, truth-first device operations pla
 
 ### 1. Unified Multi-Platform Console
 
-**The Problem:** 
+**The Problem:**
 Different tools for iOS (Apple Configurator), Android (Fastboot), Samsung (Odin), MediaTek (SP Flash Tool), Qualcomm (EDL tools).
 
 **Pandora's Solution:**
@@ -79,12 +84,14 @@ One interface for all device platforms.
 ```
 
 **Competitive Advantage:**
+
 - Apple Configurator: iOS only ❌
 - Android Studio: Android only ❌
 - Odin: Samsung only ❌
 - **Pandora Codex: All platforms ✅**
 
 **Benefit:**
+
 - Single tool to learn and master
 - Unified workflow across device types
 - Consistent audit trail format
@@ -98,6 +105,7 @@ One interface for all device platforms.
 Many tools show "success" without actually verifying operation completion. This creates false confidence and leads to mistakes.
 
 **Examples of Industry Failures:**
+
 - Tool claims "Device detected" but no real device connected (demo mode not clearly labeled)
 - Flash operation shows "100% complete" but device still bricked
 - "Bootloader unlocked" message but unlock actually failed
@@ -144,16 +152,19 @@ Every claim backed by verifiable evidence.
 ```
 
 **Key Differences:**
+
 - Confidence score (0.0 to 1.0) instead of binary true/false
 - Raw evidence included (actual adb output)
 - Correlation badge indicates strength of detection
 - Conservative language ("likely" vs "confirmed")
 
 **Competitive Advantage:**
+
 - Competitors: Optimistic success responses ❌
 - **Pandora: Evidence-based, verifiable results ✅**
 
 **Benefit:**
+
 - No false positives
 - Trustworthy diagnostics
 - Defensible audit trail for compliance
@@ -167,6 +178,7 @@ Every claim backed by verifiable evidence.
 MDM/UEM platforms require constant cloud connectivity and vendor-specific infrastructure.
 
 **Costs of Vendor Lock-In:**
+
 - Monthly per-device fees ($5-15/device)
 - Migration pain when switching vendors (reconfigure all devices)
 - Feature gates (basic features behind premium tiers)
@@ -176,6 +188,7 @@ MDM/UEM platforms require constant cloud connectivity and vendor-specific infras
 Open-source tool integration, no proprietary protocols.
 
 **Tool Stack:**
+
 - **ADB/Fastboot**: Official Android SDK tools (open, documented)
 - **libimobiledevice**: Open-source iOS communication (legally reverse-engineered)
 - **BootForgeUSB**: Custom Rust library (open source, auditable)
@@ -183,12 +196,14 @@ Open-source tool integration, no proprietary protocols.
 - **EDL tools**: Community-maintained Qualcomm tools
 
 **No Proprietary Dependencies:**
+
 - No vendor-specific servers
 - No API keys or licenses required
 - No forced upgrades
 - No feature gates
 
 **Offline-First Architecture:**
+
 ```
 ┌──────────────────────────────────────────┐
 │  Pandora Codex (Local)                   │
@@ -207,11 +222,13 @@ Open-source tool integration, no proprietary protocols.
 ```
 
 **Competitive Advantage:**
+
 - Hexnode/Jamf: $5-15/device/month, cloud required ❌
 - Kandji/Mosyle: Cloud-only, vendor lock-in ❌
 - **Pandora Codex: One-time cost, works offline ✅**
 
 **Benefit:**
+
 - No recurring fees
 - Works in air-gapped labs
 - No vendor lock-in
@@ -225,6 +242,7 @@ Open-source tool integration, no proprietary protocols.
 Most tools lack detailed audit logs, making compliance and troubleshooting difficult.
 
 **Industry Limitations:**
+
 - Apple Configurator: Basic logs, not structured
 - Fastboot/ADB: stdout/stderr only, no metadata
 - Odin: Minimal logging, hard to parse
@@ -276,6 +294,7 @@ Every operation produces structured JSON audit log.
 ```
 
 **Key Features:**
+
 - Structured JSON (machine-readable, parseable)
 - Full command line executed (reproducible)
 - Exit code and stdout/stderr (debugging)
@@ -284,10 +303,12 @@ Every operation produces structured JSON audit log.
 - Duration tracking (performance auditing)
 
 **Competitive Advantage:**
+
 - Competitors: Basic text logs or none ❌
 - **Pandora: Structured JSON with full context ✅**
 
 **Benefit:**
+
 - Compliance reporting (GDPR, HIPAA, SOC 2)
 - Troubleshooting (exact command executed)
 - Security auditing (who did what when)
@@ -301,6 +322,7 @@ Every operation produces structured JSON audit log.
 Long operations (firmware flashing) provide no feedback, leaving users uncertain.
 
 **Industry Experience:**
+
 - Fastboot flash: Shows "Sending..." then hangs for minutes
 - Odin: Progress bar updates every 10%, long gaps
 - Apple Configurator: "Preparing..." with no percentage
@@ -343,11 +365,13 @@ WebSocket-based live progress updates every 500ms.
 ```
 
 **Competitive Advantage:**
+
 - Fastboot: No live progress ❌
 - Odin: Coarse updates (10% intervals) ❌
 - **Pandora: Real-time updates (500ms intervals) ✅**
 
 **Benefit:**
+
 - User confidence (operation is progressing)
 - Cancel long operations safely
 - Troubleshoot slow transfers (see actual speed)
@@ -386,16 +410,19 @@ Every feature accessible via REST API. All frontends (GUI, CLI, Web) use same ba
 ```
 
 **No UI-Only Logic:**
+
 - Every button in GUI calls backend API
 - CLI can perform every GUI operation
 - Automation via API (no screen scraping needed)
 
 **Competitive Advantage:**
+
 - Apple Configurator: GUI-only, no API ❌
 - Odin: GUI-only, not scriptable ❌
 - **Pandora: API-first, all frontends equal ✅**
 
 **Benefit:**
+
 - Automation scripts
 - Integration with CI/CD pipelines
 - Custom frontends (build your own GUI)
@@ -412,6 +439,7 @@ MDM/UEM platforms require constant internet connectivity.
 Core operations work with zero internet.
 
 **Offline Capabilities:**
+
 - ✅ Device detection (USB-based)
 - ✅ Firmware flashing (via USB)
 - ✅ Bootloader operations (via USB)
@@ -420,16 +448,19 @@ Core operations work with zero internet.
 - ✅ Audit logging (local files)
 
 **Internet Required (Optional):**
+
 - ⚠️ Plugin registry sync
 - ⚠️ Firmware database updates
 - ⚠️ Community forums
 
 **Competitive Advantage:**
+
 - MDM/UEM: Requires constant cloud connectivity ❌
 - Apple Configurator: Requires Apple servers for supervision ❌
 - **Pandora: Works in air-gapped environments ✅**
 
 **Benefit:**
+
 - Field operations (no WiFi required)
 - High-security labs (air-gapped networks)
 - Low-bandwidth environments
@@ -446,6 +477,7 @@ Monolithic tools cannot adapt to niche use cases.
 Plugin system with certification and automated testing.
 
 **Plugin Marketplace:**
+
 ```
 ┌────────────────────────────────────────────────────────┐
 │  Pandora Plugin Marketplace                            │
@@ -462,16 +494,19 @@ Plugin system with certification and automated testing.
 ```
 
 **Plugin Certification Process:**
+
 1. Automated security scan (no malicious code)
 2. Automated test execution (all features work)
 3. Dependency conflict check
 4. Risk level assignment (Low/Medium/High)
 
 **Competitive Advantage:**
+
 - Competitors: Monolithic, no extensibility ❌
 - **Pandora: Open plugin ecosystem with certification ✅**
 
 **Benefit:**
+
 - Community-driven feature additions
 - Niche use cases supported (Knox, Xiaomi Mi Unlock, etc.)
 - No waiting for vendor to add features
@@ -488,6 +523,7 @@ User confirmations are ad-hoc and not systematically tracked.
 36+ device authorization triggers with audit trail.
 
 **Trigger Categories:**
+
 1. **Trust & Security**: USB debugging auth, trust computer
 2. **Flash Operations**: Flash firmware, bootloader unlock, factory reset
 3. **Diagnostics**: Run diagnostics, collect logs
@@ -497,6 +533,7 @@ User confirmations are ad-hoc and not systematically tracked.
 7. **Plugin Actions**: Install/update/uninstall plugins
 
 **Typed Confirmations:**
+
 - Low risk: Click "OK"
 - Medium risk: Click "Confirm"
 - High risk: Type "CONFIRM"
@@ -527,6 +564,7 @@ User confirmations are ad-hoc and not systematically tracked.
 
 **Audit Trail:**
 Every trigger execution logged with:
+
 - Trigger ID and category
 - Device info
 - User response (typed confirmation)
@@ -535,10 +573,12 @@ Every trigger execution logged with:
 - Retry count (if retried)
 
 **Competitive Advantage:**
+
 - Competitors: Ad-hoc confirmations, no tracking ❌
 - **Pandora: Systematic triggers with full audit trail ✅**
 
 **Benefit:**
+
 - No accidental destructive operations
 - Full compliance trail (who approved what)
 - Retry failed operations with backoff
@@ -555,6 +595,7 @@ Proprietary tools are black boxes. You can't verify what they actually do.
 Open architecture with auditable operations.
 
 **Transparency:**
+
 - Open-source tool integration (ADB, Fastboot, libimobiledevice)
 - Documented API contracts (see `/docs/api/device-operations.md`)
 - Structured audit logs (full command lines visible)
@@ -562,6 +603,7 @@ Open architecture with auditable operations.
 - No telemetry or phone-home (privacy-respecting)
 
 **Verifiable Operations:**
+
 ```bash
 # User can verify exact command executed
 # From audit log:
@@ -578,10 +620,12 @@ OKAY [  2.145s]
 ```
 
 **Competitive Advantage:**
+
 - Competitors: Proprietary, closed-source ❌
 - **Pandora: Open architecture, auditable operations ✅**
 
 **Benefit:**
+
 - Trust through transparency
 - Security auditing possible
 - Community contributions
@@ -594,18 +638,21 @@ OKAY [  2.145s]
 ### 1. Independent Repair Shops
 
 **Pain Points:**
+
 - Need to support multiple brands (Apple, Samsung, Google, OnePlus, etc.)
 - Expensive tool licenses ($500-2000 per tool)
 - Difficult to train technicians on 5+ different tools
 - No unified audit trail for customer records
 
 **Pandora's Value:**
+
 - One tool for all brands
 - Lower total cost of ownership
 - Unified training (one interface to learn)
 - Professional evidence bundles for customers
 
 **ROI Calculation:**
+
 ```
 Traditional Tool Stack:
 - Apple Configurator: Free (but Mac required: $1000)
@@ -621,6 +668,7 @@ Pandora Codex:
 ```
 
 **Assumptions & Disclaimers:**
+
 - Traditional costs assume no existing Mac/Windows machines
 - Pandora requires compatible Linux/Mac/Windows system
 - Does not include training time or learning curve differences
@@ -632,18 +680,21 @@ Pandora Codex:
 ### 2. Enterprise IT Departments
 
 **Pain Points:**
+
 - MDM/UEM costs scale with fleet size ($5-15/device/month)
 - Cloud dependency (security concerns for sensitive devices)
 - Vendor lock-in (painful to switch MDM vendors)
 - Limited visibility into low-level operations
 
 **Pandora's Value:**
+
 - One-time cost, no per-device fees
 - Works in air-gapped environments
 - Full audit trail for compliance (SOC 2, ISO 27001)
 - No vendor lock-in (migrate backends freely)
 
 **ROI Calculation:**
+
 ```
 1000-device fleet, 3-year TCO:
 
@@ -661,6 +712,7 @@ Savings: $325,000 (90% reduction)
 ```
 
 **Assumptions & Disclaimers:**
+
 - MDM pricing based on 2024 Hexnode mid-tier plans
 - Assumes in-house Pandora deployment (no SaaS fees)
 - Setup cost includes server hardware, IT labor for installation, and staff training
@@ -674,12 +726,14 @@ Savings: $325,000 (90% reduction)
 ### 3. Android/iOS Developers
 
 **Pain Points:**
+
 - Command-line tools (adb, fastboot) lack GUI
 - No progress visibility for long operations
 - Manual device correlation (which USB device is which serial?)
 - No audit trail for security-sensitive operations
 
 **Pandora's Value:**
+
 - GUI for all command-line operations
 - Real-time progress tracking
 - Automatic device correlation (USB to tool ID)
@@ -690,12 +744,14 @@ Savings: $325,000 (90% reduction)
 ### 4. Forensic Labs & Law Enforcement
 
 **Pain Points:**
+
 - Chain-of-custody requirements
 - Need verifiable evidence bundles
 - Compliance with legal standards (admissible in court)
 - No tampering with evidence
 
 **Pandora's Value:**
+
 - Cryptographically signed evidence bundles
 - Full audit trail (every operation logged)
 - Chain-of-custody tracking
@@ -706,12 +762,14 @@ Savings: $325,000 (90% reduction)
 ### 5. Right-to-Repair Advocates
 
 **Pain Points:**
+
 - OEM-locked tools prevent independent repair
 - Proprietary protocols not documented
 - "Authorized service" gatekeeping
 - Lack of open tools
 
 **Pandora's Value:**
+
 - Open-source tool integration
 - No proprietary protocols
 - Vendor-agnostic (no OEM lock-in)
@@ -723,18 +781,18 @@ Savings: $325,000 (90% reduction)
 
 ### Comparison Matrix
 
-| Feature | Apple Configurator | Hexnode MDM | Fastboot/ADB | Pandora Codex |
-|---------|-------------------|-------------|--------------|---------------|
-| **Multi-Platform** | iOS only | Android + iOS | Android only | ✅ Android + iOS |
-| **Offline Provisioning** | ✅ Yes | ❌ No (cloud required) | ✅ Yes | ✅ Yes |
-| **Cost** | Free (Mac required) | $5-15/device/month | Free | Free (open source) |
-| **API-First** | ❌ No | Partial | CLI only | ✅ Full REST API |
-| **Audit Trail** | Basic logs | Proprietary | stdout/stderr | ✅ Structured JSON |
-| **Real-Time Progress** | Limited | Partial | ❌ No | ✅ WebSocket updates |
-| **Vendor Lock-In** | Apple ecosystem | Yes (cloud vendor) | ❌ No | ❌ No |
-| **Open Source** | ❌ No | ❌ No | ✅ Yes (tools) | ✅ Yes (platform) |
-| **Evidence Bundles** | ❌ No | Limited | ❌ No | ✅ Signed bundles |
-| **Plugin Ecosystem** | ❌ No | Limited | ❌ No | ✅ Certified plugins |
+| Feature                  | Apple Configurator  | Hexnode MDM            | Fastboot/ADB   | Pandora Codex        |
+| ------------------------ | ------------------- | ---------------------- | -------------- | -------------------- |
+| **Multi-Platform**       | iOS only            | Android + iOS          | Android only   | ✅ Android + iOS     |
+| **Offline Provisioning** | ✅ Yes              | ❌ No (cloud required) | ✅ Yes         | ✅ Yes               |
+| **Cost**                 | Free (Mac required) | $5-15/device/month     | Free           | Free (open source)   |
+| **API-First**            | ❌ No               | Partial                | CLI only       | ✅ Full REST API     |
+| **Audit Trail**          | Basic logs          | Proprietary            | stdout/stderr  | ✅ Structured JSON   |
+| **Real-Time Progress**   | Limited             | Partial                | ❌ No          | ✅ WebSocket updates |
+| **Vendor Lock-In**       | Apple ecosystem     | Yes (cloud vendor)     | ❌ No          | ❌ No                |
+| **Open Source**          | ❌ No               | ❌ No                  | ✅ Yes (tools) | ✅ Yes (platform)    |
+| **Evidence Bundles**     | ❌ No               | Limited                | ❌ No          | ✅ Signed bundles    |
+| **Plugin Ecosystem**     | ❌ No               | Limited                | ❌ No          | ✅ Certified plugins |
 
 ---
 
@@ -761,6 +819,7 @@ Savings: $325,000 (90% reduction)
 ## Future Vision
 
 ### Phase 1: Foundation (Current)
+
 - ✅ Multi-platform device detection
 - ✅ Android firmware flashing
 - ✅ iOS device info retrieval
@@ -768,6 +827,7 @@ Savings: $325,000 (90% reduction)
 - ✅ Authorization triggers system
 
 ### Phase 2: Enterprise (Q1-Q2 2025)
+
 - [ ] Apple Business Manager integration
 - [ ] Samsung Knox support
 - [ ] Policy engine with RBAC
@@ -775,6 +835,7 @@ Savings: $325,000 (90% reduction)
 - [ ] Compliance reporting templates
 
 ### Phase 3: Automation (Q3-Q4 2025)
+
 - [ ] Workflow automation engine
 - [ ] Batch operations (50+ devices)
 - [ ] CI/CD integration
@@ -782,6 +843,7 @@ Savings: $325,000 (90% reduction)
 - [ ] Auto-remediation
 
 ### Phase 4: Ecosystem (2026+)
+
 - [ ] Marketplace for paid plugins
 - [ ] Third-party integrations (ServiceNow, Jira)
 - [ ] Cloud sync option (for those who want it)
@@ -792,18 +854,23 @@ Savings: $325,000 (90% reduction)
 ## Call to Action
 
 ### For Repair Shops
+
 "Replace 5 fragmented tools with 1 unified platform. Save $2000+ in tool costs."
 
 ### For Enterprises
+
 "Cut MDM costs by 90%. One-time investment replaces per-device fees."
 
 ### For Developers
+
 "Stop wrestling with command-line tools. Get GUI + API + real-time progress."
 
 ### For Compliance Officers
+
 "Forensic-grade audit trail. Chain-of-custody tracking. Signed evidence bundles."
 
 ### For Open Source Advocates
+
 "No vendor lock-in. Open architecture. Community-driven development."
 
 ---

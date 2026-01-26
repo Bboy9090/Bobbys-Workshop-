@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ChartBar, Usb, PlugsConnected, Plug } from '@phosphor-icons/react';
@@ -13,13 +13,12 @@ interface MonitoringStats {
 }
 
 export function USBMonitoringStats() {
-  const [stats, setStats] = useState<MonitoringStats>({
-    totalConnections: 0,
-    totalDisconnections: 0,
-    uniqueDevices: new Set(),
+  const sessionStartRef = useRef<number>(Date.now());
+  const [now, setNow] = useState<number>(Date.now());
+  const [stats, setStats] = useState({
     activeDevices: 0,
-    lastEventTime: null,
-    sessionStartTime: Date.now(),
+    lastEventTime: null as number | null,
+    sessionStartTime: sessionStartRef.current,
   });
 
   const [isMonitoring, setIsMonitoring] = useState(false);
@@ -108,7 +107,12 @@ export function USBMonitoringStats() {
     }
   };
 
-  const sessionDuration = Date.now() - stats.sessionStartTime;
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const sessionDuration = now - stats.sessionStartTime;
 
   return (
     <Card>
@@ -168,11 +172,11 @@ export function USBMonitoringStats() {
               <span>Session Duration:</span>
               <span className="font-mono">{formatDuration(sessionDuration)}</span>
             </div>
-            {stats.lastEventTime && (
+            {stats.lastEventTime != null && (
               <div className="flex justify-between items-center text-xs text-muted-foreground mt-2">
                 <span>Last Event:</span>
                 <span className="font-mono">
-                  {formatDuration(Date.now() - stats.lastEventTime)} ago
+                  {formatDuration(now - stats.lastEventTime)} ago
                 </span>
               </div>
             )}

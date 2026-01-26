@@ -22,42 +22,45 @@ interface ShadowLogEntry {
 }
 
 export function ShadowLogsViewer() {
-  const [apiKey, setApiKey] = useState('');
+  const [secretPasscode, setSecretPasscode] = useState(() => {
+    try {
+      return localStorage.getItem('bobbysWorkshop.secretRoomPasscode') || 'BJ0990';
+    } catch {
+      return 'BJ0990';
+    }
+  });
+  const [showPasscodeEditor, setShowPasscodeEditor] = useState(false);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [logs, setLogs] = useState<ShadowLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const fetchLogs = async () => {
-    if (!apiKey) {
-      setError('Admin API key is required');
+    setError('');
+    if (!secretPasscode?.trim()) {
+      setError('Secret Room passcode is required');
+      setLogs([]);
       return;
     }
-
     setLoading(true);
-    setError('');
 
     try {
       const response = await fetch(
         `http://localhost:3001/api/trapdoor/logs/shadow?date=${date}`,
         {
           headers: {
-            'X-API-Key': apiKey
-          }
-        }
+            'X-Secret-Room-Passcode': secretPasscode?.trim() || 'BJ0990',
+          },
+        },
       );
-
-      const data = await response.json();
-
       if (!response.ok) {
-        setError(data.error || data.message || 'Failed to fetch logs');
-        setLogs([]);
-        return;
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to fetch logs');
       }
-
+      const data = await response.json();
       setLogs(data.entries || []);
-    } catch (err: any) {
-      setError(err.message || 'Network error');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unknown error');
       setLogs([]);
     } finally {
       setLoading(false);
@@ -99,18 +102,26 @@ export function ShadowLogsViewer() {
             Shadow Logs Authentication
           </CardTitle>
           <CardDescription>
-            Enter admin credentials to decrypt and view shadow logs
+            Enter the Secret Room passcode to view shadow logs
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label htmlFor="apiKey">Admin API Key</Label>
+            <Label htmlFor="secretPasscode">Secret Room Passcode</Label>
             <Input
-              id="apiKey"
+              id="secretPasscode"
               type="password"
-              placeholder="Enter admin API key"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="Enter Secret Room passcode (example: BJ0990)"
+              value={secretPasscode}
+              onChange={(e) => {
+                const value = e.target.value;
+                setSecretPasscode(value);
+                try {
+                  localStorage.setItem('bobbysWorkshop.secretRoomPasscode', value);
+                } catch {
+                  // ignore
+                }
+              }}
             />
           </div>
 
@@ -129,7 +140,7 @@ export function ShadowLogsViewer() {
 
           <Button
             onClick={fetchLogs}
-            disabled={loading || !apiKey}
+            disabled={loading || !secretPasscode?.trim()}
             className="w-full"
           >
             {loading ? 'Loading...' : (
@@ -226,7 +237,7 @@ export function ShadowLogsViewer() {
         </Card>
       )}
 
-      {!error && logs.length === 0 && apiKey && !loading && (
+      {!error && logs.length === 0 && secretPasscode?.trim() && !loading && (
         <Alert>
           <AlertDescription>
             No shadow logs found for {date}. This could mean:

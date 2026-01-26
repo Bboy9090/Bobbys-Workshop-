@@ -25,15 +25,16 @@ For each frontend feature, we verify:
 
 ### Device Detection & Monitoring
 
-| Frontend Feature | Backend API | Implementation Status | Verified |
-|------------------|-------------|-----------------------|----------|
-| Device Sidebar (Android/iOS List) | `GET /api/android-devices/all` | ✅ Implemented | ✅ Yes |
-| Real-Time Hotplug Events | `ws://localhost:3001/ws/device-events` | ✅ Implemented | ✅ Yes |
-| USB Device Scanning | `GET /api/bootforgeusb/scan` | ✅ Implemented | ✅ Yes |
-| Correlation Tracking | `ws://localhost:3001/ws/correlation` | ✅ Implemented | ✅ Yes |
-| iOS Device Detection | `GET /api/ios/devices` | ⚠️ Planned | ❌ Not Yet |
+| Frontend Feature                  | Backend API                            | Implementation Status | Verified   |
+| --------------------------------- | -------------------------------------- | --------------------- | ---------- |
+| Device Sidebar (Android/iOS List) | `GET /api/android-devices/all`         | ✅ Implemented        | ✅ Yes     |
+| Real-Time Hotplug Events          | `ws://localhost:3001/ws/device-events` | ✅ Implemented        | ✅ Yes     |
+| USB Device Scanning               | `GET /api/bootforgeusb/scan`           | ✅ Implemented        | ✅ Yes     |
+| Correlation Tracking              | `ws://localhost:3001/ws/correlation`   | ✅ Implemented        | ✅ Yes     |
+| iOS Device Detection              | `GET /api/ios/devices`                 | ⚠️ Planned            | ❌ Not Yet |
 
 **Notes:**
+
 - Device sidebar uses `useAndroidDevices()` hook which calls `/api/android-devices/all`
 - Empty state properly displayed when `devices.length === 0`
 - No fake "connected" devices shown when backend returns empty array
@@ -42,17 +43,18 @@ For each frontend feature, we verify:
 
 ### Device Information & Diagnostics
 
-| Frontend Feature | Backend API | Implementation Status | Verified |
-|------------------|-------------|-----------------------|----------|
-| ADB Device Properties | `GET /api/adb/devices` | ✅ Implemented | ✅ Yes |
-| Fastboot Device Info | `GET /api/fastboot/devices` | ✅ Implemented | ✅ Yes |
-| Firmware Version Check | `GET /api/firmware/check/:serial` | ✅ Implemented | ✅ Yes |
-| Security Patch Verification | `GET /api/firmware/check/:serial` | ✅ Implemented | ✅ Yes |
-| Bootloader State Inspection | `GET /api/fastboot/device-info?serial=XXX` | ✅ Implemented | ✅ Yes |
-| Battery Health Diagnostics | `GET /api/diagnostics/battery/:serial` | ⚠️ Planned | ❌ Not Yet |
-| Storage Health Diagnostics | `GET /api/diagnostics/storage/:serial` | ⚠️ Planned | ❌ Not Yet |
+| Frontend Feature            | Backend API                                | Implementation Status | Verified   |
+| --------------------------- | ------------------------------------------ | --------------------- | ---------- |
+| ADB Device Properties       | `GET /api/adb/devices`                     | ✅ Implemented        | ✅ Yes     |
+| Fastboot Device Info        | `GET /api/fastboot/devices`                | ✅ Implemented        | ✅ Yes     |
+| Firmware Version Check      | `GET /api/firmware/check/:serial`          | ✅ Implemented        | ✅ Yes     |
+| Security Patch Verification | `GET /api/firmware/check/:serial`          | ✅ Implemented        | ✅ Yes     |
+| Bootloader State Inspection | `GET /api/fastboot/device-info?serial=XXX` | ✅ Implemented        | ✅ Yes     |
+| Battery Health Diagnostics  | `GET /api/diagnostics/battery/:serial`     | ⚠️ Planned            | ❌ Not Yet |
+| Storage Health Diagnostics  | `GET /api/diagnostics/storage/:serial`     | ⚠️ Planned            | ❌ Not Yet |
 
 **Notes:**
+
 - Firmware version checking implemented in `FirmwareDashboard` component
 - Backend extracts version via ADB `getprop` commands
 - UI shows "Unable to check firmware" if backend returns error
@@ -62,17 +64,18 @@ For each frontend feature, we verify:
 
 ### Flash Operations
 
-| Frontend Feature | Backend API | Implementation Status | Verified |
-|------------------|-------------|-----------------------|----------|
-| Start Flash Operation | `POST /api/flash/start` | ✅ Implemented | ✅ Yes |
-| Pause Flash Job | `POST /api/flash/pause/:jobId` | ✅ Implemented | ⚠️ Partial |
-| Resume Flash Job | `POST /api/flash/resume/:jobId` | ✅ Implemented | ⚠️ Partial |
-| Cancel Flash Job | `POST /api/flash/cancel/:jobId` | ✅ Implemented | ✅ Yes |
-| Flash Progress Tracking | `ws://localhost:3001/ws/flash-progress` | ✅ Implemented | ✅ Yes |
-| Fastboot Flash Partition | `POST /api/fastboot/flash` | ✅ Implemented | ✅ Yes |
-| Validate Image File | `POST /api/flash/validate-image` | ✅ Implemented | ✅ Yes |
+| Frontend Feature         | Backend API                             | Implementation Status | Verified   |
+| ------------------------ | --------------------------------------- | --------------------- | ---------- |
+| Start Flash Operation    | `POST /api/flash/start`                 | ✅ Implemented        | ✅ Yes     |
+| Pause Flash Job          | `POST /api/flash/pause/:jobId`          | ✅ Implemented        | ⚠️ Partial |
+| Resume Flash Job         | `POST /api/flash/resume/:jobId`         | ✅ Implemented        | ⚠️ Partial |
+| Cancel Flash Job         | `POST /api/flash/cancel/:jobId`         | ✅ Implemented        | ✅ Yes     |
+| Flash Progress Tracking  | `ws://localhost:3001/ws/flash-progress` | ✅ Implemented        | ✅ Yes     |
+| Fastboot Flash Partition | `POST /api/fastboot/flash`              | ✅ Implemented        | ✅ Yes     |
+| Validate Image File      | `POST /api/flash/validate-image`        | ✅ Implemented        | ✅ Yes     |
 
 **Notes:**
+
 - Flash operations use WebSocket for real-time progress
 - Pause/resume implemented in backend but UI buttons need verification
 - Cancel button calls backend and displays confirmation
@@ -82,14 +85,15 @@ For each frontend feature, we verify:
 
 ### Bootloader Operations
 
-| Frontend Feature | Backend API | Implementation Status | Verified |
-|------------------|-------------|-----------------------|----------|
-| Bootloader Unlock | `POST /api/fastboot/unlock` | ✅ Implemented | ✅ Yes |
-| Device Reboot (System/Bootloader/Recovery) | `POST /api/fastboot/reboot` | ✅ Implemented | ✅ Yes |
-| Partition Erase | `POST /api/fastboot/erase` | ✅ Implemented | ✅ Yes |
-| Critical Partition Protection | Backend validation | ✅ Implemented | ✅ Yes |
+| Frontend Feature                           | Backend API                 | Implementation Status | Verified |
+| ------------------------------------------ | --------------------------- | --------------------- | -------- |
+| Bootloader Unlock                          | `POST /api/fastboot/unlock` | ✅ Implemented        | ✅ Yes   |
+| Device Reboot (System/Bootloader/Recovery) | `POST /api/fastboot/reboot` | ✅ Implemented        | ✅ Yes   |
+| Partition Erase                            | `POST /api/fastboot/erase`  | ✅ Implemented        | ✅ Yes   |
+| Critical Partition Protection              | Backend validation          | ✅ Implemented        | ✅ Yes   |
 
 **Notes:**
+
 - Unlock button requires typed confirmation "UNLOCK" (frontend enforces, backend validates)
 - Critical partitions blocked by backend (boot, system, bootloader, etc.)
 - Frontend shows error if backend rejects critical partition erase
@@ -99,15 +103,16 @@ For each frontend feature, we verify:
 
 ### Authorization Triggers
 
-| Frontend Feature | Backend API | Implementation Status | Verified |
-|------------------|-------------|-----------------------|----------|
-| Trigger Modal Display | N/A (UI component) | ✅ Implemented | ✅ Yes |
-| Execute Trigger | `POST /api/authorization/trigger` | ✅ Implemented | ✅ Yes |
-| Authorization History View | `GET /api/authorization/history` | ✅ Implemented | ✅ Yes |
-| Retry Failed Trigger | `POST /api/authorization/trigger` (with retry metadata) | ✅ Implemented | ✅ Yes |
-| Trigger Catalog Browse | `GET /api/authorization/catalog` | ⚠️ Static (client-side) | ⚠️ Review |
+| Frontend Feature           | Backend API                                             | Implementation Status   | Verified  |
+| -------------------------- | ------------------------------------------------------- | ----------------------- | --------- |
+| Trigger Modal Display      | N/A (UI component)                                      | ✅ Implemented          | ✅ Yes    |
+| Execute Trigger            | `POST /api/authorization/trigger`                       | ✅ Implemented          | ✅ Yes    |
+| Authorization History View | `GET /api/authorization/history`                        | ✅ Implemented          | ✅ Yes    |
+| Retry Failed Trigger       | `POST /api/authorization/trigger` (with retry metadata) | ✅ Implemented          | ✅ Yes    |
+| Trigger Catalog Browse     | `GET /api/authorization/catalog`                        | ⚠️ Static (client-side) | ⚠️ Review |
 
 **Notes:**
+
 - 36+ authorization triggers mapped to backend endpoints
 - Every trigger execution creates audit log entry via backend
 - History timeline fetched from backend, not localStorage
@@ -121,15 +126,16 @@ For each frontend feature, we verify:
 
 ### System Tool Detection
 
-| Frontend Feature | Backend API | Implementation Status | Verified |
-|------------------|-------------|-----------------------|----------|
-| Check Rust Toolchain | `GET /api/system-tools/rust` | ✅ Implemented | ✅ Yes |
-| Check ADB/Fastboot | `GET /api/system-tools/android` | ✅ Implemented | ✅ Yes |
-| Check Python | `GET /api/system-tools/python` | ✅ Implemented | ✅ Yes |
-| Check libimobiledevice (iOS) | `GET /api/system-tools/ios` | ⚠️ Planned | ❌ Not Yet |
-| All Tools Status | `GET /api/system-tools` | ✅ Implemented | ✅ Yes |
+| Frontend Feature             | Backend API                     | Implementation Status | Verified   |
+| ---------------------------- | ------------------------------- | --------------------- | ---------- |
+| Check Rust Toolchain         | `GET /api/system-tools/rust`    | ✅ Implemented        | ✅ Yes     |
+| Check ADB/Fastboot           | `GET /api/system-tools/android` | ✅ Implemented        | ✅ Yes     |
+| Check Python                 | `GET /api/system-tools/python`  | ✅ Implemented        | ✅ Yes     |
+| Check libimobiledevice (iOS) | `GET /api/system-tools/ios`     | ⚠️ Planned            | ❌ Not Yet |
+| All Tools Status             | `GET /api/system-tools`         | ✅ Implemented        | ✅ Yes     |
 
 **Notes:**
+
 - Tool status displayed with real version numbers from backend
 - "Not installed" shown when backend returns `installed: false`
 - No fake green checkmarks when tool doesn't actually work
@@ -139,14 +145,15 @@ For each frontend feature, we verify:
 
 ### Testing & Quality Assurance
 
-| Frontend Feature | Backend API | Implementation Status | Verified |
-|------------------|-------------|-----------------------|----------|
-| Run Automated Tests | `POST /api/tests/run` | ✅ Implemented | ⚠️ Review |
-| Get Test Results | `GET /api/tests/results` | ✅ Implemented | ⚠️ Review |
-| Performance Benchmarking | `POST /api/monitor/start`, `GET /api/monitor/live` | ✅ Implemented | ✅ Yes |
-| Industry Standards Reference | `GET /api/standards` | ✅ Implemented (static) | ✅ Yes |
+| Frontend Feature             | Backend API                                        | Implementation Status   | Verified  |
+| ---------------------------- | -------------------------------------------------- | ----------------------- | --------- |
+| Run Automated Tests          | `POST /api/tests/run`                              | ✅ Implemented          | ⚠️ Review |
+| Get Test Results             | `GET /api/tests/results`                           | ✅ Implemented          | ⚠️ Review |
+| Performance Benchmarking     | `POST /api/monitor/start`, `GET /api/monitor/live` | ✅ Implemented          | ✅ Yes    |
+| Industry Standards Reference | `GET /api/standards`                               | ✅ Implemented (static) | ✅ Yes    |
 
 **Notes:**
+
 - Test results should come from backend, not hardcoded PASS/FAIL
 - Performance monitoring uses real system metrics (CPU, memory, I/O)
 - "No test results yet" shown until tests actually run
@@ -158,16 +165,17 @@ For each frontend feature, we verify:
 
 ### Evidence & Reporting
 
-| Frontend Feature | Backend API | Implementation Status | Verified |
-|------------------|-------------|-----------------------|----------|
-| Create Evidence Bundle | `POST /api/evidence/create` | ⚠️ Planned | ❌ Not Yet |
-| List Evidence Bundles | `GET /api/evidence/bundles` | ⚠️ Planned | ❌ Not Yet |
-| Sign Evidence Bundle | `POST /api/evidence/sign` | ⚠️ Planned | ❌ Not Yet |
-| Export Bundle (ZIP) | `GET /api/evidence/export/:id` | ⚠️ Planned | ❌ Not Yet |
-| Snapshot Creation | `POST /api/snapshots/create` | ⚠️ Planned | ❌ Not Yet |
-| Snapshot Retention Policy | `GET /api/snapshots/retention` | ⚠️ Planned | ❌ Not Yet |
+| Frontend Feature          | Backend API                    | Implementation Status | Verified   |
+| ------------------------- | ------------------------------ | --------------------- | ---------- |
+| Create Evidence Bundle    | `POST /api/evidence/create`    | ⚠️ Planned            | ❌ Not Yet |
+| List Evidence Bundles     | `GET /api/evidence/bundles`    | ⚠️ Planned            | ❌ Not Yet |
+| Sign Evidence Bundle      | `POST /api/evidence/sign`      | ⚠️ Planned            | ❌ Not Yet |
+| Export Bundle (ZIP)       | `GET /api/evidence/export/:id` | ⚠️ Planned            | ❌ Not Yet |
+| Snapshot Creation         | `POST /api/snapshots/create`   | ⚠️ Planned            | ❌ Not Yet |
+| Snapshot Retention Policy | `GET /api/snapshots/retention` | ⚠️ Planned            | ❌ Not Yet |
 
 **Notes:**
+
 - Evidence bundle system documented but not fully implemented
 - UI shows "No evidence bundles created yet" (correct empty state)
 - No fake bundles displayed
@@ -177,15 +185,16 @@ For each frontend feature, we verify:
 
 ### Plugin Management
 
-| Frontend Feature | Backend API | Implementation Status | Verified |
-|------------------|-------------|-----------------------|----------|
-| Plugin Marketplace Sync | `GET /api/plugins/registry` | ⚠️ Mock | ❌ Not Yet |
-| Install Plugin | `POST /api/plugins/install` | ⚠️ Planned | ❌ Not Yet |
-| Uninstall Plugin | `DELETE /api/plugins/:id` | ⚠️ Planned | ❌ Not Yet |
-| Plugin Certification Check | `GET /api/plugins/:id/certification` | ⚠️ Planned | ❌ Not Yet |
-| Dependency Graph | `GET /api/plugins/dependencies` | ⚠️ Planned | ❌ Not Yet |
+| Frontend Feature           | Backend API                          | Implementation Status | Verified   |
+| -------------------------- | ------------------------------------ | --------------------- | ---------- |
+| Plugin Marketplace Sync    | `GET /api/plugins/registry`          | ⚠️ Mock               | ❌ Not Yet |
+| Install Plugin             | `POST /api/plugins/install`          | ⚠️ Planned            | ❌ Not Yet |
+| Uninstall Plugin           | `DELETE /api/plugins/:id`            | ⚠️ Planned            | ❌ Not Yet |
+| Plugin Certification Check | `GET /api/plugins/:id/certification` | ⚠️ Planned            | ❌ Not Yet |
+| Dependency Graph           | `GET /api/plugins/dependencies`      | ⚠️ Planned            | ❌ Not Yet |
 
 **Notes:**
+
 - Plugin marketplace currently uses mock data (`MOCK_REGISTRY_PLUGINS`)
 - No real backend registry sync implemented yet
 - UI should show "Registry sync failed" if backend unavailable
@@ -197,13 +206,14 @@ For each frontend feature, we verify:
 
 ### Settings & Preferences
 
-| Frontend Feature | Backend API | Implementation Status | Verified |
-|------------------|-------------|-----------------------|----------|
-| Save User Preferences | N/A (localStorage via useKV) | ✅ Implemented (client-side) | ⚠️ Review |
-| Audio Notification Settings | N/A (localStorage via useKV) | ✅ Implemented (client-side) | ✅ Yes |
-| Workshop Atmosphere Theme | N/A (localStorage via useKV) | ✅ Implemented (client-side) | ✅ Yes |
+| Frontend Feature            | Backend API                  | Implementation Status        | Verified  |
+| --------------------------- | ---------------------------- | ---------------------------- | --------- |
+| Save User Preferences       | N/A (localStorage via useKV) | ✅ Implemented (client-side) | ⚠️ Review |
+| Audio Notification Settings | N/A (localStorage via useKV) | ✅ Implemented (client-side) | ✅ Yes    |
+| Workshop Atmosphere Theme   | N/A (localStorage via useKV) | ✅ Implemented (client-side) | ✅ Yes    |
 
 **Notes:**
+
 - User preferences stored client-side (acceptable for single-user desktop app)
 - For multi-user enterprise deployment, should move to backend storage
 - No backend dependency is intentional design decision for offline-first
@@ -215,6 +225,7 @@ For each frontend feature, we verify:
 ### No Dead Buttons Found
 
 All major action buttons verified to have backend implementations:
+
 - ✅ "Start Flash" → `POST /api/flash/start`
 - ✅ "Unlock Bootloader" → `POST /api/fastboot/unlock`
 - ✅ "Reboot Device" → `POST /api/fastboot/reboot`
@@ -225,12 +236,14 @@ All major action buttons verified to have backend implementations:
 ### Buttons Requiring Backend Implementation
 
 The following buttons exist but lack complete backend support:
+
 - ⚠️ "Export Evidence Bundle" → API not implemented
 - ⚠️ "Install Plugin" → API not implemented
 - ⚠️ "Create Snapshot" → API not implemented
 - ⚠️ "Pause Flash" → API exists but UI integration incomplete
 
 **Action Required:**
+
 1. Either implement missing APIs
 2. Or disable buttons with tooltip: "Coming soon - backend implementation pending"
 
@@ -241,12 +254,14 @@ The following buttons exist but lack complete backend support:
 ### Identified Violations
 
 1. **Trigger Catalog (Static JSON)**
+
    - **Location**: `src/components/TriggerCatalog.tsx` (or similar)
    - **Issue**: Authorization trigger metadata stored in frontend code
    - **Fix**: Move to `GET /api/authorization/catalog` endpoint
    - **Priority**: Medium (catalog is largely static, but centralization preferred)
 
 2. **Plugin Registry (Mock Data)**
+
    - **Location**: `src/lib/mock-plugin-registry-server.ts`
    - **Issue**: `MOCK_REGISTRY_PLUGINS` array hardcoded in frontend
    - **Fix**: Implement `GET /api/plugins/registry` with real backend sync
@@ -261,6 +276,7 @@ The following buttons exist but lack complete backend support:
 ### No Other Violations Found
 
 Most UI logic correctly defers to backend:
+
 - Device detection: Backend-driven
 - Flash operations: Backend-executed with WebSocket progress
 - Authorization triggers: Backend-validated and logged
@@ -274,15 +290,16 @@ Most UI logic correctly defers to backend:
 
 All async operations clearly indicate state:
 
-| Operation | Loading State | Progress Indicator | Completion Notification |
-|-----------|---------------|-------------------|------------------------|
-| Device Detection | "Scanning..." spinner | N/A (fast operation) | Device list populates |
-| Flash Operation | "Flashing..." | Progress bar (0-100%) | Success toast + history entry |
-| Firmware Check | "Checking firmware..." | Spinner on button | Version info displays |
-| Test Execution | "Running tests..." | Progress with test names | Results table populates |
-| USB Scan | "Scanning USB..." | Spinner | Device list updates |
+| Operation        | Loading State          | Progress Indicator       | Completion Notification       |
+| ---------------- | ---------------------- | ------------------------ | ----------------------------- |
+| Device Detection | "Scanning..." spinner  | N/A (fast operation)     | Device list populates         |
+| Flash Operation  | "Flashing..."          | Progress bar (0-100%)    | Success toast + history entry |
+| Firmware Check   | "Checking firmware..." | Spinner on button        | Version info displays         |
+| Test Execution   | "Running tests..."     | Progress with test names | Results table populates       |
+| USB Scan         | "Scanning USB..."      | Spinner                  | Device list updates           |
 
 **Verification:**
+
 - ✅ No operation completes instantly without showing loading state
 - ✅ Long operations (flash, tests) show progress percentage
 - ✅ User can cancel long operations via backend API
@@ -296,14 +313,14 @@ All async operations clearly indicate state:
 
 All panels properly handle empty backend responses:
 
-| Panel | Empty Backend Response | UI Behavior | Verified |
-|-------|------------------------|-------------|----------|
-| Device Sidebar | `{ devices: [] }` | "No devices connected" | ✅ Yes |
-| Flash History | `{ history: [] }` | "No flash operations performed" | ✅ Yes |
-| Test Results | `{ results: [] }` | "No test results yet" | ✅ Yes |
-| Evidence Bundles | `{ bundles: [] }` | "No evidence bundles created" | ✅ Yes |
-| Plugin Marketplace | `{ plugins: [] }` | "Registry sync failed" or "No plugins available" | ⚠️ Shows mock data |
-| Authorization History | `{ entries: [] }` | "No authorization triggers executed" | ✅ Yes |
+| Panel                 | Empty Backend Response | UI Behavior                                      | Verified           |
+| --------------------- | ---------------------- | ------------------------------------------------ | ------------------ |
+| Device Sidebar        | `{ devices: [] }`      | "No devices connected"                           | ✅ Yes             |
+| Flash History         | `{ history: [] }`      | "No flash operations performed"                  | ✅ Yes             |
+| Test Results          | `{ results: [] }`      | "No test results yet"                            | ✅ Yes             |
+| Evidence Bundles      | `{ bundles: [] }`      | "No evidence bundles created"                    | ✅ Yes             |
+| Plugin Marketplace    | `{ plugins: [] }`      | "Registry sync failed" or "No plugins available" | ⚠️ Shows mock data |
+| Authorization History | `{ entries: [] }`      | "No authorization triggers executed"             | ✅ Yes             |
 
 **Issue:** Plugin marketplace doesn't properly handle empty registry because it uses mock data.
 
@@ -315,15 +332,16 @@ All panels properly handle empty backend responses:
 
 Frontend correctly displays backend error messages:
 
-| Scenario | Backend Response | Frontend Behavior | Verified |
-|----------|------------------|-------------------|----------|
-| Tool Not Installed | `{ success: false, error: "adb not found" }` | Error toast with install guidance | ✅ Yes |
-| Device Not Found | `{ success: false, error: "Device ABC123 not found" }` | Error alert in panel | ✅ Yes |
-| Permission Denied | `{ success: false, error: "USB permission denied" }` | Error with troubleshooting steps | ✅ Yes |
-| Operation Failed | `{ success: false, error: "Flash failed", stderr: "..." }` | Detailed error modal with stderr output | ✅ Yes |
-| Network Error | Fetch timeout or connection refused | "Backend unavailable" banner | ✅ Yes |
+| Scenario           | Backend Response                                           | Frontend Behavior                       | Verified |
+| ------------------ | ---------------------------------------------------------- | --------------------------------------- | -------- |
+| Tool Not Installed | `{ success: false, error: "adb not found" }`               | Error toast with install guidance       | ✅ Yes   |
+| Device Not Found   | `{ success: false, error: "Device ABC123 not found" }`     | Error alert in panel                    | ✅ Yes   |
+| Permission Denied  | `{ success: false, error: "USB permission denied" }`       | Error with troubleshooting steps        | ✅ Yes   |
+| Operation Failed   | `{ success: false, error: "Flash failed", stderr: "..." }` | Detailed error modal with stderr output | ✅ Yes   |
+| Network Error      | Fetch timeout or connection refused                        | "Backend unavailable" banner            | ✅ Yes   |
 
 **Verification:**
+
 - ✅ No generic "Something went wrong" errors
 - ✅ All errors include actionable recommendations from backend
 - ✅ stderr output displayed when available for debugging
@@ -362,6 +380,7 @@ Frontend correctly displays backend error messages:
 ```
 
 **Verified:**
+
 - ✅ No component bypasses backend to execute operations
 - ✅ No component fakes "success" without backend confirmation
 - ✅ All device data comes from backend detection, not hardcoded lists
@@ -374,16 +393,19 @@ Frontend correctly displays backend error messages:
 ### Immediate Actions (High Priority)
 
 1. **Implement Plugin Registry Backend API**
+
    - Remove `MOCK_REGISTRY_PLUGINS` from frontend
    - Create `GET /api/plugins/registry` endpoint
    - Frontend displays "Registry unavailable" if sync fails
 
 2. **Move Trigger Catalog to Backend**
+
    - Create `GET /api/authorization/catalog` endpoint
    - Serve trigger metadata from backend
    - Enables dynamic trigger addition without frontend redeployment
 
 3. **Verify Test Runner Backend**
+
    - Audit `POST /api/tests/run` to ensure real tests execute
    - Confirm no mock PASS/FAIL responses in production mode
    - Add backend test execution logs
@@ -396,11 +418,13 @@ Frontend correctly displays backend error messages:
 ### Medium Priority
 
 5. **Add Backend-Driven Feature Flags**
+
    - Backend returns feature availability (e.g., iOS backup ready)
    - Frontend disables/hides buttons for unavailable features
    - Eliminates confusion about "coming soon" features
 
 6. **Enhance Async Operation Feedback**
+
    - Add estimated time remaining for all long operations
    - Show "Cancellable" indicator when backend supports cancellation
    - Display queue position for batch operations
@@ -438,6 +462,7 @@ This frontend-backend parity verification is complete when:
 ## Maintenance
 
 This document is updated:
+
 - **On every new frontend feature**: Map to backend API or document as client-only (with justification)
 - **On every backend API change**: Update frontend feature mapping
 - **Quarterly**: Full audit to catch drift between frontend and backend

@@ -21,6 +21,7 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
 **Steps:**
 
 1. **Document Authorization**
+
    ```
    Customer: John Smith
    Device: Samsung Galaxy S21
@@ -29,6 +30,7 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
    ```
 
 2. **Connect Device and Scan**
+
    ```bash
    # Physical: Connect device via USB
    # UI: Open Device Dossier panel
@@ -36,6 +38,7 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
    ```
 
 3. **Review Detection Results**
+
    ```json
    {
      "device_uid": "usb:04e8:6860:bus1:addr3",
@@ -67,6 +70,7 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
    - Creates audit trail starting point
 
 **Why This Matters:**
+
 - Proves device state before work began
 - Documents exact hardware involved
 - Protects shop from "you broke my phone" claims
@@ -80,6 +84,7 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
 **Steps:**
 
 1. **Gather Device Information**
+
    ```
    UI Action: Click "Get Device Info"
    Backend: Runs `fastboot getvar all`
@@ -87,6 +92,7 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
    ```
 
 2. **Check Bootloader Status**
+
    ```
    Device shows:
    - Bootloader: Locked ❌
@@ -95,9 +101,10 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
    ```
 
 3. **Decision Point: Policy Check**
+
    ```
    Tech attempts: "Unlock Bootloader"
-   
+
    Policy Engine Response:
    {
      "allowed": false,
@@ -117,6 +124,7 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
    - System creates audit log of authorization chain
 
 **Why This Matters:**
+
 - Prevents unauthorized destructive actions
 - Documents customer consent for warranty-voiding procedures
 - Creates clear responsibility trail
@@ -130,6 +138,7 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
 **Steps:**
 
 1. **Prepare Firmware Files**
+
    ```
    Files: boot.img, system.img, vendor.img
    Location: /shop/firmware/samsung/s21/stock/
@@ -137,6 +146,7 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
    ```
 
 2. **Start Flash Job**
+
    ```typescript
    Job Created:
    {
@@ -157,6 +167,7 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
    ```
 
 3. **Policy Evaluation**
+
    ```json
    {
      "allowed": true,
@@ -170,41 +181,44 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
    ```
 
 4. **Confirmation Flow**
+
    ```
    UI Shows:
    ⚠️ DESTRUCTIVE OPERATION
-   
+
    Device: Samsung Galaxy S21 (RF8N123ABCD)
    Action: Flash boot + system partitions
    Risk: Data loss, device brick if interrupted
-   
+
    Requirements:
    ✅ Device in fastboot mode (confirmed)
    ✅ Admin approval (approved by supervisor@shop.com)
    ✅ Customer authorization (form #2025-0042)
-   
+
    Type 'flash-firmware-J-2025-0042-001' to confirm:
    ```
 
 5. **Execution with Live Monitoring**
+
    ```
    Starting flash operation...
-   
+
    [=====>          ] boot.img - 45% - 23.4 MB/s
-   
+
    Real-time metrics:
    - Transfer speed: 23.4 MB/s
    - USB bandwidth: 67% utilized
    - CPU: 12%
    - ETA: 2m 34s
-   
+
    Bottleneck detection: None
    ```
 
 6. **Completion and Evidence Bundle**
+
    ```
    Flash operation completed successfully
-   
+
    Evidence Bundle: evidence_bundle_J-2025-0042-001/
    ├── manifest.json (signed)
    ├── command_log.jsonl
@@ -213,11 +227,12 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
    ├── stdout.txt
    ├── stderr.txt
    └── hashes.txt
-   
+
    ✓ Exported to customer ticket
    ```
 
 **Why This Matters:**
+
 - Complete record of work performed
 - Verifiable evidence of successful operation
 - Defense against warranty claims or disputes
@@ -232,6 +247,7 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
 **Steps:**
 
 1. **Reboot Device**
+
    ```
    UI: Click "Reboot to System"
    Backend: `fastboot reboot`
@@ -239,13 +255,14 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
    ```
 
 2. **Post-Repair Test**
+
    ```
    Checklist:
    ✅ Device boots to OS
    ✅ Touch screen responsive
    ✅ Wireless connectivity works
    ✅ No error messages
-   
+
    Status: PASS
    ```
 
@@ -261,9 +278,7 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
        "Post-repair functionality test"
      ],
      "outcome": "Resolved - device booting normally",
-     "evidence_bundles": [
-       "evidence_bundle_J-2025-0042-001"
-     ],
+     "evidence_bundles": ["evidence_bundle_J-2025-0042-001"],
      "tech": "tech@repair-shop.com",
      "supervisor_approvals": ["supervisor@shop.com"],
      "duration": "45 minutes"
@@ -275,20 +290,25 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
 ## Role-Based Access Control
 
 ### Tech Role
+
 **Can:**
+
 - Detect devices
 - View device information
 - Run diagnostics
 - Reboot devices (with confirmation)
 
 **Cannot:**
+
 - Flash firmware
 - Unlock bootloaders
 - Erase partitions
 - Access audit logs
 
 ### Admin Role
+
 **Can (in addition to Tech):**
+
 - Flash firmware
 - Unlock/lock bootloaders
 - Erase non-critical partitions
@@ -296,12 +316,15 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
 - View audit logs
 
 **Cannot:**
+
 - Bypass policy gates
 - Delete audit logs
 - Modify policy rules
 
 ### Owner Role
+
 **Can (in addition to Admin):**
+
 - Modify policy rules
 - Access Bobby Vault
 - Add local tools
@@ -315,16 +338,19 @@ This guide shows how to use Pandora Codex in a real repair shop environment for 
 Your shop needs these tools operational:
 
 ### Required Tools
+
 - ✅ **adb** - Android Debug Bridge
 - ✅ **fastboot** - Bootloader interface
 - ✅ **BootForgeUSB** - Device detection
 
 ### Optional Tools
+
 - **idevice_id** - iOS device detection (if servicing iPhones)
 - **heimdall** - Samsung Odin alternative
 - **Custom tools** - Shop-specific utilities in Bobby Vault
 
 ### Health Dashboard
+
 ```
 Tool Status:
 
@@ -348,22 +374,25 @@ For shop-specific or vendor-provided tools:
 ### Example: Add Samsung Frp Tool
 
 1. **Obtain Tool**
+
    ```bash
    # Received frp-unlock-tool from Samsung partner portal
    # Verify legitimacy and license
    ```
 
 2. **Add to Vault**
+
    ```bash
    cp frp-unlock-tool .pandora_private/tools/
    chmod +x .pandora_private/tools/frp-unlock-tool
-   
+
    # Compute hash
    sha256sum .pandora_private/tools/frp-unlock-tool
-   # Output: 7a3f8b2c... 
+   # Output: 7a3f8b2c...
    ```
 
 3. **Register in Manifest**
+
    ```json
    {
      "id": "samsung_frp_unlock",
@@ -378,9 +407,10 @@ For shop-specific or vendor-provided tools:
    ```
 
 4. **Execute with Validation**
+
    ```bash
    python3 .pandora_private/scripts/run_local_tool.py samsung_frp_unlock --device ABC123
-   
+
    # Runner will:
    # 1. Verify SHA-256 hash
    # 2. Require typed confirmation
@@ -389,6 +419,7 @@ For shop-specific or vendor-provided tools:
    ```
 
 **Why Bobby Vault:**
+
 - Protects proprietary tools from accidental commits
 - Hash validation prevents tampering
 - Audit logging for compliance
@@ -403,15 +434,16 @@ For shop-specific or vendor-provided tools:
 **Problem:** Customer device not showing up.
 
 **Diagnosis:**
+
 ```
 1. Check USB Device Detector
    - Seeing device in USB list? → Yes/No
-   
+
 2. If Yes but no ADB/Fastboot:
    - Check USB debugging enabled
    - Check authorization popup on device
    - Try different USB cable/port
-   
+
 3. If No USB detection:
    - Try different cable
    - Check device physically powered on
@@ -419,6 +451,7 @@ For shop-specific or vendor-provided tools:
 ```
 
 **Resolution:**
+
 - Document findings in ticket
 - Show customer USB detection evidence
 - Transparent about capability limits
@@ -428,6 +461,7 @@ For shop-specific or vendor-provided tools:
 **Problem:** Flash operation returned error code.
 
 **Diagnosis:**
+
 ```
 Evidence Bundle Shows:
 - Command: fastboot flash boot boot.img
@@ -437,6 +471,7 @@ Evidence Bundle Shows:
 ```
 
 **Resolution:**
+
 - Error is clear: partition name wrong
 - Check device partition list
 - Correct partition name
@@ -447,6 +482,7 @@ Evidence Bundle Shows:
 **Problem:** Customer claims "you didn't do anything".
 
 **Defense:**
+
 ```
 Evidence Bundle Export:
 - Pre-flash device dossier: Device in fastboot, bootloop confirmed
@@ -456,6 +492,7 @@ Evidence Bundle Export:
 ```
 
 **Outcome:**
+
 - Evidence proves work was performed
 - Audit trail shows successful completion
 - Shop protected from false claim
@@ -465,27 +502,32 @@ Evidence Bundle Export:
 ## Best Practices
 
 ### 1. Always Document Authorization
+
 - Signed consent form before any operation
 - Attach form number to job ID
 - Store in customer ticket system
 
 ### 2. Use Policy Gates Properly
+
 - Don't bypass confirmations "to save time"
 - Train staff on why confirmations matter
 - Review audit logs weekly
 
 ### 3. Export Evidence Bundles
+
 - Attach to every customer ticket
 - Keep for warranty/dispute resolution
 - Use as training material
 
 ### 4. Maintain Tool Health
+
 - Check tool status daily
 - Update tools regularly
 - Test detection on known-good devices
 
 ### 5. Train Staff on No-Illusion Standard
-- "Device detected" means *actually* detected
+
+- "Device detected" means _actually_ detected
 - Show evidence, don't guess
 - Escalate when uncertain
 
@@ -494,18 +536,21 @@ Evidence Bundle Export:
 ## Legal and Compliance
 
 ### What Pandora Codex Does
+
 ✅ Provides tools for lawful device repair
 ✅ Creates audit trails for compliance
 ✅ Enforces safety gates for destructive operations
 ✅ Documents customer authorization
 
 ### What Pandora Codex Does NOT Do
+
 ❌ Bypass security measures without authorization
 ❌ Remove FRP/iCloud locks without proof of ownership
 ❌ Enable theft or fraud
 ❌ Hide operations from audit logs
 
 ### Your Responsibility
+
 - Verify customer ownership before unlocking
 - Follow local right-to-repair laws
 - Maintain customer privacy
@@ -524,4 +569,4 @@ Evidence Bundle Export:
 
 **Built for real repair shops. Designed for transparency. Engineered for truth.**
 
-*Part of the Pandora Codex Enterprise Framework*
+_Part of the Pandora Codex Enterprise Framework_

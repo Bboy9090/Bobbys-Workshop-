@@ -1,4 +1,5 @@
 use crate::Result;
+use crate::BootforgeError;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -44,9 +45,10 @@ impl ImagingEngine {
         _target: &str,
         _format: ImageFormat,
     ) -> Result<()> {
-        log::info!("Starting image write operation");
-        // Stub: wire up actual imaging logic
-        Ok(())
+        log::warn!("Image write operation not yet implemented");
+        // TODO: Implement actual imaging logic using dd or specialized tool
+        // For now, return error to prevent silent failure
+        Err(BootforgeError::Imaging("Image writing not yet implemented. This feature requires integration with system imaging tools.".to_string()))
     }
 
     pub async fn verify_image(
@@ -54,8 +56,9 @@ impl ImagingEngine {
         _image_path: &Path,
         _checksum: Option<&str>,
     ) -> Result<bool> {
-        log::info!("Verifying image integrity");
-        // Stub: wire up checksum verification
-        Ok(true)
+        log::warn!("Image verification not yet implemented");
+        // TODO: Implement checksum verification (SHA-256)
+        // For now, return error instead of fake success
+        Err(BootforgeError::Imaging("Image verification not yet implemented. Cannot validate image integrity.".to_string()))
     }
 }

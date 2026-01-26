@@ -1,7 +1,15 @@
 import React, { useState } from 'react';
-import { Card, Button, Badge, EmptyState } from '@pandora-codex/ui-kit';
-import type { Device } from '@pandora-codex/shared-types';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/EmptyState';
 import { Activity, Play, AlertCircle } from 'lucide-react';
+
+interface Device {
+  id: string;
+  name: string;
+  model?: string;
+}
 
 interface DiagnosticsRunnerProps {
   devices: Device[];
@@ -43,8 +51,11 @@ export const DiagnosticsRunner: React.FC<DiagnosticsRunnerProps> = ({ devices })
 
   return (
     <div className="space-y-4">
-      <Card title="Run Diagnostics">
-        <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Run Diagnostics</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Select Device
@@ -65,27 +76,31 @@ export const DiagnosticsRunner: React.FC<DiagnosticsRunnerProps> = ({ devices })
           <Button
             onClick={runDiagnostics}
             disabled={!selectedDevice || isRunning}
-            isLoading={isRunning}
           >
             <Play className="h-4 w-4 mr-2" />
-            Run Diagnostics
+            {isRunning ? 'Running…' : 'Run Diagnostics'}
           </Button>
-        </div>
+        </CardContent>
       </Card>
 
       {result && (
-        <Card title="Diagnostics Results">
-          {result.error ? (
-            <div className="text-red-600 flex items-center gap-2">
-              <AlertCircle className="h-5 w-5" />
-              {result.error}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <p><strong>Run ID:</strong> {result.data?.runId}</p>
-              <Badge variant="success">Diagnostics started</Badge>
-            </div>
-          )}
+        <Card>
+          <CardHeader>
+            <CardTitle>Diagnostics Results</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {result.error ? (
+              <div className="text-destructive flex items-center gap-2">
+                <AlertCircle className="h-5 w-5" />
+                {result.error}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p><strong>Run ID:</strong> {result.data?.runId}</p>
+                <Badge variant="secondary">Diagnostics started</Badge>
+              </div>
+            )}
+          </CardContent>
         </Card>
       )}
     </div>

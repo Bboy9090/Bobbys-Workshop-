@@ -21,12 +21,14 @@ The Authorization Trigger Catalog is a comprehensive system that maps every user
 Device authorization and permission management.
 
 #### Trust Device
+
 - **Frontend Prompt:** "Do you want to trust this device?"
 - **Backend Endpoint:** `POST /api/devices/trust`
 - **Modal Text:** "Authorize this device for diagnostics and flashing?"
 - **Risk Level:** Medium
 - **Device Required:** Yes
 - **Audit Log:**
+
 ```json
 {
   "action": "trust_device",
@@ -38,6 +40,7 @@ Device authorization and permission management.
 ```
 
 #### Grant USB Debugging
+
 - **Frontend Prompt:** "Allow USB debugging?"
 - **Backend Endpoint:** `POST /api/devices/authorize-debugging`
 - **Modal Text:** "Enable USB debugging for this device?"
@@ -45,6 +48,7 @@ Device authorization and permission management.
 - **Device Required:** Yes
 
 #### Authorize File Transfer
+
 - **Frontend Prompt:** "Allow file transfer access?"
 - **Backend Endpoint:** `POST /api/devices/authorize-transfer`
 - **Modal Text:** "Grant file transfer permissions for this device?"
@@ -58,6 +62,7 @@ Device authorization and permission management.
 Firmware flashing and bootloader operations.
 
 #### Flash Firmware
+
 - **Frontend Prompt:** "Do you want to flash this firmware?"
 - **Backend Endpoint:** `POST /api/flash/start`
 - **Modal Text:** "Confirm flashing firmware to device. This will overwrite partitions."
@@ -65,6 +70,7 @@ Firmware flashing and bootloader operations.
 - **Risk Level:** Destructive
 - **Device Required:** Yes
 - **Audit Log:**
+
 ```json
 {
   "action": "flash_start",
@@ -78,6 +84,7 @@ Firmware flashing and bootloader operations.
 ```
 
 #### Unlock Bootloader
+
 - **Frontend Prompt:** "Unlock bootloader?"
 - **Backend Endpoint:** `POST /api/flash/unlock-bootloader`
 - **Modal Text:** "This will erase all data and void warranty. Type UNLOCK to confirm."
@@ -86,6 +93,7 @@ Firmware flashing and bootloader operations.
 - **Device Required:** Yes
 
 #### Flash Recovery
+
 - **Frontend Prompt:** "Flash recovery partition?"
 - **Backend Endpoint:** `POST /api/flash/recovery`
 - **Modal Text:** "Flash custom recovery to this device?"
@@ -94,6 +102,7 @@ Firmware flashing and bootloader operations.
 - **Device Required:** Yes
 
 #### Batch Flash
+
 - **Frontend Prompt:** "Start batch flash operation?"
 - **Backend Endpoint:** `POST /api/flash/batch`
 - **Modal Text:** "Flash firmware to multiple devices simultaneously?"
@@ -102,6 +111,7 @@ Firmware flashing and bootloader operations.
 - **Device Required:** No (operates on multiple devices)
 
 #### Factory Reset
+
 - **Frontend Prompt:** "Factory reset device?"
 - **Backend Endpoint:** `POST /api/devices/factory-reset`
 - **Modal Text:** "This will erase all data. Type RESET to confirm."
@@ -110,6 +120,7 @@ Firmware flashing and bootloader operations.
 - **Device Required:** Yes
 
 #### Reboot Operations
+
 - **Reboot to System:** `POST /api/devices/reboot` (Low risk)
 - **Reboot to Recovery:** `POST /api/devices/reboot-recovery` (Low risk)
 - **Reboot to Bootloader:** `POST /api/devices/reboot-bootloader` (Low risk)
@@ -122,12 +133,14 @@ Firmware flashing and bootloader operations.
 Device health checks and performance testing.
 
 #### Run Diagnostics
+
 - **Frontend Prompt:** "Run full diagnostics on connected devices?"
 - **Backend Endpoint:** `POST /api/diagnostics/run`
 - **Modal Text:** "Run health checks (CPU, memory, storage, battery) on device?"
 - **Risk Level:** Low
 - **Device Required:** Yes
 - **Audit Log:**
+
 ```json
 {
   "action": "diagnostics_run",
@@ -140,6 +153,7 @@ Device health checks and performance testing.
 ```
 
 #### Batch Diagnostics
+
 - **Frontend Prompt:** "Run diagnostics on all devices?"
 - **Backend Endpoint:** `POST /api/diagnostics/batch`
 - **Modal Text:** "Run comprehensive diagnostics on all connected devices?"
@@ -147,6 +161,7 @@ Device health checks and performance testing.
 - **Device Required:** No
 
 #### Collect Logs
+
 - **Frontend Prompt:** "Collect device logs?"
 - **Backend Endpoint:** `POST /api/diagnostics/logs`
 - **Modal Text:** "Capture ADB logcat, fastboot logs, and system logs from device?"
@@ -154,6 +169,7 @@ Device health checks and performance testing.
 - **Device Required:** Yes
 
 #### Benchmark Device
+
 - **Frontend Prompt:** "Run performance benchmark?"
 - **Backend Endpoint:** `POST /api/diagnostics/benchmark`
 - **Modal Text:** "Run flash speed and performance profiling on device?"
@@ -167,12 +183,14 @@ Device health checks and performance testing.
 Signed evidence bundles and audit reports.
 
 #### Export Evidence Bundle
+
 - **Frontend Prompt:** "Export signed evidence bundle?"
 - **Backend Endpoint:** `POST /api/evidence/export`
 - **Modal Text:** "Generate cryptographically signed diagnostic report for device?"
 - **Risk Level:** Low
 - **Device Required:** Yes
 - **Audit Log:**
+
 ```json
 {
   "action": "evidence_export",
@@ -185,6 +203,7 @@ Signed evidence bundles and audit reports.
 ```
 
 #### Import Evidence Bundle
+
 - **Frontend Prompt:** "Import evidence bundle?"
 - **Backend Endpoint:** `POST /api/evidence/import`
 - **Modal Text:** "Import and verify external evidence bundle?"
@@ -192,6 +211,7 @@ Signed evidence bundles and audit reports.
 - **Device Required:** No
 
 #### Sign Evidence
+
 - **Frontend Prompt:** "Sign evidence bundle?"
 - **Backend Endpoint:** `POST /api/evidence/sign`
 - **Modal Text:** "Apply cryptographic signature to evidence bundle?"
@@ -199,6 +219,7 @@ Signed evidence bundles and audit reports.
 - **Device Required:** No
 
 #### Create Snapshot
+
 - **Frontend Prompt:** "Create diagnostic snapshot?"
 - **Backend Endpoint:** `POST /api/snapshots/create`
 - **Modal Text:** "Capture current device state for backup?"
@@ -212,6 +233,7 @@ Signed evidence bundles and audit reports.
 Compliance gates and supervisor approvals.
 
 #### Policy Gate Confirmation
+
 - **Frontend Prompt:** "This is a destructive action. Do you want to continue?"
 - **Backend Endpoint:** `POST /api/policy/confirm`
 - **Modal Text:** "This action cannot be undone. Type YES to proceed."
@@ -219,6 +241,7 @@ Compliance gates and supervisor approvals.
 - **Risk Level:** Destructive
 - **Device Required:** No
 - **Audit Log:**
+
 ```json
 {
   "action": "policy_gate",
@@ -230,6 +253,7 @@ Compliance gates and supervisor approvals.
 ```
 
 #### Supervisor Approval
+
 - **Frontend Prompt:** "High-risk action requires supervisor approval"
 - **Backend Endpoint:** `POST /api/policy/supervisor-approval`
 - **Modal Text:** "Submit request for supervisor approval of this action?"
@@ -237,6 +261,7 @@ Compliance gates and supervisor approvals.
 - **Device Required:** No
 
 #### Audit Log Consent
+
 - **Frontend Prompt:** "Consent to audit logging?"
 - **Backend Endpoint:** `POST /api/policy/audit-consent`
 - **Modal Text:** "Agree to record this operation in audit log?"
@@ -250,12 +275,14 @@ Compliance gates and supervisor approvals.
 USB device connection and driver management.
 
 #### Authorize Hotplug Device
+
 - **Frontend Prompt:** "New device detected. Do you want to connect?"
 - **Backend Endpoint:** `POST /api/hotplug/authorize`
 - **Modal Text:** "Device connected via USB. Authorize for monitoring?"
 - **Risk Level:** Medium
 - **Device Required:** Yes
 - **Audit Log:**
+
 ```json
 {
   "action": "hotplug_authorize",
@@ -269,6 +296,7 @@ USB device connection and driver management.
 ```
 
 #### Install Device Driver
+
 - **Frontend Prompt:** "Install missing driver?"
 - **Backend Endpoint:** `POST /api/devices/install-driver`
 - **Modal Text:** "Device requires driver installation. Download and install?"
@@ -282,12 +310,14 @@ USB device connection and driver management.
 Plugin installation, updates, and removal.
 
 #### Install Plugin
+
 - **Frontend Prompt:** "Install plugin?"
 - **Backend Endpoint:** `POST /api/plugins/install`
 - **Modal Text:** "Install certified plugin?"
 - **Risk Level:** Medium
 - **Device Required:** No
 - **Audit Log:**
+
 ```json
 {
   "action": "plugin_install",
@@ -300,6 +330,7 @@ Plugin installation, updates, and removal.
 ```
 
 #### Update Plugin
+
 - **Frontend Prompt:** "Update plugin?"
 - **Backend Endpoint:** `PUT /api/plugins/update`
 - **Modal Text:** "Update plugin to latest version?"
@@ -307,6 +338,7 @@ Plugin installation, updates, and removal.
 - **Device Required:** No
 
 #### Uninstall Plugin
+
 - **Frontend Prompt:** "Uninstall plugin?"
 - **Backend Endpoint:** `DELETE /api/plugins/uninstall`
 - **Modal Text:** "Remove plugin and all associated data?"
@@ -322,6 +354,7 @@ Plugin installation, updates, and removal.
 All trigger endpoints follow this pattern:
 
 **Request:**
+
 ```json
 {
   "triggerId": "trigger_id",
@@ -332,6 +365,7 @@ All trigger endpoints follow this pattern:
 ```
 
 **Response (Success):**
+
 ```json
 {
   "success": true,
@@ -342,6 +376,7 @@ All trigger endpoints follow this pattern:
 ```
 
 **Response (Error):**
+
 ```json
 {
   "success": false,
@@ -404,7 +439,7 @@ function MyComponent() {
   return (
     <>
       <Button onClick={handleFlash}>Flash Device</Button>
-      
+
       <AuthorizationTriggerModal
         trigger={trigger}
         deviceId={deviceId}
@@ -421,16 +456,22 @@ function MyComponent() {
 ### Direct Execution
 
 ```typescript
-import { executeTrigger, logTriggerAction, getTriggerById } from '@/lib/authorization-triggers';
+import {
+  executeTrigger,
+  logTriggerAction,
+  getTriggerById,
+} from "@/lib/authorization-triggers";
 
-const trigger = getTriggerById('flash_firmware');
+const trigger = getTriggerById("flash_firmware");
 if (trigger) {
-  const result = await executeTrigger(trigger, 'ABC123', { partitions: ['boot'] });
-  
+  const result = await executeTrigger(trigger, "ABC123", {
+    partitions: ["boot"],
+  });
+
   await logTriggerAction(
     trigger.id,
-    'ABC123',
-    result.success ? 'approved' : 'rejected'
+    "ABC123",
+    result.success ? "approved" : "rejected",
   );
 }
 ```
@@ -464,12 +505,12 @@ if (trigger) {
 
 ## Risk Levels
 
-| Level | Badge Color | Icon | Description |
-|-------|------------|------|-------------|
-| **Low** | Green | Info | Safe operations, no data loss risk |
-| **Medium** | Amber | Warning | Caution required, reversible actions |
-| **High** | Orange | Shield | Elevated risk, requires careful review |
-| **Destructive** | Red | Shield Warning | Cannot be undone, data loss possible |
+| Level           | Badge Color | Icon           | Description                            |
+| --------------- | ----------- | -------------- | -------------------------------------- |
+| **Low**         | Green       | Info           | Safe operations, no data loss risk     |
+| **Medium**      | Amber       | Warning        | Caution required, reversible actions   |
+| **High**        | Orange      | Shield         | Elevated risk, requires careful review |
+| **Destructive** | Red         | Shield Warning | Cannot be undone, data loss possible   |
 
 ---
 

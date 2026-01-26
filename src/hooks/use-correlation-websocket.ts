@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useCorrelationTracking, type CorrelatedDevice } from './use-correlation-tracking';
 import { toast } from 'sonner';
+import { useApp } from '@/lib/app-context';
 
 export interface CorrelationWebSocketMessage {
   type: 'correlation_update' | 'device_connected' | 'device_disconnected' | 'batch_update' | 'ping' | 'pong';
@@ -26,6 +27,11 @@ export function useCorrelationWebSocket(config: CorrelationWebSocketConfig) {
     enableNotifications = true,
     autoConnect = true,
   } = config;
+  
+  const { backendAvailable } = useApp();
+  const isBackendReady = backendAvailable;
+  // Disable notifications when backend is unavailable
+  const shouldNotify = enableNotifications && isBackendReady;
 
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
@@ -59,7 +65,7 @@ export function useCorrelationWebSocket(config: CorrelationWebSocketConfig) {
       case 'correlation_update':
         if (message.deviceId && message.device) {
           updateDevice(message.deviceId, message.device);
-          if (enableNotifications && message.device.correlationBadge) {
+          if (shouldNotify && message.device.correlationBadge) {
             const badge = message.device.correlationBadge;
             if (badge === 'CORRELATED') {
               toast.success(`Device ${message.deviceId} correlated`, {
@@ -77,7 +83,7 @@ export function useCorrelationWebSocket(config: CorrelationWebSocketConfig) {
       case 'device_connected':
         if (message.deviceId && message.device) {
           updateDevice(message.deviceId, message.device);
-          if (enableNotifications) {
+          if (shouldNotify) {
             toast.info(`Device connected: ${message.deviceId}`, {
               description: `Platform: ${message.device.platform || 'Unknown'}`,
             });
@@ -88,7 +94,7 @@ export function useCorrelationWebSocket(config: CorrelationWebSocketConfig) {
       case 'device_disconnected':
         if (message.deviceId) {
           removeDevice(message.deviceId);
-          if (enableNotifications) {
+          if (shouldNotify) {
             toast.info(`Device disconnected: ${message.deviceId}`);
           }
         }
@@ -101,7 +107,7 @@ export function useCorrelationWebSocket(config: CorrelationWebSocketConfig) {
               updateDevice(device.id, device);
             }
           });
-          if (enableNotifications) {
+          if (shouldNotify) {
             toast.success('Batch update received', {
               description: `${message.devices.length} devices updated`,
             });
@@ -115,10 +121,17 @@ export function useCorrelationWebSocket(config: CorrelationWebSocketConfig) {
       default:
         console.warn('Unknown WebSocket message type:', message.type);
     }
-  }, [updateDevice, removeDevice, enableNotifications]);
+  }, [updateDevice, removeDevice, shouldNotify]);
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) {
+      return;
+    }
+
+    if (!isBackendReady) {
+      setConnectionStatus('disconnected');
+      clearReconnectTimeout();
+      clearPingInterval();
       return;
     }
 
@@ -134,7 +147,7 @@ export function useCorrelationWebSocket(config: CorrelationWebSocketConfig) {
         setConnectionStatus('connected');
         setReconnectAttempts(0);
         
-        if (enableNotifications) {
+        if (shouldNotify) {
           toast.success('Connected to correlation server');
         }
 
@@ -165,13 +178,25 @@ export function useCorrelationWebSocket(config: CorrelationWebSocketConfig) {
         setConnectionStatus('disconnected');
         clearPingInterval();
 
+        // Only attempt reconnection if backend is still ready
+        if (!isBackendReady) {
+          clearReconnectTimeout();
+          return;
+        }
+
         if (reconnectAttempts < maxReconnectAttempts) {
           reconnectTimeoutRef.current = setTimeout(() => {
-            setReconnectAttempts(prev => prev + 1);
-            connect();
+            // Check again before reconnecting (backend might have gone offline)
+            if (isBackendReady) {
+              setReconnectAttempts(prev => prev + 1);
+              connect();
+            } else {
+              clearReconnectTimeout();
+            }
           }, reconnectDelay);
         } else {
-          if (enableNotifications) {
+          // Only show error toast once when max attempts reached
+          if (shouldNotify && reconnectAttempts === maxReconnectAttempts) {
             toast.error('Connection lost', {
               description: 'Max reconnection attempts reached',
             });
@@ -182,7 +207,7 @@ export function useCorrelationWebSocket(config: CorrelationWebSocketConfig) {
       console.error('Failed to create WebSocket:', error);
       setConnectionStatus('error');
     }
-  }, [url, reconnectAttempts, maxReconnectAttempts, reconnectDelay, enableNotifications, handleMessage, clearReconnectTimeout, clearPingInterval]);
+  }, [url, reconnectAttempts, maxReconnectAttempts, reconnectDelay, shouldNotify, handleMessage, clearReconnectTimeout, clearPingInterval, isBackendReady]);
 
   const disconnect = useCallback(() => {
     clearReconnectTimeout();
@@ -210,14 +235,17 @@ export function useCorrelationWebSocket(config: CorrelationWebSocketConfig) {
   }, []);
 
   useEffect(() => {
-    if (autoConnect) {
+    if (autoConnect && isBackendReady) {
       connect();
+    } else {
+      disconnect();
+      setReconnectAttempts(0);
     }
 
     return () => {
       disconnect();
     };
-  }, [autoConnect, connect, disconnect]);
+  }, [autoConnect, isBackendReady, connect, disconnect]);
 
   return {
     isConnected,

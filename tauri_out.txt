@@ -1,0 +1,6 @@
+[Tauri] Starting backend API server...
+[Tauri] Bundled Node.js not found, trying system Node.js...
+[Tauri] Found system Node.js in PATH
+[Tauri] Server path: "\\\\?\\C:\\Users\\Bobby\\Bobbys-Workshop-\\src-tauri\\target\\release\\server\\index.js"
+[Tauri] Backend API server started on http://localhost:3001
+[Tauri] Server PID: 5332
