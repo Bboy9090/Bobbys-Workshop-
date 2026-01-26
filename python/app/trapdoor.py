@@ -209,12 +209,24 @@ def calculate_sha256(file_path: str) -> Optional[str]:
 
 def verify_tool_hash(tool_key: str) -> tuple[bool, Optional[str]]:
     """
-    Verify the SHA256 hash of a tool.
+    Validate a tool's SHA256 hash against the configured expected value.
+    
+    Parameters:
+        tool_key (str): Key identifying the tool in the module's TOOLS mapping.
     
     Returns:
-        (is_valid, error_message)
-        - is_valid: True if hash matches or no hash is configured
-        - error_message: None if valid, otherwise error description
+        tuple[bool, Optional[str]]: A pair (is_valid, error_message).
+            - is_valid: `True` if verification is accepted, `False` otherwise.
+            - error_message: `None` on success; otherwise a short description of the failure.
+    
+    Behavior notes:
+        - If the tool key is unknown, returns (False, "Unknown tool").
+        - If the tool has no configured `sha256`, verification is blocked and returns a descriptive error unless the environment variable `ALLOW_UNVERIFIED_TOOLS` is set to `"1"`, in which case the function returns (True, None) after emitting warnings.
+        - Tools with type `"file"` bypass hash verification and return (True, None).
+        - If the tool file does not exist, returns (False, "File not found").
+        - If the file's hash cannot be calculated, returns (False, "Failed to calculate file hash").
+        - If the calculated hash does not match the configured `sha256`, returns (False, "<detailed hash mismatch message>").
+        - On successful verification, returns (True, None).
     """
     tool = TOOLS.get(tool_key)
     if not tool:

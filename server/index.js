@@ -765,6 +765,16 @@ function broadcastCorrelation(message) {
   }
 }
 
+/**
+ * Execute a simple external command using a non-shell synchronous spawn and return its stdout.
+ *
+ * The `cmd` string is split on spaces into a program and arguments; quoted arguments,
+ * arguments containing spaces, and complex shell syntax are not supported. The call
+ * times out after 5000ms and returns `null` for failures, non-zero exit codes, or timeouts.
+ *
+ * @param {string} cmd - Command to run (program and arguments separated by spaces). Do not include quoted or space-containing paths.
+ * @returns {string|null} Trimmed stdout from the command, or `null` if the command failed, timed out, or produced no output.
+ */
 function safeExec(cmd) {
   try {
     // Use spawnSync with shell: false to prevent console windows on Windows

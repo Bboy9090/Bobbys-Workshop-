@@ -8,6 +8,11 @@ export let flashHistory = [];
 export let activeFlashJobs = new Map();
 export let jobCounter = 1;
 
+/**
+ * Determines whether flash simulation is permitted based on runtime config or environment.
+ * @param {{simulate?: boolean}} [config] - Optional runtime configuration; the `simulate` property enables simulation when true.
+ * @returns {boolean} `true` if simulation is allowed (config.simulate is true or the FLASH_SIMULATION environment variable equals 'true'), `false` otherwise.
+ */
 export function isFlashSimulationAllowed(config = {}) {
   return config?.simulate === true || process.env.FLASH_SIMULATION === 'true';
 }
@@ -24,8 +29,19 @@ export function broadcastFlashProgress(jobId, data) {
 }
 
 /**
- * Simulate flash operation (for testing/demo purposes)
- * In production, this would execute actual flash commands
+ * Simulates a flash job's progress and lifecycle for testing or demo purposes.
+ *
+ * Simulates periodic progress updates, step transitions between partitions, completion,
+ * and appends a summary record to in-memory flash history; broadcasts progress via the
+ * global broadcast hook and removes the job shortly after completion.
+ *
+ * @param {string} jobId - Identifier of the flash job to simulate (must exist in activeFlashJobs).
+ * @param {Object} config - Simulation configuration and device metadata.
+ * @param {Array<{name: string}>} config.partitions - Array of partitions to flash (each must have a `name`).
+ * @param {string} [config.deviceSerial] - Device serial number to record in flash history.
+ * @param {string} [config.deviceBrand] - Device brand to record in flash history.
+ * @param {string} [config.flashMethod] - Flash method name to record in flash history.
+ * @throws {Error} If flash simulation is not allowed (FLASH_SIMULATION not enabled and config.simulate is not true).
  */
 export function simulateFlashOperation(jobId, config) {
   if (!isFlashSimulationAllowed(config)) {
@@ -100,4 +116,3 @@ export function simulateFlashOperation(jobId, config) {
     });
   }, 1000);
 }
-

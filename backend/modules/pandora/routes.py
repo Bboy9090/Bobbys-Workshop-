@@ -43,7 +43,17 @@ async def get_hardware_status():
 
 @router.post("/enter-dfu")
 async def enter_dfu_mode(device_id: str):
-    """Attempt to enter DFU mode on device."""
+    """
+    Initiates an authorized request to put a device into DFU mode.
+    
+    Parameters:
+        device_id (str): Identifier of the target device.
+    
+    Returns:
+        JSONResponse: 
+            - If authorization fails: status 403 with {"ok": False, "error": {"code": "UNAUTHORIZED", "message": <reason>}}.
+            - If authorized: status 501 with {"ok": False, "error": {"code": "DFU_NOT_IMPLEMENTED", "message": "DFU entry automation is not available in this backend."}, "data": {"device_id": <device_id>, "instructions": [...]} }.
+    """
     # Check authorization
     authorized, reason = check_authorization()
     if not authorized:
@@ -77,7 +87,35 @@ async def enter_dfu_mode(device_id: str):
 
 @router.post("/jailbreak")
 async def execute_jailbreak(device_id: str, exploit: str = "checkra1n"):
-    """Execute jailbreak on device."""
+    """
+    Attempt to initiate a jailbreak operation for the specified device.
+    
+    Checks caller authorization and returns a 403 response when unauthorized. If authorized, returns a 501 response indicating jailbreak automation is not implemented and includes details about the requested operation.
+    
+    Parameters:
+        device_id (str): Identifier of the target device.
+        exploit (str): Exploit to use for the jailbreak (default "checkra1n").
+    
+    Returns:
+        JSONResponse: On unauthorized access, a 403 response with content:
+            {
+                "ok": False,
+                "error": {"code": "UNAUTHORIZED", "message": <reason>}
+            }
+        On authorized requests, a 501 response with content:
+            {
+                "ok": False,
+                "error": {
+                    "code": "JAILBREAK_NOT_IMPLEMENTED",
+                    "message": "Jailbreak automation is not available in this backend."
+                },
+                "data": {
+                    "device_id": <device_id>,
+                    "exploit": <exploit>,
+                    "note": "Use supported jailbreak tooling via the trapdoor workflow if authorized."
+                }
+            }
+    """
     # Check authorization
     authorized, reason = check_authorization()
     if not authorized:
@@ -108,7 +146,16 @@ async def execute_jailbreak(device_id: str, exploit: str = "checkra1n"):
 
 @router.post("/flash")
 async def flash_device(device_id: str, firmware_path: str):
-    """Flash firmware to device."""
+    """
+    Provide a standardized 501 JSON response indicating firmware flashing is not implemented.
+    
+    Parameters:
+        device_id (str): Identifier of the target device.
+        firmware_path (str): Filesystem path or identifier of the firmware to be flashed.
+    
+    Returns:
+        JSONResponse: Response with `ok: False`, an `error` object with code `"FLASH_NOT_IMPLEMENTED"` and message `"Firmware flashing is not implemented in this backend."`, and a `data` object containing `device_id`, `firmware` (the provided firmware_path), and a `note` directing users to alternative flash workflows.
+    """
     return JSONResponse(
         status_code=501,
         content={

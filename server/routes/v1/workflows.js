@@ -22,6 +22,11 @@ const MANIFEST_DIRS = [
 
 const MANIFEST_FILES = ['workflows-v2.json', 'workflows.json'];
 
+/**
+ * Locate the first manifest file that exists in the configured manifest directories.
+ *
+ * @returns {string|null} Absolute path to the first found manifest file, or `null` if none is found.
+ */
 function findManifestPath() {
   for (const dir of MANIFEST_DIRS) {
     for (const file of MANIFEST_FILES) {
@@ -34,6 +39,13 @@ function findManifestPath() {
   return null;
 }
 
+/**
+ * Load workflows from the first available manifest file on disk.
+ *
+ * Attempts to locate a workflows manifest, parse it as JSON, and return its "workflows" array (or an empty array if the key is absent). Returns `null` if no manifest is found or if reading/parsing fails.
+ *
+ * @returns {Array|null} The workflows array from the manifest, an empty array when the manifest contains no `workflows` key, or `null` if no manifest is available or on read/parse error.
+ */
 function loadWorkflows() {
   const manifestPath = findManifestPath();
   if (!manifestPath) return null;

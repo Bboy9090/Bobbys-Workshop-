@@ -118,7 +118,9 @@ const TOOL_DEFINITIONS = {
 };
 
 /**
- * Check if a tool exists at a given path
+ * Determine whether a filesystem path points to an existing executable file according to platform rules.
+ * @param {string} path - Filesystem path to test.
+ * @returns {boolean} `true` if the path exists and is a file that is executable on the current platform (`exists` on Windows, has an execute bit on Unix), `false` otherwise.
  */
 function toolExists(path) {
   try {
@@ -175,7 +177,27 @@ export function isToolAvailable(toolName) {
 }
 
 /**
- * Get tool information
+ * Retrieve metadata and availability for a named tool.
+ *
+ * Returns detailed information about the tool, including whether it is available on the current system,
+ * its resolved executable path (or null), supported platforms, detected version (if obtainable), driver
+ * requirements, download URL/note for the current platform, and whether the tool is bundled.
+ *
+ * @returns {Object|null} An object with the tool's information or `null` if the tool name is unknown.
+ *   The object contains:
+ *     - name: {string} the tool's canonical name.
+ *     - description: {string} a short description of the tool.
+ *     - available: {boolean} whether the tool is present on the system or bundled.
+ *     - path: {string|null} resolved executable path or `null` if not available.
+ *     - platforms: {string[]} platforms the tool supports.
+ *     - currentPlatform: {string} current runtime platform.
+ *     - supported: {boolean} whether the tool supports the current platform.
+ *     - version: {string|null} detected version string, or `null` if unavailable.
+ *     - requiresDriver: {boolean} whether the tool requires an OS driver.
+ *     - driverName: {string|null} suggested driver name, or `null`.
+ *     - downloadUrl: {string|null} platform-specific download URL, or `null`.
+ *     - downloadNote: {string|null} additional download/install guidance, or `null`.
+ *     - bundled: {boolean} whether the tool is bundled with the project.
  */
 export function getToolInfo(toolName) {
   const tool = TOOL_DEFINITIONS[toolName];
@@ -231,7 +253,17 @@ export function getAllToolsInfo() {
 }
 
 /**
- * Execute a tool with arguments
+ * Run a configured external tool with the given arguments and capture its output.
+ *
+ * @param {string} toolName - Tool identifier as defined in TOOL_DEFINITIONS.
+ * @param {string[]} [args] - Command-line arguments to pass to the tool.
+ * @param {Object} [options] - spawnSync options to merge with the defaults (e.g., timeout, stdio).
+ * @returns {{success: boolean, stdout: string, stderr: string, exitCode: number}} An object describing the execution result:
+ *   - `success`: `true` if the process exited with code 0, `false` otherwise.
+ *   - `stdout`: captured standard output as a string.
+ *   - `stderr`: captured standard error as a string.
+ *   - `exitCode`: numeric exit code (0 when the process exited successfully).
+ * @throws {Error} If the tool is not available (not found for the current platform).
  */
 export function executeTool(toolName, args = [], options = {}) {
   const path = getToolPath(toolName);
@@ -296,4 +328,3 @@ export function getToolsDirectoryInfo() {
   
   return info;
 }
-

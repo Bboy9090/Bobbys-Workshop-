@@ -10,7 +10,18 @@ import subprocess
 
 
 def detect_voice_activity(audio_path: str) -> List[Tuple[float, float]]:
-    """Detect voice activity segments."""
+    """
+    Detect speech segments in an audio file by identifying and excluding silence intervals.
+    
+    Parameters:
+        audio_path (str): Path to the input audio file to analyze.
+    
+    Returns:
+        List[Tuple[float, float]]: A list of (start, end) tuples in seconds for each detected speech segment; times are rounded to three decimal places.
+    
+    Raises:
+        RuntimeError: If ffmpeg is not available, or if the audio duration cannot be determined for VAD.
+    """
     if not shutil.which("ffmpeg"):
         raise RuntimeError("ffmpeg is required for VAD (silencedetect).")
 

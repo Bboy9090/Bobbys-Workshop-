@@ -52,8 +52,14 @@ function sanitizeParams(params) {
 }
 
 /**
- * POST /api/v1/trapdoor/execute
- * Execute a privileged operation with policy enforcement
+ * Handle POST /api/v1/trapdoor/execute: run a privileged operation after policy evaluation and parameter validation.
+ *
+ * Performs: operation lookup, policy evaluation, parameter validation, optional confirmation check, execution dispatch,
+ * and shadow/audit logging; responds with appropriate HTTP status and a standardized envelope.
+ *
+ * @param {import('express').Request} req - Express request; body must include `operation` (string), optional `params` (object),
+ *   optional `correlationId` (string), and optional `confirmation` (any) when the policy requires explicit confirmation.
+ * @param {import('express').Response} res - Express response used to send a JSON envelope with the operation result or an error.
  */
 export async function executeHandler(req, res) {
   try {
@@ -339,15 +345,12 @@ export async function listOperationsHandler(req, res) {
 }
 
 /**
- * Execute an operation
- * 
- * Routes to appropriate handler based on operation type
- * 
- * @param {string} operation - Operation identifier
- * @param {Object} params - Operation parameters
- * @param {Object} operationSpec - Operation specification
- * @returns {Promise<Object>} Execute envelope
- */
+ * Dispatches an operation request to the appropriate operation handler and returns its execution envelope.
+ *
+ * @param {string} operation - Operation identifier (e.g., 'reboot_device').
+ * @param {Object} params - Parameters for the operation.
+ * @param {Object} operationSpec - Loaded operation specification used for validation and execution context.
+ * @returns {Object} Execution envelope containing the operation result or an error description. */
 async function executeOperation(operation, params, operationSpec) {
   const startTime = Date.now();
   

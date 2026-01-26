@@ -121,7 +121,16 @@ router.use('/hardware', hardwareRouter);
 router.use('/battery', batteryRouter);
 
 /**
- * Run a specific diagnostic check
+ * Execute a single diagnostic check for a device in the specified category.
+ *
+ * Runs the requested check for either the "battery" or "hardware" category and returns the check result.
+ * @param {string} category - Diagnostic category to run; supported values: `"battery"`, `"hardware"`.
+ * @param {string} checkId - Identifier of the check to run (e.g., battery: `battery_level`, `battery_health`, `battery_temperature`, `charging_status`; hardware: `display_test`, `touch_test`, `camera_front`, `camera_rear`, `speaker_test`, `microphone_test`, `sensors_check`).
+ * @param {string} deviceSerial - Device serial number the check should run against.
+ * @returns {{category: string, checkId: string, deviceSerial: string, status: string, value: string, timestamp: number}} An object describing the performed check with `status`, human-readable `value`, and a `timestamp` (ms since epoch).
+ * @throws {Error} If the category is not supported.
+ * @throws {Error} If the requested `checkId` is not available for the category.
+ * @throws {Error} If the underlying diagnostics providers (battery or hardware) report failure.
  */
 async function runDiagnosticCheck(category, checkId, deviceSerial) {
   if (category === 'battery') {
@@ -209,7 +218,10 @@ async function runDiagnosticCheck(category, checkId, deviceSerial) {
 }
 
 /**
- * Run full diagnostics on a device
+ * Aggregate and run all configured diagnostic checks for a device and produce a summary.
+ *
+ * @param {string} deviceSerial - The device serial number to run diagnostics against.
+ * @returns {{deviceSerial: string, generatedAt: number, checks: Array<Object>, summary: {total: number, passed: number, warnings: number, failed: number, unknown: number}, overallHealth: number}} An object containing the device serial, a millisecond timestamp when results were generated, an array of individual check results, a summary of counts by status, and an overall health score (0–100).
  */
 async function runFullDiagnostics(deviceSerial) {
   const categories = ['battery', 'hardware'];
@@ -243,7 +255,10 @@ async function runFullDiagnostics(deviceSerial) {
 }
 
 /**
- * Get check IDs for a category
+ * Return the list of diagnostic check IDs available for a given category.
+ *
+ * @param {string} category - Diagnostic category name (supported: 'battery', 'hardware').
+ * @returns {string[]} Array of check ID strings for the category; empty array if the category is not recognized.
  */
 function getChecksForCategory(category) {
   const checkMap = {
@@ -254,4 +269,3 @@ function getChecksForCategory(category) {
 }
 
 export default router;
-

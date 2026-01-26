@@ -13,7 +13,13 @@ class ReportHandler:
         self.policy_mode = policy_mode
     
     def handle(self, request_handler, data: dict):
-        """Handle report formatting request."""
+        """
+        Responds to a report formatting request with HTTP 501 and a JSON error indicating formatting is not implemented.
+        
+        Parameters:
+            request_handler: HTTP request handler used to send the status, headers, and body.
+            data (dict): Request payload; may include 'report_id' (str) and 'format' (str) which are read but not processed.
+        """
         report_id = data.get('report_id', '')
         format_type = data.get('format', 'json')
         

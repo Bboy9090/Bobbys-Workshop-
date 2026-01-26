@@ -56,9 +56,12 @@ export interface RunWorkflowResponse {
 }
 
 /**
- * Load workflows from manifest
- * This is a helper function that could load from workflows-v2.json
- * For now, we'll define the workflows inline or load from an API endpoint
+ * Fetches the list of available workflows from the server.
+ *
+ * Throws an Error if the HTTP request fails or the API payload indicates failure.
+ *
+ * @returns The array of Workflow objects returned by the API, or an empty array if none are present.
+ * @throws Error when the network response is not ok or the API payload contains an error message.
  */
 export async function loadWorkflows(): Promise<Workflow[]> {
   const response = await fetch('/api/v1/workflows');
@@ -72,6 +75,20 @@ export async function loadWorkflows(): Promise<Workflow[]> {
   return payload.data.workflows || [];
 }
 
+/**
+ * Fetches available workflows from the API and stores them in the hook state.
+ *
+ * @returns The loaded array of `Workflow` objects; returns an empty array on failure.
+ */
+
+/**
+ * Executes a workflow for a given case and updates hook error/loading state.
+ *
+ * @param caseId - The identifier of the case to run the workflow against.
+ * @param workflowId - The identifier of the workflow to execute.
+ * @param request - Execution options (e.g., `userId`, `parameters`, `ownershipAttestation`, `deviceAuthorization`, `destructiveConfirm`).
+ * @returns The `RunWorkflowResponse` on success, or `null` if the run failed.
+ */
 export function useWorkflows() {
   const { get, post } = useApiClient();
   const [loading, setLoading] = useState(false);

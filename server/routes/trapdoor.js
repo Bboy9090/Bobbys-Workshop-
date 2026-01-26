@@ -320,12 +320,11 @@ import { loadOperationSpec, listOperationsForRole } from '../../core/catalog/ope
  */
 
 /**
- * Execute an operation
- * 
- * @param {string} operation - Operation identifier
- * @param {Object} params - Operation parameters
- * @param {Object} operationSpec - Operation specification
- * @returns {Promise<Object>} Execute envelope
+ * Execute the specified trapdoor operation using its operation specification.
+ * @param {string} operation - Identifier of the operation to execute.
+ * @param {Object} params - Parameters to pass to the operation.
+ * @param {Object} operationSpec - Operation specification describing expected parameters, risk, and metadata.
+ * @returns {Object} Execution result envelope containing `status`, `data`, and any operation-specific metadata. 
  */
 async function executeOperation(operation, params, operationSpec) {
   return executeTrapdoorOperation(operation, params, operationSpec);

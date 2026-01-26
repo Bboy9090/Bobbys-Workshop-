@@ -109,7 +109,18 @@ def shred_audio_metadata(input_path: str, output_path: str) -> bool:
 
 
 def shred_pdf_metadata(input_path: str, output_path: str) -> bool:
-    """Remove metadata from PDF."""
+    """
+    Create a copy of the PDF at output_path with all document metadata removed.
+    
+    If neither pypdf nor PyPDF2 is installed or an error occurs while processing, the function returns False.
+    
+    Parameters:
+        input_path (str): Filesystem path to the source PDF.
+        output_path (str): Filesystem path where the metadata-stripped PDF will be written; existing files may be overwritten.
+    
+    Returns:
+        bool: `True` if the output file was written and exists, `False` otherwise.
+    """
     try:
         try:
             from pypdf import PdfReader, PdfWriter

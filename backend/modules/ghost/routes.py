@@ -25,6 +25,12 @@ PERSONAS_PATH = os.path.join(GHOST_DIR, "personas.json")
 
 
 def load_personas():
+    """
+    Load the saved burner personas from the personas JSON file.
+    
+    Returns:
+        list: A list of persona objects loaded from PERSONAS_PATH; returns an empty list if the file does not exist, is empty, or cannot be read/parsed.
+    """
     if not os.path.exists(PERSONAS_PATH):
         return []
     try:
@@ -35,6 +41,12 @@ def load_personas():
 
 
 def save_personas(personas):
+    """
+    Persist burner personas to the configured personas JSON file, overwriting any existing contents.
+    
+    Parameters:
+        personas (list): List of persona objects (typically dicts) to write to PERSONAS_PATH as JSON.
+    """
     with open(PERSONAS_PATH, "w") as f:
         json.dump(personas, f, indent=2)
 
@@ -135,7 +147,14 @@ async def check_trap(token_id: str):
 
 @router.get("/alerts")
 async def list_alerts():
-    """List all canary token alerts."""
+    """
+    Collects and returns all parsed canary alerts stored on disk.
+    
+    Reads every `.json` file in ALERTS_DIR, parses valid JSON alert objects, and returns them in the response under `data.alerts`. If the alerts directory cannot be read, returns a 500 response with error code `ALERTS_READ_FAILED`.
+    
+    Returns:
+        JSONResponse: On success: `{"ok": True, "data": {"alerts": [...]}}`. On failure: `{"ok": False, "error": {"code": "ALERTS_READ_FAILED", "message": <error>}}`.
+    """
     alerts = []
     try:
         for filename in os.listdir(ALERTS_DIR):
@@ -170,7 +189,17 @@ async def create_persona(
     name: Optional[str] = None,
     email_domain: Optional[str] = None
 ):
-    """Create a burner persona."""
+    """
+    Create and persist a new burner persona and return it in a JSON response.
+    
+    Parameters:
+        name (Optional[str]): Optional display name or seed for the persona. If omitted, a name is generated.
+        email_domain (Optional[str]): Optional email domain to use for the persona's address. If omitted, a default domain is chosen.
+    
+    Returns:
+        JSONResponse: On success, returns {"ok": True, "data": persona} containing the created persona.
+                      On failure, returns a 500 response {"ok": False, "error": {"code": "PERSONA_FAILED", "message": ...}}.
+    """
     try:
         persona = create_burner_persona(name, email_domain)
         personas = load_personas()

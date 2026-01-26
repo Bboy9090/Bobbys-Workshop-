@@ -83,7 +83,20 @@ function getLogDirectory() {
 }
 
 /**
- * Start the backend server
+ * Launches the bundled backend API server process and manages its lifecycle.
+ *
+ * Ensures the backend is started only once, creates the log directory if needed,
+ * validates the server bundle, spawns the server process (capturing stdout/stderr),
+ * and sets up automatic restart logic with exponential backoff and a maximum retry limit.
+ *
+ * Observable behaviors:
+ * - Does nothing if a backend process is already running.
+ * - Sets the global backendProcess reference to the spawned child process.
+ * - Emits backend stdout/stderr to the main process logs.
+ * - Hides the console window on Windows.
+ * - On unexpected exit while the app window is open, attempts to restart the backend,
+ *   incrementing a restart counter and resetting that counter after a configured uptime interval.
+ * - Stops attempting restarts after MAX_RESTART_ATTEMPTS and logs guidance to restart the app manually.
  */
 function startBackendServer() {
   if (backendProcess) {
