@@ -17,9 +17,11 @@ const authTriggers = new AuthorizationTriggers();
 const server = createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws/device-events' });
 const wssCorrelation = new WebSocketServer({ server, path: '/ws/correlation' });
+const wssAnalytics = new WebSocketServer({ server, path: '/ws/analytics' });
 
 const clients = new Set();
 const correlationClients = new Set();
+const analyticsClients = new Set();
 
 wss.on('connection', (ws) => {
   console.log('WebSocket client connected (device-events)');
@@ -192,6 +194,103 @@ wssCorrelation.on('connection', (ws) => {
     console.error('WebSocket error (correlation):', error);
     correlationClients.delete(ws);
     clearInterval(interval);
+  });
+});
+
+// Analytics WebSocket for Live Analytics Dashboard
+wssAnalytics.on('connection', (ws) => {
+  console.log('WebSocket client connected (live analytics)');
+  analyticsClients.add(ws);
+
+  // Send initial mock data
+  const mockDevices = [
+    {
+      deviceId: 'device-001',
+      deviceName: 'Android Test Device',
+      platform: 'android',
+      status: 'online',
+      cpuUsage: 45,
+      memoryUsage: 62,
+      storageUsage: 78,
+      temperature: 42,
+      batteryLevel: 85,
+      networkLatency: 15,
+      workflows: { running: 1, completed: 5, failed: 0 }
+    },
+    {
+      deviceId: 'device-002',
+      deviceName: 'iOS Test Device',
+      platform: 'ios',
+      status: 'online',
+      cpuUsage: 32,
+      memoryUsage: 54,
+      storageUsage: 65,
+      temperature: 38,
+      batteryLevel: 92,
+      networkLatency: 12,
+      workflows: { running: 0, completed: 3, failed: 0 }
+    }
+  ];
+
+  mockDevices.forEach(device => {
+    ws.send(JSON.stringify({
+      type: 'device_metrics',
+      deviceId: device.deviceId,
+      metrics: device
+    }));
+  });
+
+  // Send periodic updates
+  const analyticsInterval = setInterval(() => {
+    if (ws.readyState === ws.OPEN) {
+      mockDevices.forEach(device => {
+        // Simulate changing metrics
+        const updatedMetrics = {
+          ...device,
+          cpuUsage: Math.max(5, Math.min(95, device.cpuUsage + (Math.random() - 0.5) * 10)),
+          memoryUsage: Math.max(10, Math.min(90, device.memoryUsage + (Math.random() - 0.5) * 5)),
+          temperature: Math.max(30, Math.min(70, device.temperature + (Math.random() - 0.5) * 2)),
+          networkLatency: Math.max(5, Math.min(100, device.networkLatency + (Math.random() - 0.5) * 10))
+        };
+
+        ws.send(JSON.stringify({
+          type: 'device_metrics',
+          deviceId: device.deviceId,
+          metrics: updatedMetrics
+        }));
+
+        // Update stored values for next iteration
+        Object.assign(device, updatedMetrics);
+      });
+
+      // Simulate workflow events occasionally
+      if (Math.random() > 0.7) {
+        const device = mockDevices[Math.floor(Math.random() * mockDevices.length)];
+        ws.send(JSON.stringify({
+          type: 'workflow_event',
+          event: {
+            id: `workflow-${Date.now()}`,
+            workflowName: ['ADB Diagnostics', 'Battery Health Check', 'Storage Analysis'][Math.floor(Math.random() * 3)],
+            deviceId: device.deviceId,
+            status: ['started', 'running', 'completed'][Math.floor(Math.random() * 3)],
+            progress: Math.floor(Math.random() * 100),
+            currentStep: ['Initializing', 'Running diagnostics', 'Collecting data', 'Analyzing results'][Math.floor(Math.random() * 4)]
+          }
+        }));
+      }
+    }
+  }, 2000); // Update every 2 seconds
+
+  ws.on('close', () => {
+    console.log('WebSocket client disconnected (live analytics)');
+    analyticsClients.delete(ws);
+    clearInterval(analyticsInterval);
+  });
+
+  ws.on('error', (error) => {
+    console.error('Analytics WebSocket error:', error);
+    analyticsClients.delete(ws);
+    clearInterval(analyticsInterval);
   });
 });
 
@@ -2442,6 +2541,7 @@ server.listen(PORT, () => {
   console.log(`🔓 Trapdoor API (Bobby's Secret Workshop): http://localhost:${PORT}/api/trapdoor/*`);
   console.log(`🌐 WebSocket hotplug: ws://localhost:${PORT}/ws/device-events`);
   console.log(`🔗 WebSocket correlation: ws://localhost:${PORT}/ws/correlation`);
+  console.log(`📊 WebSocket analytics: ws://localhost:${PORT}/ws/analytics`);
   console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
   console.log(`\n✅ All 27 authorization triggers ready for real device probe execution`);
   console.log(`✅ Firmware Library with brand-organized downloads available`);

@@ -9,6 +9,7 @@ import { PluginsTab } from "./tabs/PluginsTab";
 import { CommunityTab } from "./tabs/CommunityTab";
 import { SettingsTab } from "./tabs/SettingsTab";
 import { PandorasRoom } from "./SecretRoom";
+import { LiveAnalyticsDashboard } from "./LiveAnalyticsDashboard";
 import { DeviceSidebar } from "./DeviceSidebar";
 import { LogsPanel } from "./LogsPanel";
 import { useApp } from "@/lib/app-context";
@@ -20,7 +21,8 @@ import {
     Users, 
     Gear,
     Wrench,
-    LockKey
+    LockKey,
+    ChartLine
 } from '@phosphor-icons/react';
 
 export function DashboardLayout() {
@@ -68,12 +70,19 @@ export function DashboardLayout() {
                                     <span className="font-medium">Diagnostics</span>
                                 </TabsTrigger>
                                 <TabsTrigger 
+                                    value="analytics" 
+                                    className="gap-1.5 px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                                >
+                                    <ChartLine weight="duotone" size={18} />
+                                    <span className="font-medium">Live Analytics</span>
+                                    <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">NEW</Badge>
+                                </TabsTrigger>
+                                <TabsTrigger 
                                     value="pandoras-room" 
                                     className="gap-1.5 px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
                                 >
                                     <LockKey weight="duotone" size={18} />
                                     <span className="font-medium">Pandora's Room</span>
-                                    <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">NEW</Badge>
                                 </TabsTrigger>
                                 <TabsTrigger 
                                     value="reports" 

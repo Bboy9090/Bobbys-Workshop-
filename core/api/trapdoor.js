@@ -299,4 +299,151 @@ router.get('/workflows', requireAdmin, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/trapdoor/batch/execute
+ * Execute batch commands with throttling and monitoring
+ */
+router.post('/batch/execute', requireAdmin, async (req, res) => {
+  try {
+    const { commands, throttle, deviceSerial } = req.body;
+
+    if (!commands || !Array.isArray(commands)) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'Commands must be an array'
+      });
+    }
+
+    if (!deviceSerial) {
+      return res.status(400).json({
+        error: 'Device serial required'
+      });
+    }
+
+    // Log batch execution start
+    await shadowLogger.logShadow({
+      operation: 'batch_execute_started',
+      deviceSerial,
+      userId: req.ip,
+      authorization: 'ADMIN',
+      success: true,
+      metadata: {
+        commandCount: commands.length,
+        throttle: throttle || 0,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+    const results = [];
+    const throttleMs = throttle || 0;
+
+    // Execute commands with throttling
+    for (let i = 0; i < commands.length; i++) {
+      const cmd = commands[i];
+      
+      try {
+        const result = await workflowEngine.executeWorkflow(
+          cmd.category,
+          cmd.workflowId,
+          {
+            deviceSerial,
+            userId: req.ip,
+            authorization: cmd.authorization
+          }
+        );
+
+        results.push({
+          index: i,
+          command: cmd,
+          result,
+          timestamp: new Date().toISOString()
+        });
+
+        // Log individual command completion
+        await shadowLogger.logPublic({
+          operation: 'batch_command_completed',
+          message: `Batch command ${i + 1}/${commands.length} completed`,
+          metadata: {
+            deviceSerial,
+            workflowId: cmd.workflowId,
+            success: result.success
+          }
+        });
+
+        // Throttle between commands
+        if (throttleMs > 0 && i < commands.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, throttleMs));
+        }
+      } catch (error) {
+        results.push({
+          index: i,
+          command: cmd,
+          result: { success: false, error: error.message },
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+
+    // Log batch execution completion
+    await shadowLogger.logShadow({
+      operation: 'batch_execute_completed',
+      deviceSerial,
+      userId: req.ip,
+      authorization: 'ADMIN',
+      success: true,
+      metadata: {
+        commandCount: commands.length,
+        successCount: results.filter(r => r.result.success).length,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+    return res.json({
+      success: true,
+      totalCommands: commands.length,
+      results
+    });
+  } catch (error) {
+    console.error('Batch execution error:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/trapdoor/logs/stats
+ * Get shadow log statistics
+ */
+router.get('/logs/stats', requireAdmin, async (req, res) => {
+  try {
+    const result = await shadowLogger.getStats();
+    return res.json(result);
+  } catch (error) {
+    console.error('Error getting log stats:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/trapdoor/logs/rotate
+ * Manually trigger log rotation
+ */
+router.post('/logs/rotate', requireAdmin, async (req, res) => {
+  try {
+    const result = await shadowLogger.rotateLogs();
+    return res.json(result);
+  } catch (error) {
+    console.error('Error rotating logs:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
 export default router;

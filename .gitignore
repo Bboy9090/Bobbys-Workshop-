@@ -7,6 +7,9 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Shadow logs (encrypted audit logs)
+.shadow-logs
+
 node_modules
 dist
 dist-ssr

@@ -1,13 +1,17 @@
 // Workflow Engine - Execute JSON-defined workflows
-// Supports Android, iOS, and universal workflows with full audit logging
+// Supports Android, iOS, Windows, IoT, and universal workflows with full audit logging
+// Includes validation, rollback support, and detailed step-by-step logging
 
 import fs from 'fs/promises';
 import path from 'path';
 import { existsSync } from 'fs';
+import Ajv from 'ajv';
 import ADBLibrary from '../lib/adb.js';
 import FastbootLibrary from '../lib/fastboot.js';
 import IOSLibrary from '../lib/ios.js';
 import ShadowLogger from '../lib/shadow-logger.js';
+
+const ajv = new Ajv();
 
 export class WorkflowEngine {
   constructor(options = {}) {
@@ -16,6 +20,44 @@ export class WorkflowEngine {
     this.adb = ADBLibrary;
     this.fastboot = FastbootLibrary;
     this.ios = IOSLibrary;
+    this.schema = null;
+    this.loadValidationSchema();
+  }
+
+  /**
+   * Load workflow validation schema
+   */
+  async loadValidationSchema() {
+    try {
+      const schemaPath = path.join(this.workflowsDir, 'workflow-schema.json');
+      if (existsSync(schemaPath)) {
+        const content = await fs.readFile(schemaPath, 'utf8');
+        this.schema = JSON.parse(content);
+        this.validator = ajv.compile(this.schema);
+        console.log('[WorkflowEngine] Validation schema loaded');
+      }
+    } catch (error) {
+      console.warn('[WorkflowEngine] Could not load validation schema:', error.message);
+    }
+  }
+
+  /**
+   * Validate workflow against schema
+   */
+  validateWorkflow(workflow) {
+    if (!this.validator) {
+      return { valid: true }; // Skip validation if schema not loaded
+    }
+
+    const valid = this.validator(workflow);
+    if (!valid) {
+      return {
+        valid: false,
+        errors: this.validator.errors
+      };
+    }
+
+    return { valid: true };
   }
 
   /**
@@ -35,6 +77,16 @@ export class WorkflowEngine {
 
       const content = await fs.readFile(workflowPath, 'utf8');
       const workflow = JSON.parse(content);
+
+      // Validate workflow
+      const validation = this.validateWorkflow(workflow);
+      if (!validation.valid) {
+        return {
+          success: false,
+          error: 'Workflow validation failed',
+          validationErrors: validation.errors
+        };
+      }
 
       return { success: true, workflow };
     } catch (error) {
@@ -123,9 +175,20 @@ export class WorkflowEngine {
 
     // Execute steps
     const results = [];
+    const completedSteps = [];
     let workflowSuccess = true;
+    let failedStepIndex = -1;
 
-    for (const step of workflow.steps) {
+    for (let i = 0; i < workflow.steps.length; i++) {
+      const step = workflow.steps[i];
+      
+      // Log step start
+      await this.shadowLogger.logPublic({
+        operation: 'workflow_step_start',
+        message: `Step ${i + 1}/${workflow.steps.length}: ${step.name}`,
+        metadata: { workflowId, stepId: step.id, deviceSerial }
+      });
+
       const stepResult = await this.executeStep(step, {
         deviceSerial,
         workflow,
@@ -136,32 +199,96 @@ export class WorkflowEngine {
       results.push({
         stepId: step.id,
         stepName: step.name,
+        stepIndex: i,
         success: stepResult.success,
         output: stepResult.output,
-        error: stepResult.error
+        error: stepResult.error,
+        timestamp: new Date().toISOString()
+      });
+
+      // Log step completion
+      await this.shadowLogger.logPublic({
+        operation: 'workflow_step_complete',
+        message: `Step ${i + 1}/${workflow.steps.length}: ${step.name} - ${stepResult.success ? 'SUCCESS' : 'FAILED'}`,
+        metadata: {
+          workflowId,
+          stepId: step.id,
+          deviceSerial,
+          success: stepResult.success,
+          error: stepResult.error
+        }
       });
 
       // Handle failure
       if (!stepResult.success) {
         if (step.on_failure === 'abort') {
           workflowSuccess = false;
+          failedStepIndex = i;
           break;
         } else if (step.on_failure === 'retry') {
-          // Retry once
-          const retryResult = await this.executeStep(step, {
-            deviceSerial,
-            workflow,
-            userId,
-            authorization
-          });
-          
-          if (!retryResult.success) {
+          // Retry the step
+          const retryCount = step.retry_count || 1;
+          let retrySuccess = false;
+
+          for (let retry = 0; retry < retryCount; retry++) {
+            await this.shadowLogger.logPublic({
+              operation: 'workflow_step_retry',
+              message: `Retrying step ${i + 1}/${workflow.steps.length}: ${step.name} (attempt ${retry + 1}/${retryCount})`,
+              metadata: { workflowId, stepId: step.id, deviceSerial, retry: retry + 1 }
+            });
+
+            const retryResult = await this.executeStep(step, {
+              deviceSerial,
+              workflow,
+              userId,
+              authorization
+            });
+
+            if (retryResult.success) {
+              retrySuccess = true;
+              results[results.length - 1] = {
+                ...results[results.length - 1],
+                success: true,
+                output: retryResult.output,
+                retriedCount: retry + 1
+              };
+              break;
+            }
+          }
+
+          if (!retrySuccess) {
             workflowSuccess = false;
+            failedStepIndex = i;
             break;
           }
         }
         // Continue on failure if on_failure === 'continue'
+      } else {
+        completedSteps.push({ step, result: stepResult });
       }
+    }
+
+    // Handle rollback if workflow failed and rollback is supported
+    if (!workflowSuccess && workflow.rollback_supported && failedStepIndex >= 0) {
+      await this.shadowLogger.logPublic({
+        operation: 'workflow_rollback_start',
+        message: `Starting rollback for workflow: ${workflow.name}`,
+        metadata: { workflowId, failedStepIndex, deviceSerial }
+      });
+
+      const rollbackResult = await this.executeRollback(workflow, completedSteps, {
+        deviceSerial,
+        userId,
+        authorization
+      });
+
+      results.push({
+        stepId: 'rollback',
+        stepName: 'Rollback',
+        success: rollbackResult.success,
+        output: rollbackResult.output,
+        timestamp: new Date().toISOString()
+      });
     }
 
     // Log workflow completion
@@ -318,6 +445,53 @@ export class WorkflowEngine {
     }
     
     return { success: true, output: 'Logged' };
+  }
+
+  /**
+   * Execute rollback steps for failed workflow
+   */
+  async executeRollback(workflow, completedSteps, context) {
+    try {
+      const { deviceSerial, userId } = context;
+
+      await this.shadowLogger.logShadow({
+        operation: 'workflow_rollback',
+        deviceSerial,
+        userId,
+        authorization: 'SYSTEM',
+        success: true,
+        metadata: {
+          workflow: workflow.name,
+          completedStepsCount: completedSteps.length
+        }
+      });
+
+      // If workflow has explicit rollback steps
+      if (workflow.rollback_steps && workflow.rollback_steps.length > 0) {
+        for (const rollbackStep of workflow.rollback_steps) {
+          await this.executeStep(rollbackStep, context);
+        }
+        return { success: true, output: 'Rollback completed using defined rollback steps' };
+      }
+
+      // Otherwise, rollback completed steps in reverse order
+      for (let i = completedSteps.length - 1; i >= 0; i--) {
+        const { step } = completedSteps[i];
+        
+        if (step.rollback_step_id) {
+          // Find and execute the rollback step
+          const rollbackStep = workflow.steps.find(s => s.id === step.rollback_step_id);
+          if (rollbackStep) {
+            await this.executeStep(rollbackStep, context);
+          }
+        }
+      }
+
+      return { success: true, output: 'Rollback completed' };
+    } catch (error) {
+      console.error('[WorkflowEngine] Rollback error:', error);
+      return { success: false, output: 'Rollback failed', error: error.message };
+    }
   }
 }
 
