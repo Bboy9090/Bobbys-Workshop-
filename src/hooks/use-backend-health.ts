@@ -45,7 +45,7 @@ export function useBackendHealth() {
           }
         } else {
           // Web mode: Check backend via HTTP
-          const response = await fetch('/api/health');
+          const response = await fetch('/api/v1/health');
           if (response.ok) {
             const data = await response.json();
             if (mounted) {

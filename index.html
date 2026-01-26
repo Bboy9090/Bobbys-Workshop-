@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 
 <head>
     <meta charset="UTF-8" />
@@ -66,7 +66,52 @@
 </head>
 
 <body>
-    <div id="root"></div>
+    <div id="root">
+        <!-- Visible fallback in case the JS bundle fails to run -->
+        <div id="boot-screen" style="
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            color: #F1F5F9;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            background: radial-gradient(ellipse at 50% 50%, #0F0F1A 0%, #0A0A12 50%, #050508 100%);
+        ">
+            <div style="max-width: 900px; width: 100%; display: grid; gap: 10px;">
+                <div style="font-size: 14px;">Loading Phoenix Forge…</div>
+                <div id="boot-url" style="opacity: 0.8; font-size: 12px; letter-spacing: 0.02em; text-transform: none;"></div>
+                <div id="boot-hint" style="opacity: 0.85; font-size: 12px; letter-spacing: 0.02em; text-transform: none;">
+                    If this screen doesn’t disappear, make sure you opened <code style="background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 6px;">http://localhost:5001/</code> (not a <code style="background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 6px;">file://</code> path).
+                </div>
+                <pre id="boot-error" style="display:none; white-space: pre-wrap; opacity: 0.95; font-size: 12px; letter-spacing: 0; text-transform: none; background: rgba(0,0,0,0.35); padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08);"></pre>
+            </div>
+        </div>
+    </div>
+    <script>
+        (function () {
+            var urlEl = document.getElementById('boot-url');
+            if (urlEl) urlEl.textContent = 'URL: ' + String(window.location && window.location.href);
+
+            var errEl = document.getElementById('boot-error');
+            function showError(prefix, msg, stack) {
+                if (!errEl) return;
+                errEl.style.display = 'block';
+                errEl.textContent = prefix + String(msg || '') + (stack ? ('\n\n' + String(stack)) : '');
+            }
+
+            window.addEventListener('error', function (e) {
+                // Failed module loads typically show here (e.g. "Failed to load module script")
+                showError('JS error: ', e && (e.message || e.type || e.error) , e && e.error && e.error.stack);
+            });
+            window.addEventListener('unhandledrejection', function (e) {
+                var r = e && e.reason;
+                showError('Unhandled rejection: ', r && (r.message || r), r && r.stack);
+            });
+        })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
 </body>
 

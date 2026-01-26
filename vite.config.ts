@@ -26,6 +26,21 @@ export default defineConfig({
       '@': resolve(projectRoot, 'src')
     }
   },
+  server: {
+    // Allow access from real devices on the LAN
+    host: true,
+    // In dev, proxy API + websocket traffic to the local backend
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:3001',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://127.0.0.1:3001',
+        ws: true,
+      },
+    },
+  },
   build: {
     // Ensure relative paths work with file:// protocol
     assetsDir: 'assets',
