@@ -18,6 +18,17 @@ interface WorkflowListProps {
   onWorkflowRun?: (jobId: string) => void;
 }
 
+/**
+ * Render a list of available workflows and provide controls to run a workflow for a selected case.
+ *
+ * Renders a loading state while workflows load, an empty state when none exist, or a responsive grid of
+ * workflow cards. Each card shows name, optional gate count, description, tags, and a "Run Workflow" button
+ * which is disabled when no `caseId` is provided. Attempting to run without `caseId` shows an error toast.
+ *
+ * @param caseId - Optional identifier of the currently selected case; required to enable running a workflow.
+ * @param onWorkflowRun - Optional callback invoked with the created job's ID after a workflow run is started.
+ * @returns The component's rendered JSX: a loading view, an empty view, or a grid of workflow cards with run controls.
+ */
 export function WorkflowList({ caseId, onWorkflowRun }: WorkflowListProps) {
   const { workflows, loading, runWorkflow } = useWorkflows();
 

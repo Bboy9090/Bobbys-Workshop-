@@ -37,10 +37,10 @@ function safeExec(cmd, timeout = 2000) {
 }
 
 /**
- * Check if a command exists
- * 
- * @param {string} cmd - Command to check
- * @returns {boolean} True if command exists
+ * Determine whether a given executable name is available on the system PATH.
+ *
+ * @param {string} cmd - Executable name to check (typically without file extension on Windows).
+ * @returns {boolean} `true` if the command is available on PATH, `false` otherwise.
  */
 function commandExists(cmd) {
   try {

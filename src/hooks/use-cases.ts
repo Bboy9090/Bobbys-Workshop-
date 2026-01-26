@@ -54,6 +54,48 @@ export interface OwnershipVerificationRequest {
   proofOfPurchase?: Record<string, any>;
 }
 
+/**
+ * Retrieve the list of all cases from the API.
+ *
+ * @returns `Case[]` containing available cases, or an empty array on failure.
+ */
+
+/**
+ * Create a new case using the provided request data.
+ *
+ * @param request - Payload containing `title`, optional `notes`, and optional `userId`.
+ * @returns The created `Case`, or `null` on failure.
+ */
+
+/**
+ * Fetch a single case by its identifier.
+ *
+ * @param caseId - The ID of the case to retrieve.
+ * @returns The requested `Case`, or `null` if not found or on failure.
+ */
+
+/**
+ * Submit device intake information for a case and receive a device passport.
+ *
+ * @param caseId - The ID of the case to attach the intake to.
+ * @param request - Device intake details including `platform`, `connectionState`, and optional `deviceInfo`.
+ * @returns The created `DevicePassport`, or `null` on failure.
+ */
+
+/**
+ * Submit ownership verification data for a case.
+ *
+ * @param caseId - The ID of the case to verify ownership for.
+ * @param request - Ownership verification details including `checkboxConfirmed`, `typedPhrase`, and optional `proofOfPurchase`.
+ * @returns The resulting `OwnershipVerification`, or `null` on failure.
+ */
+
+/**
+ * Retrieve the audit events for a specific case.
+ *
+ * @param caseId - The ID of the case whose audit log to fetch.
+ * @returns An array of audit events, an empty array if none, or `null` on failure.
+ */
 export function useCases() {
   const { get, post } = useApiClient();
   const [loading, setLoading] = useState(false);

@@ -15,7 +15,20 @@ os.makedirs(ALERTS_DIR, exist_ok=True)
 
 
 def generate_canary_token(token_id: str, file_type: str = "pdf", metadata: Dict = None) -> str:
-    """Generate a canary token file with HTML beacon."""
+    """
+    Create a canary token file of the specified type and persist its metadata.
+    
+    Parameters:
+        token_id (str): Identifier for the token; used as the token directory name and file basename.
+        file_type (str): Desired file type to generate. Supported values: "pdf", "docx", "html". Any other value creates a plain text file.
+        metadata (Dict, optional): Arbitrary metadata to store alongside the token; stored in token.json.
+    
+    Returns:
+        file_path (str): Filesystem path to the created token file.
+    
+    Raises:
+        RuntimeError: If `file_type` is "docx" and the required `python-docx` package is not installed.
+    """
     token_dir = os.path.join(GHOST_DIR, "tokens", token_id)
     os.makedirs(token_dir, exist_ok=True)
     

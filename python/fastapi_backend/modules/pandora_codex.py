@@ -209,7 +209,24 @@ def detect_dfu_mode(device_serial: Optional[str] = None, user_initiated: bool = 
 
 
 def execute_jailbreak(device_serial: str, method: str, ios_version: Optional[str] = None) -> Dict:
-    """Execute jailbreak operation"""
+    """
+    Prepare a jailbreak request response indicating that automated jailbreak execution is not implemented.
+    
+    Parameters:
+        device_serial (str): Device UDID or serial identifier targeted for the jailbreak.
+        method (str): Identifier of the requested jailbreak method (e.g., "checkra1n", "palera1n").
+        ios_version (Optional[str]): iOS version of the target device, if known.
+    
+    Returns:
+        result (dict): A response object with:
+            - success (bool): `False` to indicate no automated action was performed.
+            - deviceSerial (str): Echo of the provided device_serial.
+            - method (str): Echo of the requested method.
+            - status (str): Fixed value `"not_implemented"`.
+            - message (str): Human-readable explanation of the non-implementation.
+            - requiredTools (List[str]): Tools recommended/required for manual or external execution.
+            - note (str): Guidance about installing approved tools and using authorized workflows.
+    """
     return {
         "success": False,
         "deviceSerial": device_serial,

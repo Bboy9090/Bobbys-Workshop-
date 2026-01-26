@@ -121,7 +121,9 @@ const TOOL_DEFINITIONS = {
 };
 
 /**
- * Check if a tool exists at a given path
+ * Determine whether a filesystem path points to an executable file.
+ * @param {string} path - Filesystem path to test.
+ * @returns {boolean} `true` if the path exists, is a file, and is executable on the current platform; `false` otherwise.
  */
 function toolExists(path) {
   try {
@@ -178,7 +180,21 @@ export function isToolAvailable(toolName) {
 }
 
 /**
- * Get tool information
+ * Retrieve metadata and availability details for a named tool.
+ * @param {string} toolName - The tool identifier as defined in TOOL_DEFINITIONS.
+ * @returns {Object|null} An object describing the tool, or `null` if the tool is unknown.
+ * @returns {string} returns.name - Human-readable tool name.
+ * @returns {string} returns.description - Brief description of the tool.
+ * @returns {boolean} returns.available - `true` if the tool is available on the current system.
+ * @returns {string|null} returns.path - Resolved executable path or command name when available, otherwise `null`.
+ * @returns {string[]} returns.platforms - Platforms listed as supported by the tool.
+ * @returns {string} returns.currentPlatform - The current runtime platform (os.platform()).
+ * @returns {boolean} returns.supported - `true` if the current platform is listed in `platforms`.
+ * @returns {string|null} returns.version - Tool version string when detectable, otherwise `null`.
+ * @returns {boolean} returns.requiresDriver - `true` if the tool requires an external driver.
+ * @returns {string|null} returns.driverName - Suggested driver name when applicable, otherwise `null`.
+ * @returns {string|null} returns.downloadUrl - Platform-specific download URL when available, otherwise `null`.
+ * @returns {boolean} returns.bundled - `true` if the tool is bundled with the project.
  */
 export function getToolInfo(toolName) {
   const tool = TOOL_DEFINITIONS[toolName];
@@ -233,7 +249,17 @@ export function getAllToolsInfo() {
 }
 
 /**
- * Execute a tool with arguments
+ * Execute a configured tool with the given arguments and return its execution result.
+ *
+ * @param {string} toolName - Key name of the tool as defined in TOOL_DEFINITIONS.
+ * @param {string[]} [args=[]] - Argument list to pass to the tool executable.
+ * @param {Object} [options={}] - spawnSync options overrides (encoding, timeout, windowsHide, shell, stdio, etc.).
+ * @returns {{success: boolean, stdout: string, stderr: string, exitCode: number}} An object describing the execution outcome:
+ *   - `success`: `true` when the process exited with code 0, `false` otherwise.
+ *   - `stdout`: captured standard output as a string.
+ *   - `stderr`: captured standard error as a string (or error message when execution failed).
+ *   - `exitCode`: numeric exit code (0 on success).
+ * @throws {Error} If the requested tool is not available on the current platform or cannot be resolved.
  */
 export function executeTool(toolName, args = [], options = {}) {
   const path = getToolPath(toolName);
@@ -298,4 +324,3 @@ export function getToolsDirectoryInfo() {
   
   return info;
 }
-

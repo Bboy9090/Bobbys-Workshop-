@@ -225,6 +225,19 @@ async def sonic_capture_start(
     request: CaptureRequest,
     x_secret_room_passcode: Optional[str] = Header(None)
 ):
+    """
+    Queue a new Sonic capture job and persist its initial job record to disk.
+    
+    Verifies the secret-room passcode, creates a job JSON file in JOBS_DIR with status set to "pending" then updates it to "queued", and returns the queued job identifier and status message.
+    
+    Returns:
+        dict: Response payload containing:
+            - "ok" (bool): Always True when job queued.
+            - "data" (dict): Contains "jobId" (str), "status" (str, `"queued"`), and "message" (str) describing queueing.
+    
+    Raises:
+        fastapi.HTTPException: Raised with status 401 when the provided passcode is invalid.
+    """
     verify_passcode(x_secret_room_passcode)
     
     # Generate job ID
@@ -722,6 +735,17 @@ async def pandora_chainbreaker(
     request: ChainBreakerRequest,
     x_secret_room_passcode: Optional[str] = Header(None)
 ):
+    """
+    Handle a Chain-Breaker request but indicate the operation is not implemented in this backend.
+    
+    Parameters:
+        request (ChainBreakerRequest): Payload containing deviceSerial, deviceType, and operation.
+        x_secret_room_passcode (Optional[str]): Secret Room passcode from the `X-Secret-Room-Passcode` header.
+    
+    Raises:
+        HTTPException: 401 if the provided passcode is invalid.
+        HTTPException: 501 indicating Chain-Breaker automation is not implemented in this backend.
+    """
     verify_passcode(x_secret_room_passcode)
     
     raise HTTPException(
@@ -764,6 +788,15 @@ async def pandora_dfu_enter(
     data: dict,
     x_secret_room_passcode: Optional[str] = Header(None)
 ):
+    """
+    Handle a DFU entry request for a device and respond that DFU entry automation is not implemented in this backend.
+    
+    Parameters:
+        data (dict): Request payload containing DFU entry parameters (for example, "deviceSerial" and "deviceType").
+    
+    Raises:
+        HTTPException: Always raised with status code 501 and detail "DFU entry automation is not implemented in this backend."
+    """
     verify_passcode(x_secret_room_passcode)
     raise HTTPException(
         status_code=501,
@@ -776,9 +809,18 @@ async def pandora_devices(
     x_secret_room_passcode: Optional[str] = Header(None)
 ):
     """
-    Detect iOS devices (user-initiated scan only)
+    Detect connected iOS devices initiated by the user.
     
-    Compliance: Requires explicit user action - no auto-scanning
+    Per compliance, this endpoint performs only user-initiated scans (no automatic device probing).
+    
+    Parameters:
+        user_initiated (bool): If True, indicates the scan was started by a user action.
+    
+    Returns:
+        result (dict): A response object with keys:
+            - "ok" (bool): `True` if device detection was performed, `False` if required tools are missing.
+            - "data" (dict): On success, contains detected devices; on failure, contains "devices" (empty list) and "tools_required" (list of missing system tools).
+            - "error" (str, optional): Present when "ok" is `False`, describing why detection could not be performed.
     """
     verify_passcode(x_secret_room_passcode)
     
@@ -803,6 +845,15 @@ async def pandora_manipulate(
     data: dict,
     x_secret_room_passcode: Optional[str] = Header(None)
 ):
+    """
+    Reject hardware manipulation requests by returning a 501 Not Implemented error.
+    
+    Parameters:
+        data (dict): Request payload containing manipulation parameters (e.g., device identifier and desired operation).
+    
+    Raises:
+        HTTPException: Always raised with status code 501 and a message indicating the feature is not implemented in this backend.
+    """
     verify_passcode(x_secret_room_passcode)
     raise HTTPException(
         status_code=501,
@@ -820,6 +871,19 @@ async def pandora_jailbreak_execute(
     request: JailbreakRequest,
     x_secret_room_passcode: Optional[str] = Header(None)
 ):
+    """
+    Attempt to perform a jailbreak on the specified device using the Pandora Codex.
+    
+    Parameters:
+        request: JailbreakRequest containing deviceSerial, method, and iosVersion.
+    
+    Returns:
+        A dict with `"ok": True` and `"data"` set to the jailbreak result payload when the operation succeeds.
+    
+    Raises:
+        HTTPException: 401 if the secret room passcode is invalid.
+        HTTPException: 501 if the backend lacks required system tools or if the jailbreak operation reports failure.
+    """
     verify_passcode(x_secret_room_passcode)
     
     if MODULES_AVAILABLE:
@@ -838,6 +902,20 @@ async def pandora_jailbreak_execute(
 
 @app.get("/api/v1/trapdoor/pandora/jailbreak/methods")
 async def pandora_jailbreak_methods(x_secret_room_passcode: Optional[str] = Header(None)):
+    """
+    Return the available jailbreak methods for supported devices.
+    
+    When the backend integration for discovering methods is available, returns the discovered methods; otherwise returns a predefined fallback list.
+    
+    Returns:
+        result (dict): A dictionary with keys:
+            - "ok" (bool): Indicates success.
+            - "methods" (list): A list of method objects. Each object contains:
+                - "id" (str): Short identifier for the method.
+                - "name" (str): Human-readable method name.
+                - "devices" (str): Supported device/SoC range.
+                - "iosVersions" (str): Supported iOS version range.
+    """
     verify_passcode(x_secret_room_passcode)
     
     if MODULES_AVAILABLE:

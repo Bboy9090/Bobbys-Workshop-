@@ -97,7 +97,25 @@ def transcribe_audio(audio_path: Path, model_size: str = "base", language: Optio
 
 
 def enhance_audio(audio_path: Path, output_path: Optional[Path] = None) -> Dict:
-    """Enhance audio (noise reduction, normalization)"""
+    """
+    Enhance an audio file by reducing noise and adjusting volume, producing an enhanced output file.
+    
+    Parameters:
+        audio_path (Path): Path to the input audio file to enhance.
+        output_path (Optional[Path]): Destination path for the enhanced file. If omitted, a new file
+            is created beside the input with "_enhanced" appended to the stem.
+    
+    Returns:
+        dict: A result dictionary with keys:
+            - "success": True if enhancement completed.
+            - "original_file": String path to the input file.
+            - "enhanced_file": String path to the enhanced output file.
+            - "message": Short status message.
+    
+    Raises:
+        ImportError: If the required `noisereduce` dependency is not available.
+        Exception: If ffmpeg is not available or if the enhancement process fails.
+    """
     if not NOISEREDUCE_AVAILABLE:
         raise ImportError(
             "noisereduce is required for audio enhancement. Install with: pip install noisereduce"

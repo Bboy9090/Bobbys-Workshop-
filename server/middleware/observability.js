@@ -10,7 +10,7 @@ import tracer from '../utils/observability/tracing.js';
 let activeRequests = 0;
 
 /**
- * Observability middleware - collects metrics, logs, and traces
+ * Attach correlation and trace context to the request, start tracing and metrics for the request lifecycle, and ensure on-response completion that tracing is finished, request metrics (counters, gauges, histograms) are updated, and the request is logged.
  */
 export function observabilityMiddleware(req, res, next) {
   const startTime = Date.now();

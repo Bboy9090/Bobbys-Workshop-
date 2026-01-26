@@ -19,6 +19,15 @@ interface CaseListProps {
   onCaseSelect?: (caseId: string) => void;
 }
 
+/**
+ * Render a list of cases with controls to create new cases and view case details.
+ *
+ * Fetches the available cases on mount, manages local state for selection and dialogs,
+ * and updates the displayed list when a new case is created.
+ *
+ * @param onCaseSelect - Optional callback invoked with the selected case's `id` when a case is opened
+ * @returns The rendered CaseList component tree
+ */
 export function CaseList({ onCaseSelect }: CaseListProps) {
   const { listCases, loading } = useCases();
   const [cases, setCases] = useState<Case[]>([]);

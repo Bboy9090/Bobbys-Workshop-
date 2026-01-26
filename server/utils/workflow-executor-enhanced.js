@@ -263,7 +263,26 @@ async function executeStep(step, context) {
 }
 
 /**
- * Execute a workflow
+ * Run a workflow by ID: validate policy gates and banned keywords, execute each step in order, and record audit events.
+ *
+ * Performs these behaviours:
+ * - Locates the workflow by ID; if missing, records an audit event and returns an error.
+ * - Scans workflow content for banned keywords and blocks execution if any are found.
+ * - Evaluates required policy gates and blocks execution if gate evaluation fails.
+ * - Logs workflow start and completion audit events.
+ * - Executes workflow steps sequentially and returns per-step results.
+ *
+ * @param {string} workflowId - Identifier of the workflow to execute.
+ * @param {Object} context - Execution context.
+ * @param {string} context.caseId - Case identifier for audit and tracing.
+ * @param {string} context.userId - User initiating the workflow.
+ * @param {string} context.jobId - Job identifier used in audit events.
+ * @param {Object} [context.parameters] - Parameters passed to the workflow and steps.
+ * @param {Object} [context.ownershipAttestation] - Ownership attestation provided for gate evaluation.
+ * @param {Object} [context.deviceAuthorization] - Device authorization data for gate evaluation.
+ * @param {boolean} [context.destructiveConfirm] - Explicit confirmation for destructive operations.
+ * @returns {Object} On success: { success: true, workflowId, steps: Array<{ stepId, stepName, results }> }.
+ *                   On failure: { success: false, error: string, policyResult?: Object } describing the blocking reason when applicable.
  */
 export async function executeWorkflow(workflowId, context) {
   const { caseId, userId, jobId, parameters } = context;

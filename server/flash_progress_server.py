@@ -179,8 +179,17 @@ async def flash_progress_endpoint(websocket: WebSocket):
 async def perform_flash(job_id: str, device_id: str, device_name: str, 
                        partition: str, image_size: int):
     """
-    Simulate a flash operation with progress updates
-    """
+                       Simulate a device flash job and stream progress updates to the FlashProgressManager.
+                       
+                       Simulates transferring `image_size` bytes in fixed chunks, periodically sends progress updates with computed transfer speed and ETA, and updates the job state to started, completed, or failed. If the environment variable FLASH_SIMULATION is not set to "true" (case-insensitive), the job is marked failed immediately with a descriptive message. Any uncaught exception during the simulation will mark the job failed with the exception message.
+                       
+                       Parameters:
+                           job_id (str): Unique identifier for the flash job.
+                           device_id (str): Identifier of the target device.
+                           device_name (str): Human-readable name of the device (used in broadcasts).
+                           partition (str): Partition name being flashed (used in stage messages).
+                           image_size (int): Total number of bytes to transfer for the flash image.
+                       """
     if os.getenv("FLASH_SIMULATION", "false").lower() != "true":
         await manager.flash_failed(job_id, device_id, "Flash simulation is disabled (set FLASH_SIMULATION=true).")
         return

@@ -45,6 +45,11 @@ const operationQueue = [];
 
 let lastCpuSample = null;
 
+/**
+ * Calculate aggregate CPU usage since the previous sample.
+ *
+ * @returns {number|null} A fraction between 0 and 1 representing CPU usage since the last sample, or `null` if no prior sample exists or the measured total time delta is not positive.
+ */
 function sampleCpuUsage() {
   const cpus = os.cpus();
   const totals = cpus.reduce(
@@ -69,6 +74,12 @@ function sampleCpuUsage() {
   return 1 - idleDelta / totalDelta;
 }
 
+/**
+ * Determine disk usage for a filesystem path as a fraction of used space.
+ *
+ * @param {string} targetPath - Filesystem path to measure.
+ * @returns {number|null} Fraction between 0 and 1 representing used disk space (used/total), or `null` if usage cannot be determined (e.g., `statfs` unavailable, total size is zero, or an error occurs).
+ */
 function getDiskUsagePercent(targetPath) {
   if (typeof fs.statfsSync !== 'function') {
     return null;
@@ -86,7 +97,10 @@ function getDiskUsagePercent(targetPath) {
 }
 
 /**
- * Check system resources
+ * Evaluate current memory, CPU, and disk usage and update the shared systemState, enabling degradedMode when any threshold is exceeded.
+ *
+ * If the resource check fails, sets systemState.degradedMode to true and returns the state.
+ * @returns {object} The updated `systemState` object containing `memoryPressure`, `cpuPressure`, `diskPressure`, `degradedMode`, and `lastResourceCheck`.
  */
 async function checkSystemResources() {
   try {

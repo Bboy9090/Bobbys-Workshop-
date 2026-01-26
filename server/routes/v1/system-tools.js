@@ -50,6 +50,14 @@ function commandExists(cmd) {
   }
 }
 
+/**
+ * Gather installation diagnostics for an Android-related CLI tool.
+ * @param {string} toolName - Executable name to check (for example, "adb" or "fastboot").
+ * @returns {{installed: boolean, version: string|null, path: string|null}} An object with diagnostic fields:
+ *  - installed: `true` if the executable was found on the PATH, `false` otherwise.
+ *  - version: first line of the tool's `--version` output, or `null` if unavailable.
+ *  - path: resolved filesystem path to the executable, or `null` if not found.
+ */
 function getAndroidToolDiagnostics(toolName) {
   const installed = commandExists(toolName);
   if (!installed) {
@@ -181,4 +189,3 @@ export function systemToolsHandler(req, res) {
   
   res.sendEnvelope(data);
 }
-

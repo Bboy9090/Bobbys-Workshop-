@@ -13,7 +13,22 @@ class LogsHandler:
         self.policy_mode = policy_mode
     
     def handle(self, request_handler, data: dict):
-        """Handle log collection request."""
+        """
+        Respond to a log collection request with a JSON-formatted "not implemented" error.
+        
+        Sends an HTTP 501 response with Content-Type "application/json" and a body:
+        {
+          "ok": False,
+          "error": {
+            "code": "NOT_IMPLEMENTED",
+            "message": "Log collection is not implemented in this service."
+          }
+        }
+        
+        Parameters:
+            request_handler: HTTP request handler with send_response, send_header, end_headers, and wfile attributes.
+            data (dict): Request payload; may include 'device_id' (str) and 'scope' (str) but they are not used — defaults are '' and 'default' respectively.
+        """
         device_id = data.get('device_id', '')
         scope = data.get('scope', 'default')
         

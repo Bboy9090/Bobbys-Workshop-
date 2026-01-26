@@ -711,6 +711,16 @@ function broadcastCorrelation(message) {
   }
 }
 
+/**
+ * Execute a simple command and return its trimmed stdout or null on failure.
+ *
+ * Runs the given command without a shell, enforcing a 5000ms timeout and capturing stdout.
+ * Callers must pass a simple space-separated command where each argument has no surrounding quotes
+ * and paths do not contain spaces; quoted arguments or complex shell syntax are not supported.
+ *
+ * @param {string} cmd - A space-separated command string (command and arguments). Do not include quoted arguments or paths with spaces.
+ * @returns {string|null} The command's stdout trimmed of whitespace if the command exits successfully, `null` otherwise.
+ */
 function safeExec(cmd) {
   try {
     // Use spawnSync with shell: false to prevent console windows on Windows

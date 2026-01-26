@@ -64,6 +64,12 @@ export interface EvidenceBundleAPI {
 const BUNDLES_KEY = 'phoenix.evidenceBundles';
 const SIGNATURES_KEY = 'phoenix.evidenceSignatures';
 
+/**
+ * Ensure the global `localStorage` is available and return it.
+ *
+ * @returns The global `localStorage` object.
+ * @throws If `localStorage` is not available in the current environment.
+ */
 function getStorage() {
   if (typeof localStorage === 'undefined') {
     throw new Error('localStorage is not available');
@@ -71,6 +77,11 @@ function getStorage() {
   return localStorage;
 }
 
+/**
+ * Load the stored list of evidence bundles from persistent storage.
+ *
+ * @returns The array of stored EvidenceBundle objects; an empty array if no bundles are stored.
+ */
 function loadBundles(): EvidenceBundle[] {
   const storage = getStorage();
   const raw = storage.getItem(BUNDLES_KEY);
@@ -78,11 +89,21 @@ function loadBundles(): EvidenceBundle[] {
   return JSON.parse(raw);
 }
 
+/**
+ * Persists the provided list of evidence bundles to localStorage under the configured key.
+ *
+ * @param list - The array of EvidenceBundle objects to store; replaces any existing stored list
+ */
 function saveBundles(list: EvidenceBundle[]) {
   const storage = getStorage();
   storage.setItem(BUNDLES_KEY, JSON.stringify(list));
 }
 
+/**
+ * Load the stored signature map from persistent storage.
+ *
+ * @returns A record mapping bundle IDs to their signature strings; an empty object if no signatures are stored.
+ */
 function loadSignatures(): Record<string, string> {
   const storage = getStorage();
   const raw = storage.getItem(SIGNATURES_KEY);
@@ -90,6 +111,11 @@ function loadSignatures(): Record<string, string> {
   return JSON.parse(raw);
 }
 
+/**
+ * Persist a map of evidence bundle signatures to browser storage.
+ *
+ * @param signatures - Mapping from bundle ID to its stored signature string
+ */
 function saveSignatures(signatures: Record<string, string>) {
   const storage = getStorage();
   storage.setItem(SIGNATURES_KEY, JSON.stringify(signatures));
