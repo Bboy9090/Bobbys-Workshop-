@@ -53,6 +53,10 @@ async function getWorkflows() {
   return workflowsCache?.workflows || [];
 }
 
+export async function listWorkflows() {
+  return await getWorkflows();
+}
+
 async function getPolicies() {
   if (!policiesCache) {
     policiesCache = await loadManifest(POLICIES_MANIFEST);
@@ -88,7 +92,13 @@ async function findAction(actionId) {
  */
 async function findTool(toolId) {
   const tools = await getTools();
-  return tools.find(t => t.id === toolId);
+  return tools.find(t =>
+    t.id === toolId ||
+    t.binary === toolId ||
+    t.id === `android.${toolId}` ||
+    t.id === `ios.${toolId}` ||
+    t.id.endsWith(`.${toolId}`)
+  );
 }
 
 /**
@@ -98,8 +108,21 @@ async function executeStep(step, context) {
   const { caseId, userId, jobId, parameters } = context;
   const auditLogger = getAuditLogger();
 
-  // Get actions for this step
-  const actionIds = step.actions?.map(a => a.id) || [];
+  // Resolve action IDs for this step (supports both v1 and v2 workflow schemas)
+  // v2 can be either:
+  // - { action_id: "android.adb.devices", ... }
+  // - { actions: [{ action_id: "android.adb.devices", ... }, ...] }
+  // legacy v1 in this codebase used { actions: [{ id: "...", ... }] } inconsistently,
+  // so we attempt a safe fallback.
+  const actionIds = [];
+  if (typeof step.action_id === 'string' && step.action_id.trim()) {
+    actionIds.push(step.action_id.trim());
+  } else if (Array.isArray(step.actions)) {
+    for (const a of step.actions) {
+      const candidate = (a?.action_id || a?.id || '').toString().trim();
+      if (candidate) actionIds.push(candidate);
+    }
+  }
   
   const results = [];
   

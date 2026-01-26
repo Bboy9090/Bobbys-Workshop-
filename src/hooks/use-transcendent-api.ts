@@ -4,19 +4,15 @@
  */
 
 import { useState, useCallback } from 'react';
-import { API_CONFIG } from '@/lib/apiConfig';
+import { API_CONFIG, safeJsonFetch } from '@/lib/apiConfig';
 
-const BASE = API_CONFIG.BASE_URL;
-
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
+async function fetchJson<T>(endpoint: string, init?: RequestInit): Promise<T> {
+  const { data, ok, status } = await safeJsonFetch<{ data?: T; error?: { message?: string } }>(endpoint, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
-    signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
+    headers: { 'Content-Type': 'application/json', ...(init?.headers as Record<string, string>) },
   });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json?.error?.message || json?.error || `HTTP ${res.status}`);
-  return json.data ?? json;
+  if (!ok) throw new Error((data?.error as any)?.message ?? (typeof data?.error === 'string' ? data.error : undefined) ?? `HTTP ${status}`);
+  return (data as { data?: T })?.data ?? (data as T);
 }
 
 export interface AutonomousDecision {
@@ -72,7 +68,7 @@ export function useTranscendentApi() {
       setError(null);
       try {
         return await fetchJson<AutonomousDecision>(
-          `${BASE}/api/v1/transcendent/autonomous/decision`,
+          '/api/v1/transcendent/autonomous/decision',
           { method: 'POST', body: JSON.stringify(context) }
         );
       } catch (e) {
@@ -92,7 +88,7 @@ export function useTranscendentApi() {
       setError(null);
       try {
         return await fetchJson<{ id: string; type: string; action: string; timestamp: string }>(
-          `${BASE}/api/v1/transcendent/autonomous/heal`,
+          '/api/v1/transcendent/autonomous/heal',
           { method: 'POST', body: JSON.stringify(payload) }
         );
       } catch (e) {
@@ -110,7 +106,7 @@ export function useTranscendentApi() {
     setError(null);
     try {
       return await fetchJson<AutonomousStatus>(
-        `${BASE}/api/v1/transcendent/autonomous/status`
+        '/api/v1/transcendent/autonomous/status'
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -124,7 +120,7 @@ export function useTranscendentApi() {
     setError(null);
     try {
       return await fetchJson<{ autonomousMode: boolean; message: string }>(
-        `${BASE}/api/v1/transcendent/autonomous/mode`,
+        '/api/v1/transcendent/autonomous/mode',
         { method: 'PUT', body: JSON.stringify({ enabled }) }
       );
     } catch (e) {
@@ -142,7 +138,7 @@ export function useTranscendentApi() {
       setError(null);
       try {
         return await fetchJson<NeuralModel>(
-          `${BASE}/api/v1/transcendent/neural/train`,
+          '/api/v1/transcendent/neural/train',
           { method: 'POST', body: JSON.stringify({ features, targets }) }
         );
       } catch (e) {
@@ -169,7 +165,7 @@ export function useTranscendentApi() {
           confidence: number;
           expectedImprovement: number;
           timestamp: string;
-        }>(`${BASE}/api/v1/transcendent/neural/optimize`, {
+        }>('/api/v1/transcendent/neural/optimize', {
           method: 'POST',
           body: JSON.stringify({ currentConfig, metrics }),
         });
@@ -190,7 +186,7 @@ export function useTranscendentApi() {
       setError(null);
       try {
         return await fetchJson<{ action: string; qValue: number }>(
-          `${BASE}/api/v1/transcendent/neural/best-action`,
+          '/api/v1/transcendent/neural/best-action',
           { method: 'POST', body: JSON.stringify({ state, possibleActions }) }
         );
       } catch (e) {
@@ -208,7 +204,7 @@ export function useTranscendentApi() {
     setError(null);
     try {
       return await fetchJson<{ models: NeuralModel[]; count: number }>(
-        `${BASE}/api/v1/transcendent/neural/models`
+        '/api/v1/transcendent/neural/models'
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -222,7 +218,7 @@ export function useTranscendentApi() {
     setError(null);
     try {
       return await fetchJson<{ population: EvolutionIndividual[]; count: number }>(
-        `${BASE}/api/v1/transcendent/evolution/initialize`,
+        '/api/v1/transcendent/evolution/initialize',
         { method: 'POST', body: JSON.stringify({ size }) }
       );
     } catch (e) {
@@ -244,7 +240,7 @@ export function useTranscendentApi() {
           population: EvolutionIndividual[];
           bestFitness: number;
           avgFitness: number;
-        }>(`${BASE}/api/v1/transcendent/evolution/evolve`, {
+        }>('/api/v1/transcendent/evolution/evolve', {
           method: 'POST',
           body: JSON.stringify({ metrics }),
         });
@@ -263,7 +259,7 @@ export function useTranscendentApi() {
     setError(null);
     try {
       return await fetchJson<EvolutionIndividual | null>(
-        `${BASE}/api/v1/transcendent/evolution/best`
+        '/api/v1/transcendent/evolution/best'
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -276,7 +272,7 @@ export function useTranscendentApi() {
     setError(null);
     try {
       return await fetchJson<EvolutionStats>(
-        `${BASE}/api/v1/transcendent/evolution/stats`
+        '/api/v1/transcendent/evolution/stats'
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -290,7 +286,7 @@ export function useTranscendentApi() {
     setError(null);
     try {
       return await fetchJson<{ message: string }>(
-        `${BASE}/api/v1/transcendent/evolution/reset`,
+        '/api/v1/transcendent/evolution/reset',
         { method: 'POST', body: JSON.stringify({}) }
       );
     } catch (e) {

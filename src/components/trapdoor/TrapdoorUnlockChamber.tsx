@@ -14,7 +14,7 @@
  * 7. Completion link to Shadow Archive
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Lock, AlertTriangle, CheckCircle2, XCircle, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TerminalCommandPreview } from '../core/TerminalCommandPreview';
@@ -23,6 +23,7 @@ import { ToolboxDangerLever } from '../toolbox/ToolboxDangerLever';
 import { DeviceIcon } from '../core/DeviceIcon';
 import { TrapdoorInstructionsPanel } from './TrapdoorInstructionsPanel';
 import { useApp } from '@/lib/app-context';
+import { RigHealthDashboard } from './RigHealthDashboard';
 
 interface Device {
   serial: string;
@@ -77,6 +78,8 @@ export function TrapdoorUnlockChamber({
       risk: 'destructive' as const,
     },
   ] : [];
+
+  const commandStrings = commands.map(c => c.command);
 
   const impactedPartitions = selectedDevice ? [
     'userdata',
@@ -266,7 +269,7 @@ export function TrapdoorUnlockChamber({
         {selectedDevice && (
           <>
             <TerminalCommandPreview
-              commands={commands}
+              commands={commandStrings}
               impactedPartitions={impactedPartitions}
               riskLevel="destructive"
               expectedOutput="... OKAY\n... finished. total time: 2.345s"
@@ -482,6 +485,9 @@ export function TrapdoorUnlockChamber({
           </>
         )}
       </div>
+
+      {/* Rig health cockpit */}
+      <RigHealthDashboard passcode={passcode} />
     </div>
   );
 }

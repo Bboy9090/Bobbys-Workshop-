@@ -168,33 +168,84 @@ export async function safeExecString(commandString, options = {}) {
  * Check if a command exists in PATH (Windows-native, no where.exe call)
  */
 export function commandExistsInPath(cmd) {
+  return findToolPathInPath(cmd) !== null;
+}
+
+/**
+ * Resolve command to full path via PATH only (no execSync/where/which).
+ * Prevents console windows on Windows.
+ * @returns {string|null} Full path or null if not found
+ */
+export function findToolPathInPath(cmd) {
+  // Local-only third party tool bin (preferred for your own device lab)
+  const localThirdParty = getLocalThirdPartyBinDir();
+  if (localThirdParty) {
+    const resolved = findInDir(localThirdParty, cmd);
+    if (resolved) return resolved;
+  }
+
   if (process.platform === 'win32') {
-    // Check PATH directly without calling where.exe to prevent console windows
     const pathEnv = process.env.PATH || '';
     const pathDirs = pathEnv.split(';');
     const extensions = process.env.PATHEXT ? process.env.PATHEXT.split(';') : ['.exe', '.cmd', '.bat', '.com'];
-    
     for (const dir of pathDirs) {
       if (!dir) continue;
       for (const ext of extensions) {
         const fullPath = join(dir, cmd + ext);
-        if (existsSync(fullPath)) {
-          return true;
-        }
+        if (existsSync(fullPath)) return fullPath;
       }
     }
-    return false;
-  } else {
-    // Unix-like: use command -v
-    try {
-      const result = spawnSync('command', ['-v', cmd], {
-        stdio: 'ignore',
-        timeout: 2000
-      });
-      return result.status === 0;
-    } catch {
-      return false;
+    return null;
+  }
+  try {
+    const result = spawnSync('which', [cmd], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 2000
+    });
+    if (result.status === 0 && result.stdout) {
+      const p = result.stdout.trim().split('\n')[0];
+      return p || null;
     }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function getLocalThirdPartyBinDir() {
+  // Env override for power users
+  const override = process.env.BOBBYS_WORKSHOP_THIRD_PARTY_BIN;
+  if (override) return override;
+
+  const localAppData = process.env.LOCALAPPDATA;
+  const appData = process.env.APPDATA;
+  if (localAppData) return join(localAppData, 'Bobbys-Workshop', 'tools', 'third_party', 'bin');
+  if (appData) return join(appData, 'Bobbys-Workshop', 'tools', 'third_party', 'bin');
+  // Fallback (non-Windows)
+  const home = process.env.HOME || process.env.USERPROFILE;
+  if (home) return join(home, '.bobbys-workshop', 'tools', 'third_party', 'bin');
+  return null;
+}
+
+function findInDir(dir, cmd) {
+  try {
+    if (process.platform === 'win32') {
+      const extensions = process.env.PATHEXT ? process.env.PATHEXT.split(';') : ['.exe', '.cmd', '.bat', '.com'];
+      for (const ext of extensions) {
+        const fullPath = join(dir, cmd + ext);
+        if (existsSync(fullPath)) return fullPath;
+      }
+      // Also allow caller to pass full filename like idevice_id.exe
+      const direct = join(dir, cmd);
+      if (existsSync(direct)) return direct;
+      return null;
+    }
+    const direct = join(dir, cmd);
+    if (existsSync(direct)) return direct;
+    return null;
+  } catch {
+    return null;
   }
 }
 

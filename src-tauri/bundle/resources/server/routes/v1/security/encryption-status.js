@@ -8,7 +8,7 @@
  */
 
 import express from 'express';
-import ADBLibrary from '../../../../core/lib/adb.js';
+import ADBLibrary from '../../../utils/adb-library-wrapper.js';
 import { safeSpawn, commandExistsSafe } from '../../../utils/safe-exec.js';
 
 const router = express.Router();

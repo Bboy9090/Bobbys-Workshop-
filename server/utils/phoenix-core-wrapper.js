@@ -75,7 +75,8 @@ except Exception as e:
         
         const result = execSync(`python3 -c "${script.replace(/"/g, '\\"')}"`, {
             encoding: 'utf-8',
-            timeout: 5000
+            timeout: 5000,
+            windowsHide: true
         });
         
         return JSON.parse(result.trim());
@@ -124,7 +125,8 @@ except Exception as e:
         
         const result = execSync(`python3 -c "${script.replace(/"/g, '\\"')}"`, {
             encoding: 'utf-8',
-            timeout: 5000
+            timeout: 5000,
+            windowsHide: true
         });
         
         return JSON.parse(result.trim());

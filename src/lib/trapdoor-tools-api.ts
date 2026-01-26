@@ -4,6 +4,8 @@
  * TypeScript client for interacting with trapdoor tools API
  */
 
+import { getAPIUrl, safeJsonFetch } from './apiConfig';
+
 export interface Tool {
   key: string;
   name: string;
@@ -59,17 +61,16 @@ export async function listTools(passcode?: string): Promise<Tool[]> {
     headers['X-Secret-Room-Passcode'] = passcode;
   }
 
-  const response = await fetch('/api/v1/trapdoor/tools', {
+  const { data, ok, status } = await safeJsonFetch<{ data?: { tools?: Tool[] }; error?: { message?: string } }>('/api/v1/trapdoor/tools', {
     method: 'GET',
     headers,
   });
 
-  if (!response.ok) {
-    throw new Error(`Failed to list tools: ${response.statusText}`);
+  if (!ok) {
+    throw new Error(data?.error?.message || `Failed to list tools: HTTP ${status}`);
   }
 
-  const data = await response.json();
-  return data.data?.tools || [];
+  return data?.data?.tools || [];
 }
 
 /**
@@ -112,18 +113,16 @@ export async function verifyTool(
     headers['X-Secret-Room-Passcode'] = passcode;
   }
 
-  const response = await fetch(`/api/v1/trapdoor/tools/${toolKey}/verify`, {
+  const { data, ok, status } = await safeJsonFetch<{ data?: ToolVerifyResult; error?: { message?: string } }>(`/api/v1/trapdoor/tools/${toolKey}/verify`, {
     method: 'POST',
     headers,
   });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error?.message || `Failed to verify tool: ${response.statusText}`);
+  if (!ok) {
+    throw new Error(data?.error?.message || `Failed to verify tool: HTTP ${status}`);
   }
 
-  const data = await response.json();
-  return data.data || {};
+  return data?.data || {};
 }
 
 /**
@@ -183,7 +182,7 @@ export async function updateToolHash(
     headers['X-Secret-Room-Passcode'] = passcode;
   }
 
-  const response = await fetch(`/api/v1/trapdoor/tools/${toolKey}/hash`, {
+  const { data, ok, status } = await safeJsonFetch<{ data?: ToolHashUpdateResult; error?: { message?: string } }>(`/api/v1/trapdoor/tools/${toolKey}/hash`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -192,11 +191,9 @@ export async function updateToolHash(
     }),
   });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error?.message || `Failed to update tool hash: ${response.statusText}`);
+  if (!ok) {
+    throw new Error(data?.error?.message || `Failed to update tool hash: HTTP ${status}`);
   }
 
-  const data = await response.json();
-  return data.data || {};
+  return data?.data || {};
 }

@@ -311,25 +311,37 @@ router.get('/workflows', requireAdmin, async (req, res) => {
  */
 router.post('/batch/execute', requireAdmin, async (req, res) => {
   try {
-    const { commands, throttle, deviceSerial } = req.body;
+    // Accept both historical payload shapes:
+    // - { commands: [...] } (legacy)
+    // - { workflows: [...] } (tests / newer callers)
+    const { commands: commandsRaw, workflows: workflowsRaw, throttle, deviceSerial: topLevelDeviceSerial } = req.body || {};
+    const commands = Array.isArray(commandsRaw) ? commandsRaw : (Array.isArray(workflowsRaw) ? workflowsRaw : null);
 
     if (!commands || !Array.isArray(commands)) {
       return res.status(400).json({
         error: 'Invalid request',
-        message: 'Commands must be an array'
+        message: 'Commands/workflows must be an array'
       });
     }
 
-    if (!deviceSerial) {
+    if (commands.length === 0) {
+      return res.status(400).json({ error: 'Invalid request', message: 'Batch is empty' });
+    }
+
+    // Hard safety limit for batch size
+    const MAX_BATCH = 10;
+    if (commands.length > MAX_BATCH) {
       return res.status(400).json({
-        error: 'Device serial required'
+        error: `Batch size limit exceeded: max ${MAX_BATCH}`,
+        message: `Batch size limit exceeded: max ${MAX_BATCH}`
       });
     }
 
     // Log batch execution start
+    const firstSerial = topLevelDeviceSerial || commands[0]?.deviceSerial || 'unknown';
     await shadowLogger.logShadow({
       operation: 'batch_execute_started',
-      deviceSerial,
+      deviceSerial: firstSerial,
       userId: req.ip,
       authorization: 'ADMIN',
       success: true,
@@ -346,13 +358,17 @@ router.post('/batch/execute', requireAdmin, async (req, res) => {
     // Execute commands with throttling
     for (let i = 0; i < commands.length; i++) {
       const cmd = commands[i];
+      const serial = topLevelDeviceSerial || cmd?.deviceSerial;
       
       try {
+        if (!serial) {
+          throw new Error('Device serial required');
+        }
         const result = await workflowEngine.executeWorkflow(
           cmd.category,
           cmd.workflowId,
           {
-            deviceSerial,
+            deviceSerial: serial,
             userId: req.ip,
             authorization: cmd.authorization
           }
@@ -370,7 +386,7 @@ router.post('/batch/execute', requireAdmin, async (req, res) => {
           operation: 'batch_command_completed',
           message: `Batch command ${i + 1}/${commands.length} completed`,
           metadata: {
-            deviceSerial,
+            deviceSerial: serial,
             workflowId: cmd.workflowId,
             success: result.success
           }
@@ -393,7 +409,7 @@ router.post('/batch/execute', requireAdmin, async (req, res) => {
     // Log batch execution completion
     await shadowLogger.logShadow({
       operation: 'batch_execute_completed',
-      deviceSerial,
+      deviceSerial: firstSerial,
       userId: req.ip,
       authorization: 'ADMIN',
       success: true,
@@ -415,6 +431,30 @@ router.post('/batch/execute', requireAdmin, async (req, res) => {
       error: 'Internal server error',
       message: error.message
     });
+  }
+});
+
+/**
+ * GET /api/trapdoor/monitoring/stats
+ * Lightweight monitoring summary for tests/admin UI.
+ */
+router.get('/monitoring/stats', requireAdmin, async (req, res) => {
+  try {
+    const stats = await shadowLogger.getStats();
+    return res.json({
+      success: true,
+      apiUsage: {
+        // This legacy core router does not maintain per-endpoint counters yet.
+        requestsTracked: false
+      },
+      rateLimiting: {
+        enabled: false,
+        note: 'Rate limiting is applied in server/index.js, not in this legacy core router.'
+      },
+      logging: stats
+    });
+  } catch (error) {
+    return res.status(500).json({ error: 'Internal server error', message: error.message });
   }
 });
 
@@ -449,6 +489,19 @@ router.post('/logs/rotate', requireAdmin, async (req, res) => {
       error: 'Internal server error',
       message: error.message
     });
+  }
+});
+
+/**
+ * POST /api/trapdoor/logs/cleanup
+ * Cleanup old log files based on retention policy.
+ */
+router.post('/logs/cleanup', requireAdmin, async (req, res) => {
+  try {
+    const result = await shadowLogger.cleanupOldLogs();
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: 'Internal server error', message: error.message });
   }
 });
 

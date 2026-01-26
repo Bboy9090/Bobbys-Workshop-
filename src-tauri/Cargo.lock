@@ -178,8 +178,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "bobbys-workshop"
-version = "3.0.1"
+name = "bobbys-secret-workshop"
+version = "4.0.1"
 dependencies = [
  "anyhow",
  "bootforgeusb",

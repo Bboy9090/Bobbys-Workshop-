@@ -34,7 +34,7 @@
     ],
     "resources": [
       "bundle/resources/**/*",
-      "python/runtime/**/*"
+      "../python/runtime/**/*"
     ],
     "copyright": "© 2025 Bobby's Workshop",
     "category": "DeveloperTool",

@@ -57,7 +57,8 @@ export async function executeAdbCommand(serial, command, args = [], options = {}
     // Spawn ADB process (no shell)
     const adb = spawn('adb', adbArgs, {
       shell: false, // Critical: no shell execution
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
     });
     
     // Collect stdout
@@ -107,7 +108,8 @@ export async function getDevices() {
     
     const adb = spawn('adb', ['devices', '-l'], {
       shell: false,
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
     });
     
     adb.stdout.on('data', (data) => {

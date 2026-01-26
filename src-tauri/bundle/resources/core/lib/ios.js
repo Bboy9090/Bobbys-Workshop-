@@ -55,7 +55,8 @@ export async function executeIdeviceCommand(command, args = [], options = {}) {
     // Spawn idevice process (no shell)
     const idevice = spawn(`idevice${command}`, ideviceArgs, {
       shell: false, // Critical: no shell execution
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
     });
     
     // Collect stdout
@@ -105,7 +106,8 @@ export async function getIOSDevices() {
     
     const idevice = spawn('idevice_id', ['-l'], {
       shell: false,
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
     });
     
     idevice.stdout.on('data', (data) => {
@@ -199,7 +201,8 @@ export async function isLibimobiledeviceAvailable() {
   return new Promise((resolve) => {
     const idevice = spawn('idevice_id', ['-l'], {
       shell: false,
-      stdio: 'ignore'
+      stdio: 'ignore',
+      windowsHide: true
     });
     
     idevice.on('close', (code) => {
