@@ -10,6 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
+import { Server as SocketIOServer } from 'socket.io';
 import { AuthorizationTriggers } from './authorization-triggers.js';
 import catalogRouter from './catalog.js';
 import operationsRouter from './operations.js';
@@ -53,6 +54,7 @@ import diagnosticsRouter from './routes/v1/diagnostics/index.js';
 import trapdoorRouter from './routes/v1/trapdoor/index.js';
 import casesRouter from './routes/v1/cases.js';
 import jobsRouter from './routes/v1/jobs.js';
+import repairTicketsRouter from './routes/v1/repair-tickets.js';
 import { getAllMetrics, estimateUsbUtilization } from './utils/system-metrics.js';
 import { getCircuitBreakerStatus, resetCircuitBreaker, getHealthStatus } from './utils/retry-circuit-breaker.js';
 import { getResourceStatus, canExecuteOperation, acquireOperationSlot, releaseOperationSlot, forceCleanup } from './utils/resource-limits.js';
@@ -63,6 +65,7 @@ import metricsRouter from './routes/v1/observability/metrics.js';
 import tracesRouter from './routes/v1/observability/traces.js';
 import metricsCollector from './utils/observability/metrics-collector.js';
 import structuredLogger from './utils/observability/structured-logger.js';
+import { initSocketIO } from './utils/socketio-events.js';
 
 // Initialize logging first
 const LOG_DIR = process.env.BW_LOG_DIR || (process.platform === 'win32' 
@@ -493,6 +496,7 @@ v1Router.use('/security/security-patch', securityPatchRouter);
 // Catalog, operations routers
 v1Router.use('/catalog', catalogRouter);
 v1Router.use('/operations', operationsRouter);
+v1Router.use('/repair-tickets', repairTicketsRouter);
 
 // Destructive/sensitive operations with rate limiting
 v1Router.use('/fastboot', rateLimiter('fastboot'), fastbootRouter);
@@ -581,6 +585,41 @@ app.use('/api/v1', v1Router);
 const authTriggers = new AuthorizationTriggers();
 
 const server = createServer(app);
+
+// Setup Socket.IO for real-time updates
+const io = new SocketIOServer(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  },
+  path: '/socket.io'
+});
+
+// Socket.IO event handlers
+io.on('connection', (socket) => {
+  structuredLogger.info('Socket.IO client connected', { socketId: socket.id });
+  
+  socket.on('subscribe-repair-ticket', (ticketId) => {
+    socket.join(`ticket-${ticketId}`);
+    structuredLogger.info('Client subscribed to repair ticket', { ticketId, socketId: socket.id });
+  });
+  
+  socket.on('unsubscribe-repair-ticket', (ticketId) => {
+    socket.leave(`ticket-${ticketId}`);
+    structuredLogger.info('Client unsubscribed from repair ticket', { ticketId, socketId: socket.id });
+  });
+  
+  socket.on('disconnect', () => {
+    structuredLogger.info('Socket.IO client disconnected', { socketId: socket.id });
+  });
+});
+
+// Initialize Socket.IO utilities
+initSocketIO(io);
+
+// Export io for use in other modules
+export const socketIO = io;
+
 const wss = new WebSocketServer({ server, path: '/ws/device-events' });
 const wssCorrelation = new WebSocketServer({ server, path: '/ws/correlation' });
 const wssAnalytics = new WebSocketServer({ server, path: '/ws/analytics' });
