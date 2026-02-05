@@ -177,6 +177,13 @@ export function commandExistsInPath(cmd) {
  * @returns {string|null} Full path or null if not found
  */
 export function findToolPathInPath(cmd) {
+  // Local-only third party tool bin (preferred for your own device lab)
+  const localThirdParty = getLocalThirdPartyBinDir();
+  if (localThirdParty) {
+    const resolved = findInDir(localThirdParty, cmd);
+    if (resolved) return resolved;
+  }
+
   if (process.platform === 'win32') {
     const pathEnv = process.env.PATH || '';
     const pathDirs = pathEnv.split(';');
@@ -200,6 +207,42 @@ export function findToolPathInPath(cmd) {
       const p = result.stdout.trim().split('\n')[0];
       return p || null;
     }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function getLocalThirdPartyBinDir() {
+  // Env override for power users
+  const override = process.env.BOBBYS_WORKSHOP_THIRD_PARTY_BIN;
+  if (override) return override;
+
+  const localAppData = process.env.LOCALAPPDATA;
+  const appData = process.env.APPDATA;
+  if (localAppData) return join(localAppData, 'Bobbys-Workshop', 'tools', 'third_party', 'bin');
+  if (appData) return join(appData, 'Bobbys-Workshop', 'tools', 'third_party', 'bin');
+  // Fallback (non-Windows)
+  const home = process.env.HOME || process.env.USERPROFILE;
+  if (home) return join(home, '.bobbys-workshop', 'tools', 'third_party', 'bin');
+  return null;
+}
+
+function findInDir(dir, cmd) {
+  try {
+    if (process.platform === 'win32') {
+      const extensions = process.env.PATHEXT ? process.env.PATHEXT.split(';') : ['.exe', '.cmd', '.bat', '.com'];
+      for (const ext of extensions) {
+        const fullPath = join(dir, cmd + ext);
+        if (existsSync(fullPath)) return fullPath;
+      }
+      // Also allow caller to pass full filename like idevice_id.exe
+      const direct = join(dir, cmd);
+      if (existsSync(direct)) return direct;
+      return null;
+    }
+    const direct = join(dir, cmd);
+    if (existsSync(direct)) return direct;
     return null;
   } catch {
     return null;
