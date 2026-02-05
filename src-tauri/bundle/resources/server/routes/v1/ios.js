@@ -18,7 +18,9 @@ router.get('/scan', async (req, res) => {
     if (!IOSLibrary.isInstalled()) {
       return res.sendError('TOOL_NOT_AVAILABLE', 'libimobiledevice tools not installed', {
         tool: 'idevice_id',
-        installInstructions: 'Install libimobiledevice tools (e.g., brew install libimobiledevice on macOS)',
+        installInstructions: process.platform === 'win32'
+          ? 'Windows: install iTunes (Apple Mobile Device Support) and install libimobiledevice (idevice_id/ideviceinfo). Then reopen the app and re-scan.'
+          : 'Install libimobiledevice tools (e.g., brew install libimobiledevice on macOS)',
         platform: process.platform
       }, 503);
     }
