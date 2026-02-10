@@ -13,6 +13,12 @@ dist-ssr
 *-dist
 *.local
 
+# Binary files (executables, DLLs, images)
+*.exe
+*.dll
+*.pdb
+*.img
+
 # Collected release artifacts (do not commit)
 dist-artifacts/
 
