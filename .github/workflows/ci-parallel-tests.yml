@@ -84,7 +84,7 @@ jobs:
           cache: 'npm'
       
       - name: Install dependencies
-        run: npm ci
+        run:npm install
       
       - name: Run ESLint
         run: npm run lint
@@ -110,7 +110,7 @@ jobs:
           cache: 'npm'
       
       - name: Install server dependencies
-        run: cd server && npm ci
+        run: cd server && npm install
       
       - name: Verify server starts
         run: |
@@ -159,7 +159,7 @@ jobs:
           cache: 'npm'
       
       - name: Install dependencies
-        run: npm ci
+        run: npm install
       
       - name: Check TypeScript compilation
         run: npx tsc --noEmit
