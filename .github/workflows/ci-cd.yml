@@ -20,7 +20,7 @@ jobs:
           cache: 'npm'
       
       - name: Install dependencies
-        run: npm ci
+        run: npm install
       
       - name: Run ESLint
         run: npm run lint
@@ -39,10 +39,10 @@ jobs:
           cache: 'npm'
       
       - name: Install root dependencies
-        run: npm ci
+        run: npm install
       
       - name: Install server dependencies
-        run: cd server && npm ci
+        run: cd server && npm install
       
       - name: Run server tests
         run: cd server && npm test
@@ -63,7 +63,7 @@ jobs:
           cache: 'npm'
       
       - name: Install dependencies
-        run: npm ci && cd server && npm ci
+        run: npm install && cd server && npm install
       
       - name: Validate workflow schemas
         run: |
@@ -91,7 +91,7 @@ jobs:
           cache: 'npm'
       
       - name: Install dependencies
-        run: npm ci && cd server && npm ci
+        run: npm install && cd server && npm install
       
       - name: Test shadow logger
         run: npm test -- tests/shadow-logger.test.js
@@ -112,7 +112,7 @@ jobs:
           cache: 'npm'
       
       - name: Install dependencies
-        run: npm ci
+        run: npm install
       
       - name: Build frontend
         run: npm run build
@@ -190,7 +190,7 @@ jobs:
           node-version: '20'
       
       - name: Install dependencies
-        run: npm ci && cd server && npm ci
+        run: npm install && cd server && npm install
       
       - name: Start server
         run: cd server && npm start &

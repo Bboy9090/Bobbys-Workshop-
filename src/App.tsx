@@ -36,9 +36,6 @@ function AppContent() {
                 await initOfflineStorage();
                 logger.debug('Offline storage ready');
                 
-                // Brief initialization delay
-                await new Promise(resolve => setTimeout(resolve, 500));
-                
                 const backendHealthy = await checkBackendHealth();
                 setBackendAvailable(backendHealthy.isHealthy);
                 setBackendConnected(backendHealthy.isHealthy);

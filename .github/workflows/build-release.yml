@@ -33,12 +33,12 @@ jobs:
           cache: 'npm'
       
       - name: Install root dependencies
-        run: npm ci
+        run: npm install
       
       - name: Install server dependencies
         run: |
           cd server
-          npm ci
+          npm install
       
       - name: Bundle Node.js and server
         run: |
