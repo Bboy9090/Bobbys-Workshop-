@@ -12,7 +12,7 @@
  * - Bronx Grit - Street authenticity
  */
 
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { DeviceSidebar } from "./DeviceSidebar";
@@ -39,21 +39,22 @@ import {
     Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-// Screen imports
-import { WorkbenchDashboard } from './screens/WorkbenchDashboard';
-import { WorkbenchDevices } from './screens/WorkbenchDevices';
-import { WorkbenchFlashing } from './screens/WorkbenchFlashing';
-import { WorkbenchIOS } from './screens/WorkbenchIOS';
-import { WorkbenchSecurity } from './screens/WorkbenchSecurity';
-import { WorkbenchMonitoring } from './screens/WorkbenchMonitoring';
-import { WorkbenchFirmware } from './screens/WorkbenchFirmware';
-import { WorkbenchWorkflows } from './screens/WorkbenchWorkflows';
-import { WorkbenchCases } from './screens/WorkbenchCases';
 import { useBackendHealth } from '@/hooks/use-backend-health';
-import { WorkbenchSecretRooms } from './screens/WorkbenchSecretRooms';
-import { WorkbenchSettings } from './screens/WorkbenchSettings';
-import { WorkbenchTranscendent } from './screens/WorkbenchTranscendent';
+import { LoadingState } from './LoadingState';
+
+// Screen imports (lazy-loaded to reduce initial bundle size)
+const WorkbenchDashboard = lazy(() => import('./screens/WorkbenchDashboard').then(m => ({ default: m.WorkbenchDashboard })));
+const WorkbenchDevices = lazy(() => import('./screens/WorkbenchDevices').then(m => ({ default: m.WorkbenchDevices })));
+const WorkbenchFlashing = lazy(() => import('./screens/WorkbenchFlashing').then(m => ({ default: m.WorkbenchFlashing })));
+const WorkbenchIOS = lazy(() => import('./screens/WorkbenchIOS').then(m => ({ default: m.WorkbenchIOS })));
+const WorkbenchSecurity = lazy(() => import('./screens/WorkbenchSecurity').then(m => ({ default: m.WorkbenchSecurity })));
+const WorkbenchMonitoring = lazy(() => import('./screens/WorkbenchMonitoring').then(m => ({ default: m.WorkbenchMonitoring })));
+const WorkbenchFirmware = lazy(() => import('./screens/WorkbenchFirmware').then(m => ({ default: m.WorkbenchFirmware })));
+const WorkbenchWorkflows = lazy(() => import('./screens/WorkbenchWorkflows').then(m => ({ default: m.WorkbenchWorkflows })));
+const WorkbenchCases = lazy(() => import('./screens/WorkbenchCases').then(m => ({ default: m.WorkbenchCases })));
+const WorkbenchSecretRooms = lazy(() => import('./screens/WorkbenchSecretRooms').then(m => ({ default: m.WorkbenchSecretRooms })));
+const WorkbenchSettings = lazy(() => import('./screens/WorkbenchSettings').then(m => ({ default: m.WorkbenchSettings })));
+const WorkbenchTranscendent = lazy(() => import('./screens/WorkbenchTranscendent').then(m => ({ default: m.WorkbenchTranscendent })));
 
 export function DashboardLayout() {
     const [activeTab, setActiveTab] = useState('dashboard');
@@ -173,40 +174,40 @@ export function DashboardLayout() {
                         <ScrollArea className="flex-1 min-h-0 bg-playground">
                             <div className="p-6 min-h-0 bg-playground">
                                 <TabsContent value="dashboard" className="mt-0">
-                                    <WorkbenchDashboard />
+                                    <Suspense fallback={<LoadingState />}><WorkbenchDashboard /></Suspense>
                                 </TabsContent>
                                 <TabsContent value="devices" className="mt-0">
-                                    <WorkbenchDevices />
+                                    <Suspense fallback={<LoadingState />}><WorkbenchDevices /></Suspense>
                                 </TabsContent>
                                 <TabsContent value="cases" className="mt-0">
-                                    <WorkbenchCases />
+                                    <Suspense fallback={<LoadingState />}><WorkbenchCases /></Suspense>
                                 </TabsContent>
                                 <TabsContent value="flashing" className="mt-0">
-                                    <WorkbenchFlashing />
+                                    <Suspense fallback={<LoadingState />}><WorkbenchFlashing /></Suspense>
                                 </TabsContent>
                                 <TabsContent value="ios" className="mt-0">
-                                    <WorkbenchIOS />
+                                    <Suspense fallback={<LoadingState />}><WorkbenchIOS /></Suspense>
                                 </TabsContent>
                                 <TabsContent value="security" className="mt-0">
-                                    <WorkbenchSecurity />
+                                    <Suspense fallback={<LoadingState />}><WorkbenchSecurity /></Suspense>
                                 </TabsContent>
                                 <TabsContent value="monitoring" className="mt-0">
-                                    <WorkbenchMonitoring />
+                                    <Suspense fallback={<LoadingState />}><WorkbenchMonitoring /></Suspense>
                                 </TabsContent>
                                 <TabsContent value="firmware" className="mt-0">
-                                    <WorkbenchFirmware />
+                                    <Suspense fallback={<LoadingState />}><WorkbenchFirmware /></Suspense>
                                 </TabsContent>
                                 <TabsContent value="workflows" className="mt-0">
-                                    <WorkbenchWorkflows />
+                                    <Suspense fallback={<LoadingState />}><WorkbenchWorkflows /></Suspense>
                                 </TabsContent>
                                 <TabsContent value="transcendent" className="mt-0">
-                                    <WorkbenchTranscendent />
+                                    <Suspense fallback={<LoadingState />}><WorkbenchTranscendent /></Suspense>
                                 </TabsContent>
                                 <TabsContent value="secret-rooms" className="mt-0 p-0">
-                                    <WorkbenchSecretRooms />
+                                    <Suspense fallback={<LoadingState />}><WorkbenchSecretRooms /></Suspense>
                                 </TabsContent>
                                 <TabsContent value="settings" className="mt-0">
-                                    <WorkbenchSettings />
+                                    <Suspense fallback={<LoadingState />}><WorkbenchSettings /></Suspense>
                                 </TabsContent>
                             </div>
                         </ScrollArea>

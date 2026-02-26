@@ -79,46 +79,41 @@ export function WorkbenchDashboard() {
 
     async function fetchStats() {
       try {
-        // Fetch active devices count
-        const devicesResponse = await fetch('/api/v1/adb/devices');
-        const devicesData = await devicesResponse.json();
-        
+        // Fetch devices, repair stats, and cases in parallel
+        const [devicesResponse, statsResponse, casesResponse] = await Promise.all([
+          fetch('/api/v1/adb/devices').catch(() => null),
+          fetch('/api/v1/stats/repairs').catch(() => null),
+          fetch('/api/v1/cases?status=completed').catch(() => null),
+        ]);
+
         if (cancelled) return;
 
-        const activeDevices = devicesData.ok && devicesData.data?.devices 
-          ? devicesData.data.devices.length 
+        const devicesData = devicesResponse ? await devicesResponse.json().catch(() => null) : null;
+        const activeDevices = devicesData?.ok && devicesData.data?.devices
+          ? devicesData.data.devices.length
           : 0;
 
-        // Fetch repair statistics from API (if available)
-        let repairStats = { total: null, successRate: null, avgTime: null };
-        try {
-          const statsResponse = await fetch('/api/v1/stats/repairs');
-          if (statsResponse.ok) {
-            const statsData = await statsResponse.json();
-            if (statsData.ok && statsData.data) {
-              repairStats = {
-                total: statsData.data.totalRepairs ?? null,
-                successRate: statsData.data.successRate ?? null,
-                avgTime: statsData.data.avgRepairTime ?? null,
-              };
-            }
+        interface RepairStats {
+          total: number | null;
+          successRate: number | null;
+          avgTime: string | null;
+        }
+        const repairStats: RepairStats = { total: null, successRate: null, avgTime: null };
+
+        if (statsResponse?.ok) {
+          const statsData = await statsResponse.json().catch(() => null);
+          if (statsData?.ok && statsData.data) {
+            repairStats.total = statsData.data.totalRepairs ?? null;
+            repairStats.successRate = statsData.data.successRate ?? null;
+            repairStats.avgTime = statsData.data.avgRepairTime ?? null;
           }
-        } catch {
-          // Stats endpoint may not exist - that's okay, show null
         }
 
-        // Fetch from cases API as fallback for completed repairs
-        if (repairStats.total === null) {
-          try {
-            const casesResponse = await fetch('/api/v1/cases?status=completed');
-            if (casesResponse.ok) {
-              const casesData = await casesResponse.json();
-              if (casesData.ok && casesData.data?.cases) {
-                repairStats.total = casesData.data.cases.length;
-              }
-            }
-          } catch {
-            // Cases endpoint may not exist
+        // Use cases API as fallback for completed repairs count
+        if (repairStats.total === null && casesResponse?.ok) {
+          const casesData = await casesResponse.json().catch(() => null);
+          if (casesData?.ok && casesData.data?.cases) {
+            repairStats.total = casesData.data.cases.length;
           }
         }
 
