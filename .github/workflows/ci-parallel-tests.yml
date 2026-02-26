@@ -29,8 +29,8 @@ jobs:
       
       - name: Install dependencies
         run: |
-          npm ci
-          cd server && npm ci
+          npm install
+          cd server && npm install
       
       - name: Start server in background
         run: |
@@ -62,7 +62,7 @@ jobs:
           cache: 'npm'
       
       - name: Install dependencies
-        run: npm ci
+        run: npm install
       
       - name: Run Workflow System tests
         run: node tests/workflow-system.test.js
@@ -84,7 +84,7 @@ jobs:
           cache: 'npm'
       
       - name: Install dependencies
-        run:npm install
+        run: npm install
       
       - name: Run ESLint
         run: npm run lint

@@ -56,8 +56,8 @@ export function WorkbenchFlashing() {
 
     let cancelled = false;
 
-    async function fetchDevices() {
-      setIsLoading(true);
+    async function fetchDevices(isInitialFetch = false) {
+      if (isInitialFetch) setIsLoading(true);
       try {
         const fbResponse = await fetch('/api/v1/fastboot/devices');
         const fbData = await fbResponse.json();
@@ -114,8 +114,8 @@ export function WorkbenchFlashing() {
       }
     }
 
-    fetchDevices();
-    const interval = setInterval(fetchDevices, 10000);
+    fetchDevices(true);
+    const interval = setInterval(() => fetchDevices(false), 10000);
 
     return () => {
       cancelled = true;
