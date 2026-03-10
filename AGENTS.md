@@ -1,4 +1,4 @@
-# AGENTS.md — Phoenix Forge AI Operating System
+# Phoenix Forge Agents — AI Operating System Roles
 
 ## Workshop Discipline: The "No Illusion" Rule
 
