@@ -4,6 +4,9 @@
 
 Phoenix Forge is a complete device repair and management platform for professional repair shops. This repository contains the full application stack: React frontend, Node.js/Python backends, Rust hardware layer (BootForge USB), and desktop packaging via Electron/Tauri. Everything you need to diagnose, flash, and repair mobile devices in one unified system.
 
+[![CI/CD](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/ci-cd.yml)
+[![Build](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/build.yml/badge.svg)](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/build.yml)
+[![Tests](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/test.yml/badge.svg)](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/badge/version-5.0.0-blue.svg)](https://github.com/Bboy9090/Bobbys-Workshop-/releases)
 
