@@ -6,14 +6,24 @@ This document tracks recommendations for organizing the GitHub portfolio. Based 
 
 ### Bobbys-Workshop- (This Repository)
 **Status:** Polished and public
-**Identity:** Complete application - Phoenix Forge device repair platform
+**Identity:** Complete repair application - Bobby's Workshop device repair software (branded as "Phoenix Forge")
+**Role Clarification:** This is the actual repair software (Option B), NOT an umbrella platform (Option A)
 **Actions Taken:**
-- ✅ Clarified repository identity (full app, not umbrella repo)
-- ✅ Tightened README opening paragraph
-- ✅ Enhanced architecture diagram
+- ✅ Clarified repository identity (complete repair app, not umbrella repo)
+- ✅ Added "What Runs From This Repository" section
+- ✅ Added platform diagram showing component relationships
+- ✅ Removed overlapping feature descriptions (Codex Modules, Secret Rooms)
+- ✅ Clarified Phoenix Core and BootForge are embedded components
+- ✅ Enhanced README opening paragraph with clear role definition
 - ✅ Added screenshots section (placeholder ready)
 - ✅ Added Releases section
 - ✅ Added build status badges
+
+**Component Relationships:**
+- **Bobby's Workshop** = The complete repair software (this repository)
+- **Phoenix Core** = Embedded decision engine within Bobby's Workshop
+- **BootForge** = Embedded Rust library for USB device detection
+- **External Tools** = ADB, Fastboot, libimobiledevice (installed separately)
 
 **Recommendation:** Pin this repository on your profile
 
