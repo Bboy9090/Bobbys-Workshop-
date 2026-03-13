@@ -2,7 +2,15 @@
 
 **Rise from the Ashes. Every Device Reborn.**
 
-Phoenix Forge is a legendary device repair and management platform designed for professional repair shops. Built with modern technologies and a stunning UI, it provides everything needed to diagnose, flash, and repair mobile devices.
+Phoenix Forge is a complete device repair and management platform for professional repair shops. This repository contains the full application stack: React frontend, Node.js/Python backends, Rust hardware layer (BootForge USB), and desktop packaging via Electron/Tauri. Everything you need to diagnose, flash, and repair mobile devices in one unified system.
+
+[![CI/CD](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/ci-cd.yml)
+[![Build](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/build.yml/badge.svg)](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/build.yml)
+[![Tests](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/test.yml/badge.svg)](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Version](https://img.shields.io/badge/version-5.0.0-blue.svg)](https://github.com/Bboy9090/Bobbys-Workshop-/releases)
+
+> **Note**: This is a complete application repository, not an umbrella or meta-repo. For specialized components like BootForge USB hardware layer, see related repositories.
 
 ---
 
@@ -36,16 +44,49 @@ Phoenix Forge is a legendary device repair and management platform designed for 
 
 ---
 
+## Screenshots
+
+![Phoenix Forge Interface](docs/images/screenshots/main-interface.png)
+*Main device management interface with real-time device detection*
+
+![Flash Progress](docs/images/screenshots/flash-progress.png)
+*Real-time flashing progress with detailed status updates*
+
+> **Note**: Screenshots coming soon. Check the [docs/images/screenshots](docs/images/screenshots) folder for updates.
+
+---
+
 ## Architecture
 
 ```
-PHOENIX FORGE
-     ↓
-Phoenix Core (Decision Engine)
-     ↓
-libbootforge (Cross-platform Bridge)
-     ↓
-BootForge USB (Rust Hardware Layer)
+┌─────────────────────────────────────────────────────┐
+│                  PHOENIX FORGE                      │
+│              (React 19 + TypeScript)                │
+└──────────────────┬──────────────────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────────────┐
+│                 Phoenix Core                        │
+│           (Decision Engine + State Memory)          │
+└──────────────────┬──────────────────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────────────┐
+│              Backend Services                       │
+│     Node.js/Express + Python/FastAPI                │
+└──────────────────┬──────────────────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────────────┐
+│          libbootforge (Bridge Layer)                │
+│         Cross-platform Hardware Interface           │
+└──────────────────┬──────────────────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────────────┐
+│           BootForge USB (Rust)                      │
+│     Low-level USB Device Communication              │
+└─────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -147,6 +188,26 @@ Phoenix Forge uses a carefully crafted color palette:
 | `npm run server:start` | Start backend server |
 | `npm run electron:dev` | Start Electron development |
 | `npm run tauri:dev` | Start Tauri development |
+
+---
+
+## Releases
+
+### Latest Release: v5.0.0 - Phoenix Rising
+
+**What's New:**
+- Complete UI overhaul with React 19 and Tailwind CSS v4
+- Real-time device detection and monitoring
+- Integrated firmware management system
+- Multi-platform desktop support (Electron + Tauri)
+- Enhanced security with role-based access control
+
+**Download:**
+- [Windows Installer](https://github.com/Bboy9090/Bobbys-Workshop-/releases/latest) (Coming Soon)
+- [macOS DMG](https://github.com/Bboy9090/Bobbys-Workshop-/releases/latest) (Coming Soon)
+- [Linux AppImage](https://github.com/Bboy9090/Bobbys-Workshop-/releases/latest) (Coming Soon)
+
+For all releases and changelogs, visit the [Releases page](https://github.com/Bboy9090/Bobbys-Workshop-/releases).
 
 ---
 
