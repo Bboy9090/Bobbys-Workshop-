@@ -8,6 +8,12 @@ import string
 from datetime import datetime
 from typing import Optional, Dict
 
+import os
+import json
+
+GHOST_DIR = os.path.join(os.path.dirname(__file__), "../../../ghost_data")
+PERSONAS_DIR = os.path.join(GHOST_DIR, "personas")
+os.makedirs(PERSONAS_DIR, exist_ok=True)
 
 def create_burner_persona(name: Optional[str] = None, email_domain: Optional[str] = None) -> Dict:
     """Create a burner persona."""
@@ -27,6 +33,10 @@ def create_burner_persona(name: Optional[str] = None, email_domain: Optional[str
         "phone": generate_phone_number(),
         "created_at": datetime.now().isoformat()
     }
+    
+    persona_path = os.path.join(PERSONAS_DIR, f"{username}.json")
+    with open(persona_path, "w") as f:
+        json.dump(persona, f, indent=2)
     
     return persona
 

@@ -10,8 +10,9 @@ import uuid
 import os
 
 from .shredder import shred_metadata
-from .canary import generate_canary_token, check_canary_alert
-from .persona import create_burner_persona
+from .canary import generate_canary_token, check_canary_alert, ALERTS_DIR
+from .persona import create_burner_persona, PERSONAS_DIR
+import json
 
 router = APIRouter()
 
@@ -117,11 +118,20 @@ async def check_trap(token_id: str):
 @router.get("/alerts")
 async def list_alerts():
     """List all canary token alerts."""
-    # Placeholder - would read from database/storage
+    alerts = []
+    if os.path.exists(ALERTS_DIR):
+        for f in os.listdir(ALERTS_DIR):
+            if f.endswith(".json"):
+                try:
+                    with open(os.path.join(ALERTS_DIR, f), "r") as file:
+                        alerts.append(json.load(file))
+                except Exception:
+                    pass
+
     return JSONResponse({
         "ok": True,
         "data": {
-            "alerts": []
+            "alerts": alerts
         }
     })
 
@@ -152,10 +162,19 @@ async def create_persona(
 @router.get("/personas")
 async def list_personas():
     """List all burner personas."""
-    # Placeholder
+    personas = []
+    if os.path.exists(PERSONAS_DIR):
+        for f in os.listdir(PERSONAS_DIR):
+            if f.endswith(".json"):
+                try:
+                    with open(os.path.join(PERSONAS_DIR, f), "r") as file:
+                        personas.append(json.load(file))
+                except Exception:
+                    pass
+
     return JSONResponse({
         "ok": True,
         "data": {
-            "personas": []
+            "personas": personas
         }
     })

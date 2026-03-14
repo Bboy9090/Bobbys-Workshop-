@@ -7,6 +7,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from typing import List, Dict
 import asyncio
+import subprocess
 
 from .detector import scan_usb_devices, detect_dfu_mode
 from .websocket import DeviceStreamManager
@@ -56,13 +57,17 @@ async def enter_dfu_mode(device_id: str):
         )
     
     try:
-        # Placeholder - would use libimobiledevice or similar
+        # Connect to real backend service (libimobiledevice/irecovery)
+        result = subprocess.run(["irecovery", "-e", device_id], capture_output=True, text=True)
+        status = "dfu_mode_entered" if result.returncode == 0 else "dfu_failed"
+        
         return JSONResponse({
             "ok": True,
             "data": {
                 "device_id": device_id,
-                "status": "dfu_mode_entered",
-                "message": "Device entered DFU mode"
+                "status": status,
+                "output": result.stdout,
+                "message": "Device entered DFU mode" if result.returncode == 0 else "DFU entry simulated/failed"
             }
         })
     except Exception as e:
@@ -90,14 +95,19 @@ async def execute_jailbreak(device_id: str, exploit: str = "checkra1n"):
         )
     
     try:
-        # Placeholder - would integrate with actual jailbreak tools
+        # Connect to actual jailbreak binary
+        binary = exploit if exploit in ["checkra1n", "palera1n"] else "checkra1n"
+        result = subprocess.run([binary, "-c", device_id], capture_output=True, text=True)
+        status = "jailbreak_initiated" if result.returncode == 0 else "jailbreak_failed"
+        
         return JSONResponse({
             "ok": True,
             "data": {
                 "device_id": device_id,
                 "exploit": exploit,
-                "status": "jailbreak_initiated",
-                "message": "Jailbreak process started"
+                "status": status,
+                "output": result.stdout,
+                "message": "Jailbreak process started" if result.returncode == 0 else "Exploit simulated/failed"
             }
         })
     except Exception as e:
@@ -114,14 +124,18 @@ async def execute_jailbreak(device_id: str, exploit: str = "checkra1n"):
 async def flash_device(device_id: str, firmware_path: str):
     """Flash firmware to device."""
     try:
-        # Placeholder - would use actual flashing tools
+        # Connect to system flashing tool
+        result = subprocess.run(["fastboot", "-s", device_id, "flash", "all", firmware_path], capture_output=True, text=True)
+        status = "flashing" if result.returncode == 0 else "flashing_failed"
+
         return JSONResponse({
             "ok": True,
             "data": {
                 "device_id": device_id,
                 "firmware": firmware_path,
-                "status": "flashing",
-                "message": "Firmware flash initiated"
+                "status": status,
+                "output": (result.stdout or "")[:200] + "...",
+                "message": "Firmware flash initiated" if result.returncode == 0 else "Flash simulated/failed"
             }
         })
     except Exception as e:

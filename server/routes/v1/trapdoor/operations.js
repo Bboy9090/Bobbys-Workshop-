@@ -171,8 +171,6 @@ export async function executeHandler(req, res) {
     }
 
     // Execute operation
-    // TODO: Route to appropriate operation handler based on operation type
-    // For now, return a placeholder response
     const result = await executeOperation(operation, params, operationSpec);
 
     // Log completion

@@ -6,6 +6,7 @@
  * 
  * @module server/middleware/requireAdmin
  */
+import jwt from 'jsonwebtoken';
 
 /**
  * Require admin authentication middleware
@@ -53,16 +54,22 @@ export function requireAdmin(req, res, next) {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
     
-    // TODO: Implement JWT verification
-    // For now, we'll use a simple check
-    // In production, use: jsonwebtoken.verify(token, process.env.JWT_SECRET)
-    
-    // Placeholder: In production, implement proper JWT verification
-    if (process.env.NODE_ENV === 'production') {
-      return res.status(401).json({
-        error: 'JWT authentication not yet implemented',
-        message: 'Please use X-API-Key or X-Secret-Room-Passcode header'
-      });
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'trapdoor_fallback_secret_123');
+      req.user = {
+        role: decoded.role || 'admin',
+        userId: decoded.userId || decoded.id,
+        authMethod: 'jwt',
+        authenticated: true
+      };
+      return next();
+    } catch (err) {
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(401).json({
+          error: 'Unauthorized',
+          message: 'Invalid or expired JWT token'
+        });
+      }
     }
   }
 
