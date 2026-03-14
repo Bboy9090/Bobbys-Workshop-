@@ -1,8 +1,0 @@
-[package]
-name = "engine-jobs"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-engine-core = { path = "../core" }
-crossbeam = "0.8"
