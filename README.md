@@ -1,8 +1,8 @@
-# PHOENIX FORGE
+# BOBBY'S WORKSHOP (Phoenix Forge)
 
 **Rise from the Ashes. Every Device Reborn.**
 
-Phoenix Forge is a complete device repair and management platform for professional repair shops. This repository contains the full application stack: React frontend, Node.js/Python backends, Rust hardware layer (BootForge USB), and desktop packaging via Electron/Tauri. Everything you need to diagnose, flash, and repair mobile devices in one unified system.
+Bobby's Workshop is professional device repair software for mobile repair shops. This repository contains the complete working application - not an umbrella platform, not a collection of tools, but the actual repair software you install and run.
 
 [![CI/CD](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/ci-cd.yml)
 [![Build](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/build.yml/badge.svg)](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/build.yml)
@@ -10,7 +10,24 @@ Phoenix Forge is a complete device repair and management platform for profession
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/badge/version-5.0.0-blue.svg)](https://github.com/Bboy9090/Bobbys-Workshop-/releases)
 
-> **Note**: This is a complete application repository, not an umbrella or meta-repo. For specialized components like BootForge USB hardware layer, see related repositories.
+---
+
+## What Runs From This Repository
+
+**Bobby's Workshop** is the complete repair application. When you clone and run this repository, you get:
+
+- ✅ The full desktop application (React UI + backend services)
+- ✅ Device detection and management
+- ✅ Firmware flashing tools integration
+- ✅ Phoenix Core decision engine (embedded)
+- ✅ BootForge USB layer (embedded as a library)
+
+**What this is NOT:**
+- ❌ An umbrella platform containing separate projects
+- ❌ A collection of links to other repositories
+- ❌ A meta-repo or documentation hub
+
+This repository **IS the software**. Everything else (Phoenix Core, BootForge) are either embedded components or separate libraries that we integrate.
 
 ---
 
@@ -18,29 +35,21 @@ Phoenix Forge is a complete device repair and management platform for profession
 
 ### Device Management
 - **Real-time Detection** - Automatic USB device enumeration and identification
-- **Multi-platform Support** - Android, iOS, and various OEM devices
+- **Multi-Device Support** - Android, iOS, and various OEM devices
 - **Batch Operations** - Handle multiple devices simultaneously
+- **Device History** - Track device state and previous repair operations
 
-### Flash Forge
-- **Universal Flashing** - Support for fastboot, Odin, and custom protocols
-- **Firmware Management** - Integrated firmware search and verification
-- **Progress Monitoring** - Real-time flash progress with WebSocket updates
+### Firmware Flashing
+- **Universal Protocols** - Support for Fastboot, Odin, and custom flashing tools
+- **Firmware Verification** - Integrated firmware search and integrity checks
+- **Progress Monitoring** - Real-time flash progress with detailed status updates
+- **Safety Checks** - Pre-flash validation to prevent device bricking
 
-### Phoenix Core
-- **Decision Engine** - Intelligent device state analysis and repair routing
-- **State Memory** - Track device history and previous operations
+### Intelligent Workflows
+- **Decision Engine** - Smart device state analysis and repair routing
+- **Workflow Automation** - Step-by-step guided repair processes
 - **Authority System** - Role-based access for sensitive operations
-
-### Codex Modules
-- **Sonic Codex** - Audio and signal intelligence analysis
-- **Ghost Codex** - Metadata hygiene and identity shielding
-- **Pandora Codex** - Hardware state research and routing
-
-### The Forge (Secret Rooms)
-- **Root Vault** - Secure root operations
-- **Bypass Laboratory** - Advanced bypass techniques
-- **Jailbreak Sanctum** - iOS jailbreak workflows
-- **Shadow Archive** - Secure data management
+- **Audit Trail** - Complete logging of all operations for compliance
 
 ---
 
@@ -56,38 +65,64 @@ Phoenix Forge is a complete device repair and management platform for profession
 
 ---
 
-## Architecture
+## Platform Diagram
+
+Bobby's Workshop is the complete repair software that integrates all components:
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                  PHOENIX FORGE                      │
-│              (React 19 + TypeScript)                │
-└──────────────────┬──────────────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────────────┐
-│                 Phoenix Core                        │
-│           (Decision Engine + State Memory)          │
-└──────────────────┬──────────────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────────────┐
-│              Backend Services                       │
-│     Node.js/Express + Python/FastAPI                │
-└──────────────────┬──────────────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────────────┐
-│          libbootforge (Bridge Layer)                │
-│         Cross-platform Hardware Interface           │
-└──────────────────┬──────────────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────────────┐
-│           BootForge USB (Rust)                      │
-│     Low-level USB Device Communication              │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│           BOBBY'S WORKSHOP                       │
+│        (The Complete Repair Software)            │
+│                                                  │
+│  ┌────────────────────────────────────────────┐ │
+│  │     Phoenix Forge UI                       │ │
+│  │  (React 19 + Tailwind CSS v4)              │ │
+│  └──────────────┬─────────────────────────────┘ │
+│                 │                                │
+│                 ▼                                │
+│  ┌────────────────────────────────────────────┐ │
+│  │     Phoenix Core                           │ │
+│  │  (Decision Engine + State Memory)          │ │
+│  │  - Device routing                          │ │
+│  │  - Workflow orchestration                  │ │
+│  │  - Authorization system                    │ │
+│  └──────────────┬─────────────────────────────┘ │
+│                 │                                │
+│                 ▼                                │
+│  ┌────────────────────────────────────────────┐ │
+│  │     Backend Services                       │ │
+│  │  - Node.js/Express API                     │ │
+│  │  - Python/FastAPI (Secret Rooms)           │ │
+│  │  - WebSocket real-time updates             │ │
+│  └──────────────┬─────────────────────────────┘ │
+│                 │                                │
+│                 ▼                                │
+│  ┌────────────────────────────────────────────┐ │
+│  │     BootForge USB (Rust Library)           │ │
+│  │  - Device detection                        │ │
+│  │  - USB communication                       │ │
+│  │  - Platform classification                 │ │
+│  └────────────────────────────────────────────┘ │
+│                                                  │
+└──────────────────────────────────────────────────┘
+                       ↓
+        [External Hardware/Tools]
+         - ADB (Android Debug Bridge)
+         - Fastboot (Android)
+         - libimobiledevice (iOS)
+         - Odin/Heimdall (Samsung)
+
 ```
+
+**Component Relationship:**
+
+- **Bobby's Workshop** = The complete repair software (this repository)
+- **Phoenix Core** = Embedded decision engine within Bobby's Workshop
+- **BootForge** = Embedded Rust library for USB device detection
+
+**What You Install:** Bobby's Workshop desktop application
+**What You Run:** The complete repair software with all components integrated
+**External Dependencies:** ADB, Fastboot, and other platform-specific tools (installed separately)
 
 ---
 
@@ -229,4 +264,14 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 ---
 
-**Phoenix Forge v5.0.0** - *Rise from the Ashes*
+## Summary
+
+**Bobby's Workshop** is the complete device repair software, not an umbrella platform.
+
+- This repository = The working repair application
+- Phoenix Core = Embedded decision engine
+- BootForge = Embedded USB library
+
+Clone, build, and run this repository to get the full repair software with all components integrated.
+
+**Bobby's Workshop v5.0.0** - *Rise from the Ashes*
