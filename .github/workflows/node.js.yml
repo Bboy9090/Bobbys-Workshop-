@@ -2,9 +2,12 @@ name: Node.js CI
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "main-tool-kit" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "main-tool-kit" ]
+
+permissions:
+  contents: read
 
 jobs:
   build:

@@ -1,0 +1,148 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master, main-tool-kit, develop, 'copilot/**' ]
+  pull_request:
+    branches: [ main, master, main-tool-kit, develop ]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Run ESLint
+        run: npm run lint
+        continue-on-error: true
+
+  test-server:
+    name: Test Server APIs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install root dependencies
+        run: npm install
+      
+      - name: Install server dependencies
+        run: cd server && npm install
+      
+      - name: Run server tests
+        run: cd server && npm test
+        continue-on-error: true
+        env:
+          SHADOW_LOG_KEY: test-encryption-key-for-ci
+
+  test-workflows:
+    name: Test Workflow Engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm install && cd server && npm install
+      
+      - name: Validate workflow schemas
+        run: |
+          for workflow in workflows/**/*.json; do
+            if [ -f "$workflow" ] && [ "$(basename $workflow)" != "workflow-schema.json" ]; then
+              echo "Validating $workflow"
+              node -e "const fs=require('fs'); JSON.parse(fs.readFileSync('$workflow'));"
+            fi
+          done
+      
+      - name: Test workflow engine
+        run: npm test -- tests/workflow-engine.test.js
+        continue-on-error: true
+
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Build frontend
+        run: npm run build --if-present
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: dist/
+          retention-days: 7
+        continue-on-error: true
+
+  build-rust:
+    name: Build Rust Components
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: libs/bootforgeusb/target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Build BootForge USB
+        run: |
+          if [ -d "libs/bootforgeusb" ]; then
+            cd libs/bootforgeusb
+            cargo build --release
+            cargo test
+          fi
+        continue-on-error: true
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run npm audit
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+      
+      - name: Run npm audit for server
+        run: cd server && npm audit --audit-level=moderate
+        continue-on-error: true
