@@ -1,0 +1,31 @@
+# FastAPI Backend for Secret Rooms
+# Sonic Codex, Ghost Codex, Pandora Codex
+
+# Core FastAPI
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.22
+pydantic==2.5.0
+
+# Sonic Codex - Audio Processing
+# Note: Install system dependencies first (ffmpeg, portaudio)
+# whisper==1.1.10  # Uncomment when OpenAI Whisper is needed
+# faster-whisper==0.10.0  # Alternative faster implementation
+# pyaudio==0.2.14  # For live audio capture
+# noisereduce==3.0.0  # For audio enhancement
+# librosa==0.10.1  # Audio processing
+# soundfile==0.12.1  # Audio file I/O
+
+# Ghost Codex - Metadata & Privacy
+Pillow==10.3.0  # Image metadata (EXIF)
+exifread==3.0.0  # EXIF data extraction
+python-magic==0.4.27  # File type detection (requires system libmagic)
+
+# Pandora Codex - iOS Tools
+# Note: These require system tools (libimobiledevice, checkra1n, etc.)
+# pymobiledevice3==3.0.0  # iOS device communication (requires libimobiledevice)
+# pyimg4==1.0.0  # iOS image4 parsing (for DFU mode)
+
+# Utilities
+requests==2.32.4  # HTTP requests
+aiofiles==23.2.1  # Async file operations
