@@ -16,6 +16,7 @@ This document tracks recommendations for organizing the GitHub portfolio. Based 
 - ✅ Clarified Phoenix Core and BootForge are embedded components
 - ✅ Enhanced README opening paragraph with clear role definition
 - ✅ Added screenshots section (placeholder ready)
+- ✅ Added `docs/images/screenshots/.gitkeep` with capture guidelines so the folder is tracked
 - ✅ Added Releases section
 - ✅ Added build status badges
 
