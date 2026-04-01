@@ -5,9 +5,9 @@ permissions:
 
 on:
   push:
-    branches: [ main, develop, 'copilot/**' ]
+    branches: [ main, master, main-tool-kit, develop, 'copilot/**' ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, master, main-tool-kit, develop ]
 
 jobs:
   lint:
