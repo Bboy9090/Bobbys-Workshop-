@@ -23,153 +23,341 @@ const clients = new Set();
 const correlationClients = new Set();
 const analyticsClients = new Set();
 
+/** @type {Map<string, { state: string, deviceMode: string }>} */
+const lastAdbDeviceSnapshot = new Map();
+let devicePollTimer = null;
+const DEVICE_POLL_MS = 3000;
+
+function safeExec(cmd) {
+  try {
+    return execSync(cmd, { encoding: "utf-8", timeout: 5000 }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function commandExists(cmd) {
+  try {
+    execSync(`command -v ${cmd}`, { stdio: "ignore", timeout: 2000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Full ADB device list (same shape as /api/adb/devices). Empty if adb missing.
+ */
+function getAdbDevicesDetailed() {
+  if (!commandExists("adb")) {
+    return [];
+  }
+  const devicesRaw = safeExec("adb devices -l");
+  const lines = devicesRaw?.split('\n').slice(1).filter(l => l.trim()) || [];
+
+  return lines.map(line => {
+    const parts = line.trim().split(/\s+/);
+    const serial = parts[0];
+    const state = parts[1];
+    const infoStr = parts.slice(2).join(' ');
+
+    const product = infoStr.match(/product:(\S+)/)?.[1] || null;
+    const model = infoStr.match(/model:(\S+)/)?.[1] || null;
+    const device = infoStr.match(/device:(\S+)/)?.[1] || null;
+    const transport = infoStr.match(/transport_id:(\d+)/)?.[1] || null;
+
+    let deviceMode = 'unknown';
+    let bootloaderMode = null;
+    let deviceProperties = {};
+
+    if (state === 'device') {
+      deviceMode = 'android_os';
+      const props = safeExec(`adb -s ${serial} shell getprop 2>/dev/null`);
+      if (props) {
+        const manufacturer = props.match(/\[ro\.product\.manufacturer\]:\s*\[(.*?)\]/)?.[1];
+        const brand = props.match(/\[ro\.product\.brand\]:\s*\[(.*?)\]/)?.[1];
+        const modelProp = props.match(/\[ro\.product\.model\]:\s*\[(.*?)\]/)?.[1];
+        const androidVersion = props.match(/\[ro\.build\.version\.release\]:\s*\[(.*?)\]/)?.[1];
+        const sdkVersion = props.match(/\[ro\.build\.version\.sdk\]:\s*\[(.*?)\]/)?.[1];
+        const buildId = props.match(/\[ro\.build\.id\]:\s*\[(.*?)\]/)?.[1];
+        const bootloader = props.match(/\[ro\.boot\.bootloader\]:\s*\[(.*?)\]/)?.[1];
+        const secureMode = props.match(/\[ro\.secure\]:\s*\[(.*?)\]/)?.[1];
+        const debuggable = props.match(/\[ro\.debuggable\]:\s*\[(.*?)\]/)?.[1];
+
+        deviceProperties = {
+          manufacturer,
+          brand,
+          model: modelProp,
+          androidVersion,
+          sdkVersion,
+          buildId,
+          bootloader,
+          secure: secureMode === '1',
+          debuggable: debuggable === '1'
+        };
+      }
+    } else if (state === 'recovery') {
+      deviceMode = 'recovery';
+    } else if (state === 'sideload') {
+      deviceMode = 'sideload';
+    } else if (state === 'unauthorized') {
+      deviceMode = 'unauthorized';
+    } else if (state === 'offline') {
+      deviceMode = 'offline';
+    } else if (state === 'bootloader') {
+      deviceMode = 'bootloader';
+    }
+
+    return {
+      serial,
+      state,
+      deviceMode,
+      bootloaderMode,
+      product,
+      model,
+      device,
+      transportId: transport,
+      properties: deviceProperties,
+      info: infoStr
+    };
+  }).filter(d => d.serial && d.state);
+}
+
+function displayModeFromAdbRecord(rec) {
+  if (rec.state === 'device') return 'Normal OS (Confirmed)';
+  if (rec.state === 'unauthorized') return 'USB debugging — authorize device';
+  if (rec.state === 'offline') return 'Offline';
+  if (rec.state === 'recovery') return 'Recovery';
+  if (rec.state === 'bootloader') return 'Bootloader / Fastboot';
+  if (rec.state === 'sideload') return 'Sideload';
+  return rec.deviceMode || 'unknown';
+}
+
+function correlationBadgeForState(state) {
+  if (state === 'device') return 'CORRELATED';
+  if (state === 'unauthorized') return 'UNCONFIRMED';
+  if (state === 'offline') return 'UNCONFIRMED';
+  return 'LIKELY';
+}
+
+function buildDeviceEventPayload(rec, eventType) {
+  const displayName =
+    rec.properties?.model || rec.model || rec.serial;
+  const confidence = rec.state === 'device' ? 1 : rec.state === 'unauthorized' ? 0.4 : 0.6;
+  return {
+    type: eventType,
+    device_uid: rec.serial,
+    platform_hint: 'android',
+    mode: displayModeFromAdbRecord(rec),
+    confidence,
+    timestamp: Date.now(),
+    display_name: displayName,
+    matched_tool_ids: [rec.serial, `adb-${rec.serial}`].filter(Boolean),
+    correlation_badge: correlationBadgeForState(rec.state),
+    correlation_notes:
+      rec.state === 'device'
+        ? ['ADB serial correlated; device authorized']
+        : rec.state === 'unauthorized'
+          ? ['Authorize USB debugging on the device to complete handshake']
+          : []
+  };
+}
+
+function buildCorrelationDeviceEntry(rec) {
+  const badge = correlationBadgeForState(rec.state);
+  const notes =
+    rec.state === 'device'
+      ? ['Per-device correlation present (ADB serial).']
+      : rec.state === 'unauthorized'
+        ? ['Device visible over USB; authorization pending.']
+        : ['ADB listed this transport; mode not fully confirmed.'];
+  return {
+    id: rec.serial,
+    serial: rec.serial,
+    platform: 'android',
+    mode: rec.deviceMode,
+    confidence: rec.state === 'device' ? 0.98 : rec.state === 'unauthorized' ? 0.35 : 0.72,
+    correlationBadge: badge,
+    matchedIds: [rec.serial, `adb-${rec.serial}`],
+    correlationNotes: notes,
+    vendorId: 0x18d1,
+    productId: 0x4ee7
+  };
+}
+
+function buildAnalyticsMetrics(rec) {
+  const name = rec.properties?.model || rec.model || rec.serial;
+  const online = rec.state === 'device';
+  return {
+    deviceId: rec.serial,
+    deviceName: name,
+    platform: 'android',
+    status: online ? 'online' : rec.state === 'unauthorized' ? 'busy' : 'offline',
+    cpuUsage: online ? 0 : 0,
+    memoryUsage: online ? 0 : 0,
+    storageUsage: online ? 0 : 0,
+    temperature: online ? 0 : 0,
+    batteryLevel: undefined,
+    networkLatency: online ? 0 : 0,
+    workflows: { running: 0, completed: 0, failed: 0 },
+    adbState: rec.state,
+    deviceMode: rec.deviceMode
+  };
+}
+
+function pollAdbDevicesAndBroadcast() {
+  const list = getAdbDevicesDetailed();
+  const current = new Map(list.map(d => [d.serial, { state: d.state, deviceMode: d.deviceMode }]));
+
+  for (const serial of lastAdbDeviceSnapshot.keys()) {
+    if (!current.has(serial)) {
+      const payload = JSON.stringify({
+        type: 'disconnected',
+        device_uid: serial,
+        timestamp: Date.now()
+      });
+      for (const ws of clients) {
+        if (ws.readyState === ws.OPEN) ws.send(payload);
+      }
+      for (const ws of correlationClients) {
+        if (ws.readyState === ws.OPEN) {
+          ws.send(JSON.stringify({ type: 'device_disconnected', deviceId: serial, timestamp: Date.now() }));
+        }
+      }
+      for (const ws of analyticsClients) {
+        if (ws.readyState === ws.OPEN) {
+          ws.send(JSON.stringify({ type: 'device_disconnected', deviceId: serial, timestamp: Date.now() }));
+        }
+      }
+    }
+  }
+
+  for (const rec of list) {
+    const prev = lastAdbDeviceSnapshot.get(rec.serial);
+    const changed = !prev || prev.state !== rec.state || prev.deviceMode !== rec.deviceMode;
+    if (changed) {
+      const ev = buildDeviceEventPayload(rec, 'connected');
+      const payload = JSON.stringify(ev);
+      for (const ws of clients) {
+        if (ws.readyState === ws.OPEN) ws.send(payload);
+      }
+      for (const ws of correlationClients) {
+        if (ws.readyState === ws.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'device_connected',
+            deviceId: rec.serial,
+            device: buildCorrelationDeviceEntry(rec),
+            timestamp: Date.now()
+          }));
+        }
+      }
+      const metrics = buildAnalyticsMetrics(rec);
+      for (const ws of analyticsClients) {
+        if (ws.readyState === ws.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'device_metrics',
+            deviceId: rec.serial,
+            metrics
+          }));
+        }
+      }
+    }
+  }
+
+  lastAdbDeviceSnapshot.clear();
+  for (const [k, v] of current) lastAdbDeviceSnapshot.set(k, v);
+}
+
+function ensureDevicePolling() {
+  if (devicePollTimer) return;
+  devicePollTimer = setInterval(() => {
+    const any =
+      clients.size > 0 || correlationClients.size > 0 || analyticsClients.size > 0;
+    if (!any) {
+      clearInterval(devicePollTimer);
+      devicePollTimer = null;
+      lastAdbDeviceSnapshot.clear();
+      return;
+    }
+    if (!commandExists('adb')) {
+      return;
+    }
+    pollAdbDevicesAndBroadcast();
+  }, DEVICE_POLL_MS);
+}
+
+function sendDeviceEventsHandshake(ws) {
+  const adbOk = commandExists('adb');
+  ws.send(JSON.stringify({
+    type: 'handshake',
+    server_ready: true,
+    adb_available: adbOk,
+    poll_interval_ms: DEVICE_POLL_MS,
+    timestamp: Date.now()
+  }));
+  if (!adbOk) {
+    ws.send(JSON.stringify({
+      type: 'error',
+      code: 'adb_unavailable',
+      message: 'ADB not installed or not on PATH; connect Android devices with platform tools installed.',
+      timestamp: Date.now()
+    }));
+    return;
+  }
+  const list = getAdbDevicesDetailed();
+  for (const rec of list) {
+    ws.send(JSON.stringify(buildDeviceEventPayload(rec, 'connected')));
+  }
+}
+
 wss.on('connection', (ws) => {
   console.log('WebSocket client connected (device-events)');
   clients.add(ws);
-  
-  ws.send(JSON.stringify({
-    type: 'connected',
-    device_uid: 'demo-device-001',
-    platform_hint: 'android',
-    mode: 'Normal OS (Confirmed)',
-    confidence: 0.95,
-    timestamp: Date.now(),
-    display_name: 'Demo Android Device',
-    matched_tool_ids: ['ABC123XYZ'],
-    correlation_badge: 'CORRELATED',
-    correlation_notes: ['Per-device correlation present']
-  }));
-
-  const interval = setInterval(() => {
-    if (ws.readyState === ws.OPEN) {
-      const isConnect = Math.random() > 0.5;
-      const platforms = ['android', 'ios', 'unknown'];
-      const platform = platforms[Math.floor(Math.random() * platforms.length)];
-      const deviceId = `device-${Math.random().toString(36).substr(2, 9)}`;
-      
-      ws.send(JSON.stringify({
-        type: isConnect ? 'connected' : 'disconnected',
-        device_uid: deviceId,
-        platform_hint: platform,
-        mode: isConnect ? 'Normal OS (Confirmed)' : 'Disconnected',
-        confidence: 0.85 + Math.random() * 0.15,
-        timestamp: Date.now(),
-        display_name: `${platform.charAt(0).toUpperCase() + platform.slice(1)} Device`,
-        matched_tool_ids: Math.random() > 0.5 ? [deviceId] : [],
-        correlation_badge: Math.random() > 0.5 ? 'CORRELATED' : 'LIKELY'
-      }));
-    }
-  }, 8000);
+  sendDeviceEventsHandshake(ws);
+  ensureDevicePolling();
 
   ws.on('close', () => {
     console.log('WebSocket client disconnected (device-events)');
     clients.delete(ws);
-    clearInterval(interval);
   });
 
   ws.on('error', (error) => {
     console.error('WebSocket error:', error);
     clients.delete(ws);
-    clearInterval(interval);
   });
 });
 
 wssCorrelation.on('connection', (ws) => {
   console.log('WebSocket client connected (correlation tracking)');
   correlationClients.add(ws);
-  
+
+  const adbOk = commandExists('adb');
   ws.send(JSON.stringify({
-    type: 'batch_update',
-    devices: [
-      {
-        id: 'demo-android-001',
-        serial: 'ABC123XYZ',
-        platform: 'android',
-        mode: 'confirmed_android_os',
-        confidence: 0.95,
-        correlationBadge: 'CORRELATED',
-        matchedIds: ['ABC123XYZ', 'adb-ABC123XYZ'],
-        correlationNotes: ['Per-device correlation present (matched tool ID(s)).'],
-        vendorId: 0x18d1,
-        productId: 0x4ee7
-      }
-    ],
+    type: 'handshake',
+    server_ready: true,
+    adb_available: adbOk,
+    poll_interval_ms: DEVICE_POLL_MS,
     timestamp: Date.now()
   }));
 
-  const interval = setInterval(() => {
-    if (ws.readyState === ws.OPEN) {
-      const eventType = Math.random();
-      const platforms = ['android', 'ios'];
-      const platform = platforms[Math.floor(Math.random() * platforms.length)];
-      const deviceId = `device-${Math.random().toString(36).substr(2, 9)}`;
-      const confidence = 0.75 + Math.random() * 0.25;
-      const hasMatchedIds = Math.random() > 0.4;
-      
-      const badges = ['CORRELATED', 'CORRELATED (WEAK)', 'SYSTEM-CONFIRMED', 'LIKELY', 'UNCONFIRMED'];
-      let badge;
-      let matchedIds = [];
-      let notes = [];
-      
-      if (hasMatchedIds && confidence >= 0.90) {
-        badge = 'CORRELATED';
-        matchedIds = [deviceId, `${platform}-${deviceId}`];
-        notes = ['Per-device correlation present (matched tool ID(s)).'];
-      } else if (hasMatchedIds) {
-        badge = 'CORRELATED (WEAK)';
-        matchedIds = [deviceId];
-        notes = ['Matched tool ID(s) present, but mode not strongly confirmed.'];
-      } else if (confidence >= 0.90) {
-        badge = 'SYSTEM-CONFIRMED';
-        notes = ['System-level confirmation exists, but not mapped to this specific USB record.'];
-      } else if (confidence >= 0.75) {
-        badge = 'LIKELY';
-        notes = [];
-      } else {
-        badge = 'UNCONFIRMED';
-        notes = [];
-      }
-      
-      if (eventType < 0.33) {
-        ws.send(JSON.stringify({
-          type: 'device_connected',
-          deviceId: deviceId,
-          device: {
-            id: deviceId,
-            serial: Math.random() > 0.3 ? deviceId.substring(0, 10).toUpperCase() : undefined,
-            platform: platform,
-            mode: `confirmed_${platform}_os`,
-            confidence: confidence,
-            correlationBadge: badge,
-            matchedIds: matchedIds,
-            correlationNotes: notes,
-            vendorId: platform === 'android' ? 0x18d1 : 0x05ac,
-            productId: platform === 'android' ? 0x4ee7 : 0x12a8
-          },
-          timestamp: Date.now()
-        }));
-      } else if (eventType < 0.66) {
-        ws.send(JSON.stringify({
-          type: 'correlation_update',
-          deviceId: deviceId,
-          device: {
-            correlationBadge: badge,
-            matchedIds: matchedIds,
-            confidence: confidence,
-            correlationNotes: notes
-          },
-          timestamp: Date.now()
-        }));
-      } else {
-        ws.send(JSON.stringify({
-          type: 'device_disconnected',
-          deviceId: deviceId,
-          timestamp: Date.now()
-        }));
-      }
-    }
-  }, 5000);
-  
+  if (adbOk) {
+    const list = getAdbDevicesDetailed();
+    ws.send(JSON.stringify({
+      type: 'batch_update',
+      devices: list.map(buildCorrelationDeviceEntry),
+      timestamp: Date.now()
+    }));
+  } else {
+    ws.send(JSON.stringify({
+      type: 'batch_update',
+      devices: [],
+      timestamp: Date.now(),
+      note: 'ADB not available; no devices to correlate.'
+    }));
+  }
+
+  ensureDevicePolling();
+
   ws.on('message', (data) => {
     try {
       const message = JSON.parse(data);
@@ -187,110 +375,50 @@ wssCorrelation.on('connection', (ws) => {
   ws.on('close', () => {
     console.log('WebSocket client disconnected (correlation tracking)');
     correlationClients.delete(ws);
-    clearInterval(interval);
   });
 
   ws.on('error', (error) => {
     console.error('WebSocket error (correlation):', error);
     correlationClients.delete(ws);
-    clearInterval(interval);
   });
 });
 
-// Analytics WebSocket for Live Analytics Dashboard
+// Analytics WebSocket for Live Analytics Dashboard (ADB-backed device list; no fabricated metrics)
 wssAnalytics.on('connection', (ws) => {
   console.log('WebSocket client connected (live analytics)');
   analyticsClients.add(ws);
 
-  // Send initial mock data
-  const mockDevices = [
-    {
-      deviceId: 'device-001',
-      deviceName: 'Android Test Device',
-      platform: 'android',
-      status: 'online',
-      cpuUsage: 45,
-      memoryUsage: 62,
-      storageUsage: 78,
-      temperature: 42,
-      batteryLevel: 85,
-      networkLatency: 15,
-      workflows: { running: 1, completed: 5, failed: 0 }
-    },
-    {
-      deviceId: 'device-002',
-      deviceName: 'iOS Test Device',
-      platform: 'ios',
-      status: 'online',
-      cpuUsage: 32,
-      memoryUsage: 54,
-      storageUsage: 65,
-      temperature: 38,
-      batteryLevel: 92,
-      networkLatency: 12,
-      workflows: { running: 0, completed: 3, failed: 0 }
+  const adbOk = commandExists('adb');
+  ws.send(JSON.stringify({
+    type: 'handshake',
+    server_ready: true,
+    adb_available: adbOk,
+    poll_interval_ms: DEVICE_POLL_MS,
+    timestamp: Date.now()
+  }));
+
+  if (adbOk) {
+    const list = getAdbDevicesDetailed();
+    for (const rec of list) {
+      const metrics = buildAnalyticsMetrics(rec);
+      ws.send(JSON.stringify({
+        type: 'device_metrics',
+        deviceId: rec.serial,
+        metrics
+      }));
     }
-  ];
+  }
 
-  mockDevices.forEach(device => {
-    ws.send(JSON.stringify({
-      type: 'device_metrics',
-      deviceId: device.deviceId,
-      metrics: device
-    }));
-  });
-
-  // Send periodic updates
-  const analyticsInterval = setInterval(() => {
-    if (ws.readyState === ws.OPEN) {
-      mockDevices.forEach(device => {
-        // Simulate changing metrics
-        const updatedMetrics = {
-          ...device,
-          cpuUsage: Math.max(5, Math.min(95, device.cpuUsage + (Math.random() - 0.5) * 10)),
-          memoryUsage: Math.max(10, Math.min(90, device.memoryUsage + (Math.random() - 0.5) * 5)),
-          temperature: Math.max(30, Math.min(70, device.temperature + (Math.random() - 0.5) * 2)),
-          networkLatency: Math.max(5, Math.min(100, device.networkLatency + (Math.random() - 0.5) * 10))
-        };
-
-        ws.send(JSON.stringify({
-          type: 'device_metrics',
-          deviceId: device.deviceId,
-          metrics: updatedMetrics
-        }));
-
-        // Update stored values for next iteration
-        Object.assign(device, updatedMetrics);
-      });
-
-      // Simulate workflow events occasionally
-      if (Math.random() > 0.7) {
-        const device = mockDevices[Math.floor(Math.random() * mockDevices.length)];
-        ws.send(JSON.stringify({
-          type: 'workflow_event',
-          event: {
-            id: `workflow-${Date.now()}`,
-            workflowName: ['ADB Diagnostics', 'Battery Health Check', 'Storage Analysis'][Math.floor(Math.random() * 3)],
-            deviceId: device.deviceId,
-            status: ['started', 'running', 'completed'][Math.floor(Math.random() * 3)],
-            progress: Math.floor(Math.random() * 100),
-            currentStep: ['Initializing', 'Running diagnostics', 'Collecting data', 'Analyzing results'][Math.floor(Math.random() * 4)]
-          }
-        }));
-      }
-    }
-  }, 2000); // Update every 2 seconds
+  ensureDevicePolling();
 
   ws.on('close', () => {
     console.log('WebSocket client disconnected (live analytics)');
     analyticsClients.delete(ws);
-    clearInterval(analyticsInterval);
   });
 
   ws.on('error', (error) => {
     console.error('Analytics WebSocket error:', error);
     analyticsClients.delete(ws);
-    clearInterval(analyticsInterval);
   });
 });
 
@@ -304,23 +432,6 @@ function broadcastCorrelation(message) {
     if (client.readyState === client.OPEN) {
       client.send(data);
     }
-  }
-}
-
-function safeExec(cmd) {
-  try {
-    return execSync(cmd, { encoding: "utf-8", timeout: 5000 }).trim();
-  } catch {
-    return null;
-  }
-}
-
-function commandExists(cmd) {
-  try {
-    execSync(`command -v ${cmd}`, { stdio: "ignore", timeout: 2000 });
-    return true;
-  } catch {
-    return false;
   }
 }
 
@@ -481,77 +592,7 @@ app.get('/api/adb/devices', (req, res) => {
   if (!commandExists("adb")) {
     return res.status(404).json({ error: "ADB not installed" });
   }
-  
-  const devicesRaw = safeExec("adb devices -l");
-  const lines = devicesRaw?.split('\n').slice(1).filter(l => l.trim()) || [];
-  
-  const devices = lines.map(line => {
-    const parts = line.trim().split(/\s+/);
-    const serial = parts[0];
-    const state = parts[1];
-    const infoStr = parts.slice(2).join(' ');
-    
-    const product = infoStr.match(/product:(\S+)/)?.[1] || null;
-    const model = infoStr.match(/model:(\S+)/)?.[1] || null;
-    const device = infoStr.match(/device:(\S+)/)?.[1] || null;
-    const transport = infoStr.match(/transport_id:(\d+)/)?.[1] || null;
-    
-    let deviceMode = 'unknown';
-    let bootloaderMode = null;
-    let deviceProperties = {};
-    
-    if (state === 'device') {
-      deviceMode = 'android_os';
-      const props = safeExec(`adb -s ${serial} shell getprop 2>/dev/null`);
-      if (props) {
-        const manufacturer = props.match(/\[ro\.product\.manufacturer\]:\s*\[(.*?)\]/)?.[1];
-        const brand = props.match(/\[ro\.product\.brand\]:\s*\[(.*?)\]/)?.[1];
-        const modelProp = props.match(/\[ro\.product\.model\]:\s*\[(.*?)\]/)?.[1];
-        const androidVersion = props.match(/\[ro\.build\.version\.release\]:\s*\[(.*?)\]/)?.[1];
-        const sdkVersion = props.match(/\[ro\.build\.version\.sdk\]:\s*\[(.*?)\]/)?.[1];
-        const buildId = props.match(/\[ro\.build\.id\]:\s*\[(.*?)\]/)?.[1];
-        const bootloader = props.match(/\[ro\.boot\.bootloader\]:\s*\[(.*?)\]/)?.[1];
-        const secureMode = props.match(/\[ro\.secure\]:\s*\[(.*?)\]/)?.[1];
-        const debuggable = props.match(/\[ro\.debuggable\]:\s*\[(.*?)\]/)?.[1];
-        
-        deviceProperties = {
-          manufacturer,
-          brand,
-          model: modelProp,
-          androidVersion,
-          sdkVersion,
-          buildId,
-          bootloader,
-          secure: secureMode === '1',
-          debuggable: debuggable === '1'
-        };
-      }
-    } else if (state === 'recovery') {
-      deviceMode = 'recovery';
-    } else if (state === 'sideload') {
-      deviceMode = 'sideload';
-    } else if (state === 'unauthorized') {
-      deviceMode = 'unauthorized';
-    } else if (state === 'offline') {
-      deviceMode = 'offline';
-    } else if (state === 'bootloader') {
-      deviceMode = 'bootloader';
-    }
-    
-    return {
-      serial,
-      state,
-      deviceMode,
-      bootloaderMode,
-      product,
-      model,
-      device,
-      transportId: transport,
-      properties: deviceProperties,
-      info: infoStr
-    };
-  }).filter(d => d.serial && d.state);
-  
+  const devices = getAdbDevicesDetailed();
   res.json({
     count: devices.length,
     devices,
