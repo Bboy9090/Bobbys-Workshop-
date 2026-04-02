@@ -39,9 +39,15 @@ interface DeviceMetrics {
     completed: number;
     failed: number;
   };
-  /** Present when metrics come from ADB (not simulated). */
+  /** android: ADB list state; ios: omitted */
   adbState?: string;
   deviceMode?: string;
+  /** adb | ios from server unified stream */
+  transport?: 'adb' | 'ios';
+  iosUdid?: string;
+  adbSerial?: string;
+  iosState?: string;
+  metricsNote?: string;
 }
 
 interface WorkflowEvent {
@@ -126,7 +132,25 @@ export function LiveAnalyticsDashboard() {
           return updated;
         });
 
-        if (data.metrics?.adbState === undefined) {
+        if (
+          data.metrics?.transport === 'adb' &&
+          data.metrics?.adbState === 'device'
+        ) {
+          setHistoricalData(prev => {
+            const newData = [...prev, {
+              timestamp: new Date().toLocaleTimeString(),
+              cpu: data.metrics.cpuUsage,
+              memory: data.metrics.memoryUsage,
+              storage: data.metrics.storageUsage,
+              temperature: data.metrics.temperature
+            }];
+            return newData.slice(-30);
+          });
+        }
+        if (
+          !data.metrics?.transport &&
+          data.metrics?.adbState === undefined
+        ) {
           setHistoricalData(prev => {
             const newData = [...prev, {
               timestamp: new Date().toLocaleTimeString(),
@@ -158,10 +182,7 @@ export function LiveAnalyticsDashboard() {
       case 'device_disconnected':
         setDevices(prev => {
           const updated = new Map(prev);
-          const device = updated.get(data.deviceId);
-          if (device) {
-            updated.set(data.deviceId, { ...device, status: 'offline' });
-          }
+          updated.delete(data.deviceId);
           return updated;
         });
         break;
@@ -201,8 +222,15 @@ export function LiveAnalyticsDashboard() {
 
   const devicesArray = Array.from(devices.values());
   const selectedDeviceData = selectedDevice ? devices.get(selectedDevice) : null;
-  const adbBackedDevices =
-    devicesArray.length > 0 && devicesArray.every(d => d.adbState !== undefined);
+  const androidAuthorized = devicesArray.filter(
+    d => d.transport === 'adb' && d.adbState === 'device'
+  );
+  const androidAny = devicesArray.some(d => d.transport === 'adb');
+  const iosAny = devicesArray.some(d => d.transport === 'ios');
+  const useLiveAndroidCharts = androidAuthorized.length > 0;
+  const useAdbOverviewCards =
+    androidAny &&
+    devicesArray.every(d => d.transport !== 'adb' || d.adbState !== undefined);
 
   return (
     <div className="p-6 space-y-6">
@@ -242,6 +270,7 @@ export function LiveAnalyticsDashboard() {
                 <div className="text-2xl font-bold">{devicesArray.length}</div>
                 <p className="text-xs text-muted-foreground">
                   {devicesArray.filter(d => d.status === 'online').length} online
+                  {iosAny ? ' · includes iOS (USB) when idevice_id is installed' : ''}
                 </p>
               </CardContent>
             </Card>
@@ -264,18 +293,19 @@ export function LiveAnalyticsDashboard() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
-                  {adbBackedDevices ? 'ADB authorized' : 'Avg CPU Usage'}
+                  {useAdbOverviewCards ? 'Android authorized' : 'Avg CPU Usage'}
                 </CardTitle>
                 <Cpu className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                {adbBackedDevices ? (
+                {useAdbOverviewCards ? (
                   <>
                     <div className="text-2xl font-bold">
                       {devicesArray.filter(d => d.adbState === 'device').length}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      of {devicesArray.length} visible over ADB (USB debugging OK)
+                      of {devicesArray.filter(d => d.transport === 'adb').length} over ADB
+                      {iosAny ? ` · ${devicesArray.filter(d => d.transport === 'ios').length} iOS USB` : ''}
                     </p>
                   </>
                 ) : (
@@ -299,18 +329,18 @@ export function LiveAnalyticsDashboard() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
-                  {adbBackedDevices ? 'Needs authorization' : 'Avg Memory'}
+                  {useAdbOverviewCards ? 'Android needs auth' : 'Avg Memory'}
                 </CardTitle>
                 <HardDrive className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                {adbBackedDevices ? (
+                {useAdbOverviewCards ? (
                   <>
                     <div className="text-2xl font-bold">
-                      {devicesArray.filter(d => d.adbState === 'unauthorized').length}
+                      {devicesArray.filter(d => d.transport === 'adb' && d.adbState === 'unauthorized').length}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Tap &quot;Allow&quot; on the device to finish the USB handshake
+                      Tap &quot;Allow&quot; for USB debugging (Linux: udev can trigger faster refresh)
                     </p>
                   </>
                 ) : (
@@ -336,17 +366,29 @@ export function LiveAnalyticsDashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card>
               <CardHeader>
-                <CardTitle>{adbBackedDevices ? 'ADB live view' : 'CPU Usage Trend'}</CardTitle>
+                <CardTitle>{useLiveAndroidCharts ? 'CPU (sampled)' : 'CPU Usage Trend'}</CardTitle>
                 <CardDescription>
-                  {adbBackedDevices
-                    ? 'Device list and states come from adb; on-device CPU/memory requires a dedicated probe.'
-                    : 'Last 30 measurements'}
+                  {useLiveAndroidCharts
+                    ? 'From adb shell dumpsys (authorized devices); updates on each poll or USB hotplug (Linux udev).'
+                    : useAdbOverviewCards
+                      ? 'Connect and authorize an Android device for live CPU samples.'
+                      : 'Last 30 measurements'}
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {adbBackedDevices ? (
+                {useLiveAndroidCharts ? (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={historicalData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="timestamp" />
+                      <YAxis />
+                      <Tooltip />
+                      <Line type="monotone" dataKey="cpu" stroke="#2FD3FF" strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : useAdbOverviewCards ? (
                   <p className="text-sm text-muted-foreground py-8 text-center">
-                    Connected devices update every few seconds over the analytics socket. Open the Devices tab for serial and ADB state per unit.
+                    No authorized Android device yet — charts fill once ADB state is <code className="font-mono">device</code>.
                   </p>
                 ) : (
                   <ResponsiveContainer width="100%" height={200}>
@@ -364,20 +406,35 @@ export function LiveAnalyticsDashboard() {
 
             <Card>
               <CardHeader>
-                <CardTitle>{adbBackedDevices ? 'Multi-device handshakes' : 'Memory & Storage'}</CardTitle>
+                <CardTitle>{useLiveAndroidCharts ? 'Memory & storage' : useAdbOverviewCards ? 'USB device map' : 'Memory & Storage'}</CardTitle>
                 <CardDescription>
-                  {adbBackedDevices
-                    ? 'Each authorized device is correlated by ADB serial.'
-                    : 'Resource utilization'}
+                  {useLiveAndroidCharts
+                    ? 'RAM ratio from dumpsys meminfo; /data usage from df.'
+                    : useAdbOverviewCards
+                      ? 'Android ADB state and iOS UDIDs from the unified stream.'
+                      : 'Resource utilization'}
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {adbBackedDevices ? (
+                {useLiveAndroidCharts ? (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <AreaChart data={historicalData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="timestamp" />
+                      <YAxis />
+                      <Tooltip />
+                      <Area type="monotone" dataKey="memory" stackId="1" stroke="#2ECC71" fill="#2ECC71" fillOpacity={0.6} />
+                      <Area type="monotone" dataKey="storage" stackId="1" stroke="#F1C40F" fill="#F1C40F" fillOpacity={0.6} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : useAdbOverviewCards ? (
                   <ul className="text-sm space-y-2 py-4">
                     {devicesArray.map(d => (
                       <li key={d.deviceId} className="flex justify-between gap-2 border-b border-border/50 pb-2">
                         <span className="font-mono text-xs truncate">{d.deviceId}</span>
-                        <span className="text-muted-foreground shrink-0">{d.adbState}</span>
+                        <span className="text-muted-foreground shrink-0">
+                          {d.transport === 'ios' ? d.iosState ?? 'ios' : d.adbState}
+                        </span>
                       </li>
                     ))}
                   </ul>
@@ -423,8 +480,24 @@ export function LiveAnalyticsDashboard() {
                   <CardDescription className="font-mono text-xs">{device.deviceId}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {device.adbState !== undefined ? (
+                  {device.transport === 'ios' ? (
                     <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Transport</span>
+                        <span className="font-medium">iOS USB (libimobiledevice)</span>
+                      </div>
+                      {device.iosState && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">State</span>
+                          <span className="font-medium font-mono">{device.iosState}</span>
+                        </div>
+                      )}
+                      {device.metricsNote && (
+                        <p className="text-xs text-muted-foreground pt-1">{device.metricsNote}</p>
+                      )}
+                    </div>
+                  ) : device.transport === 'adb' && device.adbState !== undefined ? (
+                    <div className="space-y-3 text-sm">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">ADB state</span>
                         <span className="font-medium font-mono">{device.adbState}</span>
@@ -435,9 +508,44 @@ export function LiveAnalyticsDashboard() {
                           <span className="font-medium">{device.deviceMode}</span>
                         </div>
                       )}
-                      <p className="text-xs text-muted-foreground pt-1">
-                        Live serial from adb; trapdoor workflows use this id for skills.
-                      </p>
+                      {device.adbState === 'device' ? (
+                        <>
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">CPU (sampled)</span>
+                              <span>{device.cpuUsage}%</span>
+                            </div>
+                            <Progress value={device.cpuUsage} />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">Memory</span>
+                              <span>{device.memoryUsage}%</span>
+                            </div>
+                            <Progress value={device.memoryUsage} />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                            <div className="flex items-center gap-1">
+                              <HardDrive className="w-3 h-3" />
+                              <span>/data {device.storageUsage}%</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Zap className="w-3 h-3" />
+                              <span>{device.temperature}°C bat</span>
+                            </div>
+                            {device.batteryLevel !== undefined && (
+                              <div className="flex items-center gap-1 col-span-2">
+                                <Activity className="w-3 h-3" />
+                                <span>Battery {device.batteryLevel}%</span>
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Authorize USB debugging to stream CPU, memory, and thermal samples.
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <>
@@ -576,32 +684,98 @@ export function LiveAnalyticsDashboard() {
                 <CardHeader>
                   <CardTitle>Device Details: {selectedDeviceData.deviceName}</CardTitle>
                   <CardDescription>
-                    {selectedDeviceData.adbState !== undefined
-                      ? 'ADB correlation (live from server poll)'
-                      : 'Real-time metrics and performance data'}
+                    {selectedDeviceData.transport === 'ios'
+                      ? 'iOS USB (idevice_id / ideviceinfo)'
+                      : selectedDeviceData.transport === 'adb'
+                        ? 'Android ADB + sampled dumpsys metrics'
+                        : 'Real-time metrics and performance data'}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {selectedDeviceData.adbState !== undefined ? (
+                  {selectedDeviceData.transport === 'ios' ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                      <div className="space-y-1">
-                        <p className="text-muted-foreground">Serial</p>
-                        <p className="text-lg font-mono font-bold">{selectedDeviceData.deviceId}</p>
+                      <div className="space-y-1 md:col-span-2">
+                        <p className="text-muted-foreground">Unified id</p>
+                        <p className="text-lg font-mono font-bold break-all">{selectedDeviceData.deviceId}</p>
                       </div>
-                      <div className="space-y-1">
-                        <p className="text-muted-foreground">ADB list state</p>
-                        <p className="text-lg font-bold">{selectedDeviceData.adbState}</p>
-                      </div>
-                      {selectedDeviceData.deviceMode && (
-                        <div className="space-y-1 md:col-span-2">
-                          <p className="text-muted-foreground">Resolved mode</p>
-                          <p className="text-lg font-bold">{selectedDeviceData.deviceMode}</p>
-                        </div>
+                      {selectedDeviceData.metricsNote && (
+                        <p className="md:col-span-2 text-xs text-muted-foreground">
+                          {selectedDeviceData.metricsNote}
+                        </p>
                       )}
-                      <p className="md:col-span-2 text-xs text-muted-foreground">
-                        On-device CPU, memory, and thermal metrics are not streamed here yet; use trapdoor operations against this serial when the device is in the <code className="font-mono">device</code> state.
-                      </p>
                     </div>
+                  ) : selectedDeviceData.transport === 'adb' && selectedDeviceData.adbState !== undefined ? (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div className="space-y-1 md:col-span-2">
+                          <p className="text-muted-foreground">Unified id</p>
+                          <p className="text-lg font-mono font-bold break-all">{selectedDeviceData.deviceId}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-muted-foreground">ADB list state</p>
+                          <p className="text-lg font-bold">{selectedDeviceData.adbState}</p>
+                        </div>
+                        {selectedDeviceData.deviceMode && (
+                          <div className="space-y-1">
+                            <p className="text-muted-foreground">Mode</p>
+                            <p className="text-lg font-bold">{selectedDeviceData.deviceMode}</p>
+                          </div>
+                        )}
+                      </div>
+                      {selectedDeviceData.adbState === 'device' ? (
+                        <>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="space-y-1">
+                              <p className="text-sm text-muted-foreground">CPU (sampled)</p>
+                              <p className="text-2xl font-bold">{selectedDeviceData.cpuUsage}%</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-sm text-muted-foreground">Memory</p>
+                              <p className="text-2xl font-bold">{selectedDeviceData.memoryUsage}%</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-sm text-muted-foreground">/data used</p>
+                              <p className="text-2xl font-bold">{selectedDeviceData.storageUsage}%</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-sm text-muted-foreground">Battery temp</p>
+                              <p className="text-2xl font-bold">{selectedDeviceData.temperature}°C</p>
+                            </div>
+                          </div>
+                          {selectedDeviceData.batteryLevel !== undefined && (
+                            <p className="text-sm text-muted-foreground">
+                              Charge level: {selectedDeviceData.batteryLevel}%
+                            </p>
+                          )}
+                          <div>
+                            <h3 className="text-lg font-semibold mb-4">Recent samples</h3>
+                            <ResponsiveContainer width="100%" height={300}>
+                              <BarChart data={historicalData.slice(-10)}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="timestamp" />
+                                <YAxis />
+                                <Tooltip />
+                                <Legend />
+                                <Bar dataKey="cpu" fill="#2FD3FF" name="CPU %" />
+                                <Bar dataKey="memory" fill="#2ECC71" name="Memory %" />
+                                <Bar dataKey="temperature" fill="#E74C3C" name="Temp °C" />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Values come from <code className="font-mono">dumpsys cpuinfo</code>,{' '}
+                            <code className="font-mono">dumpsys meminfo</code>,{' '}
+                            <code className="font-mono">dumpsys battery</code>, and{' '}
+                            <code className="font-mono">df /data</code> — best-effort across OEMs.
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          CPU, memory, and thermal samples require ADB state <code className="font-mono">device</code>.
+                          Use trapdoor ops on the bare serial if you target a specific skill.
+                        </p>
+                      )}
+                    </>
                   ) : (
                     <>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

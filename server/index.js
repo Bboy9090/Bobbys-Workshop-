@@ -1,5 +1,5 @@
 import express from 'express';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
@@ -23,10 +23,14 @@ const clients = new Set();
 const correlationClients = new Set();
 const analyticsClients = new Set();
 
-/** @type {Map<string, { state: string, deviceMode: string }>} */
-const lastAdbDeviceSnapshot = new Map();
+/** @type {Map<string, { state: string, deviceMode: string }>} unified keys: adb:SERIAL | ios:UDID */
+const lastUnifiedDeviceSnapshot = new Map();
 let devicePollTimer = null;
+let hotplugDebounceTimer = null;
+/** @type {import('child_process').ChildProcessWithoutNullStreams | null} */
+let udevMonitorChild = null;
 const DEVICE_POLL_MS = 3000;
+const HOTPLUG_DEBOUNCE_MS = 250;
 
 function safeExec(cmd) {
   try {
@@ -123,7 +127,69 @@ function getAdbDevicesDetailed() {
   }).filter(d => d.serial && d.state);
 }
 
-function displayModeFromAdbRecord(rec) {
+function isSafeDeviceId(id) {
+  return typeof id === 'string' && /^[a-zA-Z0-9._:-]+$/.test(id);
+}
+
+/**
+ * USB-attached iOS devices via libimobiledevice (idevice_id).
+ */
+function getIosDevicesDetailed() {
+  if (!commandExists('idevice_id')) {
+    return [];
+  }
+  const out = safeExec('idevice_id -l 2>/dev/null');
+  if (!out) {
+    return [];
+  }
+  const udids = new Set();
+  for (const line of out.split('\n')) {
+    const t = line.trim();
+    if (!t) continue;
+    const token = t.split(/\s+/)[0];
+    const paren = t.match(/\(([0-9A-Fa-f-]+)\)\s*$/);
+    if (paren) {
+      udids.add(paren[1]);
+    } else if (/^[0-9A-Fa-f-]{25,48}$/.test(token)) {
+      udids.add(token);
+    }
+  }
+  return [...udids].map((udid) => {
+    let displayName = null;
+    if (commandExists('ideviceinfo') && isSafeDeviceId(udid)) {
+      displayName = safeExec(`ideviceinfo -u ${udid} -k DeviceName 2>/dev/null`)?.trim() || null;
+    }
+    return {
+      transport: 'ios',
+      udid,
+      serial: udid,
+      state: 'paired',
+      deviceMode: 'ios_usb',
+      bootloaderMode: null,
+      product: null,
+      model: displayName,
+      device: null,
+      transportId: null,
+      properties: displayName ? { deviceName: displayName } : {},
+      info: ''
+    };
+  });
+}
+
+function getUnifiedDevicesDetailed() {
+  const android = getAdbDevicesDetailed().map((r) => ({ ...r, transport: 'adb', udid: null }));
+  const ios = getIosDevicesDetailed();
+  return [...android, ...ios];
+}
+
+function unifiedDeviceKey(rec) {
+  return `${rec.transport}:${rec.serial}`;
+}
+
+function displayModeFromRecord(rec) {
+  if (rec.transport === 'ios') {
+    return 'iOS (USB / libimobiledevice)';
+  }
   if (rec.state === 'device') return 'Normal OS (Confirmed)';
   if (rec.state === 'unauthorized') return 'USB debugging — authorize device';
   if (rec.state === 'offline') return 'Offline';
@@ -133,87 +199,240 @@ function displayModeFromAdbRecord(rec) {
   return rec.deviceMode || 'unknown';
 }
 
-function correlationBadgeForState(state) {
-  if (state === 'device') return 'CORRELATED';
-  if (state === 'unauthorized') return 'UNCONFIRMED';
-  if (state === 'offline') return 'UNCONFIRMED';
+function correlationBadgeForRecord(rec) {
+  if (rec.transport === 'ios') return 'CORRELATED';
+  if (rec.state === 'device') return 'CORRELATED';
+  if (rec.state === 'unauthorized') return 'UNCONFIRMED';
+  if (rec.state === 'offline') return 'UNCONFIRMED';
   return 'LIKELY';
 }
 
 function buildDeviceEventPayload(rec, eventType) {
   const displayName =
-    rec.properties?.model || rec.model || rec.serial;
-  const confidence = rec.state === 'device' ? 1 : rec.state === 'unauthorized' ? 0.4 : 0.6;
+    rec.properties?.model ||
+    rec.properties?.deviceName ||
+    rec.model ||
+    rec.serial;
+  const confidence =
+    rec.transport === 'ios'
+      ? 0.95
+      : rec.state === 'device'
+        ? 1
+        : rec.state === 'unauthorized'
+          ? 0.4
+          : 0.6;
+  const uid = rec.serial;
+  const matched =
+    rec.transport === 'ios'
+      ? [rec.udid, `ios-${rec.udid}`]
+      : [rec.serial, `adb-${rec.serial}`];
   return {
     type: eventType,
-    device_uid: rec.serial,
-    platform_hint: 'android',
-    mode: displayModeFromAdbRecord(rec),
+    device_uid: uid,
+    transport: rec.transport,
+    platform_hint: rec.transport === 'ios' ? 'ios' : 'android',
+    mode: displayModeFromRecord(rec),
     confidence,
     timestamp: Date.now(),
     display_name: displayName,
-    matched_tool_ids: [rec.serial, `adb-${rec.serial}`].filter(Boolean),
-    correlation_badge: correlationBadgeForState(rec.state),
+    matched_tool_ids: matched.filter(Boolean),
+    correlation_badge: correlationBadgeForRecord(rec),
     correlation_notes:
-      rec.state === 'device'
-        ? ['ADB serial correlated; device authorized']
-        : rec.state === 'unauthorized'
-          ? ['Authorize USB debugging on the device to complete handshake']
-          : []
+      rec.transport === 'ios'
+        ? ['USB iOS device listed by idevice_id; use libimobiledevice tools for depth.']
+        : rec.state === 'device'
+          ? ['ADB serial correlated; device authorized']
+          : rec.state === 'unauthorized'
+            ? ['Authorize USB debugging on the device to complete handshake']
+            : []
   };
 }
 
 function buildCorrelationDeviceEntry(rec) {
-  const badge = correlationBadgeForState(rec.state);
+  const badge = correlationBadgeForRecord(rec);
   const notes =
-    rec.state === 'device'
-      ? ['Per-device correlation present (ADB serial).']
-      : rec.state === 'unauthorized'
-        ? ['Device visible over USB; authorization pending.']
-        : ['ADB listed this transport; mode not fully confirmed.'];
+    rec.transport === 'ios'
+      ? ['iOS UDID from idevice_id (USB).']
+      : rec.state === 'device'
+        ? ['Per-device correlation present (ADB serial).']
+        : rec.state === 'unauthorized'
+          ? ['Device visible over USB; authorization pending.']
+          : ['ADB listed this transport; mode not fully confirmed.'];
+  const matchedIds =
+    rec.transport === 'ios'
+      ? [rec.udid, `ios-${rec.udid}`]
+      : [rec.serial, `adb-${rec.serial}`];
   return {
-    id: rec.serial,
+    id: unifiedDeviceKey(rec),
     serial: rec.serial,
-    platform: 'android',
+    platform: rec.transport === 'ios' ? 'ios' : 'android',
     mode: rec.deviceMode,
-    confidence: rec.state === 'device' ? 0.98 : rec.state === 'unauthorized' ? 0.35 : 0.72,
+    confidence:
+      rec.transport === 'ios'
+        ? 0.95
+        : rec.state === 'device'
+          ? 0.98
+          : rec.state === 'unauthorized'
+            ? 0.35
+            : 0.72,
     correlationBadge: badge,
-    matchedIds: [rec.serial, `adb-${rec.serial}`],
+    matchedIds,
     correlationNotes: notes,
-    vendorId: 0x18d1,
-    productId: 0x4ee7
+    vendorId: rec.transport === 'ios' ? 0x05ac : 0x18d1,
+    productId: rec.transport === 'ios' ? 0x12a8 : 0x4ee7
   };
 }
 
+/**
+ * Best-effort Android CPU / RAM / storage / battery thermal via adb shell (authorized devices only).
+ */
+function sampleAndroidRuntimeMetrics(serial) {
+  if (!isSafeDeviceId(serial) || !commandExists('adb')) {
+    return {
+      cpuUsage: 0,
+      memoryUsage: 0,
+      storageUsage: 0,
+      temperature: 0,
+      batteryLevel: undefined
+    };
+  }
+  const cpuRaw =
+    safeExec(
+      `adb -s ${serial} shell sh -c "dumpsys cpuinfo 2>/dev/null | head -n 50"`
+    ) || '';
+  let cpuUsage = 0;
+  const totalM = cpuRaw.match(/(\d+)%\s+TOTAL/i);
+  if (totalM) {
+    cpuUsage = Math.min(100, parseInt(totalM[1], 10));
+  }
+
+  const memRaw =
+    safeExec(
+      `adb -s ${serial} shell sh -c "dumpsys meminfo 2>/dev/null | head -n 30"`
+    ) || '';
+  let memoryUsage = 0;
+  const used = memRaw.match(/Used RAM:\s*(\d+)\s*kB/i);
+  const total = memRaw.match(/Total RAM:\s*(\d+)\s*kB/i);
+  if (used && total && parseInt(total[1], 10) > 0) {
+    memoryUsage = Math.min(
+      100,
+      Math.round((parseInt(used[1], 10) / parseInt(total[1], 10)) * 100)
+    );
+  }
+
+  const batRaw =
+    safeExec(`adb -s ${serial} shell dumpsys battery 2>/dev/null`) || '';
+  let temperature = 0;
+  const tempM = batRaw.match(/temperature:\s*(\d+)/i);
+  if (tempM) {
+    temperature = Math.round(parseInt(tempM[1], 10) / 10);
+  }
+  let batteryLevel;
+  const levM = batRaw.match(/level:\s*(\d+)/i);
+  const scM = batRaw.match(/scale:\s*(\d+)/i);
+  if (levM && scM && parseInt(scM[1], 10) > 0) {
+    batteryLevel = Math.round(
+      (parseInt(levM[1], 10) / parseInt(scM[1], 10)) * 100
+    );
+  }
+
+  let storageUsage = 0;
+  const dfRaw =
+    safeExec(`adb -s ${serial} shell df /data 2>/dev/null | tail -n 1`) || '';
+  const parts = dfRaw.trim().split(/\s+/);
+  if (parts.length >= 5) {
+    const pct = parts[4].match(/(\d+)%/);
+    if (pct) {
+      storageUsage = Math.min(100, parseInt(pct[1], 10));
+    }
+  }
+
+  return { cpuUsage, memoryUsage, storageUsage, temperature, batteryLevel };
+}
+
 function buildAnalyticsMetrics(rec) {
-  const name = rec.properties?.model || rec.model || rec.serial;
+  const name =
+    rec.properties?.model ||
+    rec.properties?.deviceName ||
+    rec.model ||
+    rec.serial;
+  if (rec.transport === 'ios') {
+    return {
+      deviceId: unifiedDeviceKey(rec),
+      deviceName: name,
+      platform: 'ios',
+      status: 'online',
+      cpuUsage: 0,
+      memoryUsage: 0,
+      storageUsage: 0,
+      temperature: 0,
+      batteryLevel: undefined,
+      networkLatency: 0,
+      workflows: { running: 0, completed: 0, failed: 0 },
+      transport: 'ios',
+      iosUdid: rec.udid,
+      iosState: rec.state,
+      deviceMode: rec.deviceMode,
+      metricsNote:
+        'CPU/memory/thermal for iOS require a host-side instrument or app channel; USB listing is live.'
+    };
+  }
   const online = rec.state === 'device';
+  const sampled = online ? sampleAndroidRuntimeMetrics(rec.serial) : {
+    cpuUsage: 0,
+    memoryUsage: 0,
+    storageUsage: 0,
+    temperature: 0,
+    batteryLevel: undefined
+  };
   return {
-    deviceId: rec.serial,
+    deviceId: unifiedDeviceKey(rec),
     deviceName: name,
     platform: 'android',
     status: online ? 'online' : rec.state === 'unauthorized' ? 'busy' : 'offline',
-    cpuUsage: online ? 0 : 0,
-    memoryUsage: online ? 0 : 0,
-    storageUsage: online ? 0 : 0,
-    temperature: online ? 0 : 0,
-    batteryLevel: undefined,
-    networkLatency: online ? 0 : 0,
+    cpuUsage: sampled.cpuUsage,
+    memoryUsage: sampled.memoryUsage,
+    storageUsage: sampled.storageUsage,
+    temperature: sampled.temperature,
+    batteryLevel: sampled.batteryLevel,
+    networkLatency: 0,
     workflows: { running: 0, completed: 0, failed: 0 },
+    transport: 'adb',
+    adbSerial: rec.serial,
     adbState: rec.state,
     deviceMode: rec.deviceMode
   };
 }
 
-function pollAdbDevicesAndBroadcast() {
-  const list = getAdbDevicesDetailed();
-  const current = new Map(list.map(d => [d.serial, { state: d.state, deviceMode: d.deviceMode }]));
+function broadcastDeviceMetricsToAnalytics(rec) {
+  const metrics = buildAnalyticsMetrics(rec);
+  const deviceId = unifiedDeviceKey(rec);
+  const payload = JSON.stringify({
+    type: 'device_metrics',
+    deviceId,
+    metrics
+  });
+  for (const ws of analyticsClients) {
+    if (ws.readyState === ws.OPEN) ws.send(payload);
+  }
+}
 
-  for (const serial of lastAdbDeviceSnapshot.keys()) {
-    if (!current.has(serial)) {
+function pollUnifiedDevicesAndBroadcast() {
+  const list = getUnifiedDevicesDetailed();
+  const current = new Map(
+    list.map((d) => [
+      unifiedDeviceKey(d),
+      { state: d.state, deviceMode: d.deviceMode, transport: d.transport }
+    ])
+  );
+
+  for (const key of lastUnifiedDeviceSnapshot.keys()) {
+    if (!current.has(key)) {
+      const shortId = key.includes(':') ? key.slice(key.indexOf(':') + 1) : key;
       const payload = JSON.stringify({
         type: 'disconnected',
-        device_uid: serial,
+        device_uid: shortId,
+        transport: key.startsWith('ios:') ? 'ios' : 'adb',
         timestamp: Date.now()
       });
       for (const ws of clients) {
@@ -221,20 +440,37 @@ function pollAdbDevicesAndBroadcast() {
       }
       for (const ws of correlationClients) {
         if (ws.readyState === ws.OPEN) {
-          ws.send(JSON.stringify({ type: 'device_disconnected', deviceId: serial, timestamp: Date.now() }));
+          ws.send(
+            JSON.stringify({
+              type: 'device_disconnected',
+              deviceId: key,
+              timestamp: Date.now()
+            })
+          );
         }
       }
       for (const ws of analyticsClients) {
         if (ws.readyState === ws.OPEN) {
-          ws.send(JSON.stringify({ type: 'device_disconnected', deviceId: serial, timestamp: Date.now() }));
+          ws.send(
+            JSON.stringify({
+              type: 'device_disconnected',
+              deviceId: key,
+              timestamp: Date.now()
+            })
+          );
         }
       }
     }
   }
 
   for (const rec of list) {
-    const prev = lastAdbDeviceSnapshot.get(rec.serial);
-    const changed = !prev || prev.state !== rec.state || prev.deviceMode !== rec.deviceMode;
+    const key = unifiedDeviceKey(rec);
+    const prev = lastUnifiedDeviceSnapshot.get(key);
+    const changed =
+      !prev ||
+      prev.state !== rec.state ||
+      prev.deviceMode !== rec.deviceMode ||
+      prev.transport !== rec.transport;
     if (changed) {
       const ev = buildDeviceEventPayload(rec, 'connected');
       const payload = JSON.stringify(ev);
@@ -243,32 +479,74 @@ function pollAdbDevicesAndBroadcast() {
       }
       for (const ws of correlationClients) {
         if (ws.readyState === ws.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'device_connected',
-            deviceId: rec.serial,
-            device: buildCorrelationDeviceEntry(rec),
-            timestamp: Date.now()
-          }));
+          ws.send(
+            JSON.stringify({
+              type: 'device_connected',
+              deviceId: key,
+              device: buildCorrelationDeviceEntry(rec),
+              timestamp: Date.now()
+            })
+          );
         }
       }
-      const metrics = buildAnalyticsMetrics(rec);
-      for (const ws of analyticsClients) {
-        if (ws.readyState === ws.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'device_metrics',
-            deviceId: rec.serial,
-            metrics
-          }));
-        }
-      }
+      broadcastDeviceMetricsToAnalytics(rec);
     }
   }
 
-  lastAdbDeviceSnapshot.clear();
-  for (const [k, v] of current) lastAdbDeviceSnapshot.set(k, v);
+  if (analyticsClients.size > 0) {
+    for (const rec of list) {
+      broadcastDeviceMetricsToAnalytics(rec);
+    }
+  }
+
+  lastUnifiedDeviceSnapshot.clear();
+  for (const [k, v] of current) lastUnifiedDeviceSnapshot.set(k, v);
+}
+
+function scheduleHotplugPoll() {
+  if (hotplugDebounceTimer) {
+    clearTimeout(hotplugDebounceTimer);
+  }
+  hotplugDebounceTimer = setTimeout(() => {
+    hotplugDebounceTimer = null;
+    const any =
+      clients.size > 0 ||
+      correlationClients.size > 0 ||
+      analyticsClients.size > 0;
+    if (any) {
+      pollUnifiedDevicesAndBroadcast();
+    }
+  }, HOTPLUG_DEBOUNCE_MS);
+}
+
+function startLinuxUdevUsbMonitor() {
+  if (process.platform !== 'linux' || udevMonitorChild) {
+    return;
+  }
+  if (!commandExists('udevadm')) {
+    return;
+  }
+  try {
+    udevMonitorChild = spawn('udevadm', ['monitor', '-u', '-s', 'usb'], {
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+  } catch {
+    udevMonitorChild = null;
+    return;
+  }
+  const onActivity = () => scheduleHotplugPoll();
+  udevMonitorChild.stdout?.on('data', onActivity);
+  udevMonitorChild.stderr?.on('data', onActivity);
+  udevMonitorChild.on('close', () => {
+    udevMonitorChild = null;
+  });
+  udevMonitorChild.on('error', () => {
+    udevMonitorChild = null;
+  });
 }
 
 function ensureDevicePolling() {
+  startLinuxUdevUsbMonitor();
   if (devicePollTimer) return;
   devicePollTimer = setInterval(() => {
     const any =
@@ -276,35 +554,50 @@ function ensureDevicePolling() {
     if (!any) {
       clearInterval(devicePollTimer);
       devicePollTimer = null;
-      lastAdbDeviceSnapshot.clear();
+      lastUnifiedDeviceSnapshot.clear();
       return;
     }
-    if (!commandExists('adb')) {
-      return;
-    }
-    pollAdbDevicesAndBroadcast();
+    pollUnifiedDevicesAndBroadcast();
   }, DEVICE_POLL_MS);
 }
 
 function sendDeviceEventsHandshake(ws) {
   const adbOk = commandExists('adb');
-  ws.send(JSON.stringify({
-    type: 'handshake',
-    server_ready: true,
-    adb_available: adbOk,
-    poll_interval_ms: DEVICE_POLL_MS,
-    timestamp: Date.now()
-  }));
-  if (!adbOk) {
-    ws.send(JSON.stringify({
-      type: 'error',
-      code: 'adb_unavailable',
-      message: 'ADB not installed or not on PATH; connect Android devices with platform tools installed.',
+  const ideviceOk = commandExists('idevice_id');
+  ws.send(
+    JSON.stringify({
+      type: 'handshake',
+      server_ready: true,
+      adb_available: adbOk,
+      idevice_available: ideviceOk,
+      hotplug_udev: process.platform === 'linux' && commandExists('udevadm'),
+      poll_interval_ms: DEVICE_POLL_MS,
       timestamp: Date.now()
-    }));
-    return;
+    })
+  );
+  if (!adbOk) {
+    ws.send(
+      JSON.stringify({
+        type: 'error',
+        code: 'adb_unavailable',
+        message:
+          'ADB not installed or not on PATH; Android USB listing and metrics need platform-tools.',
+        timestamp: Date.now()
+      })
+    );
   }
-  const list = getAdbDevicesDetailed();
+  if (!ideviceOk) {
+    ws.send(
+      JSON.stringify({
+        type: 'info',
+        code: 'idevice_unavailable',
+        message:
+          'libimobiledevice (idevice_id) not on PATH; install for USB iOS device listing.',
+        timestamp: Date.now()
+      })
+    );
+  }
+  const list = getUnifiedDevicesDetailed();
   for (const rec of list) {
     ws.send(JSON.stringify(buildDeviceEventPayload(rec, 'connected')));
   }
@@ -332,29 +625,27 @@ wssCorrelation.on('connection', (ws) => {
   correlationClients.add(ws);
 
   const adbOk = commandExists('adb');
+  const ideviceOk = commandExists('idevice_id');
   ws.send(JSON.stringify({
     type: 'handshake',
     server_ready: true,
     adb_available: adbOk,
+    idevice_available: ideviceOk,
+    hotplug_udev: process.platform === 'linux' && commandExists('udevadm'),
     poll_interval_ms: DEVICE_POLL_MS,
     timestamp: Date.now()
   }));
 
-  if (adbOk) {
-    const list = getAdbDevicesDetailed();
-    ws.send(JSON.stringify({
-      type: 'batch_update',
-      devices: list.map(buildCorrelationDeviceEntry),
-      timestamp: Date.now()
-    }));
-  } else {
-    ws.send(JSON.stringify({
-      type: 'batch_update',
-      devices: [],
-      timestamp: Date.now(),
-      note: 'ADB not available; no devices to correlate.'
-    }));
-  }
+  const list = getUnifiedDevicesDetailed();
+  ws.send(JSON.stringify({
+    type: 'batch_update',
+    devices: list.map(buildCorrelationDeviceEntry),
+    timestamp: Date.now(),
+    note:
+      !adbOk && !ideviceOk
+        ? 'Neither adb nor idevice_id available; connect platform tools for device listing.'
+        : undefined
+  }));
 
   ensureDevicePolling();
 
@@ -389,24 +680,25 @@ wssAnalytics.on('connection', (ws) => {
   analyticsClients.add(ws);
 
   const adbOk = commandExists('adb');
+  const ideviceOk = commandExists('idevice_id');
   ws.send(JSON.stringify({
     type: 'handshake',
     server_ready: true,
     adb_available: adbOk,
+    idevice_available: ideviceOk,
+    hotplug_udev: process.platform === 'linux' && commandExists('udevadm'),
     poll_interval_ms: DEVICE_POLL_MS,
     timestamp: Date.now()
   }));
 
-  if (adbOk) {
-    const list = getAdbDevicesDetailed();
-    for (const rec of list) {
-      const metrics = buildAnalyticsMetrics(rec);
-      ws.send(JSON.stringify({
-        type: 'device_metrics',
-        deviceId: rec.serial,
-        metrics
-      }));
-    }
+  const list = getUnifiedDevicesDetailed();
+  for (const rec of list) {
+    const metrics = buildAnalyticsMetrics(rec);
+    ws.send(JSON.stringify({
+      type: 'device_metrics',
+      deviceId: unifiedDeviceKey(rec),
+      metrics
+    }));
   }
 
   ensureDevicePolling();
