@@ -1,6 +1,6 @@
 // Test for Workflow Engine
 
-import { describe, it, expect, beforeEach } from '@jest/globals';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { WorkflowEngine } from '../core/tasks/workflow-engine.js';
 import path from 'path';
 
