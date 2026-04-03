@@ -1,7 +1,40 @@
 use pyo3::prelude::*;
 use pyo3::exceptions::PyException;
-// In a real implementation, we would use `rusb` for low-level USB control.
-// use rusb::{Context, DeviceHandle, UsbContext};
+
+#[pyclass]
+pub struct RawUsbController {
+    device_id: String,
+}
+
+#[pymethods]
+impl RawUsbController {
+    #[new]
+    pub fn new(device_id: String) -> Self {
+        RawUsbController { device_id }
+    }
+
+    pub fn bulk_write(&self, data: Vec<u8>) -> PyResult<usize> {
+        println!("[RUST] [USB] Bulk Write to {}: {} bytes", self.device_id, data.len());
+        Ok(data.len())
+    }
+
+    pub fn bulk_read(&self, length: usize) -> PyResult<Vec<u8>> {
+        println!("[RUST] [USB] Bulk Read from {}: {} bytes requested", self.device_id, length);
+        // Mock MTK Handshake Response
+        Ok(vec![0x5F, 0x0A, 0x50, 0x05])
+    }
+
+    pub fn control_transfer(&self, request_type: u8, request: u8, value: u16, index: u16, data: Vec<u8>) -> PyResult<bool> {
+        println!("[RUST] [USB] Control Transfer to {}: Type=0x{:02X}, Req=0x{:02X}, Data={} bytes", 
+                 self.device_id, request_type, request, data.len());
+        
+        // Simulate the BROM crash/timeout behavior for the glitch
+        if data.len() > 128 {
+             return Err(PyException::new_err("USB Timeout/Pipe Error (Simulated Glitch Success)"));
+        }
+        Ok(true)
+    }
+}
 
 #[pyclass]
 pub struct UsbMonitor {
@@ -12,51 +45,31 @@ pub struct UsbMonitor {
 impl UsbMonitor {
     #[new]
     pub fn new(mock_mode: bool) -> Self {
-        if mock_mode {
-            println!("[RUST] Phoenix Forge USB Engine: MOCK MODE ACTIVE");
-        } else {
-            println!("[RUST] Phoenix Forge USB Engine: PRODUCTION HARDWARE ACCESS ACTIVE");
-        }
         UsbMonitor { mock_mode }
     }
 
-    /// Polls the USB bus. Returns a list of connected VID:PID strings.
-    pub fn poll_active_devices(&self) -> PyResult<Vec<String>> {
-        let mut active_devices = Vec::new();
-
+    pub fn poll_active_devices(&self) -> PyResult<Vec<std::collections::HashMap<String, String>>> {
+        let mut devices = Vec::new();
         if self.mock_mode {
-            // Simulated Modern Hardware for Dashboard
-            active_devices.push("05C6:9008".to_string()); // Qualcomm EDL (Snapdragon 8 Gen 4)
-            active_devices.push("0E8D:0003".to_string()); // MediaTek MT6989 (Dimensity 9300)
-            active_devices.push("04E8:6601".to_index()); // Samsung Exynos (EUB Mode)
-        } else {
-            // Production logic would go here using rusb
-            // for device in Context::new()?.devices()?.iter() { ... }
-        }
+            let mut dev1 = std::collections::HashMap::new();
+            dev1.insert("name".to_string(), "Snapdragon 8 Gen 6 (EDL)".to_string());
+            dev1.insert("protocol".to_string(), "Firehose 7.0 (Auth Required)".to_string());
+            dev1.insert("serial".to_string(), "05C6:9008".to_string());
+            devices.push(dev1);
 
-        Ok(active_devices)
-    }
-
-    /// MediaTek BootROM "Glitch" Engine (TOCTOU)
-    /// Sends a malformed USB_CONTROL_TRANSFER packet to trigger a BootROM buffer overflow.
-    pub fn perform_usb_glitch(&self, device_id: String) -> PyResult<bool> {
-        println!("[🔥] RUST: Initiating USB Fault Injection (TOCTOU) on {}", device_id);
-        
-        if self.mock_mode {
-            // Simulate the race condition timing
-            std::thread::sleep(std::time::Duration::from_millis(450));
-            println!("[🔥] RUST: Glitch Successful. Security flags dropped.");
-            Ok(true)
-        } else {
-            // Real glitch logic: extremely precise timing required
-            // self.send_malformed_control_packet(device_id)
-            Err(PyException::new_err("Hardware glitching requires specialized kernel drivers not present in this environment."))
+            let mut dev2 = std::collections::HashMap::new();
+            dev2.insert("name".to_string(), "MediaTek Dimensity 9500 (BROM)".to_string());
+            dev2.insert("protocol".to_string(), "VCOM V3 (SLA/DAA Locked)".to_string());
+            dev2.insert("serial".to_string(), "0E8D:2000".to_string());
+            devices.push(dev2);
         }
+        Ok(devices)
     }
 }
 
 #[pymodule]
 fn bootforge_usb(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_class::<RawUsbController>()?;
     m.add_class::<UsbMonitor>()?;
     Ok(())
 }
