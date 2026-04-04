@@ -22,7 +22,7 @@ class GamingHandheldEngine:
         Requires the right Joy-Con pin 10 to be grounded (using an RCM Jig).
         """
         # VID 0955 (NVIDIA), PID 7321 (APX / RCM Mode)
-        print("\n[🎮] [NINTENDO SWITCH] INITIATING TEGRA RCM EXPLOIT...")
+        print("\n[GAMING] [NINTENDO SWITCH] INITIATING TEGRA RCM EXPLOIT...")
         usb = RawUsbController("0955:7321")
         
         # 1. Verify RCM Connection
@@ -30,7 +30,7 @@ class GamingHandheldEngine:
         time.sleep(0.5)
         
         # 2. Smash the Stack (The Fusée Gelée Glitch)
-        print("[⚡] [BOOTROM] Smashing the USB control transfer stack...")
+        print("[EXPLOIT] [BOOTROM] Smashing the USB control transfer stack...")
         # We request 65535 bytes but send far more, overflowing the DMA buffer
         usb.control_transfer(0x82, 0x00, 0, 0, b'\x00' * 65535) 
         

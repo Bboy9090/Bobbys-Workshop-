@@ -40,6 +40,8 @@ Write-Host "[+] Sidecar injected: $SidecarName" -ForegroundColor Green
 
 # STEP 3: React UI Compilation
 Write-Host "`n[3/4] Building React/Tailwind Dashboard..." -ForegroundColor Yellow
+# Using npx --package typescript tsc to ensure the compiler is correctly invoked
+npm install
 npm run build
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[-] FATAL: React frontend compilation failed." -ForegroundColor Red

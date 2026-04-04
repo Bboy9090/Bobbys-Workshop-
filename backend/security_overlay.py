@@ -23,7 +23,7 @@ class ShadowRollbackEngine:
         The mandatory safety check. Dumps partitions to the local vault.
         In a real scenario, this uses the FFI bridge to pull data via Firehose/ADB.
         """
-        print(f"\n[🛡️] INITIATING SHADOW ROLLBACK FOR {device_id}")
+        print(f"\n[SECURITY] INITIATING SHADOW ROLLBACK FOR {device_id}")
         backup_receipts = []
 
         for part in partitions:

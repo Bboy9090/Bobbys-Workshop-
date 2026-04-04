@@ -25,7 +25,7 @@ class AppleSiliconEngine:
         PRODUCTION: Firing the Checkm8 USB Use-After-Free bug.
         Requires the device to be in physical DFU mode.
         """
-        print("\n[⚡] [APPLE] INITIATING CHECKM8 BOOTROM EXPLOIT (A11 & Older)...")
+        print("\n[EXPLOIT] [APPLE] INITIATING CHECKM8 BOOTROM EXPLOIT (A11 & Older)...")
         
         try:
             dev = self.get_device()
@@ -63,7 +63,7 @@ class AppleSiliconEngine:
         """
         PRODUCTION: Tunnels directly into the lockdownd daemon on port 62078.
         """
-        print(f"\n[🛡️] [MUX] INITIATING USBMUXD TUNNEL: {self.device_id}")
+        print(f"\n[SECURITY] [MUX] INITIATING USBMUXD TUNNEL: {self.device_id}")
         
         # In a real environment, we would use a library like 'pymobiledevice3'
         # or raw socket communication over the USBMuxd socket path

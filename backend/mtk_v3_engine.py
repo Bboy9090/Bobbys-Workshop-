@@ -37,7 +37,7 @@ class MTKGlitchEngine:
         PRODUCTION: The Glitch. Firing a malformed USB Setup Packet.
         This sends real electrical data to destabilize the chip stack.
         """
-        print("\n[⚡] [GLITCH] FIRING MALFORMED CONTROL TRANSFER...")
+        print("\n[EXPLOIT] [GLITCH] FIRING MALFORMED CONTROL TRANSFER...")
         
         # Crafting the real overflow payload
         # 0x41414141 is our simulated jump address to bypass signature checks
