@@ -256,8 +256,7 @@ docker run -p 3000:3000 -p 3001:3001 bobbys-world-flash-ws
 ### For Production
 
 1. **Use WSS (Secure WebSocket)**
-
-   ```javascript
+  ```javascript
    const https = require("https");
    const fs = require("fs");
 
@@ -267,11 +266,9 @@ docker run -p 3000:3000 -p 3001:3001 bobbys-world-flash-ws
    });
 
    const wss = new WebSocket.Server({ server });
-   ```
-
+  ```
 2. **Add Authentication**
-
-   ```javascript
+  ```javascript
    wss.on("connection", (ws, req) => {
      const token = new URL(req.url, "ws://base").searchParams.get("token");
      if (!verifyToken(token)) {
@@ -280,11 +277,9 @@ docker run -p 3000:3000 -p 3001:3001 bobbys-world-flash-ws
      }
      // ... handle connection
    });
-   ```
-
+  ```
 3. **Rate Limiting**
-
-   ```javascript
+  ```javascript
    const rateLimit = require("express-rate-limit");
 
    app.use(
@@ -294,18 +289,16 @@ docker run -p 3000:3000 -p 3001:3001 bobbys-world-flash-ws
        max: 100,
      }),
    );
-   ```
-
+  ```
 4. **CORS Configuration**
-
-   ```javascript
+  ```javascript
    app.use(
      cors({
        origin: "https://yourdomain.com",
        credentials: true,
      }),
    );
-   ```
+  ```
 
 ## Troubleshooting
 
@@ -378,3 +371,4 @@ For issues or questions, check:
 - Main documentation: `WEBSOCKET_PROGRESS_INTEGRATION.md`
 - Backend API guide: `BACKEND_API_IMPLEMENTATION.md`
 - Device flashing guide: `DEVICE_FLASHING_INTEGRATION.md`
+
