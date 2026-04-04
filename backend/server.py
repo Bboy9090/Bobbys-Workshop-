@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 
-# Import our custom modules we just built
+# Import all custom engines
 try:
     from phoenix_integrator import PhoenixIntegrator
     from security_overlay import ShadowRollbackEngine
@@ -11,6 +11,7 @@ try:
     from mtk_v3_engine import MTKGlitchEngine
     from apple_engine import AppleSiliconEngine
     from wearables_engine import WearablesEngine
+    from gaming_engine import GamingHandheldEngine
 except ImportError:
     from .phoenix_integrator import PhoenixIntegrator
     from .security_overlay import ShadowRollbackEngine
@@ -18,8 +19,9 @@ except ImportError:
     from .mtk_v3_engine import MTKGlitchEngine
     from .apple_engine import AppleSiliconEngine
     from .wearables_engine import WearablesEngine
+    from .gaming_engine import GamingHandheldEngine
 
-app = FastAPI(title="Phoenix Forge API", version="1.0.0")
+app = FastAPI(title="Phoenix Forge API", version="5.0.0")
 
 # Allow the React frontend to communicate with this backend
 app.add_middleware(
@@ -34,6 +36,7 @@ app.add_middleware(
 forge_engine = PhoenixIntegrator(is_cloud_env=True)
 security_engine = ShadowRollbackEngine()
 wearables_engine_instance = WearablesEngine()
+gaming_engine_instance = GamingHandheldEngine()
 
 # --- Request Models ---
 class RollbackRequest(BaseModel):
@@ -54,12 +57,17 @@ class WearableExecutionRequest(BaseModel):
     target_ip: str = None
     vector: str # "ibus" or "wireless_adb"
 
+class GamingExecutionRequest(BaseModel):
+    device_id: str
+    target: str # "switch" or "steam_deck"
+    payload: str = "default.bin"
+
 # --- API Endpoints ---
 
 @app.get("/api/system/status")
 async def get_system_status():
     """Basic health check for the React dashboard to ping."""
-    return {"status": "online", "mode": "Enterprise Diagnostics Active"}
+    return {"status": "online", "mode": "Bobbys Workshop Powered by Phoenix Forge"}
 
 @app.get("/api/devices/scan")
 async def scan_hardware():
@@ -133,7 +141,7 @@ async def execute_apple_exploit(request: AppleExecutionRequest):
 
 @app.post("/api/execution/wearable-exploit")
 async def execute_wearable_exploit(request: WearableExecutionRequest):
-    """Exploitation and diagnosis for wearables (Apple Watch iBus or WearOS Wireless)."""
+    """Exploitation and diagnosis for wearables."""
     try:
         if request.vector == "ibus":
             success = wearables_engine_instance.execute_ibus_dfu_restore(request.device_id)
@@ -146,6 +154,22 @@ async def execute_wearable_exploit(request: WearableExecutionRequest):
             raise HTTPException(status_code=500, detail="Exploit failed.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fatal Wearable Exploit error: {str(e)}")
+
+@app.post("/api/execution/gaming-exploit")
+async def execute_gaming_exploit(request: GamingExecutionRequest):
+    """Exploitation and recovery for gaming handhelds (Switch RCM or BIOS Recovery)."""
+    try:
+        if request.target == "switch":
+            success = gaming_engine_instance.execute_tegra_rcm_smash(request.payload)
+        else:
+            success = gaming_engine_instance.execute_uefi_bios_flash(request.target, request.payload)
+            
+        if success:
+            return {"status": "unlocked", "message": f"Gaming Sector {request.target.upper()} Execution Successful."}
+        else:
+            raise HTTPException(status_code=500, detail="Gaming exploit/recovery failed.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Fatal Gaming Exploit error: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

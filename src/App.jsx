@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, ShieldAlert, Terminal, Usb, Zap, HardDrive, Cpu, Unlock, Fingerprint, Activity, Smartphone, Gamepad2, Watch, Cloud, Apple, Radio } from 'lucide-react';
+import { Shield, ShieldAlert, Terminal, Usb, Zap, HardDrive, Cpu, Unlock, Fingerprint, Activity, Smartphone, Gamepad2, Watch, Cloud, Apple, Radio, Ghost, LifeBuoy } from 'lucide-react';
 
 export default function PhoenixDashboard() {
   const [devices, setDevices] = useState([]);
@@ -9,9 +9,10 @@ export default function PhoenixDashboard() {
   const [appleMode, setAppleMode] = useState('NONE'); // NONE, LEGACY, MODERN
   const [isWirelessRadarActive, setIsWirelessRadarActive] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
-  const [logs, setLogs] = useState(['[SYSTEM] Phoenix Forge UI Initialized. Awaiting agnostic hardware...']);
+  const [logs, setLogs] = useState(['[SYSTEM] Phoenix Forge UI Initialized. Master Architecture active.']);
   const [isPolling, setIsPolling] = useState(true);
   const [isOffensiveMode, setIsOffensiveMode] = useState(false);
+  const [showRecoveryPlan, setShowRecoveryPlan] = useState(false);
 
   // 1. The Hardware Pulse (Polling the Agnostic Backend)
   useEffect(() => {
@@ -26,7 +27,7 @@ export default function PhoenixDashboard() {
           setDevices(detectedDevices);
 
           // Context Detection: Apple
-          const appleDev = detectedDevices.find(d => d.name && d.name.includes('iPhone'));
+          const appleDev = detectedDevices.find(d => d.name && (d.name.includes('iPhone') || d.name.includes('Apple Watch')));
           if (appleDev) {
             setAppleMode(appleDev.protocol.includes('DFU') ? 'LEGACY' : 'MODERN');
           } else {
@@ -80,50 +81,43 @@ export default function PhoenixDashboard() {
     }
   };
 
-  const triggerWearableExploit = async (deviceId, vector, ip = null) => {
+  const triggerGamingExploit = async (deviceId, target, payload) => {
     setIsExecuting(true);
-    setLogs(prev => [...prev, `[⚡] Firing Wearable Vector: ${vector.toUpperCase()}...`]);
+    setLogs(prev => [...prev, `[⚡] Firing Gaming Sector Vector: ${target.toUpperCase()}...`]);
     try {
-      const res = await fetch('http://localhost:8000/api/execution/wearable-exploit', {
+      const res = await fetch('http://localhost:8000/api/execution/gaming-exploit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: deviceId, vector: vector, target_ip: ip })
+        body: JSON.stringify({ device_id: deviceId, target: target, payload: payload })
       });
       const data = await res.json();
       if (data.status === 'unlocked') {
-        setLogs(prev => [...prev, `[+] WEARABLE UNLOCKED: Execution successful.`]);
+        setLogs(prev => [...prev, `[+] GAMING SECTOR UNLOCKED: ${target.toUpperCase()} success.`]);
       } else {
         throw new Error(data.detail);
       }
     } catch (err) {
-      setLogs(prev => [...prev, `[-] WEARABLE EXPLOIT FATAL: ${err.message}`]);
+      setLogs(prev => [...prev, `[-] GAMING EXPLOIT FATAL: ${err.message}`]);
     } finally {
       setIsExecuting(false);
     }
   };
 
-  const toggleWirelessRadar = () => {
-    if (!isOffensiveMode) {
-        setLogs(prev => [...prev, `[!] WARNING: Wireless Radar requires Offensive Mode to bypass FCC/local restrictions.`]);
-        return;
-    }
-    setIsWirelessRadarActive(!isWirelessRadarActive);
-    setLogs(prev => [...prev, isWirelessRadarActive ? `[!] Wireless Radar deactivated.` : `[📡] Scanning local subnet for WearOS broadcast beacons...`]);
-  };
-
   const getDeviceIcon = (dev) => {
+    if (dev.category === 'Gaming') return <Gamepad2 size={16} />;
     if (dev.category === 'Wearable') return <Watch size={16} />;
     if (dev.category === 'Mobile' && appleMode !== 'NONE') return <Apple size={16} />;
     switch (dev.category) {
         case 'Mobile': return <Smartphone size={16} />;
-        case 'Gaming': return <Gamepad2 size={16} />;
         case 'IoT/Embedded': return <Cloud size={16} />;
         default: return <Usb size={16} />;
     }
   };
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-300 font-sans overflow-hidden">
+    <div className={`flex h-screen bg-slate-950 text-slate-300 font-sans overflow-hidden transition-all ${
+        devices.some(d => d.name.includes('Switch')) ? 'border-t-4 border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.2)]' : ''
+    }`}>
       
       {/* LEFT SIDEBAR: The Pulse */}
       <aside className="w-80 bg-slate-900 border-r border-slate-800 flex flex-col">
@@ -138,11 +132,11 @@ export default function PhoenixDashboard() {
           <div className="flex justify-between items-center mb-4">
             <div className="text-xs font-bold text-slate-500 tracking-wider uppercase">Active Targets</div>
             <button 
-                onClick={toggleWirelessRadar}
-                className={`p-1.5 rounded transition-all ${isWirelessRadarActive ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-500'}`}
-                title="Wireless Radar Scan"
+                onClick={() => setShowRecoveryPlan(!showRecoveryPlan)}
+                className={`p-1.5 rounded transition-all ${showRecoveryPlan ? 'bg-red-600 text-white' : 'bg-slate-800 text-slate-500'}`}
+                title="Disaster Recovery Protocol"
             >
-                <Radio size={14} className={isWirelessRadarActive ? 'animate-pulse' : ''} />
+                <LifeBuoy size={14} />
             </button>
           </div>
 
@@ -155,11 +149,11 @@ export default function PhoenixDashboard() {
             devices.map((dev, idx) => (
               <div key={idx} className="bg-slate-800 p-3 rounded border border-slate-700 mb-4 shadow-lg relative overflow-hidden group">
                 <div className={`absolute top-0 left-0 w-1 h-full animate-pulse ${
-                    dev.category === 'Wearable' ? 'bg-blue-400' : 'bg-cyan-500'
+                    dev.category === 'Gaming' ? 'bg-red-500' : 'bg-cyan-500'
                 }`}></div>
                 <div className="flex justify-between items-start">
                     <div className="flex items-center gap-2">
-                        <span className="text-cyan-500">{getDeviceIcon(dev)}</span>
+                        <span className={dev.category === 'Gaming' ? 'text-red-400' : 'text-cyan-500'}>{getDeviceIcon(dev)}</span>
                         <h3 className="font-bold text-white text-sm truncate">{dev.name}</h3>
                     </div>
                 </div>
@@ -183,7 +177,7 @@ export default function PhoenixDashboard() {
         {/* TOP BAR: Aegis Security Shield */}
         <header className="h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-6">
           <div className="flex items-center gap-4">
-            <div className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-bold border ${
+            <div className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-bold border transition-all ${
               securityStatus === 'SECURE' ? 'bg-green-900/20 text-green-400 border-green-800 shadow-[0_0_10px_rgba(34,197,94,0.1)]' : 'bg-slate-800 text-slate-400 border-slate-700'
             }`}>
               {securityStatus === 'SECURE' ? <Shield size={14} /> : <ShieldAlert size={14} />}
@@ -201,81 +195,123 @@ export default function PhoenixDashboard() {
           </div>
           <div className="text-xs text-slate-500 font-mono flex items-center gap-6">
             <div className="flex items-center gap-1.5">
-                <Radio size={14} className={isWirelessRadarActive ? 'text-blue-400' : ''} /> 
-                RADAR: {isWirelessRadarActive ? <span className="text-blue-400">SCANNING...</span> : 'OFFLINE'}
+                <Activity size={14} className={isExecuting ? 'animate-spin' : ''} /> 
+                EXPLOIT ENGINE: {isExecuting ? <span className="text-orange-400">EXECUTING...</span> : <span className="text-green-500">READY</span>}
             </div>
             <div>
-                 RSA-3072 VAULT: <span className="text-green-500">SYNCED</span> | TECH ID: <span className="text-white">BOBBY_01</span>
+                 RSA-3072 VAULT: <span className="text-green-500">SYNCED</span> | TECH ID: <span className="text-white font-bold">BOBBY_01</span>
             </div>
           </div>
         </header>
 
         {/* CENTER STAGE */}
         <div className="flex-grow p-8 overflow-y-auto">
-          <h2 className="text-xl font-bold text-white mb-6 uppercase tracking-widest">
-            {devices[0]?.category === 'Wearable' ? 'Wearables Diagnostic Toolkit' : 'Execution Matrix'}
-          </h2>
-          
-          <div className="grid grid-cols-2 gap-6">
-            
-            {/* Wearable-Specific Contextual Actions */}
-            {devices.some(d => d.category === 'Wearable') && (
-                <div className="bg-slate-900 border border-blue-900/40 rounded-lg p-6 hover:border-blue-500 transition-colors relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 blur-3xl rounded-full"></div>
-                    <h3 className="text-lg font-bold text-blue-400 mb-2 flex items-center gap-2">
-                        <Watch size={20} /> Wearable Hijack Module
-                    </h3>
-                    <p className="text-xs text-slate-500 mb-6">Attacking iBus/AWRT diagnostic ports and Wireless ADB beacons.</p>
-                    
-                    <button 
-                        onClick={() => triggerWearableExploit(devices[0].name, 'ibus')}
-                        disabled={isExecuting || !devices.find(d => d.protocol.includes('iBus'))}
-                        className="w-full mb-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-30 text-white py-3 rounded text-sm font-bold transition-all shadow-[0_0_15px_rgba(59,130,246,0.2)]"
-                    >
-                        Execute iBus DFU Restore
-                    </button>
-                    <button 
-                        onClick={() => triggerWearableExploit(null, 'wireless_adb', '192.168.1.145')}
-                        disabled={isExecuting || !isWirelessRadarActive}
-                        className="w-full bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white py-3 rounded text-sm font-bold transition-all"
-                    >
-                        Wireless ADB Hijack (WearOS)
-                    </button>
+          {showRecoveryPlan ? (
+             <div className="bg-red-950/20 border border-red-800 rounded-lg p-8 animate-in fade-in slide-in-from-top-4">
+                <h2 className="text-2xl font-black text-red-500 mb-6 flex items-center gap-3">
+                    < लाइफबुय size={28} /> DISASTER RECOVERY PROTOCOL
+                </h2>
+                <div className="grid grid-cols-2 gap-8 text-sm">
+                    <div className="bg-black/40 p-4 rounded border border-red-900/30">
+                        <h4 className="text-red-400 font-bold mb-2">SCENARIO: HARD BRICK</h4>
+                        <p className="text-slate-400 font-mono leading-relaxed">
+                            1. Short hardware Test Points on PCB.<br/>
+                            2. Connect USB to Master Port.<br/>
+                            3. Select 'Restore from Shadow Rollback'.
+                        </p>
+                    </div>
+                    <div className="bg-black/40 p-4 rounded border border-red-900/30">
+                        <h4 className="text-red-400 font-bold mb-2">SCENARIO: AUTH ERROR</h4>
+                        <p className="text-slate-400 font-mono leading-relaxed">
+                            1. Verify technician cloud session.<br/>
+                            2. Check Internet/RSA server status.<br/>
+                            3. Reboot Phoenix Forge instance.
+                        </p>
+                    </div>
                 </div>
-            )}
+                <button 
+                    onClick={() => setShowRecoveryPlan(false)}
+                    className="mt-8 bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-6 rounded transition-all"
+                >
+                    Return to Execution Matrix
+                </button>
+             </div>
+          ) : (
+            <>
+                <h2 className="text-xl font-bold text-white mb-6 uppercase tracking-widest flex items-center gap-3">
+                    <Cpu size={24} className="text-orange-500" /> 
+                    {devices[0]?.category === 'Gaming' ? 'Gaming Sector Recovery Toolkit' : 'Master Execution Matrix'}
+                </h2>
+                
+                <div className="grid grid-cols-2 gap-6">
+                    {/* Gaming Sector Tools */}
+                    {devices.some(d => d.category === 'Gaming') && (
+                        <div className="bg-slate-900 border border-red-900/40 rounded-lg p-6 hover:border-red-500 transition-colors relative group">
+                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-30 transition-opacity">
+                                <Gamepad2 size={64} className="text-red-500" />
+                            </div>
+                            <h3 className="text-lg font-bold text-red-500 mb-2 flex items-center gap-2">
+                                <Ghost size={20} /> Stack-Smash Payload Injector
+                            </h3>
+                            <p className="text-xs text-slate-500 mb-6 font-mono">Bypassing Tegra X1 security and x86 UEFI/BIOS corruption.</p>
+                            
+                            {devices.find(d => d.name.includes('Switch')) ? (
+                                <button 
+                                    onClick={() => triggerGamingExploit(devices[0].name, 'switch', 'hekate.bin')}
+                                    disabled={isExecuting || !isOffensiveMode}
+                                    className="w-full mb-3 bg-red-600 hover:bg-red-500 disabled:opacity-30 text-white py-3 rounded text-sm font-black transition-all shadow-[0_0_15px_rgba(239,68,68,0.2)]"
+                                >
+                                    INJECT HEKATE (TEGRA RCM)
+                                </button>
+                            ) : (
+                                <button 
+                                    onClick={() => triggerGamingExploit(devices[0].name, 'steam_deck', 'deck_f7a.rom')}
+                                    disabled={isExecuting || !isOffensiveMode}
+                                    className="w-full mb-3 bg-red-600 hover:bg-red-500 disabled:opacity-30 text-white py-3 rounded text-sm font-black transition-all"
+                                >
+                                    RECOVER STEAM DECK BIOS (SPI)
+                                </button>
+                            )}
+                            <div className="text-[10px] text-slate-500 italic mt-2 border-t border-slate-800 pt-2">
+                                * Offensive Mode required for hardware-level stack smashing.
+                            </div>
+                        </div>
+                    )}
 
-            {/* Standard Repair Tools */}
-            <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 hover:border-cyan-900/50 transition-colors">
-              <h3 className="text-lg font-bold text-cyan-400 mb-2">Repair & Maintenance</h3>
-              <p className="text-xs text-slate-500 mb-6">Autonomous sector recovery and firmware stabilization.</p>
-              
-              <button 
-                disabled={securityStatus !== 'SECURE'}
-                className="w-full mb-3 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-30 text-white py-3 rounded text-sm font-bold transition-all shadow-[0_0_15px_rgba(8,145,178,0.2)]"
-              >
-                Reset Wearable FRP (Wireless)
-              </button>
-              <button 
-                disabled={securityStatus !== 'SECURE'}
-                className="w-full bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white py-3 rounded text-sm font-bold transition-all"
-              >
-                Dump watchOS Flash (AWRT)
-              </button>
-            </div>
-
-          </div>
+                    {/* Universal Maintenance */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 hover:border-cyan-900/50 transition-colors">
+                        <h3 className="text-lg font-bold text-cyan-400 mb-2">Repair & Maintenance</h3>
+                        <p className="text-xs text-slate-500 mb-6">Agnostic sector recovery and system stabilization.</p>
+                        
+                        <button 
+                            disabled={securityStatus !== 'SECURE'}
+                            className="w-full mb-3 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-30 text-white py-3 rounded text-sm font-bold transition-all"
+                        >
+                            Execute Master Partition Sync
+                        </button>
+                        <button 
+                            disabled={securityStatus !== 'SECURE'}
+                            className="w-full bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white py-3 rounded text-sm font-bold transition-all"
+                        >
+                            Verify Silicon Checksums
+                        </button>
+                    </div>
+                </div>
+            </>
+          )}
         </div>
 
         {/* BOTTOM: System Chronicle */}
-        <div className="h-48 bg-black border-t border-slate-800 p-4 font-mono text-xs overflow-y-auto flex flex-col">
-          <div className="text-slate-600 mb-2 flex items-center gap-2 border-b border-slate-800 pb-2 uppercase tracking-widest text-[10px]">
-            <Terminal size={14} /> System Chronicle (Silicon Audit Ledger)
+        <div className="h-48 bg-black border-t border-slate-800 p-4 font-mono text-xs overflow-y-auto flex flex-col shadow-[0_-10px_20px_rgba(0,0,0,0.5)]">
+          <div className="text-slate-600 mb-2 flex items-center justify-between border-b border-slate-800 pb-2 uppercase tracking-widest text-[10px]">
+            <div className="flex items-center gap-2"><Terminal size={14} /> System Chronicle (Silicon Audit Ledger)</div>
+            <div className="text-slate-800">PhoenixForge v5.0.0-PRO</div>
           </div>
           <div className="flex flex-col-reverse">
             {logs.map((log, i) => (
               <div key={i} className={`mb-1 ${
                 log.includes('SUCCESS') || log.includes('[+]') ? 'text-green-400' : 
-                log.includes('[⌚]') || log.includes('[📡]') ? 'text-blue-400' :
+                log.includes('[🎮]') || log.includes('[⚡]') ? 'text-red-400' :
                 log.includes('ERROR') || log.includes('FAILED') ? 'text-red-500' : 
                 'text-slate-400'
               }`}>
