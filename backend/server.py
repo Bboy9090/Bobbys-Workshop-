@@ -9,11 +9,15 @@ try:
     from security_overlay import ShadowRollbackEngine
     from qualcomm_auth import QualcommAuthSpoofer
     from mtk_v3_engine import MTKGlitchEngine
+    from apple_engine import AppleSiliconEngine
+    from wearables_engine import WearablesEngine
 except ImportError:
     from .phoenix_integrator import PhoenixIntegrator
     from .security_overlay import ShadowRollbackEngine
     from .qualcomm_auth import QualcommAuthSpoofer
     from .mtk_v3_engine import MTKGlitchEngine
+    from .apple_engine import AppleSiliconEngine
+    from .wearables_engine import WearablesEngine
 
 app = FastAPI(title="Phoenix Forge API", version="1.0.0")
 
@@ -27,9 +31,9 @@ app.add_middleware(
 )
 
 # Initialize our core engines
-# True = Cloud/Mock mode. False = Production/Real Hardware mode
 forge_engine = PhoenixIntegrator(is_cloud_env=True)
 security_engine = ShadowRollbackEngine()
+wearables_engine_instance = WearablesEngine()
 
 # --- Request Models ---
 class RollbackRequest(BaseModel):
@@ -39,6 +43,16 @@ class RollbackRequest(BaseModel):
 class AuthRequest(BaseModel):
     device_id: str
     oem_target: str = "generic"
+
+class AppleExecutionRequest(BaseModel):
+    device_id: str
+    vector: str # "checkm8" or "usbmuxd"
+    pairing_record: str = "generic"
+
+class WearableExecutionRequest(BaseModel):
+    device_id: str = None
+    target_ip: str = None
+    vector: str # "ibus" or "wireless_adb"
 
 # --- API Endpoints ---
 
@@ -99,6 +113,39 @@ async def execute_mtk_glitch(request: RollbackRequest):
             raise HTTPException(status_code=500, detail="Glitch sequence failed.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Glitch execution fatal: {str(e)}")
+
+@app.post("/api/execution/apple-exploit")
+async def execute_apple_exploit(request: AppleExecutionRequest):
+    """Targeted Apple silicon exploitation (Checkm8 or USBMuxd)."""
+    try:
+        engine = AppleSiliconEngine(request.device_id)
+        if request.vector == "checkm8":
+            success = engine.execute_checkm8_exploit()
+        else:
+            success = engine.establish_lockdownd_tunnel(request.pairing_record)
+            
+        if success:
+            return {"status": "unlocked", "message": f"Apple Silicon Vector {request.vector.upper()} Executed."}
+        else:
+            raise HTTPException(status_code=500, detail="Exploit failed.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Fatal Apple Exploit error: {str(e)}")
+
+@app.post("/api/execution/wearable-exploit")
+async def execute_wearable_exploit(request: WearableExecutionRequest):
+    """Exploitation and diagnosis for wearables (Apple Watch iBus or WearOS Wireless)."""
+    try:
+        if request.vector == "ibus":
+            success = wearables_engine_instance.execute_ibus_dfu_restore(request.device_id)
+        else:
+            success = wearables_engine_instance.execute_wireless_adb_hijack(request.target_ip)
+            
+        if success:
+            return {"status": "unlocked", "message": f"Wearable Vector {request.vector.upper()} Initialized."}
+        else:
+            raise HTTPException(status_code=500, detail="Exploit failed.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Fatal Wearable Exploit error: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
