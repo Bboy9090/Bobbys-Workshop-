@@ -1,0 +1,38 @@
+{
+  "operation": "backup_device",
+  "displayName": "Backup Device",
+  "description": "Create full device backup",
+  "category": "backup",
+  "riskLevel": "low",
+  "requiresConfirmation": false,
+  "allowedRoles": ["owner", "admin", "technician"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    },
+    "backupPath": {
+      "type": "string",
+      "required": false,
+      "description": "Custom backup path (auto-generated if not provided)"
+    },
+    "includeApps": {
+      "type": "boolean",
+      "required": false,
+      "default": true,
+      "description": "Include installed applications"
+    },
+    "includeData": {
+      "type": "boolean",
+      "required": false,
+      "default": true,
+      "description": "Include user data"
+    }
+  },
+  "auditLogging": "standard",
+  "rateLimitPerMinute": 5,
+  "estimatedDuration": 300000
+}

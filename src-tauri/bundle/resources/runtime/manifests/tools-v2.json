@@ -1,0 +1,83 @@
+{
+  "version": "2.0.0",
+  "tools": [
+    {
+      "id": "android.adb",
+      "display_name": "Android Debug Bridge",
+      "binary": "adb",
+      "sha256": "REPLACE_WITH_SHA256",
+      "platforms": ["win32", "darwin", "linux"],
+      "allowed_subcommands": ["devices", "version", "start-server", "kill-server", "shell", "bugreport", "logcat", "pull", "push"],
+      "arg_rules": {
+        "shell": {
+          "deny_patterns": [
+            "su\\b",
+            "settings put global adb_enabled",
+            "setprop\\s+persist\\.sys\\.usb\\.config",
+            "pm\\s+disable\\s+com\\.google\\.android\\.gms",
+            "content\\s+delete\\s+--uri\\s+content://settings"
+          ]
+        }
+      },
+      "notes": "Diagnostics and authorized operations only. No circumvention workflows allowed."
+    },
+    {
+      "id": "android.fastboot",
+      "display_name": "Fastboot",
+      "binary": "fastboot",
+      "sha256": "REPLACE_WITH_SHA256",
+      "platforms": ["win32", "darwin", "linux"],
+      "allowed_subcommands": ["devices", "getvar", "oem", "reboot", "reboot-recovery", "reboot-bootloader"],
+      "restricted_subcommands": {
+        "flash": {
+          "requires_gates": ["ownership_attested", "device_authorized", "bootloader_unlocked", "destructive_confirm"]
+        },
+        "erase": {
+          "requires_gates": ["ownership_attested", "device_authorized", "destructive_confirm"]
+        }
+      },
+      "notes": "Bootloader/flash operations only with explicit authorization and device ownership."
+    },
+    {
+      "id": "ios.ideviceinfo",
+      "display_name": "libimobiledevice - ideviceinfo",
+      "binary": "ideviceinfo",
+      "sha256": "REPLACE_WITH_SHA256",
+      "platforms": ["darwin", "linux"],
+      "allowed_subcommands": [],
+      "allowed_args": ["-s", "-k", "ProductType", "-k", "ProductVersion", "-k", "UniqueDeviceID"],
+      "notes": "Read-only device metadata when available."
+    },
+    {
+      "id": "ios.irecovery",
+      "display_name": "libimobiledevice - irecovery",
+      "binary": "irecovery",
+      "sha256": "REPLACE_WITH_SHA256",
+      "platforms": ["darwin", "linux"],
+      "allowed_args": ["-q"],
+      "notes": "Read-only recovery mode detection."
+    },
+    {
+      "id": "ios.idevicerestore",
+      "display_name": "libimobiledevice - idevicerestore",
+      "binary": "idevicerestore",
+      "sha256": "REPLACE_WITH_SHA256",
+      "platforms": ["darwin", "linux"],
+      "restricted_subcommands": {
+        "restore": {
+          "requires_gates": ["ownership_attested", "device_authorized", "destructive_confirm"]
+        }
+      },
+      "notes": "Destructive. Must require typed confirmation gate."
+    },
+    {
+      "id": "bootforgeusb",
+      "display_name": "BootForgeUSB",
+      "binary": "bootforgeusb",
+      "sha256": "REPLACE_WITH_SHA256",
+      "platforms": ["win32", "darwin", "linux"],
+      "allowed_subcommands": ["enumerate", "detect"],
+      "notes": "USB device enumeration and detection only."
+    }
+  ]
+}

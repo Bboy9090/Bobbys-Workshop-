@@ -1,0 +1,31 @@
+{
+  "operation": "pull_file",
+  "displayName": "Pull File from Device",
+  "description": "Download a file from device to local system",
+  "category": "file",
+  "riskLevel": "low",
+  "requiresConfirmation": false,
+  "allowedRoles": ["owner", "admin", "technician"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    },
+    "remotePath": {
+      "type": "string",
+      "required": true,
+      "description": "Path to file on device"
+    },
+    "localPath": {
+      "type": "string",
+      "required": false,
+      "description": "Local destination path (auto-generated if not provided)"
+    }
+  },
+  "auditLogging": "standard",
+  "rateLimitPerMinute": 20,
+  "estimatedDuration": 5000
+}

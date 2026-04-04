@@ -1,0 +1,39 @@
+{
+  "operation": "get_logs",
+  "displayName": "Get Device Logs",
+  "description": "Retrieve logcat logs from device",
+  "category": "diagnostics",
+  "riskLevel": "low",
+  "requiresConfirmation": false,
+  "allowedRoles": ["owner", "admin", "technician", "viewer"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    },
+    "logLevel": {
+      "type": "string",
+      "required": false,
+      "enum": ["V", "D", "I", "W", "E"],
+      "default": "I",
+      "description": "Minimum log level (V=Verbose, D=Debug, I=Info, W=Warning, E=Error)"
+    },
+    "lines": {
+      "type": "integer",
+      "required": false,
+      "default": 100,
+      "description": "Number of log lines to retrieve"
+    },
+    "tag": {
+      "type": "string",
+      "required": false,
+      "description": "Filter by tag"
+    }
+  },
+  "auditLogging": "standard",
+  "rateLimitPerMinute": 30,
+  "estimatedDuration": 3000
+}

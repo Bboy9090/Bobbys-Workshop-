@@ -1,0 +1,22 @@
+===================================================
+PHOENIX FORGE ELITE: QUICK START GUIDE
+===================================
+
+STEP 1: INITIALIZATION
+- Right-click PhoenixForge.exe and select "Run as Administrator" (Required for raw USB access).
+- Ensure your RSA Cloud Vault is online (Check the top right of the dashboard).
+
+STEP 2: CONNECTION
+- Plug in the target device using a HIGH-SPEED, DATA-RATED USB-C cable. 
+- Do not use cheap charging cables; Firehose and MTK VCOM protocols will drop packets and fail.
+- Watch the "Pulse" sidebar. Wait for the silicon to be identified (e.g., Qualcomm 9008, Apple DFU).
+
+STEP 3: AUTHORIZATION & SAFETY (MANDATORY)
+- If the dashboard turns ORANGE (Qualcomm Gen 6), click "Request Cloud Signature" to spoof the BootROM.
+- Once the dashboard is GREEN, you MUST click "Execute Pre-Flight Backup" (Shadow Rollback). 
+- The system will NOT let you flash anything until EFS and NVRAM are safely backed up to your local /vault/ folder.
+
+STEP 4: EXECUTION
+- Select your target operation (e.g., Patch VBMeta, Extract Data, or Inject Poison Pill).
+- Do not touch the device or the cable until the Chronicle Terminal outputs: "[+] SUCCESS: Device Rebooting."
+===================================================

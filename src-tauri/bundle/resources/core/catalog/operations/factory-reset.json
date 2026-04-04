@@ -1,0 +1,33 @@
+{
+  "operation": "factory_reset",
+  "displayName": "Factory Reset Device",
+  "description": "Perform factory reset (WARNING: Erases all data)",
+  "category": "destructive",
+  "riskLevel": "destructive",
+  "requiresConfirmation": true,
+  "allowedRoles": ["owner", "admin"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    },
+    "wipeData": {
+      "type": "boolean",
+      "required": false,
+      "default": true,
+      "description": "Wipe user data partition"
+    },
+    "wipeCache": {
+      "type": "boolean",
+      "required": false,
+      "default": true,
+      "description": "Wipe cache partition"
+    }
+  },
+  "auditLogging": "shadow",
+  "rateLimitPerMinute": 5,
+  "estimatedDuration": 60000
+}

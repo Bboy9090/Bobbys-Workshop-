@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-use pyo3::exceptions::PyException;
+use std::collections::HashMap;
 
 #[pyclass]
 pub struct RawUsbController {
@@ -20,18 +20,13 @@ impl RawUsbController {
 
     pub fn bulk_read(&self, length: usize) -> PyResult<Vec<u8>> {
         println!("[RUST] [USB] Bulk Read from {}: {} bytes requested", self.device_id, length);
-        // Mock MTK Handshake Response
-        Ok(vec![0x5F, 0x0A, 0x50, 0x05])
+        // Mock response for protocol handshakes
+        Ok(vec![0x00; length]) 
     }
 
-    pub fn control_transfer(&self, request_type: u8, request: u8, value: u16, index: u16, data: Vec<u8>) -> PyResult<bool> {
-        println!("[RUST] [USB] Control Transfer to {}: Type=0x{:02X}, Req=0x{:02X}, Data={} bytes", 
-                 self.device_id, request_type, request, data.len());
-        
-        // Simulate the BROM crash/timeout behavior for the glitch
-        if data.len() > 128 {
-             return Err(PyException::new_err("USB Timeout/Pipe Error (Simulated Glitch Success)"));
-        }
+    /// Low-level JTAG/SPI/UART bridge via FT232H/CH341
+    pub fn raw_protocol_write(&self, protocol: String, address: u32, data: Vec<u8>) -> PyResult<bool> {
+        println!("[RUST] [BRIDGE] Writing via {}: Addr 0x{:08X}, Data {} bytes", protocol, address, data.len());
         Ok(true)
     }
 }
@@ -48,20 +43,40 @@ impl UsbMonitor {
         UsbMonitor { mock_mode }
     }
 
-    pub fn poll_active_devices(&self) -> PyResult<Vec<std::collections::HashMap<String, String>>> {
+    pub fn poll_active_devices(&self) -> PyResult<Vec<HashMap<String, String>>> {
         let mut devices = Vec::new();
         if self.mock_mode {
-            let mut dev1 = std::collections::HashMap::new();
-            dev1.insert("name".to_string(), "Snapdragon 8 Gen 6 (EDL)".to_string());
-            dev1.insert("protocol".to_string(), "Firehose 7.0 (Auth Required)".to_string());
-            dev1.insert("serial".to_string(), "05C6:9008".to_string());
+            // --- Mobile ---
+            let mut dev1 = HashMap::new();
+            dev1.insert("name".to_string(), "iPhone X (A11)".to_string());
+            dev1.insert("protocol".to_string(), "Apple DFU (Checkm8)".to_string());
+            dev1.insert("serial".to_string(), "05AC:1227".to_string());
+            dev1.insert("category".to_string(), "Mobile".to_string());
             devices.push(dev1);
 
-            let mut dev2 = std::collections::HashMap::new();
-            dev2.insert("name".to_string(), "MediaTek Dimensity 9500 (BROM)".to_string());
-            dev2.insert("protocol".to_string(), "VCOM V3 (SLA/DAA Locked)".to_string());
-            dev2.insert("serial".to_string(), "0E8D:2000".to_string());
+            // --- Gaming ---
+            let mut dev2 = HashMap::new();
+            dev2.insert("name".to_string(), "Nintendo Switch (V1)".to_string());
+            dev2.insert("protocol".to_string(), "Tegra RCM (Payload)".to_string());
+            dev2.insert("serial".to_string(), "0955:7321".to_string());
+            dev2.insert("category".to_string(), "Gaming".to_string());
             devices.push(dev2);
+
+            // --- IoT/Embedded ---
+            let mut dev3 = HashMap::new();
+            dev3.insert("name".to_string(), "DJI Mavic 3 (Mainboard)".to_string());
+            dev3.insert("protocol".to_string(), "UART/JTAG Bridge (FT232H)".to_string());
+            dev3.insert("serial".to_string(), "0403:6014".to_string());
+            dev3.insert("category".to_string(), "IoT/Embedded".to_string());
+            devices.push(dev3);
+            
+            // --- Wearables ---
+            let mut dev4 = HashMap::new();
+            dev4.insert("name".to_string(), "Apple Watch S9 (iBus)".to_string());
+            dev4.insert("protocol".to_string(), "AWRT Diagnostic Port".to_string());
+            dev4.insert("serial".to_string(), "05AC:1281".to_string()); // Mock iBus ID
+            dev4.insert("category".to_string(), "Wearable".to_string());
+            devices.push(dev4);
         }
         Ok(devices)
     }

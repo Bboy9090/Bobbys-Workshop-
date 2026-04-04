@@ -1,0 +1,26 @@
+===================================================
+PHOENIX FORGE: DISASTER RECOVERY PROTOCOL
+===================================================
+
+SCENARIO 1: THE USB CABLE IS YANKED MID-FLASH
+Symptom: Device is hard-bricked. Black screen, no vibration, won't turn on.
+Fix: 
+1. The device is stuck in a dead boot loop. You must force it back into EDL (Qualcomm) or BROM (MediaTek).
+2. Open the back cover and short the hardware Test Points on the motherboard, then plug in the USB.
+3. Once Phoenix Forge detects the raw port, go to the "Maintenance" tab and click "Restore from Shadow Rollback." 
+4. Select the exact timestamp of the backup you made 5 minutes ago. Let the engine rewrite the NVRAM.
+
+SCENARIO 2: QUALCOMM AUTHENTICATION REJECTED
+Symptom: Dashboard says "Cloud Vault Rejected Handshake."
+Fix: 
+1. Check your internet connection. The token spooler requires an active connection to your RSA server.
+2. Verify your Technician ID hasn't been revoked in the master cloud dashboard.
+
+SCENARIO 3: MEDIATEK BOOTROM GLITCH FAILS
+Symptom: Terminal says "USB Pipe Error" but the Download Agent refuses to inject.
+Fix: Timing is everything on the TOCTOU glitch. 
+1. Unplug the phone. 
+2. Disconnect the battery physically for 5 seconds. Reconnect it.
+3. Hold Volume UP + Volume DOWN simultaneously.
+4. Plug in the USB and immediately click "Execute Glitch" in the UI.
+===================================================

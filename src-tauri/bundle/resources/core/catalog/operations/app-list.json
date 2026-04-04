@@ -1,0 +1,27 @@
+{
+  "operation": "app_list",
+  "displayName": "List Installed Applications",
+  "description": "Get list of all installed applications",
+  "category": "diagnostics",
+  "riskLevel": "low",
+  "requiresConfirmation": false,
+  "allowedRoles": ["owner", "admin", "technician", "viewer"],
+  "requiredCapabilities": ["adb"],
+  "parameters": {
+    "deviceSerial": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9]{6,20}$",
+      "description": "Device serial number"
+    },
+    "systemApps": {
+      "type": "boolean",
+      "required": false,
+      "default": false,
+      "description": "Include system applications"
+    }
+  },
+  "auditLogging": "standard",
+  "rateLimitPerMinute": 20,
+  "estimatedDuration": 5000
+}

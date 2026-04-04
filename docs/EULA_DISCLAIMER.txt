@@ -1,0 +1,16 @@
+===================================================
+END USER LICENSE AGREEMENT & LEGAL DISCLAIMER
+===================================================
+
+By executing PhoenixForge.exe, you (the User) agree to the following terms:
+
+1. AUTHORIZED USE ONLY: Phoenix Forge is an enterprise-grade diagnostic and security tool. It is strictly for use on devices that you legally own, or devices for which you have explicit, written consent from the owner to repair, diagnose, or modify. 
+
+2. NO ILLEGAL ACTIVITY: You may not use this software to bypass Activation Locks, Mobile Device Management (MDM) profiles, or Factory Reset Protections (FRP) on stolen, misappropriated, or legally disputed hardware.
+
+3. ZERO LIABILITY: Blanco Tech Industries, its developers, and its affiliates assume ZERO liability for hardware damage ("bricking"), data loss, voided warranties, or legal repercussions resulting from the use of this software. 
+
+4. TELEMETRY & AUDIT: For security purposes, actions performed using enterprise-restricted modules (e.g., Qualcomm Auth Spooling, Poison Pill Injection) are logged to an immutable cloud ledger tied to your Technician ID. 
+
+IF YOU DO NOT AGREE TO THESE TERMS, CLOSE THIS APPLICATION IMMEDIATELY.
+===================================================

@@ -1,0 +1,108 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Bobbys Workshop",
+  "version": "4.0.1",
+  "identifier": "com.bboy9090.bobbysworkshop",
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Bobbys Workshop",
+        "width": 1280,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [
+      "bundle/resources/**/*",
+      "python/runtime/**/*"
+    ],
+    "copyright": "© 2025 Bobby's Workshop",
+    "category": "DeveloperTool",
+    "shortDescription": "Bobby's Workshop - Device Flashing & Diagnostics",
+    "longDescription": "Professional device flashing, diagnostics, and Secret Rooms tools with bundled Python runtime",
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "",
+      "nsis": {
+        "allowDowngrades": false,
+        "oneClick": false,
+        "allowToChangeInstallationDirectory": true,
+        "installMode": "perMachine",
+        "createDesktopShortcut": true,
+        "createStartMenuShortcut": true,
+        "menuCategory": "Bobby's Workshop",
+        "runAfterFinish": true,
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "installerHeaderIcon": "icons/icon.ico",
+        "deleteAppDataOnUninstall": false,
+        "displayLanguageSelector": true,
+        "multiLanguageInstaller": true,
+        "differentialPackage": false,
+        "warningsAsErrors": false,
+        "artifactName": "${productName}-${version}-setup.${ext}"
+      }
+    },
+    "macOS": {
+      "frameworks": [],
+      "minimumSystemVersion": "10.13",
+      "exceptionDomain": "",
+      "signingIdentity": null,
+      "providerShortName": null,
+      "entitlements": null,
+      "dmg": {
+        "title": "${productName} ${version}",
+        "format": "UDZO",
+        "backgroundColor": "#1a1a1a",
+        "icon": "icons/icon.icns",
+        "contents": [
+          {
+            "x": 410,
+            "y": 150,
+            "type": "link",
+            "path": "/Applications"
+          },
+          {
+            "x": 130,
+            "y": 150,
+            "type": "file"
+          }
+        ],
+        "window": {
+          "width": 540,
+          "height": 380
+        }
+      },
+      "pkg": {
+        "allowDowngrades": false,
+        "allowAnywhere": true,
+        "allowCurrentUserHome": false,
+        "allowRootDirectory": false,
+        "installLocation": "/Applications",
+        "pkgName": "${productName}-${version}.pkg"
+      }
+    }
+  },
+  "plugins": {}
+}
