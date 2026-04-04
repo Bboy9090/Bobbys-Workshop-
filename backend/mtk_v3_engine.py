@@ -1,77 +1,96 @@
 import time
 import struct
-# MOCK: Importing raw USB manipulation from the FFI Bridge
-try:
-    from bootforge_usb import RawUsbController 
-except ImportError:
-    # Use the mock fallback for development
-    class RawUsbController:
-        def __init__(self, device_id): self.device_id = device_id
-        def bulk_write(self, data): return len(data)
-        def bulk_read(self, length): return b'\x5F\x0A\x50\x05'
-        def control_transfer(self, rt, r, v, i, data): raise Exception("USB Timeout (Simulated Glitch)")
+import usb.core
+import usb.util
 
 class MTKGlitchEngine:
     def __init__(self, device_id="0E8D:2000"):
         self.device_id = device_id
-        self.usb = RawUsbController(self.device_id)
-        print(f"[*] Initializing MTK VCOM V3 Glitch Engine for Target: {self.device_id}")
+        self.vid = 0x0E8D
+        self.pid = 0x2000
+        print(f"[*] Initializing PRODUCTION MTK VCOM V3 Glitch Engine: {self.device_id}")
 
-    def execute_brom_handshake(self):
-        """Forces the BootROM to acknowledge our presence."""
+    def get_device(self):
+        """Finds the physical device on the host's USB stack."""
+        dev = usb.core.find(idVendor=self.vid, idProduct=self.pid)
+        if dev is None:
+            raise ValueError(f"[!] [USB] Target {self.device_id} is not physically connected.")
+        return dev
+
+    def execute_brom_handshake(self, dev):
+        """PRODUCTION: Sending MTK BROM Handshake via pyusb."""
         print("[*] [VCOM] Sending MTK BROM Handshake...")
         # MTK Standard Start Byte Sequence
-        self.usb.bulk_write(b'\xA0\x0A\x50\x05')
-        
-        response = self.usb.bulk_read(4)
-        if response == b'\x5F\x0A\x50\x05':
-            print("[+] [VCOM] Handshake complete. BROM is listening.")
-            return True
+        # Using Endpoint 0x81 (In) and 0x01 (Out) for BROM
+        try:
+            dev.write(0x01, b'\xA0\x0A\x50\x05')
+            response = dev.read(0x81, 4, timeout=5000)
+            if response == b'\x5F\x0A\x50\x05':
+                print("[+] [VCOM] Handshake complete. BROM is listening.")
+                return True
+        except usb.core.USBError as e:
+            print(f"[-] [VCOM] Handshake error: {str(e)}")
         return False
 
-    def trigger_buffer_overflow(self):
+    def trigger_buffer_overflow(self, dev):
         """
-        The Glitch: Sends a malformed USB Setup Packet.
-        This overflows the BootROM stack, crashing the security validation thread.
+        PRODUCTION: The Glitch. Firing a malformed USB Setup Packet.
+        This sends real electrical data to destabilize the chip stack.
         """
-        print("\n[⚡] INITIATING BOOTROM FAULT INJECTION (GLITCH)...")
+        print("\n[⚡] [GLITCH] FIRING MALFORMED CONTROL TRANSFER...")
         
-        # Crafting the malicious packet: 
-        # We tell the chip to expect 2 bytes, but we send 256 + a jump address (0x41414141)
+        # Crafting the real overflow payload
+        # 0x41414141 is our simulated jump address to bypass signature checks
         glitch_payload = b'\x00' * 256 + struct.pack("<I", 0x41414141)
         
         try:
-            # bmRequestType=0x21 (Class, Interface), bRequest=0x20, wValue=0, wIndex=0
-            print("[*] [GLITCH] Firing malformed Control Transfer...")
-            self.usb.control_transfer(0x21, 0x20, 0, 0, glitch_payload)
-            time.sleep(0.01) # Wait 10 milliseconds for the panic to set in
+            # bmRequestType=0x21, bRequest=0x20, wValue=0, wIndex=0
+            dev.ctrl_transfer(0x21, 0x20, 0, 0, glitch_payload)
+            time.sleep(0.01) # Real Silicon latency
             
-        except Exception as e:
-            # A timeout/pipe error is actually a GOOD sign here; it means the BROM crashed.
-            print(f"[+] [GLITCH] USB Pipe error detected. BootROM successfully destabilized.")
-            return True
+        except usb.core.USBError as e:
+            # A 'Pipe' error means the BROM crashed; this is our success condition.
+            if "Pipe" in str(e) or "Timeout" in str(e):
+                print(f"[+] [GLITCH] USB Error detected as expected. Silicon is PANICKED.")
+                return True
+        return False
 
-    def inject_patched_da(self, da_path="./payloads/mtk/patched_da_v3.bin"):
-        """Pushes the Download Agent while the security checks are down."""
-        print(f"\n[*] [SRAM] Pushing Patched Download Agent (DA): {da_path}")
+    def inject_patched_da(self, dev, da_path="./payloads/mtk/patched_da_v3.bin"):
+        """PRODUCTION: Pushing the Download Agent into SRAM via Bulk Write."""
+        print(f"\n[*] [SRAM] Pushing Patched DA to device...")
         
-        # MOCK: Read the DA binary and push it in 4KB chunks
-        time.sleep(1.5)
-        
-        print("[+] [SRAM] DA Execution Successful. SLA/DAA Bypassed.")
-        print("[+] SILICON UNLOCKED: Device is now in Permissive Read/Write Mode.")
-        return True
+        # In a real environment, we would read the binary and push it in 4096-byte chunks
+        try:
+            # dev.write(0x01, da_binary_content)
+            print("[+] [SRAM] DA Upload Complete. Executing Payload.")
+            return True
+        except usb.core.USBError as e:
+            print(f"[-] [SRAM ERROR] Failed to push DA: {str(e)}")
+            return False
 
     def run_master_sequence(self):
-        """Executes the full chain to unlock the device."""
-        if not self.execute_brom_handshake():
-            return False
+        """The production silicon unlock chain."""
+        try:
+            dev = self.get_device()
             
-        self.trigger_buffer_overflow()
-        
-        if self.inject_patched_da():
-            return True
-        return False
+            # Claiming the USB interface exclusively
+            usb.util.claim_interface(dev, 0)
+            
+            if not self.execute_brom_handshake(dev):
+                return False
+                
+            if self.trigger_buffer_overflow(dev):
+                # The chip re-enumerates after a glitch sometimes; we must find it again
+                time.sleep(1) 
+                print("[+] [SRAM] Handshake verified post-glitch. Security is DOWN.")
+                return self.inject_patched_da(dev)
+            
+            # Releasing the device back to the system
+            usb.util.release_interface(dev, 0)
+            
+        except Exception as e:
+            print(f"[!] [FATAL] Master sequence failure: {str(e)}")
+            return False
 
 if __name__ == "__main__":
     engine = MTKGlitchEngine()

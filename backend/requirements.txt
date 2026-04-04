@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+pydantic
+requests
+pyusb
+pyo3
+nuitka
+zstandard
