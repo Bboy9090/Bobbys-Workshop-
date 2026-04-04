@@ -48,6 +48,8 @@ import iosLibimobiledeviceRouter from './routes/v1/ios/libimobiledevice-full.js'
 import adbAdvancedRouter from './routes/v1/adb/advanced.js';
 import diagnosticsRouter from './routes/v1/diagnostics/index.js';
 import trapdoorRouter from './routes/v1/trapdoor/index.js';
+import casesRouter from './routes/v1/cases.js';
+import jobsRouter from './routes/v1/jobs.js';
 import { getAllMetrics, estimateUsbUtilization } from './utils/system-metrics.js';
 import { getCircuitBreakerStatus, resetCircuitBreaker, getHealthStatus } from './utils/retry-circuit-breaker.js';
 import { getResourceStatus, canExecuteOperation, acquireOperationSlot, releaseOperationSlot, forceCleanup } from './utils/resource-limits.js';
@@ -341,6 +343,10 @@ v1Router.use('/authorization', rateLimiter('authorization'), authorizationRouter
 
 // Trapdoor router with rate limiting and authentication
 v1Router.use('/trapdoor', rateLimiter('trapdoor'), requireTrapdoorPasscode, trapdoorRouter);
+
+// Repair case queue (intake, ownership attestation, job-linked audit)
+v1Router.use('/cases', casesRouter);
+v1Router.use('/jobs', jobsRouter);
 
 // Mount v1 router
 app.use('/api/v1', v1Router);

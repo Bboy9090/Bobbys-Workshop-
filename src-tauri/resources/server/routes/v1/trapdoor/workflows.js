@@ -12,7 +12,7 @@
  */
 
 import express from 'express';
-import ShadowLogger from '../../core/lib/shadow-logger.js';
+import ShadowLogger from '../../../../core/lib/shadow-logger.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';

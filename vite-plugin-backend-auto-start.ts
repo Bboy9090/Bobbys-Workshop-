@@ -24,18 +24,26 @@ export function backendAutoStart(): Plugin {
         }
 
         isBackendStarting = true;
-        const serverDir = path.resolve(process.cwd(), 'server');
-        const serverPath = path.join(serverDir, 'index.js');
+        const workshopServerDir = path.resolve(process.cwd(), 'src-tauri', 'resources', 'server');
+        const workshopServerPath = path.join(workshopServerDir, 'index.js');
+        const legacyDemoDir = path.resolve(process.cwd(), 'server');
+        const legacyDemoPath = path.join(legacyDemoDir, 'index.js');
 
-        // Check if server files exist
+        const serverDir = fs.existsSync(workshopServerPath) ? workshopServerDir : legacyDemoDir;
+        const serverPath = fs.existsSync(workshopServerPath) ? workshopServerPath : legacyDemoPath;
+
         if (!fs.existsSync(serverPath)) {
-          console.warn('[Backend Auto-Start] Server files not found, skipping auto-start');
+          console.warn('[Backend Auto-Start] No API server index.js found, skipping auto-start');
           isBackendStarting = false;
           return;
         }
 
-        console.log('[Backend Auto-Start] Starting backend server...');
-        
+        if (serverDir === workshopServerDir) {
+          console.log('[Backend Auto-Start] Starting full workshop API (src-tauri/resources/server)...');
+        } else {
+          console.warn('[Backend Auto-Start] Using legacy demo server/ — install full tree for repair workflows.');
+        }
+
         // Start backend server
         backendProcess = spawn('node', ['index.js'], {
           cwd: serverDir,

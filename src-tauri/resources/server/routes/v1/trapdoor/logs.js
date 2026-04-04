@@ -12,7 +12,7 @@
  */
 
 import express from 'express';
-import ShadowLogger from '../../core/lib/shadow-logger.js';
+import ShadowLogger from '../../../../core/lib/shadow-logger.js';
 
 const router = express.Router();
 const shadowLogger = new ShadowLogger();

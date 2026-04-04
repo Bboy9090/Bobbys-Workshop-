@@ -80,6 +80,7 @@ wheels/
 .installed.cfg
 *.egg
 server/node_modules
+src-tauri/resources/server/node_modules
 
 # Bobby's Secret Workshop - NEVER COMMIT SENSITIVE DATA
 secrets/

@@ -13,7 +13,7 @@
  */
 
 import express from 'express';
-import ADBLibrary from '../../core/lib/adb.js';
+import ADBLibrary from '../../../../core/lib/adb.js';
 import { safeSpawn, commandExistsSafe } from '../../../utils/safe-exec.js';
 import fs from 'fs';
 import path from 'path';

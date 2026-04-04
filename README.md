@@ -4,9 +4,7 @@
 
 Bobby's Workshop is professional device repair software for mobile repair shops. This repository contains the complete working application - not an umbrella platform, not a collection of tools, but the actual repair software you install and run.
 
-[![CI/CD](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/ci-cd.yml)
-[![Build](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/build.yml/badge.svg)](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/build.yml)
-[![Tests](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/test.yml/badge.svg)](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/test.yml)
+[![Node.js CI](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/node.js.yml/badge.svg)](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/node.js.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/badge/version-5.0.0-blue.svg)](https://github.com/Bboy9090/Bobbys-Workshop-/releases)
 
@@ -141,8 +139,8 @@ Bobby's Workshop is the complete repair software that integrates all components:
 - **Rust** - BootForge USB hardware layer
 
 ### Desktop
-- **Electron** - Cross-platform desktop application
-- **Tauri** - Lightweight Rust-based alternative
+- **Tauri (primary)** — Shipping path for installers (MSI/NSIS/DMG/App). Bundles the React UI, Node workshop API (`src-tauri/resources/server`), and Rust sidecar.
+- **Electron (optional)** — Minimal shell in `electron/main.cjs` that loads the Vite `dist/` build. Use when you want a Chromium wrapper without the Tauri toolchain; it does not replace the bundled server/runtime that Tauri packages.
 
 ---
 
@@ -157,31 +155,33 @@ Bobby's Workshop is the complete repair software that integrates all components:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/phoenix-forge.git
-cd phoenix-forge
+git clone https://github.com/Bboy9090/Bobbys-Workshop-.git
+cd Bobbys-Workshop-
 
 # Install dependencies
 npm install
 
-# Install server dependencies
-npm run server:install
+# Install the full workshop API (required for device scan, cases, flash routes)
+npm run workshop:server:install
 
-# Start development server
+# Start development server (Vite + auto-starts workshop API on port 3001)
 npm run dev
 ```
 
 ### Production Build
 
 ```bash
-# Build the application
+# Web UI build (output in dist/)
 npm run build
 
-# Build with Electron
-npm run electron:build
-
-# Build with Tauri
+# Tauri desktop installer (requires Rust + bundle prep scripts on your OS)
 npm run tauri:build
+
+# Electron wrapper around dist/ (optional)
+npm run electron:build
 ```
+
+**API server:** The full repair API lives in `src-tauri/resources/server` (port **3001** by default). The older top-level `server/` tree is a slimmer demo; `npm run dev` auto-starts the full API when that folder is present. For Tauri production, the bundle step copies the same server into the app resources.
 
 ---
 

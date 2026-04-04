@@ -349,6 +349,9 @@ v1Router.use('/authorization', rateLimiter('authorization'), authorizationRouter
 // Trapdoor router with rate limiting and authentication
 v1Router.use('/trapdoor', rateLimiter('trapdoor'), requireTrapdoorPasscode, trapdoorRouter);
 
+v1Router.use('/cases', casesRouter);
+v1Router.use('/jobs', jobsRouter);
+
 // Mount v1 router
 app.use('/api/v1', v1Router);
 

@@ -5,7 +5,7 @@
  */
 
 import express from 'express';
-import IOSLibrary from '../../core/lib/ios.js';
+import IOSLibrary from '../../../core/lib/ios.js';
 
 const router = express.Router();
 

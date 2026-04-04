@@ -17,7 +17,7 @@ const FRONTEND_MIN_VERSION = '2.0.0'; // Minimum required frontend version
 // Read package.json for server version
 let serverVersion = 'unknown';
 try {
-  const packagePath = path.resolve(__dirname, '../../../package.json');
+  const packagePath = path.resolve(__dirname, '../../../../../package.json');
   const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf-8'));
   serverVersion = packageJson.version || 'unknown';
 } catch (err) {
@@ -27,11 +27,11 @@ try {
 // Get git commit (optional)
 let gitCommit = null;
 try {
-  const gitHeadPath = path.resolve(__dirname, '../../../.git/HEAD');
+  const gitHeadPath = path.resolve(__dirname, '../../../../../.git/HEAD');
   if (fs.existsSync(gitHeadPath)) {
     const headContent = fs.readFileSync(gitHeadPath, 'utf-8').trim();
     if (headContent.startsWith('ref: ')) {
-      const refPath = path.resolve(__dirname, '../../../.git', headContent.substring(5));
+      const refPath = path.resolve(__dirname, '../../../../../.git', headContent.substring(5));
       if (fs.existsSync(refPath)) {
         gitCommit = fs.readFileSync(refPath, 'utf-8').trim().substring(0, 7);
       }

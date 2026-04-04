@@ -8,7 +8,7 @@
  */
 
 import express from 'express';
-import IOSLibrary from '../../core/lib/ios.js';
+import IOSLibrary from '../../../../core/lib/ios.js';
 import { safeSpawn, commandExistsSafe } from '../../../utils/safe-exec.js';
 
 const router = express.Router();
