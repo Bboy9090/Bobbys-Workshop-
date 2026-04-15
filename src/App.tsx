@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import {
   API_BASE,
+  adbRebootBootloader,
+  adbRebootRecovery,
+  getAdbDeviceInfo,
+  getAdbDevices,
+  getDeviceScan,
+  getSystemTools,
+  getV1Health,
+  getV1Ready,
+  resolveWsBase,
   createCase,
   getCaseAudit,
-  getDeviceScan,
   postCaseIntake,
   postOwnershipVerification,
   triggerBackupAuth,
@@ -24,10 +32,24 @@ function badgeForDevice(d: ScanDevice): string {
   return '';
 }
 
+function getSerialFromScanDevice(d: ScanDevice | null): string | null {
+  if (!d?.evidence) return null;
+  const ev = d.evidence as { serial?: string; source?: string };
+  if (ev.source === 'adb' && ev.serial) return ev.serial;
+  if (ev.source === 'fastboot' && ev.serial) return ev.serial;
+  return null;
+}
+
 export default function App() {
   const [devices, setDevices] = useState<ScanDevice[]>([]);
   const [toolsHint, setToolsHint] = useState<string | null>(null);
   const [backendOk, setBackendOk] = useState<boolean | null>(null);
+  const [healthDetail, setHealthDetail] = useState<string>('');
+  const [readyDetail, setReadyDetail] = useState<string>('');
+  const [systemToolsSummary, setSystemToolsSummary] = useState<string>('');
+  const [adbListSummary, setAdbListSummary] = useState<string>('');
+  const [deviceInfoJson, setDeviceInfoJson] = useState<string>('');
+  const [hotplugLine, setHotplugLine] = useState<string>('—');
   const [pollEnabled, setPollEnabled] = useState(true);
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
@@ -37,7 +59,7 @@ export default function App() {
   const [ownershipPhrase, setOwnershipPhrase] = useState('');
   const [auditSummary, setAuditSummary] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogLine[]>([
-    { ts: new Date().toISOString(), level: 'info', message: "Bobby's Workshop UI ready. Waiting for backend…" },
+    { ts: new Date().toISOString(), level: 'info', message: "Bobby's Workshop UI ready. Connecting to API…" },
   ]);
 
   const selected = useMemo(
@@ -45,14 +67,59 @@ export default function App() {
     [devices, selectedUid]
   );
 
+  const selectedSerial = useMemo(() => getSerialFromScanDevice(selected), [selected]);
+
+  const checkBackend = useCallback(async () => {
+    const h = await getV1Health();
+    if (!h.ok || !h.data) {
+      setBackendOk(false);
+      setHealthDetail(h.error?.message || 'unreachable');
+      return false;
+    }
+    setBackendOk(true);
+    setHealthDetail(`${h.data.status} · ${h.meta?.correlationId?.slice(0, 12) ?? ''}`);
+    const r = await getV1Ready();
+    if (r.ok && r.data) {
+      setReadyDetail(
+        typeof r.data.ready === 'boolean' ? (r.data.ready ? 'ready' : 'not ready') : 'unknown'
+      );
+    } else {
+      setReadyDetail(r.error?.message || '—');
+    }
+    const st = await getSystemTools();
+    if (st.ok && st.data) {
+      const d = st.data as {
+        adb?: { installed?: boolean; path?: string | null };
+        fastboot?: { installed?: boolean; path?: string | null };
+      };
+      const adb = d.adb?.installed ? `ADB ✓ ${d.adb.path || ''}` : 'ADB ✗';
+      const fb = d.fastboot?.installed ? `Fastboot ✓ ${d.fastboot.path || ''}` : 'Fastboot ✗';
+      setSystemToolsSummary(`${adb} · ${fb}`);
+    } else {
+      setSystemToolsSummary(st.error?.message || '—');
+    }
+    const ad = await getAdbDevices();
+    if (ad.ok && ad.data) {
+      setAdbListSummary(`${ad.data.count} via /api/v1/adb/devices`);
+    } else {
+      setAdbListSummary(ad.error?.message || 'ADB list failed');
+    }
+    return true;
+  }, []);
+
   const refreshDevices = useCallback(async () => {
+    const up = await checkBackend();
+    if (!up) {
+      pushLog(setLogs, 'error', 'Backend health check failed — start: npm run workshop:server (port 3001)');
+    }
+
     const env = await getDeviceScan();
     if (!env.ok || !env.data) {
       setBackendOk(false);
       pushLog(
         setLogs,
         'error',
-        env.error?.message || 'Device scan failed — is the workshop API running on port 3001?'
+        env.error?.message || 'Device scan failed — API returned error (see Network tab)'
       );
       setDevices([]);
       return;
@@ -62,7 +129,7 @@ export default function App() {
     const adb = env.data.tools?.adb;
     const fb = env.data.tools?.fastboot;
     if (adb && !adb.installed) {
-      setToolsHint('ADB not found on PATH. Install platform-tools and restart the app.');
+      setToolsHint('ADB not found on PATH. Install platform-tools or use managed tools (see README).');
     } else if (fb && !fb.installed) {
       setToolsHint('Fastboot not found on PATH. Install platform-tools for bootloader workflows.');
     } else {
@@ -71,7 +138,7 @@ export default function App() {
     if (!selectedUid && env.data.devices?.length) {
       setSelectedUid(env.data.devices[0].device_uid);
     }
-  }, [selectedUid]);
+  }, [checkBackend, selectedUid]);
 
   useEffect(() => {
     const boot = window.setTimeout(() => {
@@ -82,12 +149,46 @@ export default function App() {
     }
     const id = window.setInterval(() => {
       void refreshDevices();
-    }, 2500);
+    }, 4000);
     return () => {
       window.clearTimeout(boot);
       window.clearInterval(id);
     };
   }, [pollEnabled, refreshDevices]);
+
+  useEffect(() => {
+    const wsUrl = `${resolveWsBase()}/ws/device-events`;
+    let ws: WebSocket | null = null;
+    const queue = (msg: string) => {
+      window.setTimeout(() => setHotplugLine(msg), 0);
+    };
+    try {
+      ws = new WebSocket(wsUrl);
+      ws.onopen = () => {
+        queue('WebSocket connected (device-events)');
+        window.setTimeout(() => pushLog(setLogs, 'info', `Hotplug WS: ${wsUrl}`), 0);
+      };
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data as string) as { type?: string; display_name?: string; device_uid?: string };
+          queue(`${msg.type || 'event'}: ${msg.display_name || msg.device_uid || 'device'}`);
+        } catch {
+          queue(String(ev.data).slice(0, 120));
+        }
+      };
+      ws.onerror = () => {
+        queue('WebSocket error (is the API on 3001?)');
+      };
+      ws.onclose = () => {
+        queue('WebSocket closed');
+      };
+    } catch {
+      queue('WebSocket unavailable');
+    }
+    return () => {
+      ws?.close();
+    };
+  }, []);
 
   const openCase = async () => {
     const env = await createCase({
@@ -156,16 +257,11 @@ export default function App() {
   };
 
   const requestBackupPrompt = async () => {
-    if (!selected?.evidence || (selected.evidence as { source?: string }).source !== 'adb') {
-      pushLog(setLogs, 'warn', 'Select an ADB-connected device (normal Android OS) for backup authorization');
+    if (!selectedSerial) {
+      pushLog(setLogs, 'warn', 'Select an ADB device from the scan list for backup authorization');
       return;
     }
-    const serial = (selected.evidence as { serial?: string }).serial;
-    if (!serial) {
-      pushLog(setLogs, 'error', 'No serial on selected device');
-      return;
-    }
-    const env = await triggerBackupAuth(serial);
+    const env = await triggerBackupAuth(selectedSerial);
     if (!env.ok) {
       pushLog(setLogs, 'error', env.error?.message || 'Backup authorization request failed');
       return;
@@ -173,17 +269,66 @@ export default function App() {
     pushLog(setLogs, 'info', 'Backup authorization flow triggered — watch the device for prompts');
   };
 
+  const loadDeviceInfo = async () => {
+    if (!selectedSerial) {
+      pushLog(setLogs, 'warn', 'No ADB serial on selection — pick a device in Normal OS (ADB) mode');
+      return;
+    }
+    const env = await getAdbDeviceInfo(selectedSerial);
+    if (!env.ok || !env.data) {
+      setDeviceInfoJson(env.error?.message || 'Failed');
+      pushLog(setLogs, 'error', env.error?.message || 'device-info failed');
+      return;
+    }
+    setDeviceInfoJson(JSON.stringify(env.data, null, 2));
+    pushLog(setLogs, 'info', 'Loaded ADB device-info from backend');
+  };
+
+  const doRebootBootloader = async () => {
+    if (!selectedSerial) {
+      pushLog(setLogs, 'warn', 'ADB serial required');
+      return;
+    }
+    const env = await adbRebootBootloader(selectedSerial);
+    if (!env.ok) {
+      pushLog(setLogs, 'error', env.error?.message || 'reboot-bootloader failed');
+      return;
+    }
+    pushLog(setLogs, 'info', 'Reboot to bootloader requested (check device)');
+  };
+
+  const doRebootRecovery = async () => {
+    if (!selectedSerial) {
+      pushLog(setLogs, 'warn', 'ADB serial required');
+      return;
+    }
+    const env = await adbRebootRecovery(selectedSerial);
+    if (!env.ok) {
+      pushLog(setLogs, 'error', env.error?.message || 'reboot-recovery failed');
+      return;
+    }
+    pushLog(setLogs, 'info', 'Reboot to recovery requested (check device)');
+  };
+
   const selectedTip = selected ? badgeForDevice(selected) : '';
+
+  const devModeNote = import.meta.env.DEV ? 'Dev: requests use Vite proxy → API :3001' : `API: ${API_BASE || '(same origin)'}`;
 
   return (
     <div className="flex h-screen flex-col bg-slate-950 text-slate-200">
-      <header className="flex shrink-0 items-center justify-between border-b border-slate-800 bg-slate-900 px-4 py-3">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900 px-4 py-3">
         <div>
           <h1 className="text-lg font-semibold tracking-tight text-white">Bobby&apos;s Workshop</h1>
           <p className="text-xs text-slate-500">
-            API: {API_BASE}{' '}
-            {backendOk === null ? '· checking…' : backendOk ? '· connected' : '· offline'}
+            {devModeNote}
+            {backendOk === null ? ' · checking…' : backendOk ? ' · API linked' : ' · offline'}
           </p>
+          <p className="mt-1 font-mono text-[10px] text-slate-600">
+            Health: {healthDetail || '—'} · Ready: {readyDetail || '—'}
+          </p>
+          <p className="font-mono text-[10px] text-slate-600">Tools: {systemToolsSummary || '—'}</p>
+          <p className="font-mono text-[10px] text-slate-600">ADB mirror: {adbListSummary || '—'}</p>
+          <p className="font-mono text-[10px] text-cyan-700">Hotplug: {hotplugLine}</p>
         </div>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-2 text-xs text-slate-400">
@@ -193,14 +338,14 @@ export default function App() {
               onChange={(e) => setPollEnabled(e.target.checked)}
               className="rounded border-slate-600"
             />
-            Auto-refresh devices
+            Auto-refresh
           </label>
           <button
             type="button"
             onClick={() => refreshDevices()}
             className="rounded bg-orange-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-500"
           >
-            Scan now
+            Scan + health
           </button>
         </div>
       </header>
@@ -214,7 +359,10 @@ export default function App() {
             </div>
           )}
           {devices.length === 0 ? (
-            <p className="text-sm text-slate-500">No devices detected. Connect USB and enable debugging.</p>
+            <p className="text-sm text-slate-500">
+              No devices from <code className="text-slate-400">/api/devices/scan</code>. Connect USB, enable debugging,
+              or install platform-tools.
+            </p>
           ) : (
             <ul className="space-y-2">
               {devices.map((d) => (
@@ -231,6 +379,9 @@ export default function App() {
                     <div className="font-medium text-white">{d.display_name || d.device_uid}</div>
                     <div className="mt-1 font-mono text-xs text-cyan-400/90">{d.mode}</div>
                     <div className="mt-0.5 text-xs text-slate-500">{d.platform_hint}</div>
+                    {d.correlation_badge && (
+                      <div className="mt-1 text-[10px] text-violet-400">{d.correlation_badge}</div>
+                    )}
                   </button>
                 </li>
               ))}
@@ -242,8 +393,7 @@ export default function App() {
           <div className="shrink-0 border-b border-slate-800 bg-slate-900/50 p-4">
             <h2 className="text-sm font-semibold text-white">Repair case</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Intake and ownership attestation are logged for compliance. Destructive work belongs in guided
-              workflows after attestation.
+              All actions call the workshop Node API (no mock UI). Intake and ownership are logged server-side.
             </p>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <input
@@ -272,6 +422,9 @@ export default function App() {
               <span className="self-center text-xs text-slate-500">
                 Active: {activeCaseId || 'none'}
               </span>
+              {selectedSerial && (
+                <span className="self-center text-xs font-mono text-slate-400">Serial: {selectedSerial}</span>
+              )}
             </div>
           </div>
 
@@ -282,11 +435,50 @@ export default function App() {
               </div>
             )}
 
+            <div className="mb-6 rounded-lg border border-slate-700 bg-slate-900/40 p-4">
+              <h3 className="text-sm font-semibold text-white">Quick actions (backend)</h3>
+              <p className="mt-1 text-xs text-slate-500">
+                Wired to <code className="text-slate-400">/api/v1/authorization/adb/*</code> and{' '}
+                <code className="text-slate-400">/api/v1/adb/device-info</code>.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void loadDeviceInfo()}
+                  disabled={!selectedSerial}
+                  className="rounded bg-slate-700 px-3 py-2 text-xs text-white disabled:opacity-40 hover:bg-slate-600"
+                >
+                  Load device info (ADB)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void doRebootBootloader()}
+                  disabled={!selectedSerial}
+                  className="rounded border border-amber-900 bg-amber-950/40 px-3 py-2 text-xs text-amber-100 disabled:opacity-40 hover:bg-amber-900/50"
+                >
+                  Reboot → bootloader
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void doRebootRecovery()}
+                  disabled={!selectedSerial}
+                  className="rounded border border-amber-900 bg-amber-950/40 px-3 py-2 text-xs text-amber-100 disabled:opacity-40 hover:bg-amber-900/50"
+                >
+                  Reboot → recovery
+                </button>
+              </div>
+              {deviceInfoJson && (
+                <pre className="mt-3 max-h-40 overflow-auto rounded border border-slate-800 bg-black p-2 text-[10px] text-slate-400">
+                  {deviceInfoJson}
+                </pre>
+              )}
+            </div>
+
             <div className="grid gap-4 lg:grid-cols-2">
               <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
                 <h3 className="text-sm font-semibold text-white">1. Read-only intake</h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  Captures current connection state and identifiers without flashing or unlocking.
+                  <code className="text-slate-400">POST /api/v1/cases/:id/intake</code>
                 </p>
                 <button
                   type="button"
@@ -301,7 +493,7 @@ export default function App() {
               <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
                 <h3 className="text-sm font-semibold text-white">2. Service authorization</h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  Required before sensitive operations. Typed phrase must match exactly.
+                  <code className="text-slate-400">POST /api/v1/cases/:id/ownership</code>
                 </p>
                 <label className="mt-3 flex items-center gap-2 text-sm">
                   <input
@@ -324,29 +516,30 @@ export default function App() {
                   onClick={runOwnership}
                   disabled={!activeCaseId}
                   className="mt-3 w-full rounded bg-violet-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-40 hover:bg-violet-600"
-                  >
+                >
                   Record attestation
                 </button>
               </section>
 
               <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-                <h3 className="text-sm font-semibold text-white">3. Safe Android prompts</h3>
+                <h3 className="text-sm font-semibold text-white">3. Backup prompt (ADB)</h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  Triggers ADB backup authorization so the customer can approve on-device (no exploit payloads).
+                  <code className="text-slate-400">POST /api/v1/authorization/adb/trigger-backup</code>
                 </p>
                 <button
                   type="button"
                   onClick={requestBackupPrompt}
-                  className="mt-4 w-full rounded border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700"
+                  disabled={!selectedSerial}
+                  className="mt-4 w-full rounded border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-40 hover:bg-slate-700"
                 >
-                  Request backup authorization (ADB)
+                  Trigger backup authorization
                 </button>
               </section>
 
               <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-                <h3 className="text-sm font-semibold text-white">Audit visibility</h3>
+                <h3 className="text-sm font-semibold text-white">Audit</h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  Case-scoped events are written under the server audit log directory.
+                  <code className="text-slate-400">GET /api/v1/cases/:id/audit</code>
                 </p>
                 <button
                   type="button"

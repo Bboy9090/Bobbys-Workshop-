@@ -12,6 +12,20 @@ const projectRoot = process.env.PROJECT_ROOT || import.meta.dirname
 // https://vite.dev/config/
 export default defineConfig({
   base: './', // Use relative paths for Electron (file:// protocol)
+  server: {
+    // Workshop API runs on 3001; proxy so the UI can use same-origin fetch('/api/...') in dev (no CORS drift).
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:3001',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://127.0.0.1:3001',
+        ws: true,
+        changeOrigin: true,
+      },
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),

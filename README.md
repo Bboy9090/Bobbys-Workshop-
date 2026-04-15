@@ -183,6 +183,8 @@ npm run electron:build
 
 **API server:** The full repair API lives in `src-tauri/resources/server` (port **3001** by default). The older top-level `server/` tree is a slimmer demo; `npm run dev` auto-starts the full API when that folder is present. For Tauri production, the bundle step copies the same server into the app resources.
 
+**Frontend ↔ API in dev:** Vite proxies `/api` and `/ws` to `127.0.0.1:3001`, so the React UI uses same-origin `fetch('/api/...')` without CORS issues. For Electron `file://` or custom setups, set `VITE_API_BASE=http://127.0.0.1:3001` in `.env`.
+
 ---
 
 ## Design Philosophy
