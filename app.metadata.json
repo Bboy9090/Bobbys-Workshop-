@@ -1,0 +1,53 @@
+{
+  "id": "com.bobbysworld.workshop",
+  "name": "Bobby's Workshop",
+  "displayName": "Bobby's Workshop - Phoenix Forge",
+  "version": "5.0.0",
+  "description": "Professional device repair, diagnostics, and recovery dashboard for Bobby's World / Blue Phoenix OS",
+  "tagline": "Rise from the Ashes. Every Device Reborn.",
+  "category": "DeveloperTool",
+  "platforms": ["windows", "macos", "linux"],
+  "capabilities": {
+    "deviceDetection": true,
+    "diagnostics": true,
+    "repairNotes": true,
+    "exportReports": true,
+    "safeMode": true,
+    "auditLogging": true
+  },
+  "mvpFeatures": [
+    "Device dashboard with mock-safe fallback",
+    "Diagnostic checklist (read-only)",
+    "Repair notes per device/session",
+    "Export diagnostic report (JSON/MD)",
+    "Dry-run repair operations with audit log"
+  ],
+  "integrations": {
+    "phoenixCore": {
+      "enabled": true,
+      "description": "Embedded decision engine for device routing and workflow orchestration"
+    },
+    "bootForge": {
+      "enabled": true,
+      "description": "Embedded Rust library for USB device detection and communication"
+    }
+  },
+  "safety": {
+    "noDestructiveActions": true,
+    "noBypassFlows": true,
+    "dryRunDefault": true,
+    "explicitConfirmationRequired": true,
+    "auditTrail": true
+  },
+  "experimental": {
+    "enabled": false,
+    "features": []
+  },
+  "author": "Bobby's World",
+  "license": "MIT",
+  "repository": "https://github.com/Bboy9090/Bobbys-Workshop-",
+  "support": {
+    "url": "https://github.com/Bboy9090/Bobbys-Workshop-/issues",
+    "email": null
+  }
+}

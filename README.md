@@ -49,6 +49,19 @@ This repository **IS the software**. Everything else (Phoenix Core, BootForge) a
 - **Authority System** - Role-based access for sensitive operations
 - **Audit Trail** - Complete logging of all operations for compliance
 
+### Workshop MVP Features
+
+The Reforged MVP (v5.0.0) provides the foundational repair dashboard:
+
+- **Device Dashboard** - Real-time device detection with mock-safe fallback
+- **Diagnostic Checklist** - Read-only diagnostic workflows per device platform
+- **Repair Notes** - Per-device/per-session repair note tracking in case management
+- **Export Reports** - Diagnostic report export in JSON and Markdown formats
+- **Safe Mode** - All repair operations use dry-run by default with audit logging
+- **No Destructive Actions** - No bypass flows or destructive operations without explicit confirmation
+
+> **Safety First**: All operations require explicit user confirmation and are logged to audit trails. See `app.metadata.json` for the full safety contract.
+
 ---
 
 ## Screenshots
@@ -223,6 +236,8 @@ Phoenix Forge uses a carefully crafted color palette:
 | `npm run server:start` | Start backend server |
 | `npm run electron:dev` | Start Electron development |
 | `npm run tauri:dev` | Start Tauri development |
+| `bash scripts/healthcheck.sh` | Verify diagnostics/export/safe-mode functionality |
+| `bash scripts/smoke-test.sh` | Run smoke tests for core MVP features |
 
 ---
 
