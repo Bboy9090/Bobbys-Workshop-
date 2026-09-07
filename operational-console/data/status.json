@@ -1,0 +1,127 @@
+{
+  "updatedAt": "2026-09-07T18:16:00-04:00",
+  "activeNow": [
+    {
+      "lane": "Soul Codex Web",
+      "status": "RUNNING",
+      "detail": "Production deployment is healthy on Railway; latest public source remains the Moon/Rising + Xcode Cloud archive fix."
+    },
+    {
+      "lane": "Soul Codex iOS",
+      "status": "IN_REVIEW",
+      "detail": "Game Center entitlement mismatch was corrected and the App Store release lane is waiting on review evidence."
+    },
+    {
+      "lane": "Soul Codex Android",
+      "status": "BLOCKED",
+      "detail": "Source is API-36 compliant and buildable; signed AAB, Play signing, Data Safety, testing, and final Play Console evidence remain."
+    },
+    {
+      "lane": "ARCWYRE / Blue Phoenix",
+      "status": "ACTIVE",
+      "detail": "Firmware/runtime validation work remains active; default-branch GitHub commits are evidence, but exact active-branch AWS/release state is not inferred here."
+    },
+    {
+      "lane": "Publishing",
+      "status": "ACTIVE",
+      "detail": "Quantina Cottage hardcover corrected and approved; Bloodward 530-page hardcover cover is being finalized around dedication/barcode-safe layout."
+    },
+    {
+      "lane": "Wide Distribution",
+      "status": "ACTIVE",
+      "detail": "Bloodward is the cleanest wide-ebook candidate; Shatterzone is title-gated; Quantina Cottage and The Bleed retail ebooks are held by KDP Select while library/print lanes remain available."
+    }
+  ],
+  "recentVerifiedWork": [
+    {
+      "status": "PASS",
+      "type": "publishing",
+      "message": "Quantina Cottage 462-page hardcover proof fingerprinted against the final manuscript; same final prose as the 259-page layout, then corrected and approved.",
+      "date": "2026-09-07"
+    },
+    {
+      "status": "PASS",
+      "type": "publishing",
+      "message": "Bloodward final print interior remains locked at 530 pages / 6×9; hardcover cover work is isolated to barcode-safe back-cover composition.",
+      "date": "2026-09-07"
+    },
+    {
+      "status": "PASS",
+      "type": "release-system",
+      "message": "$mobile-store-release and $book-publish-release skill families were locked and packaged for repeatable release audits.",
+      "date": "2026-09-07"
+    }
+  ],
+  "thisWeek": [
+    {
+      "summary": "robert gonzalez's Zoom Meeting",
+      "start": "2026-09-10T18:30:00-04:00"
+    },
+    {
+      "summary": "Virtual Session Reminder",
+      "start": "2026-09-10T18:40:00-04:00"
+    }
+  ],
+  "blockers": [
+    {
+      "lane": "Soul Codex Android",
+      "severity": "BLOCKER",
+      "detail": "No production-signed AAB / Play App Signing receipt yet."
+    },
+    {
+      "lane": "ARCWYRE",
+      "severity": "UNKNOWN",
+      "detail": "Exact active-branch AWS Wave 9 / release telemetry is not wired into this PWA yet."
+    },
+    {
+      "lane": "Bloodward Hardcover",
+      "severity": "ACTIVE_FIX",
+      "detail": "Back-cover dedication and character-avatar composition must remain barcode-safe in the final 530-page KDP wrap."
+    },
+    {
+      "lane": "Shatterzone Wide Ebook",
+      "severity": "BLOCKER",
+      "detail": "Amazon is live as 'Shatterzone: the unforgotten' while the canonical package is 'SHATTERZONE: The Unremembered'. Permanent title identity must be locked before wide listings."
+    },
+    {
+      "lane": "Quantina + The Bleed Wide Retail Ebook",
+      "severity": "HOLD",
+      "detail": "Both are currently enrolled in KDP Select; non-Amazon retail ebook distribution waits for the active term to end."
+    }
+  ],
+  "publishing": [
+    {
+      "book": "Quantina Cottage",
+      "kindle": "$5.99 / KDP Select / live",
+      "paperback": "$11.00 / live",
+      "hardcover": "462-page layout / corrected / approved",
+      "wide": "Library ebook + print lanes now; retail ebook after Select"
+    },
+    {
+      "book": "Legends of Kai-Jax: Bloodward",
+      "kindle": "$4.00 / live / no Select badge",
+      "paperback": "$13.00 / draft",
+      "hardcover": "530-page layout / cover finalization",
+      "wide": "Wide ebook candidate after final validator/account gates"
+    },
+    {
+      "book": "SHATTERZONE",
+      "kindle": "$4.99 / live",
+      "paperback": "$7.00 / live",
+      "hardcover": "$13.50 / draft",
+      "wide": "Held on subtitle identity mismatch"
+    },
+    {
+      "book": "THE BLEED: OPEN LATE",
+      "kindle": "$4.99 / KDP Select / live",
+      "paperback": "$10.00 / live",
+      "hardcover": "$16.00 / live",
+      "wide": "Library ebook + print lanes now; retail ebook after Select"
+    }
+  ],
+  "notes": [
+    "UNKNOWN never becomes PASS.",
+    "GitHub and Soul Codex runtime are probed live by the console backend.",
+    "Calendar uses the last verified snapshot until CALENDAR_ICS_URL is configured securely on the deployment."
+  ]
+}
