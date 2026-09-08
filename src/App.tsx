@@ -9,6 +9,7 @@ import {
   triggerBackupAuth,
   type ScanDevice,
 } from './lib/api';
+import PublishingDashboard from './PublishingDashboard';
 
 type LogLine = { ts: string; level: 'info' | 'warn' | 'error'; message: string };
 
@@ -25,6 +26,7 @@ function badgeForDevice(d: ScanDevice): string {
 }
 
 export default function App() {
+  const [workspaceView, setWorkspaceView] = useState<'publishing' | 'repair'>('publishing');
   const [devices, setDevices] = useState<ScanDevice[]>([]);
   const [toolsHint, setToolsHint] = useState<string | null>(null);
   const [backendOk, setBackendOk] = useState<boolean | null>(null);
@@ -74,6 +76,7 @@ export default function App() {
   }, [selectedUid]);
 
   useEffect(() => {
+    if (workspaceView !== 'repair') return;
     const boot = window.setTimeout(() => {
       void refreshDevices();
     }, 0);
@@ -87,7 +90,7 @@ export default function App() {
       window.clearTimeout(boot);
       window.clearInterval(id);
     };
-  }, [pollEnabled, refreshDevices]);
+  }, [pollEnabled, refreshDevices, workspaceView]);
 
   const openCase = async () => {
     const env = await createCase({
@@ -181,11 +184,37 @@ export default function App() {
         <div>
           <h1 className="text-lg font-semibold tracking-tight text-white">Bobby&apos;s Workshop</h1>
           <p className="text-xs text-slate-500">
-            API: {API_BASE}{' '}
-            {backendOk === null ? '· checking…' : backendOk ? '· connected' : '· offline'}
+            {workspaceView === 'publishing' ? (
+              'Publishing release registry'
+            ) : (
+              <>
+                API: {API_BASE}{' '}
+                {backendOk === null ? '· checking…' : backendOk ? '· connected' : '· offline'}
+              </>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setWorkspaceView('publishing')}
+            className={`rounded px-3 py-1.5 text-xs font-semibold ${
+              workspaceView === 'publishing' ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-300'
+            }`}
+          >
+            Publishing
+          </button>
+          <button
+            type="button"
+            onClick={() => setWorkspaceView('repair')}
+            className={`rounded px-3 py-1.5 text-xs font-semibold ${
+              workspaceView === 'repair' ? 'bg-cyan-700 text-white' : 'bg-slate-800 text-slate-300'
+            }`}
+          >
+            Repair
+          </button>
+          {workspaceView === 'repair' ? (
+            <>
           <label className="flex items-center gap-2 text-xs text-slate-400">
             <input
               type="checkbox"
@@ -202,9 +231,14 @@ export default function App() {
           >
             Scan now
           </button>
+            </>
+          ) : null}
         </div>
       </header>
 
+      {workspaceView === 'publishing' ? (
+        <PublishingDashboard />
+      ) : (
       <div className="flex min-h-0 flex-1">
         <aside className="w-80 shrink-0 overflow-y-auto border-r border-slate-800 bg-slate-900/80 p-4">
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Device queue</h2>
@@ -380,6 +414,7 @@ export default function App() {
           </div>
         </main>
       </div>
+      )}
     </div>
   );
 }
