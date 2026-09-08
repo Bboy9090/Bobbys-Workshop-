@@ -1,55 +1,142 @@
 {
-  "updatedAt": "2026-09-07T18:16:00-04:00",
+  "updatedAt": "2026-09-08T02:10:00-04:00",
+  "soulCodexDeployment": {
+    "provider": "Railway",
+    "status": "SUCCESS",
+    "deploymentId": "31a54121-8edd-4e6d-8362-952892f54b4e",
+    "sha": "a4e4651be5f8df0f06bd63a4ac8d0c65fdb363a1",
+    "shortSha": "a4e4651",
+    "branch": "main",
+    "deployedAt": "2026-09-08T00:19:48.153Z",
+    "detail": "Fix verified Moon/Rising refresh and Xcode Cloud archive scheme (#228)"
+  },
   "activeNow": [
     {
       "lane": "Soul Codex Web",
       "status": "RUNNING",
-      "detail": "Production deployment is healthy on Railway; latest public source remains the Moon/Rising + Xcode Cloud archive fix."
+      "detail": "Production deployment is verified on Railway at a4e4651; public runtime health is probed live by the console."
     },
     {
       "lane": "Soul Codex iOS",
       "status": "IN_REVIEW",
-      "detail": "Game Center entitlement mismatch was corrected and the App Store release lane is waiting on review evidence."
+      "detail": "App Store release lane is active. Store-review state remains manual evidence until App Store Connect telemetry is wired."
     },
     {
       "lane": "Soul Codex Android",
       "status": "BLOCKED",
-      "detail": "Source is API-36 compliant and buildable; signed AAB, Play signing, Data Safety, testing, and final Play Console evidence remain."
+      "detail": "Native integration is buildable, but a production-signed AAB, Play App Signing receipt, testing evidence, and final Play Console gates remain."
     },
     {
       "lane": "ARCWYRE / Blue Phoenix",
-      "status": "ACTIVE",
-      "detail": "Firmware/runtime validation work remains active; default-branch GitHub commits are evidence, but exact active-branch AWS/release state is not inferred here."
+      "status": "BLOCKED",
+      "detail": "Wave 9 status is fetched live from the public S3 evidence manifest."
     },
     {
       "lane": "Publishing",
       "status": "ACTIVE",
-      "detail": "Quantina Cottage hardcover corrected and approved; Bloodward 530-page hardcover cover is being finalized around dedication/barcode-safe layout."
+      "detail": "Quantina Cottage hardcover is approved; Bloodward hardcover and the refreshed Shatterzone print covers are in final KDP preview/QC lanes."
     },
     {
-      "lane": "Wide Distribution",
+      "lane": "Fiction Production",
       "status": "ACTIVE",
-      "detail": "Bloodward is the cleanest wide-ebook candidate; Shatterzone is title-gated; Quantina Cottage and The Bleed retail ebooks are held by KDP Select while library/print lanes remain available."
+      "detail": "Kai-Jax, ASHFALL, Super Smash Grand Saga, and Shatterzone have verified production assets in Drive. Progress is shown only where evidence exists."
+    }
+  ],
+  "engineering": [
+    {
+      "id": "arcwyre",
+      "name": "ARCWYRE / Blue Phoenix",
+      "status": "LIVE_EVIDENCE",
+      "detail": "Wave 9 Stage 2 is fail-closed and publishes a permanent S3 manifest after each CodeBuild run.",
+      "source": "AWS CodeBuild + S3"
+    },
+    {
+      "id": "soul-web",
+      "name": "Soul Codex Web",
+      "status": "RUNNING",
+      "detail": "Railway production deployment a4e4651 is successful; HTTP runtime is probed live.",
+      "source": "GitHub + Railway + HTTP"
+    },
+    {
+      "id": "soul-ios",
+      "name": "Soul Codex iOS",
+      "status": "IN_REVIEW",
+      "detail": "Repository readiness gates distinguish simulator/archive/signing/TestFlight/App Store evidence. Current store-review state is manual until App Store Connect is connected.",
+      "source": "GitHub release audit + manual store evidence"
+    },
+    {
+      "id": "soul-android",
+      "name": "Soul Codex Android",
+      "status": "BLOCKED",
+      "detail": "Simulator/emulator integration is established; signed-artifact and Play Console evidence remain open.",
+      "source": "GitHub mobile readiness audit"
+    },
+    {
+      "id": "workshop-console",
+      "name": "Bobby's Workshop Console",
+      "status": "DEPLOYING",
+      "detail": "PWA source is isolated under operational-console and is being redeployed on Railway after the stale root-build failure.",
+      "source": "GitHub + Railway"
+    }
+  ],
+  "creativeProjects": [
+    {
+      "name": "Legends of Kai-Jax",
+      "status": "ACTIVE",
+      "stage": "Series production + publishing",
+      "detail": "Bloodward is the active Book 1 publishing identity. The old Convergence prose is explicitly archived in Drive; current Kai-Jax integration/library assets remain available.",
+      "sourceTitle": "ARCHIVED__LEGENDS_OF_KAI_JAX_THE_MEMORY_HERO_BOOK_ONE_CONVERGENCE_FULL_PROSE_V1.docx",
+      "sourceUrl": "https://docs.google.com/document/d/1WaYVlrEcF3Y0Mc1mskrjwB3PkDm5TmCS/edit"
+    },
+    {
+      "name": "ASHFALL: Rise of the Void Law",
+      "status": "DEVELOPMENT",
+      "stage": "Developmental rewrite",
+      "detail": "Drive contains the complete developmental manuscript, 6x9 developmental interior, scene blueprint, and continuity/production ledger. No invented completion percentage is assigned.",
+      "sourceTitle": "ASHFALL_Rise_of_the_Void_Law_Complete_Developmental_Manuscript_v1.0.pdf",
+      "sourceUrl": "https://drive.google.com/file/d/1wNBs6b1T1B-PPFYZz2C29usYripDB7IZ/view"
+    },
+    {
+      "name": "Super Smash Grand Saga",
+      "status": "ACTIVE_QC",
+      "stage": "Nine-book master + comic production",
+      "detail": "Drive contains the complete nine-book V37 master and the Master Writer's Directive & Story Bible. QC/comic progression remains a production lane, not a guessed percentage.",
+      "sourceTitle": "SSGS_COMPLETE_NINE_BOOK_SAGA_V37_FINAL_PERFECTION_MASTER.md",
+      "sourceUrl": "https://drive.google.com/file/d/1TGOyD2tLJEz_sHJxLbECGRvk8sdXiZaJ/view"
+    },
+    {
+      "name": "SHATTERZONE: The Unremembered",
+      "status": "PUBLISHED_KDP",
+      "stage": "Print refresh + wide-release preparation",
+      "detail": "Drive contains the ARC, 6x9 print interior, Publisher's Edition v3, and retail metadata package. Canonical subtitle is The Unremembered.",
+      "sourceTitle": "SHATTERZONE_The_Unremembered_Publishers_Edition_v3.docx",
+      "sourceUrl": "https://docs.google.com/document/d/1V_xBy1zjEmWF_dHxOCzLesiwUXngHZvk/edit"
     }
   ],
   "recentVerifiedWork": [
     {
       "status": "PASS",
+      "type": "railway-deployment",
+      "message": "Soul Codex production deployment 31a54121 succeeded at commit a4e4651.",
+      "date": "2026-09-08T00:21:01Z"
+    },
+    {
+      "status": "PASS",
       "type": "publishing",
-      "message": "Quantina Cottage 462-page hardcover proof fingerprinted against the final manuscript; same final prose as the 259-page layout, then corrected and approved.",
+      "message": "Quantina Cottage hardcover correction reached an approved KDP preview state.",
       "date": "2026-09-07"
     },
     {
       "status": "PASS",
       "type": "publishing",
-      "message": "Bloodward final print interior remains locked at 530 pages / 6×9; hardcover cover work is isolated to barcode-safe back-cover composition.",
-      "date": "2026-09-07"
+      "message": "Bloodward print interior remains locked at 530 pages / 6x9 while cover-only QC continues.",
+      "date": "2026-09-08"
     },
     {
       "status": "PASS",
-      "type": "release-system",
-      "message": "$mobile-store-release and $book-publish-release skill families were locked and packaged for repeatable release audits.",
-      "date": "2026-09-07"
+      "type": "publishing",
+      "message": "Shatterzone print-cover refresh was rebuilt around a fuller Bobby's Workshop Publishing presentation for the 199-page paperback/hardcover lane.",
+      "date": "2026-09-08"
     }
   ],
   "thisWeek": [
@@ -66,27 +153,114 @@
     {
       "lane": "Soul Codex Android",
       "severity": "BLOCKER",
-      "detail": "No production-signed AAB / Play App Signing receipt yet."
+      "detail": "Production-signed AAB / Play App Signing / internal-test evidence is still missing."
     },
     {
-      "lane": "ARCWYRE",
-      "severity": "UNKNOWN",
-      "detail": "Exact active-branch AWS Wave 9 / release telemetry is not wired into this PWA yet."
+      "lane": "Soul Codex iOS",
+      "severity": "HOLD",
+      "detail": "Awaiting authoritative App Store review outcome; console does not infer approval from repository state."
     },
     {
       "lane": "Bloodward Hardcover",
       "severity": "ACTIVE_FIX",
-      "detail": "Back-cover dedication and character-avatar composition must remain barcode-safe in the final 530-page KDP wrap."
+      "detail": "Final 530-page KDP wrap still requires successful preview confirmation with all front/back/spine text inside safe areas."
+    },
+    {
+      "lane": "Shatterzone Print Refresh",
+      "severity": "ACTIVE_FIX",
+      "detail": "New fuller paperback/hardcover covers require KDP preview verification before replacing the currently live print package."
     },
     {
       "lane": "Shatterzone Wide Ebook",
       "severity": "BLOCKER",
-      "detail": "Amazon is live as 'Shatterzone: the unforgotten' while the canonical package is 'SHATTERZONE: The Unremembered'. Permanent title identity must be locked before wide listings."
+      "detail": "Existing Amazon listing identity used 'the unforgotten' while the canonical package is 'SHATTERZONE: The Unremembered'. Title identity must be reconciled before wide duplication."
     },
     {
       "lane": "Quantina + The Bleed Wide Retail Ebook",
       "severity": "HOLD",
-      "detail": "Both are currently enrolled in KDP Select; non-Amazon retail ebook distribution waits for the active term to end."
+      "detail": "Both ebooks are enrolled in KDP Select; non-Amazon retail ebook distribution waits for the active exclusivity term to end."
+    }
+  ],
+  "dependencies": [
+    {
+      "from": "ARCWYRE Release Candidate",
+      "to": "Wave 9 runtime matrix",
+      "status": "BLOCKED",
+      "detail": "release_candidate cannot become true until every required runtime lane has executable PASS evidence."
+    },
+    {
+      "from": "Soul Codex iOS Release",
+      "to": "App Store review evidence",
+      "status": "WAITING",
+      "detail": "Repository/archive evidence cannot substitute for an App Store Connect decision."
+    },
+    {
+      "from": "Soul Codex Android Release",
+      "to": "Signed AAB + Play Console",
+      "status": "BLOCKED",
+      "detail": "Signing, upload, Data Safety/testing, and release receipts are required."
+    },
+    {
+      "from": "Quantina Cottage / The Bleed wide ebooks",
+      "to": "KDP Select exclusivity term",
+      "status": "HOLD",
+      "detail": "Wide retail ebook distribution begins only after Select exclusivity permits it."
+    },
+    {
+      "from": "Shatterzone wide release",
+      "to": "Canonical title identity",
+      "status": "BLOCKED",
+      "detail": "The Unremembered must be the stable metadata identity across channels."
+    }
+  ],
+  "readiness": [
+    {
+      "id": "soul-web",
+      "name": "Soul Codex Web",
+      "status": "READY",
+      "detail": "Reconciled dynamically against the live production health probe."
+    },
+    {
+      "id": "soul-ios",
+      "name": "Soul Codex iOS",
+      "status": "IN_REVIEW",
+      "detail": "Store review in progress; no approval is claimed without store evidence."
+    },
+    {
+      "id": "soul-android",
+      "name": "Soul Codex Android",
+      "status": "BLOCKED",
+      "detail": "Signed release artifact and Play Console evidence remain open."
+    },
+    {
+      "id": "arcwyre",
+      "name": "ARCWYRE Wave 9",
+      "status": "BLOCKED",
+      "detail": "Reconciled dynamically from the S3 Wave 9 manifest."
+    },
+    {
+      "id": "quantina-hardcover",
+      "name": "Quantina Cottage Hardcover",
+      "status": "READY",
+      "detail": "Corrected KDP hardcover preview reached approval state."
+    },
+    {
+      "id": "bleed-print",
+      "name": "THE BLEED: OPEN LATE Print",
+      "status": "LIVE",
+      "detail": "Paperback and hardcover are live on KDP."
+    },
+    {
+      "id": "bloodward-hardcover",
+      "name": "Bloodward Hardcover",
+      "status": "NEEDS_PREVIEW",
+      "detail": "Interior is locked; final cover safe-area verification remains."
+    },
+    {
+      "id": "shatterzone-refresh",
+      "name": "Shatterzone Print Refresh",
+      "status": "NEEDS_PREVIEW",
+      "detail": "New fuller cover package requires KDP preview approval."
     }
   ],
   "publishing": [
@@ -95,33 +269,35 @@
       "kindle": "$5.99 / KDP Select / live",
       "paperback": "$11.00 / live",
       "hardcover": "462-page layout / corrected / approved",
-      "wide": "Library ebook + print lanes now; retail ebook after Select"
+      "wide": "Print/library lanes now; non-Amazon retail ebook after Select"
     },
     {
       "book": "Legends of Kai-Jax: Bloodward",
-      "kindle": "$4.00 / live / no Select badge",
+      "kindle": "$4.00 / live",
       "paperback": "$13.00 / draft",
-      "hardcover": "530-page layout / cover finalization",
-      "wide": "Wide ebook candidate after final validator/account gates"
+      "hardcover": "530-page layout / final cover QC",
+      "wide": "Wide ebook candidate after metadata/retailer validation"
     },
     {
-      "book": "SHATTERZONE",
-      "kindle": "$4.99 / live",
-      "paperback": "$7.00 / live",
-      "hardcover": "$13.50 / draft",
-      "wide": "Held on subtitle identity mismatch"
+      "book": "SHATTERZONE: The Unremembered",
+      "kindle": "$4.99 / live Amazon listing requires title identity reconciliation",
+      "paperback": "$7.00 / currently live; refreshed 199-page cover pending preview",
+      "hardcover": "draft / refreshed cover pending preview",
+      "wide": "Blocked on stable canonical title identity"
     },
     {
       "book": "THE BLEED: OPEN LATE",
       "kindle": "$4.99 / KDP Select / live",
       "paperback": "$10.00 / live",
       "hardcover": "$16.00 / live",
-      "wide": "Library ebook + print lanes now; retail ebook after Select"
+      "wide": "Print/library lanes now; non-Amazon retail ebook after Select"
     }
   ],
   "notes": [
     "UNKNOWN never becomes PASS.",
-    "GitHub and Soul Codex runtime are probed live by the console backend.",
+    "ARCWYRE is read live from the permanent S3 evidence manifest.",
+    "Soul Codex web reconciles source/deployment evidence with a live production HTTP probe.",
+    "Creative-project percentages are not guessed; Drive assets establish existence/stage, and explicit progress metrics require evidence.",
     "Calendar uses the last verified snapshot until CALENDAR_ICS_URL is configured securely on the deployment."
   ]
 }
