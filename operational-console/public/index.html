@@ -7,32 +7,80 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="BW Console" />
-  <title>Bobby's Workshop — Operational Console</title>
+  <title>Bobby's Workshop — Master Console</title>
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   <style>
     :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#eaf2ff;background:#06101d;color-scheme:dark}
-    *{box-sizing:border-box} body{margin:0;min-height:100vh;background:radial-gradient(circle at 12% 0%,#10284c 0,transparent 33%),radial-gradient(circle at 88% 0%,#31152b 0,transparent 25%),#06101d}
-    a{color:inherit}.shell{max-width:1440px;margin:auto;padding:24px}.top{display:flex;gap:18px;justify-content:space-between;align-items:flex-start;margin-bottom:20px}.brand h1{margin:0;font-size:clamp(26px,4vw,46px);letter-spacing:-.04em}.brand p{margin:.4rem 0 0;color:#91a3bd}.live{display:flex;gap:9px;align-items:center;padding:9px 12px;border:1px solid #1d3859;border-radius:999px;background:#081828;color:#bcd0ea;font-size:13px}.pulse{width:9px;height:9px;border-radius:50%;background:#38d68a;box-shadow:0 0 18px #38d68a}
-    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.panel{background:linear-gradient(180deg,rgba(12,29,48,.96),rgba(7,18,31,.96));border:1px solid #183555;border-radius:20px;padding:18px;box-shadow:0 18px 55px rgba(0,0,0,.25)}.panel h2{font-size:13px;letter-spacing:.16em;color:#82aee5;margin:0 0 13px}.stack{display:grid;gap:10px}.card{border:1px solid #17324f;background:#081725;border-radius:14px;padding:13px}.row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.title{font-weight:800}.detail{font-size:13px;color:#9fb1c9;line-height:1.45;margin-top:5px}.pill{white-space:nowrap;font-size:11px;font-weight:900;letter-spacing:.06em;padding:5px 8px;border-radius:999px;background:#132a43;color:#a8c9ef}.PASS,.RUNNING,.APPROVED{background:#123c2d;color:#77ebb0}.BLOCKED,.BLOCKER{background:#451e26;color:#ff9eac}.UNKNOWN{background:#49391a;color:#ffd77d}.ACTIVE,.ACTIVE_FIX,.IN_REVIEW{background:#183758;color:#8dc8ff}.HOLD{background:#3b2a45;color:#d8a6ff}.meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:7px;color:#7589a5;font-size:11px}.books{display:grid;gap:10px}.book{border-left:3px solid #366fab;padding-left:11px}.book strong{display:block}.book small{display:block;color:#9fb1c9;margin-top:4px;line-height:1.45}.footer{margin-top:18px;color:#6f849f;font-size:12px;text-align:center}.install{display:none;border:1px solid #2b6ca8;background:#0c2c4b;color:#dcebff;border-radius:11px;padding:9px 12px;font-weight:800;cursor:pointer}.install.show{display:inline-block}.empty{color:#71849d;font-size:13px}.updated{font-size:11px;color:#6e839e;margin-top:8px}
-    @media(max-width:820px){.shell{padding:14px}.top{flex-direction:column}.grid{grid-template-columns:1fr}.panel{border-radius:16px}.row{align-items:flex-start}.brand h1{font-size:30px}}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 12% 0%,#10284c 0,transparent 32%),radial-gradient(circle at 88% 0%,#351627 0,transparent 25%),#06101d}a{color:inherit}
+    .shell{max-width:1500px;margin:auto;padding:22px}.top{display:flex;gap:18px;justify-content:space-between;align-items:flex-start;margin-bottom:15px}.brand h1{margin:0;font-size:clamp(27px,4vw,48px);letter-spacing:-.045em}.brand p{margin:.45rem 0 0;color:#91a3bd;max-width:850px}.live{display:flex;gap:9px;align-items:center;padding:9px 12px;border:1px solid #1d3859;border-radius:999px;background:#081828;color:#bcd0ea;font-size:13px}.pulse{width:9px;height:9px;border-radius:50%;background:#38d68a;box-shadow:0 0 18px #38d68a}.install{display:none;border:1px solid #2b6ca8;background:#0c2c4b;color:#dcebff;border-radius:11px;padding:9px 12px;font-weight:800;cursor:pointer}.install.show{display:inline-block}
+    .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 14px}.kpi{padding:13px 14px;border:1px solid #183555;border-radius:15px;background:#081725}.kpi small{display:block;color:#7790ad;text-transform:uppercase;letter-spacing:.12em;font-size:10px}.kpi strong{display:block;margin-top:5px;font-size:19px}.kpi span{display:block;color:#8ea4be;font-size:11px;margin-top:3px}
+    .tabs{display:flex;gap:8px;overflow:auto;padding:4px 0 14px;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}.tab{border:1px solid #1b3858;background:#081725;color:#95aaca;padding:9px 13px;border-radius:999px;font-weight:800;white-space:nowrap;cursor:pointer}.tab.active{background:#173c63;color:#ecf6ff;border-color:#397ec0}
+    .view{display:none}.view.active{display:block}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.wide{grid-column:1/-1}.panel{background:linear-gradient(180deg,rgba(12,29,48,.96),rgba(7,18,31,.96));border:1px solid #183555;border-radius:20px;padding:18px;box-shadow:0 18px 55px rgba(0,0,0,.25)}.panel h2{font-size:13px;letter-spacing:.16em;color:#82aee5;margin:0 0 13px}.stack{display:grid;gap:10px}.card{border:1px solid #17324f;background:#081725;border-radius:14px;padding:13px}.row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.title{font-weight:850}.detail{font-size:13px;color:#9fb1c9;line-height:1.45;margin-top:5px}.source{font-size:11px;color:#7188a5;margin-top:7px}.pill{white-space:nowrap;font-size:10px;font-weight:900;letter-spacing:.055em;padding:5px 8px;border-radius:999px;background:#132a43;color:#a8c9ef}.PASS,.RUNNING,.APPROVED,.READY,.LIVE,.LIVE_EVIDENCE{background:#123c2d;color:#77ebb0}.BLOCKED,.BLOCKER,.FAILED{background:#451e26;color:#ff9eac}.UNKNOWN,.UNTRACKED,.WAITING,.NEEDS_PREVIEW{background:#49391a;color:#ffd77d}.ACTIVE,.ACTIVE_FIX,.IN_REVIEW,.ACTIVE_QC,.DEVELOPMENT,.PUBLISHED_KDP,.DEPLOYING{background:#183758;color:#8dc8ff}.HOLD{background:#3b2a45;color:#d8a6ff}.meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:7px;color:#7589a5;font-size:11px}.books{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.book{border:1px solid #17324f;border-left:3px solid #366fab;background:#081725;border-radius:12px;padding:12px}.book strong{display:block}.book small{display:block;color:#9fb1c9;margin-top:4px;line-height:1.45}.empty{color:#71849d;font-size:13px}.footer{margin-top:18px;color:#6f849f;font-size:12px;text-align:center}.manifest{word-break:break-all}.sectionLead{color:#8297b2;font-size:13px;margin:-3px 0 13px}.dependency{display:grid;grid-template-columns:minmax(0,.9fr) 34px minmax(0,1.1fr);gap:8px;align-items:center}.arrow{text-align:center;color:#58799d;font-weight:900}
+    @media(max-width:900px){.shell{padding:14px}.top{flex-direction:column}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.grid{grid-template-columns:1fr}.wide{grid-column:auto}.books{grid-template-columns:1fr}.panel{border-radius:16px}.brand h1{font-size:31px}.dependency{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}}
   </style>
 </head>
 <body>
   <main class="shell">
     <header class="top">
-      <div class="brand"><h1>Bobby's Workshop Console</h1><p>Evidence-first operating view across software, releases, publishing, and calendar.</p></div>
-      <div style="display:flex;gap:9px;align-items:center"><button id="installBtn" class="install">Install Console</button><div class="live"><span class="pulse"></span><span id="healthLabel">Loading live evidence…</span></div></div>
+      <div class="brand"><h1>Bobby's Workshop Master Console</h1><p>Evidence-first command center across ARCWYRE, Soul Codex, mobile release operations, publishing, and fiction production. Missing proof stays unknown; blockers stay visible until cleared.</p></div>
+      <div style="display:flex;gap:9px;align-items:center"><button id="installBtn" class="install">Install Console</button><div class="live"><span class="pulse"></span><span id="healthLabel">Loading evidence…</span></div></div>
     </header>
-    <section class="grid">
-      <article class="panel"><h2>ACTIVE NOW</h2><div id="activeNow" class="stack"></div></article>
-      <article class="panel"><h2>RECENT VERIFIED WORK</h2><div id="recent" class="stack"></div></article>
-      <article class="panel"><h2>THIS WEEK</h2><div id="week" class="stack"></div></article>
-      <article class="panel"><h2>BLOCKERS</h2><div id="blockers" class="stack"></div></article>
-      <article class="panel"><h2>RUNTIME</h2><div id="runtime" class="stack"></div></article>
-      <article class="panel"><h2>PUBLISHING</h2><div id="publishing" class="books"></div></article>
+
+    <section class="kpis">
+      <div class="kpi"><small>ARCWYRE</small><strong id="kpiArc">…</strong><span id="kpiArcMeta">Loading manifest</span></div>
+      <div class="kpi"><small>SOUL CODEX WEB</small><strong id="kpiSoul">…</strong><span id="kpiSoulMeta">Checking production</span></div>
+      <div class="kpi"><small>BLOCKERS</small><strong id="kpiBlockers">…</strong><span>Evidence-backed open lanes</span></div>
+      <div class="kpi"><small>READY / LIVE</small><strong id="kpiReady">…</strong><span>Verified ship-ready states</span></div>
     </section>
-    <div class="footer"><div id="lastUpdated"></div><div>Rule: missing evidence stays UNKNOWN.</div></div>
+
+    <nav class="tabs" aria-label="Console sections">
+      <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="engineering">Engineering</button>
+      <button class="tab" data-tab="creative">Creative & Publishing</button>
+      <button class="tab" data-tab="blockers">Blockers & Dependencies</button>
+      <button class="tab" data-tab="ready">Ready to Ship</button>
+    </nav>
+
+    <section id="overview" class="view active">
+      <div class="grid">
+        <article class="panel"><h2>ACTIVE NOW</h2><div id="activeNow" class="stack"></div></article>
+        <article class="panel"><h2>RUNTIME & DEPLOYMENTS</h2><div id="runtime" class="stack"></div></article>
+        <article class="panel"><h2>RECENT VERIFIED WORK</h2><div id="recent" class="stack"></div></article>
+        <article class="panel"><h2>THIS WEEK</h2><div id="week" class="stack"></div></article>
+      </div>
+    </section>
+
+    <section id="engineering" class="view">
+      <div class="grid">
+        <article class="panel"><h2>ENGINEERING LANES</h2><div id="engineeringList" class="stack"></div></article>
+        <article class="panel"><h2>ARCWYRE WAVE 9 EVIDENCE</h2><div id="arcwyreEvidence" class="stack"></div></article>
+        <article class="panel wide"><h2>ARCWYRE RUNTIME MATRIX</h2><div id="arcwyreMatrix" class="stack"></div></article>
+      </div>
+    </section>
+
+    <section id="creative" class="view">
+      <div class="grid">
+        <article class="panel"><h2>FICTION / CREATIVE PROJECTS</h2><p class="sectionLead">Drive-backed assets establish project stage. Percentages are omitted unless a source proves them.</p><div id="creativeProjects" class="stack"></div></article>
+        <article class="panel"><h2>PUBLISHING</h2><div id="publishing" class="books"></div></article>
+      </div>
+    </section>
+
+    <section id="blockers" class="view">
+      <div class="grid">
+        <article class="panel"><h2>OPEN BLOCKERS</h2><div id="blockerList" class="stack"></div></article>
+        <article class="panel"><h2>DEPENDENCY CHAIN</h2><div id="dependencies" class="stack"></div></article>
+      </div>
+    </section>
+
+    <section id="ready" class="view">
+      <div class="grid">
+        <article class="panel"><h2>READY / LIVE</h2><div id="readyList" class="stack"></div></article>
+        <article class="panel"><h2>NOT READY YET</h2><div id="notReadyList" class="stack"></div></article>
+      </div>
+    </section>
+
+    <div class="footer"><div id="lastUpdated"></div><div>System law: evidence beats optimism. UNKNOWN never becomes PASS.</div></div>
   </main>
   <script type="module" src="/app.js"></script>
 </body>
