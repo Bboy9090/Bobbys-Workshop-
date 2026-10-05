@@ -21,8 +21,8 @@ Resolve contradictions explicitly. Never treat stale summaries as current releas
 8. Update the canonical task record with verified facts, preserving other workers' updates.
 
 ## Coordination boundaries
-Use GitHub issues for the durable queue until a connected command center is selected and verified. Do not introduce a second writable TASKS.json ledger.
-Use one issue per deliverable and link dependencies. Claim with an assignee and timestamp; inspect recent activity before taking over another worker's task.
+Use the verified Bobby’s Workshop command center Tasks and Blockers table for the portfolio queue. Link the relevant GitHub issue or pull request for code discussion and exact revision evidence; do not create a competing writable TASKS.json ledger.
+Use one task record per deliverable and link dependencies. Record the owner and timestamp in its notes; inspect recent activity before taking over another worker's task. The current table does not provide atomic leases, so these claims are advisory and do not enforce exclusive execution.
 Never silently overwrite another session's checkpoint or force-push.
 Do not put credentials, private manuscripts, personal data, or device paths in this public repository.
 
