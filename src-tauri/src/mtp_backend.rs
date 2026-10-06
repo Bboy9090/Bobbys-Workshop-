@@ -41,7 +41,7 @@ pub async fn mtp_status() -> Result<MtpStatus, String> {
         .into_iter()
         .map(|storage| MtpStorageSummary {
             description: storage.info().description.clone(),
-            free_space_bytes: storage.info().free_space_bytes,
+            free_space_bytes: storage.info().free_space,
         })
         .collect();
 
@@ -77,10 +77,13 @@ pub async fn mtp_list_root(storage_index: usize) -> Result<Vec<MtpRootObject>, S
 
     Ok(objects
         .into_iter()
-        .map(|object| MtpRootObject {
-            handle: format!("{:?}", object.handle),
-            filename: object.filename,
-            is_folder: object.is_folder(),
+        .map(|object| {
+            let is_folder = object.is_folder();
+            MtpRootObject {
+                handle: format!("{:?}", object.handle),
+                filename: object.filename,
+                is_folder,
+            }
         })
         .collect())
 }
