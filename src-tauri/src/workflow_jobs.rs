@@ -127,7 +127,6 @@ pub fn workflow_job_get(id: String) -> Result<WorkflowJobRecord, String> {
         .ok_or_else(|| format!("Workflow job {id} was not found"))
 }
 
-#[tauri::command]
 async fn start_job_internal(
     workflow_id: String,
     serial: Option<String>,
