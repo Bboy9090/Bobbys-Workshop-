@@ -184,3 +184,19 @@ describe('workflow job durability and retries', () => {
     expect(app).toContain('retryWorkflowJob');
   });
 });
+
+
+describe('ADB App Manager UI', () => {
+  it('uses allowlisted package operations and confirms destructive actions', () => {
+    const app = read('src/App.tsx');
+    const adb = read('src-tauri/src/adb_workflows.rs');
+    expect(app).toContain('ADB App Manager');
+    expect(app).toContain('listAdbUserPackages');
+    expect(app).toContain('runAdbPackageAction');
+    expect(app).toContain('window.confirm');
+    expect(adb).toContain('validate_package_name');
+    expect(adb).toContain('"disable-user"');
+    expect(adb).toContain('"clear-data"');
+    expect(adb).toContain('"uninstall-user"');
+  });
+});
