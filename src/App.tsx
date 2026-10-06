@@ -3,11 +3,16 @@ import {
   chooseDownloadDestination,
   chooseUploadSource,
   downloadMtpFile,
+  getAdbDeviceInfo,
+  getAdbLogcatSnapshot,
   getMtpStatus,
   getNativeUsbDevices,
   isTauriRuntime,
+  saveAdbScreenshot,
+  scanAdbDevices,
   listMtpRoot,
   uploadMtpFile,
+  type AdbDeviceRecord,
   type MtpRootObject,
   type MtpStatus,
   type MtpTransferResult,
@@ -33,6 +38,9 @@ function hex(value: number): string {
 export default function App() {
   const [usbDevices, setUsbDevices] = useState<UsbDeviceRecord[]>([]);
   const [mtp, setMtp] = useState<MtpStatus | null>(null);
+  const [adbDevices, setAdbDevices] = useState<AdbDeviceRecord[]>([]);
+  const [adbSelectedSerial, setAdbSelectedSerial] = useState<string | null>(null);
+  const [adbOutput, setAdbOutput] = useState<string | null>(null);
   const [storageIndex, setStorageIndex] = useState(0);
   const [rootObjects, setRootObjects] = useState<MtpRootObject[]>([]);
   const [selectedFolderHandle, setSelectedFolderHandle] = useState<string | null>(null);
@@ -52,6 +60,14 @@ export default function App() {
       const devices = await getNativeUsbDevices();
       setUsbDevices(devices);
 
+      const adb = await scanAdbDevices();
+      setAdbDevices(adb);
+      if (!adbSelectedSerial && adb.length) {
+        setAdbSelectedSerial(adb[0].serial);
+      } else if (adbSelectedSerial && !adb.some((device) => device.serial === adbSelectedSerial)) {
+        setAdbSelectedSerial(adb[0]?.serial ?? null);
+      }
+
       const mtpStatus = await getMtpStatus();
       setMtp(mtpStatus);
 
@@ -69,7 +85,7 @@ export default function App() {
     } finally {
       setRefreshing(false);
     }
-  }, [storageIndex, transferBusy]);
+  }, [storageIndex, transferBusy, adbSelectedSerial]);
 
   const openStorage = async (index: number) => {
     if (transferBusy) return;
@@ -115,6 +131,57 @@ export default function App() {
     try {
       const result = await downloadMtpFile(storageIndex, object.handle, destination);
       setLastTransfer(result);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  const runAdbDeviceInfo = async () => {
+    if (!adbSelectedSerial || transferBusy) return;
+    setTransferBusy(true);
+    setNativeError(null);
+    setAdbOutput(null);
+    try {
+      const result = await getAdbDeviceInfo(adbSelectedSerial);
+      const lines = Object.entries(result.properties)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join('\n');
+      setAdbOutput(`Verified device info (${result.evidenceSource})\n${lines}`);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  const runAdbLogcat = async () => {
+    if (!adbSelectedSerial || transferBusy) return;
+    setTransferBusy(true);
+    setNativeError(null);
+    setAdbOutput(null);
+    try {
+      const result = await getAdbLogcatSnapshot(adbSelectedSerial, 250);
+      setAdbOutput(`Verified logcat snapshot (${result.evidenceSource})\n${result.output}`);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  const runAdbScreenshot = async () => {
+    if (!adbSelectedSerial || transferBusy) return;
+    setTransferBusy(true);
+    setNativeError(null);
+    try {
+      const result = await saveAdbScreenshot(adbSelectedSerial);
+      if (result) {
+        setAdbOutput(
+          `Verified screenshot saved\n${result.destination}\n${formatBytes(result.bytes)} · ${result.evidenceSource}`,
+        );
+      }
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -359,6 +426,89 @@ export default function App() {
                     ))}
                   </div>
                 </div>
+              </>
+            )}
+          </section>
+
+          <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-white">Authorized ADB workflows</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  These actions run against the selected real ADB device. Unauthorized and offline devices remain
+                  visible but cannot execute workflows.
+                </p>
+              </div>
+              <span className="text-xs text-slate-500">{adbDevices.length} ADB device(s)</span>
+            </div>
+
+            {adbDevices.length === 0 ? (
+              <div className="mt-4 rounded border border-slate-800 bg-slate-950/50 p-3 text-sm text-slate-500">
+                No ADB interface detected. File transfer can still work over MTP without USB debugging.
+              </div>
+            ) : (
+              <>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {adbDevices.map((device) => (
+                    <button
+                      key={device.serial}
+                      type="button"
+                      onClick={() => setAdbSelectedSerial(device.serial)}
+                      className={`rounded border px-3 py-2 text-left text-xs ${
+                        adbSelectedSerial === device.serial
+                          ? 'border-cyan-500 bg-cyan-950/20'
+                          : 'border-slate-700 bg-slate-950'
+                      }`}
+                    >
+                      <div className="font-mono text-slate-200">{device.serial}</div>
+                      <div className={device.authorized ? 'text-emerald-400' : 'text-amber-300'}>
+                        {device.state}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={
+                      transferBusy ||
+                      !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized
+                    }
+                    onClick={() => void runAdbDeviceInfo()}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Read live device info
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      transferBusy ||
+                      !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized
+                    }
+                    onClick={() => void runAdbLogcat()}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Capture logcat
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      transferBusy ||
+                      !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized
+                    }
+                    onClick={() => void runAdbScreenshot()}
+                    className="rounded bg-violet-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-violet-600"
+                  >
+                    Save screenshot to Mac
+                  </button>
+                </div>
+
+                {adbOutput && (
+                  <pre className="mt-4 max-h-72 overflow-auto whitespace-pre-wrap rounded border border-slate-800 bg-black p-3 text-xs text-slate-300">
+                    {adbOutput}
+                  </pre>
+                )}
               </>
             )}
           </section>
