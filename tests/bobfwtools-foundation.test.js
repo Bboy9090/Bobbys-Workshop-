@@ -96,3 +96,27 @@ describe('BobFWTools production foundation', () => {
     expect(workflow).toContain('Build universal BobFWTools.app');
   });
 });
+
+
+describe('Diagnose This Phone engine', () => {
+  it('aggregates real transports and exposes evidence-backed findings', () => {
+    const diagnostics = read('src-tauri/src/diagnostics.rs');
+    expect(diagnostics).toContain('pub async fn diagnose_phone');
+    expect(diagnostics).toContain('bootforgeusb::scan');
+    expect(diagnostics).toContain('adb_scan');
+    expect(diagnostics).toContain('mtp_status');
+    expect(diagnostics).toContain('fastboot');
+    expect(diagnostics).toContain('available_workflows');
+    expect(diagnostics).toContain('blocked_workflows');
+    expect(diagnostics).toContain('evidence');
+  });
+
+  it('exposes the diagnostic command through Tauri and the desktop UI', () => {
+    const main = read('src-tauri/src/main.rs');
+    const bridge = read('src/lib/desktop.ts');
+    const app = read('src/App.tsx');
+    expect(main).toContain('diagnose_phone');
+    expect(bridge).toContain("invoke<PhoneDiagnosticReport>('diagnose_phone')");
+    expect(app).toContain('Diagnose This Phone');
+  });
+});
