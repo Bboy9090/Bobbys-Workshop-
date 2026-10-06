@@ -17,6 +17,7 @@ import {
   scanAdbDevices,
   listMtpRoot,
   listWorkflowJobs,
+  retryWorkflowJob,
   startWorkflowJob,
   uploadMtpFile,
   type AdbDeviceRecord,
@@ -113,6 +114,21 @@ export default function App() {
       setRefreshing(false);
     }
   }, [storageIndex, transferBusy, adbSelectedSerial, refreshJobs]);
+
+  const retryJob = async (id: string) => {
+    if (transferBusy) return;
+    setTransferBusy(true);
+    setNativeError(null);
+    try {
+      const job = await retryWorkflowJob(id);
+      setAdbOutput(`Retry job ${job.id}\n${job.summary}\nState: ${job.state}${job.verified ? ' · verified' : ''}`);
+      await refreshJobs();
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTransferBusy(false);
+    }
+  };
 
   const runDiagnosis = async () => {
     if (transferBusy || diagnosing) return;
@@ -567,6 +583,21 @@ export default function App() {
                     </span>
                   </div>
                   <div className="mt-1 text-xs text-slate-400">{job.summary}</div>
+                  {job.retryOf && (
+                    <div className="mt-1 font-mono text-[10px] text-slate-600">retry of {job.retryOf}</div>
+                  )}
+                  <div className="mt-2 flex items-center gap-2">
+                    {job.state !== 'running' && (
+                      <button
+                        type="button"
+                        disabled={transferBusy}
+                        onClick={() => void retryJob(job.id)}
+                        className="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 disabled:opacity-40 hover:bg-slate-800"
+                      >
+                        Retry
+                      </button>
+                    )}
+                  </div>
                   {job.evidence.length > 0 && (
                     <div className="mt-2 break-all font-mono text-[10px] text-slate-600">{job.evidence.join(' · ')}</div>
                   )}
