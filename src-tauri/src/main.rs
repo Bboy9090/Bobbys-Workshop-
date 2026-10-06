@@ -17,9 +17,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 mod python_backend;
 mod py_client;
 mod fastapi_backend;
+mod mtp_backend;
 use python_backend::{launch_python_backend, shutdown_python_backend};
 use py_client::PyWorkerClient;
 use fastapi_backend::{launch_fastapi_backend, shutdown_fastapi_backend};
+use mtp_backend::{mtp_status, mtp_list_root};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -1351,6 +1353,8 @@ fn main() {
             get_backend_status,
             get_app_version,
             bootforgeusb_scan,
+            mtp_status,
+            mtp_list_root,
             flash_start,
             flash_cancel,
             flash_status,
