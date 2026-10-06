@@ -512,7 +512,7 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
     let id_for_thread = id.clone();
 
     std::thread::spawn(move || {
-        let mut set_job_status = |status: &str, step: &str| {
+        let set_job_status = |status: &str, step: &str| {
             let state = app_for_thread.state::<AppState>();
             if let Ok(mut jobs) = state.flash_jobs.lock() {
                 if let Some(job) = jobs.get_mut(&id_for_thread) {
@@ -531,7 +531,7 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
             );
         };
 
-        let mut push_log = |line: &str| {
+        let push_log = |line: &str| {
             let state = app_for_thread.state::<AppState>();
             if let Ok(mut jobs) = state.flash_jobs.lock() {
                 if let Some(job) = jobs.get_mut(&id_for_thread) {
@@ -550,7 +550,7 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
             );
         };
 
-        let mut complete_step = |completed: u64, total: u64| {
+        let complete_step = |completed: u64, total: u64| {
             let pct = if total == 0 { 0 } else { ((completed * 100) / total).min(100) };
             let state = app_for_thread.state::<AppState>();
             if let Ok(mut jobs) = state.flash_jobs.lock() {
@@ -1278,10 +1278,18 @@ fn main() {
                                     Ok(health) => {
                                         println!("[Tauri] Legacy Python backend healthy: {}", health.version);
                                         let state_for_client = handle_for_client.state::<AppState>();
-                                        if let Ok(mut guard) = state_for_client.py_client.lock() {
+                                        {
+                                            let mut guard = state_for_client
+                                                .py_client
+                                                .lock()
+                                                .unwrap_or_else(|poisoned| poisoned.into_inner());
                                             *guard = Some(client);
                                         }
-                                        if let Ok(mut guard) = state_for_client.py_backend_port.lock() {
+                                        {
+                                            let mut guard = state_for_client
+                                                .py_backend_port
+                                                .lock()
+                                                .unwrap_or_else(|poisoned| poisoned.into_inner());
                                             *guard = Some(port);
                                         }
                                     }
