@@ -245,3 +245,20 @@ export async function installApkOnDevice(serial: string): Promise<AdbActionResul
   if (typeof apkPath !== 'string') return null;
   return invoke<AdbActionResult>('adb_install_apk', { serial, apkPath });
 }
+
+
+export type AdbPackageRecord = {
+  packageName: string;
+};
+
+export async function listAdbUserPackages(serial: string): Promise<AdbPackageRecord[]> {
+  return invoke<AdbPackageRecord[]>('adb_list_user_packages', { serial });
+}
+
+export async function runAdbPackageAction(
+  serial: string,
+  packageName: string,
+  action: 'enable' | 'disable-user' | 'clear-data' | 'uninstall-user',
+): Promise<AdbActionResult> {
+  return invoke<AdbActionResult>('adb_package_action', { serial, packageName, action });
+}
