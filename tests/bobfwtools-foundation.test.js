@@ -120,3 +120,26 @@ describe('Diagnose This Phone engine', () => {
     expect(app).toContain('Diagnose This Phone');
   });
 });
+
+
+describe('USB Cable Doctor diagnostics', () => {
+  it('distinguishes Android USB evidence from unrelated USB hardware', () => {
+    const diagnostics = read('src-tauri/src/diagnostics.rs');
+    expect(diagnostics).toContain('platform_hint.starts_with("android-")');
+    expect(diagnostics).toContain('android_usb_devices_seen');
+    expect(diagnostics).toContain('connection_grade');
+    expect(diagnostics).toContain('connection_summary');
+    expect(diagnostics).toContain('usb-only');
+    expect(diagnostics).toContain('mtp-only');
+    expect(diagnostics).toContain('adb-only');
+    expect(diagnostics).toContain('samsung-download-mode');
+    expect(diagnostics).toContain('mediatek-preloader');
+  });
+
+  it('renders Cable Doctor connection evidence in the desktop UI', () => {
+    const app = read('src/App.tsx');
+    expect(app).toContain('USB / Cable Doctor');
+    expect(app).toContain('diagnostic.usbConnections');
+    expect(app).toContain('diagnostic.connectionGrade');
+  });
+});
