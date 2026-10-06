@@ -219,3 +219,17 @@ describe('nested MTP browser', () => {
     expect(app).toContain('openMtpFolder');
   });
 });
+
+
+describe('production command surface excludes destructive flash', () => {
+  it('does not register unqualified flash commands in the default Tauri handler', () => {
+    const main = read('src-tauri/src/main.rs');
+    const start = main.indexOf('invoke_handler(tauri::generate_handler![');
+    const end = main.indexOf('])', start);
+    const handler = main.slice(start, end);
+    expect(handler).not.toContain('flash_start');
+    expect(handler).not.toContain('flash_cancel');
+    expect(handler).not.toContain('flash_status');
+    expect(handler).not.toContain('flash_history');
+  });
+});
