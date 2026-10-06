@@ -153,7 +153,8 @@ describe('auditable workflow job ledger', () => {
     expect(jobs).toContain('workflow_job_list');
     expect(jobs).toContain('workflow_job_get');
     expect(jobs).toContain('state: "running"');
-    expect(jobs).toContain('job.state = "completed"');
+    expect(jobs).toContain('"completed"');
+    expect(jobs).toContain('"accepted"');
     expect(jobs).toContain('job.state = "failed"');
     expect(jobs).not.toContain('shell -c');
   });
@@ -178,9 +179,9 @@ describe('workflow job durability and retries', () => {
     expect(jobs).not.toContain('workflow_job_cancel');
   });
 
-  it('renders retry only for terminal jobs', () => {
+  it('renders retry only for failed jobs', () => {
     const app = read('src/App.tsx');
-    expect(app).toContain("job.state !== 'running'");
+    expect(app).toContain("job.state === 'failed'");
     expect(app).toContain('retryWorkflowJob');
   });
 });
