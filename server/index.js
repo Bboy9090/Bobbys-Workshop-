@@ -26,158 +26,53 @@ const analyticsClients = new Set();
 wss.on('connection', (ws) => {
   console.log('WebSocket client connected (device-events)');
   clients.add(ws);
-  
+
   ws.send(JSON.stringify({
-    type: 'connected',
-    device_uid: 'demo-device-001',
-    platform_hint: 'android',
-    mode: 'Normal OS (Confirmed)',
-    confidence: 0.95,
+    type: 'ready',
+    source: 'bobfwtools',
     timestamp: Date.now(),
-    display_name: 'Demo Android Device',
-    matched_tool_ids: ['ABC123XYZ'],
-    correlation_badge: 'CORRELATED',
-    correlation_notes: ['Per-device correlation present']
+    message: 'Device events are emitted only from real enumeration sources.'
   }));
 
-  const interval = setInterval(() => {
-    if (ws.readyState === ws.OPEN) {
-      const isConnect = Math.random() > 0.5;
-      const platforms = ['android', 'ios', 'unknown'];
-      const platform = platforms[Math.floor(Math.random() * platforms.length)];
-      const deviceId = `device-${Math.random().toString(36).substr(2, 9)}`;
-      
-      ws.send(JSON.stringify({
-        type: isConnect ? 'connected' : 'disconnected',
-        device_uid: deviceId,
-        platform_hint: platform,
-        mode: isConnect ? 'Normal OS (Confirmed)' : 'Disconnected',
-        confidence: 0.85 + Math.random() * 0.15,
-        timestamp: Date.now(),
-        display_name: `${platform.charAt(0).toUpperCase() + platform.slice(1)} Device`,
-        matched_tool_ids: Math.random() > 0.5 ? [deviceId] : [],
-        correlation_badge: Math.random() > 0.5 ? 'CORRELATED' : 'LIKELY'
-      }));
+  ws.on('message', (data) => {
+    try {
+      const message = JSON.parse(data);
+      if (message.type === 'ping') {
+        ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+      }
+    } catch (error) {
+      console.error('Failed to parse device-events WebSocket message:', error);
     }
-  }, 8000);
+  });
 
   ws.on('close', () => {
     console.log('WebSocket client disconnected (device-events)');
     clients.delete(ws);
-    clearInterval(interval);
   });
 
   ws.on('error', (error) => {
     console.error('WebSocket error:', error);
     clients.delete(ws);
-    clearInterval(interval);
   });
 });
 
 wssCorrelation.on('connection', (ws) => {
   console.log('WebSocket client connected (correlation tracking)');
   correlationClients.add(ws);
-  
+
   ws.send(JSON.stringify({
-    type: 'batch_update',
-    devices: [
-      {
-        id: 'demo-android-001',
-        serial: 'ABC123XYZ',
-        platform: 'android',
-        mode: 'confirmed_android_os',
-        confidence: 0.95,
-        correlationBadge: 'CORRELATED',
-        matchedIds: ['ABC123XYZ', 'adb-ABC123XYZ'],
-        correlationNotes: ['Per-device correlation present (matched tool ID(s)).'],
-        vendorId: 0x18d1,
-        productId: 0x4ee7
-      }
-    ],
-    timestamp: Date.now()
+    type: 'ready',
+    devices: [],
+    source: 'bobfwtools',
+    timestamp: Date.now(),
+    message: 'Correlation updates require observed USB/platform-tool evidence.'
   }));
 
-  const interval = setInterval(() => {
-    if (ws.readyState === ws.OPEN) {
-      const eventType = Math.random();
-      const platforms = ['android', 'ios'];
-      const platform = platforms[Math.floor(Math.random() * platforms.length)];
-      const deviceId = `device-${Math.random().toString(36).substr(2, 9)}`;
-      const confidence = 0.75 + Math.random() * 0.25;
-      const hasMatchedIds = Math.random() > 0.4;
-      
-      const badges = ['CORRELATED', 'CORRELATED (WEAK)', 'SYSTEM-CONFIRMED', 'LIKELY', 'UNCONFIRMED'];
-      let badge;
-      let matchedIds = [];
-      let notes = [];
-      
-      if (hasMatchedIds && confidence >= 0.90) {
-        badge = 'CORRELATED';
-        matchedIds = [deviceId, `${platform}-${deviceId}`];
-        notes = ['Per-device correlation present (matched tool ID(s)).'];
-      } else if (hasMatchedIds) {
-        badge = 'CORRELATED (WEAK)';
-        matchedIds = [deviceId];
-        notes = ['Matched tool ID(s) present, but mode not strongly confirmed.'];
-      } else if (confidence >= 0.90) {
-        badge = 'SYSTEM-CONFIRMED';
-        notes = ['System-level confirmation exists, but not mapped to this specific USB record.'];
-      } else if (confidence >= 0.75) {
-        badge = 'LIKELY';
-        notes = [];
-      } else {
-        badge = 'UNCONFIRMED';
-        notes = [];
-      }
-      
-      if (eventType < 0.33) {
-        ws.send(JSON.stringify({
-          type: 'device_connected',
-          deviceId: deviceId,
-          device: {
-            id: deviceId,
-            serial: Math.random() > 0.3 ? deviceId.substring(0, 10).toUpperCase() : undefined,
-            platform: platform,
-            mode: `confirmed_${platform}_os`,
-            confidence: confidence,
-            correlationBadge: badge,
-            matchedIds: matchedIds,
-            correlationNotes: notes,
-            vendorId: platform === 'android' ? 0x18d1 : 0x05ac,
-            productId: platform === 'android' ? 0x4ee7 : 0x12a8
-          },
-          timestamp: Date.now()
-        }));
-      } else if (eventType < 0.66) {
-        ws.send(JSON.stringify({
-          type: 'correlation_update',
-          deviceId: deviceId,
-          device: {
-            correlationBadge: badge,
-            matchedIds: matchedIds,
-            confidence: confidence,
-            correlationNotes: notes
-          },
-          timestamp: Date.now()
-        }));
-      } else {
-        ws.send(JSON.stringify({
-          type: 'device_disconnected',
-          deviceId: deviceId,
-          timestamp: Date.now()
-        }));
-      }
-    }
-  }, 5000);
-  
   ws.on('message', (data) => {
     try {
       const message = JSON.parse(data);
       if (message.type === 'ping') {
-        ws.send(JSON.stringify({
-          type: 'pong',
-          timestamp: Date.now()
-        }));
+        ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
       }
     } catch (error) {
       console.error('Failed to parse correlation WebSocket message:', error);
@@ -187,110 +82,45 @@ wssCorrelation.on('connection', (ws) => {
   ws.on('close', () => {
     console.log('WebSocket client disconnected (correlation tracking)');
     correlationClients.delete(ws);
-    clearInterval(interval);
   });
 
   ws.on('error', (error) => {
     console.error('WebSocket error (correlation):', error);
     correlationClients.delete(ws);
-    clearInterval(interval);
   });
 });
 
-// Analytics WebSocket for Live Analytics Dashboard
+// Analytics WebSocket. No synthetic metrics are emitted.
 wssAnalytics.on('connection', (ws) => {
   console.log('WebSocket client connected (live analytics)');
   analyticsClients.add(ws);
 
-  // Send initial mock data
-  const mockDevices = [
-    {
-      deviceId: 'device-001',
-      deviceName: 'Android Test Device',
-      platform: 'android',
-      status: 'online',
-      cpuUsage: 45,
-      memoryUsage: 62,
-      storageUsage: 78,
-      temperature: 42,
-      batteryLevel: 85,
-      networkLatency: 15,
-      workflows: { running: 1, completed: 5, failed: 0 }
-    },
-    {
-      deviceId: 'device-002',
-      deviceName: 'iOS Test Device',
-      platform: 'ios',
-      status: 'online',
-      cpuUsage: 32,
-      memoryUsage: 54,
-      storageUsage: 65,
-      temperature: 38,
-      batteryLevel: 92,
-      networkLatency: 12,
-      workflows: { running: 0, completed: 3, failed: 0 }
-    }
-  ];
+  ws.send(JSON.stringify({
+    type: 'ready',
+    source: 'bobfwtools',
+    timestamp: Date.now(),
+    message: 'Live metrics are emitted only when backed by observed device telemetry.'
+  }));
 
-  mockDevices.forEach(device => {
-    ws.send(JSON.stringify({
-      type: 'device_metrics',
-      deviceId: device.deviceId,
-      metrics: device
-    }));
-  });
-
-  // Send periodic updates
-  const analyticsInterval = setInterval(() => {
-    if (ws.readyState === ws.OPEN) {
-      mockDevices.forEach(device => {
-        // Simulate changing metrics
-        const updatedMetrics = {
-          ...device,
-          cpuUsage: Math.max(5, Math.min(95, device.cpuUsage + (Math.random() - 0.5) * 10)),
-          memoryUsage: Math.max(10, Math.min(90, device.memoryUsage + (Math.random() - 0.5) * 5)),
-          temperature: Math.max(30, Math.min(70, device.temperature + (Math.random() - 0.5) * 2)),
-          networkLatency: Math.max(5, Math.min(100, device.networkLatency + (Math.random() - 0.5) * 10))
-        };
-
-        ws.send(JSON.stringify({
-          type: 'device_metrics',
-          deviceId: device.deviceId,
-          metrics: updatedMetrics
-        }));
-
-        // Update stored values for next iteration
-        Object.assign(device, updatedMetrics);
-      });
-
-      // Simulate workflow events occasionally
-      if (Math.random() > 0.7) {
-        const device = mockDevices[Math.floor(Math.random() * mockDevices.length)];
-        ws.send(JSON.stringify({
-          type: 'workflow_event',
-          event: {
-            id: `workflow-${Date.now()}`,
-            workflowName: ['ADB Diagnostics', 'Battery Health Check', 'Storage Analysis'][Math.floor(Math.random() * 3)],
-            deviceId: device.deviceId,
-            status: ['started', 'running', 'completed'][Math.floor(Math.random() * 3)],
-            progress: Math.floor(Math.random() * 100),
-            currentStep: ['Initializing', 'Running diagnostics', 'Collecting data', 'Analyzing results'][Math.floor(Math.random() * 4)]
-          }
-        }));
+  ws.on('message', (data) => {
+    try {
+      const message = JSON.parse(data);
+      if (message.type === 'ping') {
+        ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
       }
+    } catch (error) {
+      console.error('Failed to parse analytics WebSocket message:', error);
     }
-  }, 2000); // Update every 2 seconds
+  });
 
   ws.on('close', () => {
     console.log('WebSocket client disconnected (live analytics)');
     analyticsClients.delete(ws);
-    clearInterval(analyticsInterval);
   });
 
   ws.on('error', (error) => {
     console.error('Analytics WebSocket error:', error);
     analyticsClients.delete(ws);
-    clearInterval(analyticsInterval);
   });
 });
 
