@@ -1,4 +1,4 @@
-// Bobby's Workshop - Tauri Main Entry Point
+// BobFWTools - Tauri Main Entry Point
 // Manages app lifecycle. The legacy Node backend is opt-in.
 
 #![cfg_attr(
@@ -71,6 +71,7 @@ struct DeviceHotplugEvent {
     timestamp: String,
     display_name: String,
     matched_tool_ids: Vec<String>,
+    evidence_source: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -881,57 +882,65 @@ fn start_device_monitor_once(app_handle: &AppHandle, state: tauri::State<'_, App
 
     let app = app_handle.clone();
     std::thread::spawn(move || {
-        let mut seen: HashSet<String> = HashSet::new();
+        let mut seen: HashMap<String, bootforgeusb::model::DeviceRecord> = HashMap::new();
+
         loop {
-            // Prefer BootForgeUSB scan (includes libusb enumeration + tool confirmers).
-            let mut current: HashSet<String> = HashSet::new();
-            let scan = bootforgeusb::scan().ok();
-            if let Some(devs) = scan {
-                for d in devs {
-                    current.insert(d.device_uid.clone());
-                }
-            } else {
-                // Fall back to tool lists.
-                for s in adb_list_serials() {
-                    current.insert(format!("adb:{}", s));
-                }
-                for s in fastboot_list_serials() {
-                    current.insert(format!("fastboot:{}", s));
+            let mut current: HashMap<String, bootforgeusb::model::DeviceRecord> = HashMap::new();
+
+            if let Ok(devices) = bootforgeusb::scan() {
+                for device in devices {
+                    current.insert(device.device_uid.clone(), device);
                 }
             }
 
-            // Connected
-            for uid in current.difference(&seen) {
-                emit_device_event(
-                    &app,
-                    DeviceHotplugEvent {
-                        event_type: "connected".to_string(),
-                        device_uid: uid.to_string(),
-                        platform_hint: if uid.contains("ios") { "ios".to_string() } else if uid.contains("android") || uid.starts_with("adb:") || uid.starts_with("fastboot:") { "android".to_string() } else { "unknown".to_string() },
-                        mode: if uid.contains("fastboot") { "fastboot".to_string() } else { "normal".to_string() },
-                        confidence: 0.85,
-                        timestamp: iso_now(),
-                        display_name: uid.to_string(),
-                        matched_tool_ids: vec![],
-                    },
-                );
+            for (uid, device) in current.iter() {
+                if !seen.contains_key(uid) {
+                    let display_name = device
+                        .product_name
+                        .clone()
+                        .or_else(|| device.manufacturer.clone())
+                        .unwrap_or_else(|| format!("USB {:04X}:{:04X}", device.vendor_id, device.product_id));
+
+                    emit_device_event(
+                        &app,
+                        DeviceHotplugEvent {
+                            event_type: "connected".to_string(),
+                            device_uid: uid.clone(),
+                            platform_hint: device.platform_hint.clone(),
+                            mode: device.mode.clone(),
+                            confidence: 1.0,
+                            timestamp: iso_now(),
+                            display_name,
+                            matched_tool_ids: vec![],
+                            evidence_source: device.evidence_source.clone(),
+                        },
+                    );
+                }
             }
 
-            // Disconnected
-            for uid in seen.difference(&current) {
-                emit_device_event(
-                    &app,
-                    DeviceHotplugEvent {
-                        event_type: "disconnected".to_string(),
-                        device_uid: uid.to_string(),
-                        platform_hint: if uid.contains("ios") { "ios".to_string() } else if uid.contains("android") || uid.starts_with("adb:") || uid.starts_with("fastboot:") { "android".to_string() } else { "unknown".to_string() },
-                        mode: if uid.contains("fastboot") { "fastboot".to_string() } else { "normal".to_string() },
-                        confidence: 0.85,
-                        timestamp: iso_now(),
-                        display_name: uid.to_string(),
-                        matched_tool_ids: vec![],
-                    },
-                );
+            for (uid, device) in seen.iter() {
+                if !current.contains_key(uid) {
+                    let display_name = device
+                        .product_name
+                        .clone()
+                        .or_else(|| device.manufacturer.clone())
+                        .unwrap_or_else(|| format!("USB {:04X}:{:04X}", device.vendor_id, device.product_id));
+
+                    emit_device_event(
+                        &app,
+                        DeviceHotplugEvent {
+                            event_type: "disconnected".to_string(),
+                            device_uid: uid.clone(),
+                            platform_hint: device.platform_hint.clone(),
+                            mode: device.mode.clone(),
+                            confidence: 1.0,
+                            timestamp: iso_now(),
+                            display_name,
+                            matched_tool_ids: vec![],
+                            evidence_source: device.evidence_source.clone(),
+                        },
+                    );
+                }
             }
 
             seen = current;
@@ -943,33 +952,33 @@ fn start_device_monitor_once(app_handle: &AppHandle, state: tauri::State<'_, App
 fn get_log_directory() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
-        // Windows: %LOCALAPPDATA%\BobbysWorkshop\logs
+        // Windows: %LOCALAPPDATA%\BobFWTools\logs
         dirs::data_local_dir()
             .unwrap_or_else(|| PathBuf::from("C:\\Users\\Public"))
-            .join("BobbysWorkshop")
+            .join("BobFWTools")
             .join("logs")
     }
     #[cfg(target_os = "macos")]
     {
-        // macOS: ~/Library/Logs/BobbysWorkshop
+        // macOS: ~/Library/Logs/BobFWTools
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
             .join("Library")
             .join("Logs")
-            .join("BobbysWorkshop")
+            .join("BobFWTools")
     }
     #[cfg(target_os = "linux")]
     {
-        // Linux: ~/.local/share/bobbys-workshop/logs
+        // Linux: ~/.local/share/bobfwtools/logs
         dirs::data_local_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
-            .join("bobbys-workshop")
+            .join("bobfwtools")
             .join("logs")
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
         // Fallback
-        PathBuf::from("/tmp").join("bobbys-workshop").join("logs")
+        PathBuf::from("/tmp").join("bobfwtools").join("logs")
     }
 }
 
