@@ -14,12 +14,18 @@ use std::env;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[cfg(feature = "legacy-backends")]
 mod python_backend;
+#[cfg(feature = "legacy-backends")]
 mod py_client;
+#[cfg(feature = "legacy-backends")]
 mod fastapi_backend;
 mod mtp_backend;
+#[cfg(feature = "legacy-backends")]
 use python_backend::{launch_python_backend, shutdown_python_backend};
+#[cfg(feature = "legacy-backends")]
 use py_client::PyWorkerClient;
+#[cfg(feature = "legacy-backends")]
 use fastapi_backend::{launch_fastapi_backend, shutdown_fastapi_backend};
 use mtp_backend::{mtp_status, mtp_list_root};
 
@@ -355,13 +361,17 @@ fn fastboot_list_serials() -> Vec<String> {
 }
 
 struct AppState {
+    #[cfg(feature = "legacy-backends")]
     backend_server: Mutex<Option<Child>>,
     flash_jobs: Mutex<HashMap<String, FlashJobRuntime>>,
     flash_history: Mutex<Vec<FlashHistoryEntry>>,
     job_counter: AtomicU64,
     device_monitor_started: Mutex<bool>,
+    #[cfg(feature = "legacy-backends")]
     py_client: Mutex<Option<PyWorkerClient>>,
+    #[cfg(feature = "legacy-backends")]
     py_backend_port: Mutex<Option<u16>>,
+    #[cfg(feature = "legacy-backends")]
     fastapi_backend: Mutex<Option<Child>>,
 }
 
@@ -385,30 +395,8 @@ fn should_start_fastapi_backend() -> bool {
 }
 
 #[tauri::command]
-fn get_backend_status(state: tauri::State<'_, AppState>) -> Result<String, String> {
-    let is_running = {
-        let backend = state
-            .backend_server
-            .lock()
-            .map_err(|_| "backend_server lock poisoned".to_string())?;
-        backend.is_some()
-    };
-
-    if is_running {
-        return Ok("Backend running on http://localhost:3001".to_string());
-    }
-
-    if should_start_node_backend() {
-        Ok(
-            "Backend server is enabled but not running. Ensure Node.js is installed and check app logs for startup errors."
-                .to_string(),
-        )
-    } else {
-        Ok(
-            "Backend server disabled. To enable the Node backend, unset BW_DISABLE_NODE_BACKEND or set it to 0."
-                .to_string(),
-        )
-    }
+fn get_backend_status() -> String {
+    "BobFWTools native Rust/Tauri core active".to_string()
 }
 
 #[tauri::command]
@@ -1253,13 +1241,17 @@ fn stop_backend_server(app_handle: &AppHandle) {
 fn main() {
     // Initialize app state
     let app_state = AppState {
+        #[cfg(feature = "legacy-backends")]
         backend_server: Mutex::new(None),
         flash_jobs: Mutex::new(HashMap::new()),
         flash_history: Mutex::new(vec![]),
         job_counter: AtomicU64::new(0),
         device_monitor_started: Mutex::new(false),
+        #[cfg(feature = "legacy-backends")]
         py_client: Mutex::new(None),
+        #[cfg(feature = "legacy-backends")]
         py_backend_port: Mutex::new(None),
+        #[cfg(feature = "legacy-backends")]
         fastapi_backend: Mutex::new(None),
     };
 
@@ -1272,94 +1264,73 @@ fn main() {
             // Start in-process device monitor (Tauri events)
             start_device_monitor_once(&handle, state.clone());
 
-            // Legacy Python backend is disabled by default. Native Rust/Tauri
-            // USB, MTP, ADB and Fastboot paths are the BobFWTools production core.
-            if should_start_python_backend() {
-                if let Ok(resource_dir) = handle.path().resource_dir() {
-                    match launch_python_backend(&resource_dir) {
-                        Ok(port) => {
-                            println!("[Tauri] Legacy Python backend launched on port {}", port);
-                            let client = PyWorkerClient::new(port);
-                            let handle_for_client = handle.clone();
-                            tokio::spawn(async move {
-                                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-                                match client.health().await {
-                                    Ok(health) => {
-                                        println!("[Tauri] Legacy Python backend healthy: {}", health.version);
+            #[cfg(feature = "legacy-backends")]
+            {
+                if should_start_python_backend() {
+                    if let Ok(resource_dir) = handle.path().resource_dir() {
+                        match launch_python_backend(&resource_dir) {
+                            Ok(port) => {
+                                println!("[Tauri] Legacy Python backend launched on port {}", port);
+                                let client = PyWorkerClient::new(port);
+                                let handle_for_client = handle.clone();
+                                tokio::spawn(async move {
+                                    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                                    if client.health().await.is_ok() {
                                         let state_for_client = handle_for_client.state::<AppState>();
-                                        {
-                                            let mut guard = state_for_client
-                                                .py_client
-                                                .lock()
-                                                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                                        if let Ok(mut guard) = state_for_client.py_client.lock() {
                                             *guard = Some(client);
                                         }
-                                        {
-                                            let mut guard = state_for_client
-                                                .py_backend_port
-                                                .lock()
-                                                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                                        if let Ok(mut guard) = state_for_client.py_backend_port.lock() {
                                             *guard = Some(port);
                                         }
                                     }
-                                    Err(e) => eprintln!("[Tauri] Legacy Python backend health check failed: {}", e),
-                                }
-                            });
+                                });
+                            }
+                            Err(e) => eprintln!("[Tauri] Legacy Python backend launch failed: {}", e),
                         }
-                        Err(e) => eprintln!("[Tauri] Legacy Python backend disabled after launch failure: {}", e),
+                    }
+                }
+
+                if should_start_fastapi_backend() {
+                    match launch_fastapi_backend(&handle) {
+                        Ok(child) => {
+                            if let Ok(mut guard) = state.fastapi_backend.lock() {
+                                *guard = Some(child);
+                            }
+                        }
+                        Err(e) => eprintln!("[Tauri] Legacy FastAPI backend launch failed: {}", e),
+                    }
+                }
+
+                if should_start_node_backend() {
+                    match start_backend_server(&handle) {
+                        Ok(child) => {
+                            if let Ok(mut guard) = state.backend_server.lock() {
+                                *guard = Some(child);
+                            }
+                        }
+                        Err(e) => eprintln!("[Tauri] Legacy Node backend launch failed: {}", e),
                     }
                 }
             }
 
-            
-            // Legacy FastAPI service is opt-in and not part of the App Store core.
-            if should_start_fastapi_backend() {
-                match launch_fastapi_backend(&handle) {
-                    Ok(child) => {
-                        println!("[Tauri] Legacy FastAPI backend started");
-                        if let Ok(mut guard) = state.fastapi_backend.lock() {
-                            *guard = Some(child);
-                        }
-                    }
-                    Err(e) => eprintln!("[Tauri] Legacy FastAPI backend launch failed: {}", e),
-                }
-            }
-
-            // Start legacy Node backend only when explicitly enabled.
-            if should_start_node_backend() {
-                match start_backend_server(&handle) {
-                    Ok(child) => {
-                        if let Ok(mut guard) = state.backend_server.lock() {
-                            *guard = Some(child);
-                        }
-                        println!("[Tauri] Backend server started successfully");
-                    }
-                    Err(e) => {
-                        eprintln!("[Tauri] Failed to start backend server: {}", e);
-                        eprintln!("[Tauri] Node backend is required for full functionality");
-                        eprintln!("[Tauri] Ensure Node.js is installed from https://nodejs.org/");
-                        eprintln!("[Tauri] Or set BW_DISABLE_NODE_BACKEND=1 to use in-process backend only");
-                    }
-                }
-            } else {
-                println!("[Tauri] Node backend disabled by BW_DISABLE_NODE_BACKEND environment variable");
-            }
             
             Ok(())
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
-                // Clean shutdown: stop backends when the app is actually closing.
-                stop_backend_server(&window.app_handle());
-                shutdown_python_backend();
-                
-                // Shutdown FastAPI backend
-                let state = window.app_handle().state::<AppState>();
-                let fastapi_child = {
-                    let mut guard = state.fastapi_backend.lock().unwrap();
-                    guard.take()
-                };
-                shutdown_fastapi_backend(fastapi_child);
+                #[cfg(feature = "legacy-backends")]
+                {
+                    stop_backend_server(&window.app_handle());
+                    shutdown_python_backend();
+
+                    let state = window.app_handle().state::<AppState>();
+                    let fastapi_child = {
+                        let mut guard = state.fastapi_backend.lock().unwrap_or_else(|p| p.into_inner());
+                        guard.take()
+                    };
+                    shutdown_fastapi_backend(fastapi_child);
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
