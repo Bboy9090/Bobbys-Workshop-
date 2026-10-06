@@ -178,3 +178,24 @@ export async function saveAdbScreenshot(serial: string): Promise<AdbFileResult |
   if (!destination) return null;
   return invoke<AdbFileResult>('adb_screenshot', { serial, destinationPath: destination });
 }
+
+
+export type WorkflowCapability = {
+  id: string;
+  transport: string;
+  enabled: boolean;
+  reason: string;
+  evidence: string[];
+};
+
+export type DeviceCapabilityMatrix = {
+  usbDevicesSeen: number;
+  adbDevicesSeen: number;
+  mtpConnected: boolean;
+  workflows: WorkflowCapability[];
+};
+
+export async function getWorkflowCapabilities(): Promise<DeviceCapabilityMatrix | null> {
+  if (!isTauriRuntime()) return null;
+  return invoke<DeviceCapabilityMatrix>('workflow_capabilities');
+}
