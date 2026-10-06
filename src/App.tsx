@@ -780,8 +780,12 @@ export default function App() {
                     </div>
                     <span className={
                       job.state === 'completed'
-                        ? job.verified ? 'text-xs text-emerald-300' : 'text-xs text-cyan-300'
-                        : job.state === 'failed' ? 'text-xs text-red-300' : 'text-xs text-amber-300'
+                        ? 'text-xs text-emerald-300'
+                        : job.state === 'accepted'
+                          ? 'text-xs text-cyan-300'
+                          : job.state === 'failed'
+                            ? 'text-xs text-red-300'
+                            : 'text-xs text-amber-300'
                     }>
                       {job.state}{job.verified ? ' · verified' : ''}
                     </span>
@@ -791,7 +795,7 @@ export default function App() {
                     <div className="mt-1 font-mono text-[10px] text-slate-600">retry of {job.retryOf}</div>
                   )}
                   <div className="mt-2 flex items-center gap-2">
-                    {job.state !== 'running' && (
+                    {job.state === 'failed' && (
                       <button
                         type="button"
                         disabled={transferBusy}
