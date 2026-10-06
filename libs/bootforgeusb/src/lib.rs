@@ -99,6 +99,7 @@ pub fn scan() -> Result<Vec<DeviceRecord>> {
             protocol: descriptor.protocol_code(),
             bus_number: device.bus_number(),
             device_address: device.address(),
+            speed: format!("{:?}", device.speed()).to_ascii_lowercase(),
             platform_hint: platform_hint(vendor_id).to_string(),
             mode: mode_hint(
                 vendor_id,
