@@ -199,3 +199,49 @@ export async function getWorkflowCapabilities(): Promise<DeviceCapabilityMatrix 
   if (!isTauriRuntime()) return null;
   return invoke<DeviceCapabilityMatrix>('workflow_capabilities');
 }
+
+
+export type AdbActionResult = {
+  serial: string;
+  workflow: string;
+  accepted: boolean;
+  verified: boolean;
+  message: string;
+  evidenceSource: string;
+};
+
+export async function prepareAdb(): Promise<AdbDeviceRecord[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<AdbDeviceRecord[]>('adb_prepare');
+}
+
+export async function getAdbBatteryInfo(serial: string): Promise<AdbTextResult> {
+  return invoke<AdbTextResult>('adb_battery_info', { serial });
+}
+
+export async function rebootAdbDevice(
+  serial: string,
+  mode: 'normal' | 'recovery' | 'bootloader' | 'download',
+): Promise<AdbActionResult> {
+  return invoke<AdbActionResult>('adb_reboot_mode', { serial, mode });
+}
+
+export async function openAndroidNetworkSettings(serial: string): Promise<AdbActionResult> {
+  return invoke<AdbActionResult>('adb_open_network_settings', { serial });
+}
+
+export async function openAndroidFactoryResetSettings(serial: string): Promise<AdbActionResult> {
+  return invoke<AdbActionResult>('adb_open_factory_reset_settings', { serial });
+}
+
+export async function installApkOnDevice(serial: string): Promise<AdbActionResult | null> {
+  if (!isTauriRuntime()) return null;
+  const apkPath = await open({
+    multiple: false,
+    directory: false,
+    title: 'Choose APK to install',
+    filters: [{ name: 'Android package', extensions: ['apk'] }],
+  });
+  if (typeof apkPath !== 'string') return null;
+  return invoke<AdbActionResult>('adb_install_apk', { serial, apkPath });
+}
