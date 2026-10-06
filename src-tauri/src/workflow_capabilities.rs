@@ -121,7 +121,7 @@ pub async fn workflow_capabilities() -> Result<DeviceCapabilityMatrix, String> {
                 id: "adb-screenshot",
                 transport: "adb",
                 enabled: !authorized_adb.is_empty(),
-                reason: adb_reason,
+                reason: adb_reason.clone(),
                 evidence: authorized_adb
                     .iter()
                     .map(|d| format!("{}:{}", d.serial, d.evidence_source))
