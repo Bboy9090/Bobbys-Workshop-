@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  chooseDownloadDestination,
+  chooseUploadSource,
+  downloadMtpFile,
   getMtpStatus,
   getNativeUsbDevices,
   isTauriRuntime,
   listMtpRoot,
+  uploadMtpFile,
   type MtpRootObject,
   type MtpStatus,
+  type MtpTransferResult,
   type UsbDeviceRecord,
 } from './lib/desktop';
 
@@ -30,11 +35,16 @@ export default function App() {
   const [mtp, setMtp] = useState<MtpStatus | null>(null);
   const [storageIndex, setStorageIndex] = useState(0);
   const [rootObjects, setRootObjects] = useState<MtpRootObject[]>([]);
+  const [selectedFolderHandle, setSelectedFolderHandle] = useState<string | null>(null);
+  const [selectedFolderName, setSelectedFolderName] = useState<string>('Storage root');
   const [refreshing, setRefreshing] = useState(false);
+  const [transferBusy, setTransferBusy] = useState(false);
   const [nativeError, setNativeError] = useState<string | null>(null);
+  const [lastTransfer, setLastTransfer] = useState<MtpTransferResult | null>(null);
   const nativeRuntime = useMemo(() => isTauriRuntime(), []);
 
   const refresh = useCallback(async () => {
+    if (transferBusy) return;
     setRefreshing(true);
     setNativeError(null);
 
@@ -51,16 +61,21 @@ export default function App() {
         setRootObjects(await listMtpRoot(safeIndex));
       } else {
         setRootObjects([]);
+        setSelectedFolderHandle(null);
+        setSelectedFolderName('Storage root');
       }
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
       setRefreshing(false);
     }
-  }, [storageIndex]);
+  }, [storageIndex, transferBusy]);
 
   const openStorage = async (index: number) => {
+    if (transferBusy) return;
     setStorageIndex(index);
+    setSelectedFolderHandle(null);
+    setSelectedFolderName('Storage root');
     setNativeError(null);
     try {
       setRootObjects(await listMtpRoot(index));
@@ -70,11 +85,50 @@ export default function App() {
     }
   };
 
+  const uploadFile = async () => {
+    if (!mtp || transferBusy) return;
+    const source = await chooseUploadSource();
+    if (!source) return;
+
+    setTransferBusy(true);
+    setNativeError(null);
+    setLastTransfer(null);
+    try {
+      const result = await uploadMtpFile(storageIndex, source, selectedFolderHandle);
+      setLastTransfer(result);
+      setRootObjects(await listMtpRoot(storageIndex));
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  const downloadFile = async (object: MtpRootObject) => {
+    if (object.isFolder || transferBusy) return;
+    const destination = await chooseDownloadDestination(object.filename || 'android-file');
+    if (!destination) return;
+
+    setTransferBusy(true);
+    setNativeError(null);
+    setLastTransfer(null);
+    try {
+      const result = await downloadMtpFile(storageIndex, object.handle, destination);
+      setLastTransfer(result);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
   useEffect(() => {
     void refresh();
-    const id = window.setInterval(() => void refresh(), 2500);
+    const id = window.setInterval(() => {
+      if (!transferBusy) void refresh();
+    }, 5000);
     return () => window.clearInterval(id);
-  }, [refresh]);
+  }, [refresh, transferBusy]);
 
   return (
     <div className="flex h-screen flex-col bg-slate-950 text-slate-200">
@@ -89,10 +143,11 @@ export default function App() {
           <span className={`text-xs ${nativeRuntime ? 'text-emerald-400' : 'text-amber-300'}`}>
             {nativeRuntime ? 'Native desktop core' : 'Browser preview'}
           </span>
+          {transferBusy && <span className="text-xs text-cyan-300">Transfer running…</span>}
           <button
             type="button"
             onClick={() => void refresh()}
-            disabled={refreshing}
+            disabled={refreshing || transferBusy}
             className="rounded bg-orange-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 hover:bg-orange-500"
           >
             {refreshing ? 'Scanning…' : 'Scan now'}
@@ -113,10 +168,7 @@ export default function App() {
           ) : (
             <ul className="space-y-2">
               {usbDevices.map((device) => (
-                <li
-                  key={device.deviceUid}
-                  className="rounded border border-slate-700 bg-slate-950/60 p-3"
-                >
+                <li key={device.deviceUid} className="rounded border border-slate-700 bg-slate-950/60 p-3">
                   <div className="font-medium text-white">
                     {device.productName || device.manufacturer || 'USB device'}
                   </div>
@@ -139,12 +191,21 @@ export default function App() {
             </div>
           )}
 
+          {lastTransfer && (
+            <div className="mb-4 rounded border border-emerald-900 bg-emerald-950/30 p-3 text-sm text-emerald-200">
+              Verified {lastTransfer.operation}: {lastTransfer.filename} · {formatBytes(lastTransfer.bytes)}
+              <div className="mt-1 break-all text-xs text-emerald-400/80">
+                {lastTransfer.destination} · {lastTransfer.evidenceSource}
+              </div>
+            </div>
+          )}
+
           <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h2 className="text-base font-semibold text-white">Media Transfer Protocol</h2>
                 <p className="mt-1 max-w-2xl text-sm text-slate-400">
-                  Normal Android file access. USB debugging is not required. On the phone, choose File transfer
+                  Real Android file access. USB debugging is not required. Unlock the phone and choose File transfer
                   or Android Auto when Android asks what the USB connection should do.
                 </p>
               </div>
@@ -189,7 +250,8 @@ export default function App() {
                         type="button"
                         key={`${storage.description}-${index}`}
                         onClick={() => void openStorage(index)}
-                        className={`rounded border px-3 py-2 text-left text-sm ${
+                        disabled={transferBusy}
+                        className={`rounded border px-3 py-2 text-left text-sm disabled:opacity-50 ${
                           index === storageIndex
                             ? 'border-orange-500 bg-orange-950/20'
                             : 'border-slate-700 bg-slate-950 hover:border-slate-600'
@@ -199,6 +261,34 @@ export default function App() {
                         <div className="text-xs text-slate-500">{formatBytes(storage.freeSpaceBytes)} free</div>
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded border border-slate-800 bg-slate-950/40 p-3">
+                  <div>
+                    <div className="text-xs font-medium text-white">Upload destination</div>
+                    <div className="mt-0.5 text-xs text-slate-500">{selectedFolderName}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedFolderHandle(null);
+                        setSelectedFolderName('Storage root');
+                      }}
+                      disabled={transferBusy}
+                      className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 disabled:opacity-50 hover:bg-slate-800"
+                    >
+                      Use root
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void uploadFile()}
+                      disabled={transferBusy}
+                      className="rounded bg-cyan-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 hover:bg-cyan-600"
+                    >
+                      Choose Mac file and upload
+                    </button>
                   </div>
                 </div>
 
@@ -224,7 +314,32 @@ export default function App() {
                             <span className="min-w-0 flex-1 truncate text-sm text-slate-200">
                               {object.filename || 'Unnamed object'}
                             </span>
-                            <span className="font-mono text-[10px] text-slate-700">{object.handle}</span>
+                            {object.isFolder ? (
+                              <button
+                                type="button"
+                                disabled={transferBusy}
+                                onClick={() => {
+                                  setSelectedFolderHandle(object.handle);
+                                  setSelectedFolderName(object.filename || 'Selected folder');
+                                }}
+                                className={`rounded border px-2 py-1 text-xs disabled:opacity-50 ${
+                                  selectedFolderHandle === object.handle
+                                    ? 'border-orange-500 text-orange-300'
+                                    : 'border-slate-700 text-slate-400 hover:bg-slate-800'
+                                }`}
+                              >
+                                Upload here
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={transferBusy}
+                                onClick={() => void downloadFile(object)}
+                                className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 disabled:opacity-50 hover:bg-slate-800"
+                              >
+                                Download to Mac
+                              </button>
+                            )}
                           </li>
                         ))}
                       </ul>
@@ -238,10 +353,7 @@ export default function App() {
                   </h3>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {mtp.capabilities.map((capability) => (
-                      <span
-                        key={capability}
-                        className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-300"
-                      >
+                      <span key={capability} className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-300">
                         {capability}
                       </span>
                     ))}
@@ -252,11 +364,12 @@ export default function App() {
           </section>
 
           <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
-            <h2 className="text-sm font-semibold text-white">Transport policy</h2>
+            <h2 className="text-sm font-semibold text-white">Workflow execution policy</h2>
             <p className="mt-2 text-sm leading-6 text-slate-400">
-              USB descriptor data comes from the native Rust USB scanner. File browsing comes from an actual MTP
-              session. BobFWTools does not treat ADB as a substitute for MTP and does not invent a connected phone,
-              storage reading, firmware state, or transfer result when the device does not provide one.
+              BobFWTools only enables a workflow when the required transport is actually present. USB descriptor data
+              comes from the native Rust scanner. File operations execute through a real MTP session. Completed uploads
+              are re-listed for verification; downloads are verified after the Mac file is written. Missing transports
+              remain unavailable instead of returning simulated success.
             </p>
           </section>
         </main>
