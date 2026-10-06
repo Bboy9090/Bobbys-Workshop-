@@ -169,11 +169,6 @@ pub async fn mtp_download_file(
         return Err("Folder download is not exposed by this command; choose a file.".to_string());
     }
 
-    let data = storage
-        .download_to_vec(object.handle)
-        .await
-        .map_err(|e| format!("MTP download failed: {e}"))?;
-
     let destination = PathBuf::from(&destination_path);
     if let Some(parent) = destination.parent() {
         tokio::fs::create_dir_all(parent)
@@ -181,30 +176,50 @@ pub async fn mtp_download_file(
             .map_err(|e| format!("Failed to create destination directory: {e}"))?;
     }
 
-    tokio::fs::write(&destination, &data)
+    let mut output = tokio::fs::File::create(&destination)
         .await
-        .map_err(|e| format!("Failed to write downloaded file: {e}"))?;
+        .map_err(|e| format!("Failed to create download destination: {e}"))?;
 
-    let written = tokio::fs::metadata(&destination)
+    let mut download = storage
+        .download_windowed_default(object.handle)
+        .await
+        .map_err(|e| format!("MTP download initialization failed: {e}"))?;
+
+    let expected = download.size();
+    let mut written = 0_u64;
+
+    while let Some(window) = download.next_window().await {
+        let bytes = window.map_err(|e| format!("MTP download failed: {e}"))?;
+        tokio::io::AsyncWriteExt::write_all(&mut output, &bytes)
+            .await
+            .map_err(|e| format!("Failed writing downloaded bytes: {e}"))?;
+        written += bytes.len() as u64;
+    }
+
+    tokio::io::AsyncWriteExt::flush(&mut output)
+        .await
+        .map_err(|e| format!("Failed to flush downloaded file: {e}"))?;
+    drop(output);
+
+    let on_disk = tokio::fs::metadata(&destination)
         .await
         .map_err(|e| format!("Failed to verify downloaded file: {e}"))?
         .len();
 
-    if written != data.len() as u64 {
+    if written != on_disk || (expected > 0 && on_disk != expected) {
+        let _ = tokio::fs::remove_file(&destination).await;
         return Err(format!(
-            "Download verification failed: expected {} bytes written locally, found {}",
-            data.len(),
-            written
+            "Download verification failed: stream wrote {written} bytes, file contains {on_disk}, expected {expected}"
         ));
     }
 
     Ok(MtpTransferResult {
         operation: "download",
         filename: object.filename,
-        bytes: written,
+        bytes: on_disk,
         verified: true,
         destination: destination.to_string_lossy().to_string(),
-        evidence_source: "mtp:GetObject+local-size-verification",
+        evidence_source: "mtp:windowed-download+local-size-verification",
     })
 }
 
