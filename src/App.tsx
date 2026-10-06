@@ -7,6 +7,7 @@ import {
   getAdbLogcatSnapshot,
   getMtpStatus,
   getNativeUsbDevices,
+  getWorkflowCapabilities,
   isTauriRuntime,
   saveAdbScreenshot,
   scanAdbDevices,
@@ -17,6 +18,7 @@ import {
   type MtpStatus,
   type MtpTransferResult,
   type UsbDeviceRecord,
+  type DeviceCapabilityMatrix,
 } from './lib/desktop';
 
 function formatBytes(value: number): string {
@@ -39,6 +41,7 @@ export default function App() {
   const [usbDevices, setUsbDevices] = useState<UsbDeviceRecord[]>([]);
   const [mtp, setMtp] = useState<MtpStatus | null>(null);
   const [adbDevices, setAdbDevices] = useState<AdbDeviceRecord[]>([]);
+  const [capabilities, setCapabilities] = useState<DeviceCapabilityMatrix | null>(null);
   const [adbSelectedSerial, setAdbSelectedSerial] = useState<string | null>(null);
   const [adbOutput, setAdbOutput] = useState<string | null>(null);
   const [storageIndex, setStorageIndex] = useState(0);
@@ -70,6 +73,9 @@ export default function App() {
 
       const mtpStatus = await getMtpStatus();
       setMtp(mtpStatus);
+
+      const matrix = await getWorkflowCapabilities();
+      setCapabilities(matrix);
 
       if (mtpStatus?.storages.length) {
         const safeIndex = Math.min(storageIndex, mtpStatus.storages.length - 1);
@@ -428,6 +434,47 @@ export default function App() {
                 </div>
               </>
             )}
+          </section>
+
+          <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-white">Live workflow capability matrix</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Every workflow is enabled from current transport evidence, not device-brand assumptions.
+                </p>
+              </div>
+              {capabilities && (
+                <span className="text-xs text-slate-500">
+                  USB {capabilities.usbDevicesSeen} · ADB {capabilities.adbDevicesSeen} · MTP {capabilities.mtpConnected ? 'yes' : 'no'}
+                </span>
+              )}
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {(capabilities?.workflows ?? []).map((workflow) => (
+                <div
+                  key={workflow.id}
+                  className={`rounded border p-3 ${
+                    workflow.enabled
+                      ? 'border-emerald-900 bg-emerald-950/20'
+                      : 'border-slate-800 bg-slate-950/50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-mono text-xs text-white">{workflow.id}</div>
+                    <span className={workflow.enabled ? 'text-xs text-emerald-400' : 'text-xs text-slate-600'}>
+                      {workflow.enabled ? 'enabled' : 'unavailable'}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-slate-400">{workflow.reason}</div>
+                  {workflow.evidence.length > 0 && (
+                    <div className="mt-2 break-all text-[10px] text-slate-600">
+                      {workflow.evidence.join(' · ')}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </section>
 
           <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
