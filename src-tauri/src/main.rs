@@ -14,6 +14,7 @@ use tauri::{Manager, AppHandle, Emitter};
 use std::path::PathBuf;
 use std::env;
 use std::collections::HashMap;
+#[cfg(feature = "qualified-flash")]
 use std::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(feature = "legacy-backends")]
@@ -44,6 +45,7 @@ use std::os::windows::process::CommandExt;
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FlashPartition {
     name: String,
@@ -51,6 +53,7 @@ struct FlashPartition {
     size: u64,
 }
 
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FlashJobConfig {
     deviceSerial: String,
@@ -62,11 +65,13 @@ struct FlashJobConfig {
     wipeUserData: bool,
 }
 
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FlashStartResponse {
     jobId: String,
 }
 
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RealTimeFlashUpdate {
     #[serde(rename = "type")]
@@ -97,6 +102,7 @@ struct DeviceEventEnvelope {
     event: DeviceHotplugEvent,
 }
 
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FlashHistoryEntry {
     jobId: String,
@@ -112,6 +118,7 @@ struct FlashHistoryEntry {
     averageSpeed: u64,
 }
 
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FlashOperationStatus {
     jobId: String,
@@ -129,6 +136,7 @@ struct FlashOperationStatus {
     startTime: u64,
 }
 
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FlashProgressModel {
     jobId: String,
@@ -150,6 +158,7 @@ struct FlashProgressModel {
     warnings: Vec<String>,
 }
 
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FlashOperationModel {
     id: String,
@@ -161,6 +170,7 @@ struct FlashOperationModel {
     canCancel: bool,
 }
 
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone)]
 struct FlashJobRuntime {
     status: String,
@@ -177,6 +187,7 @@ struct FlashJobRuntime {
     config: FlashJobConfig,
 }
 
+#[cfg(feature = "qualified-flash")]
 fn to_bootforge_status(raw: &str) -> String {
     match raw {
         "queued" => "preparing",
@@ -190,6 +201,7 @@ fn to_bootforge_status(raw: &str) -> String {
     .to_string()
 }
 
+#[cfg(feature = "qualified-flash")]
 fn job_to_operation(job_id: &str, job: &FlashJobRuntime) -> FlashOperationModel {
     let status = to_bootforge_status(&job.status);
     let stage = job.current_step.clone();
@@ -238,6 +250,7 @@ fn iso_now() -> String {
     format!("{}", now_ms())
 }
 
+#[cfg(feature = "qualified-flash")]
 fn emit_flash_update(app_handle: &AppHandle, job_id: &str, kind: &str, data: serde_json::Value) {
     let payload = RealTimeFlashUpdate {
         kind: kind.to_string(),
@@ -286,6 +299,7 @@ fn run_command_capture_lines(mut cmd: Command) -> Result<Vec<String>, String> {
         .collect())
 }
 
+#[cfg(feature = "qualified-flash")]
 fn fastboot_exists() -> bool {
     let mut cmd = Command::new("fastboot");
     cmd.arg("--version")
@@ -377,8 +391,11 @@ fn fastboot_list_serials() -> Vec<String> {
 struct AppState {
     #[cfg(feature = "legacy-backends")]
     backend_server: Mutex<Option<Child>>,
+    #[cfg(feature = "qualified-flash")]
     flash_jobs: Mutex<HashMap<String, FlashJobRuntime>>,
+    #[cfg(feature = "qualified-flash")]
     flash_history: Mutex<Vec<FlashHistoryEntry>>,
+    #[cfg(feature = "qualified-flash")]
     job_counter: AtomicU64,
     device_monitor_started: Mutex<bool>,
     #[cfg(feature = "legacy-backends")]
@@ -427,6 +444,7 @@ fn bootforgeusb_scan() -> Result<Vec<bootforgeusb::model::DeviceRecord>, String>
     bootforgeusb::scan().map_err(|e| format!("USB scan failed: {e}"))
 }
 
+#[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config: FlashJobConfig) -> Result<FlashStartResponse, String> {
     if config.flashMethod != "fastboot" {
@@ -778,6 +796,7 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
     Ok(FlashStartResponse { jobId: id })
 }
 
+#[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_cancel(state: tauri::State<'_, AppState>, jobId: String) -> Result<(), String> {
     let mut jobs = state.flash_jobs.lock().map_err(|_| "flash_jobs mutex poisoned".to_string())?;
@@ -788,6 +807,7 @@ fn flash_cancel(state: tauri::State<'_, AppState>, jobId: String) -> Result<(), 
     Ok(())
 }
 
+#[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn bootforge_flash_history(state: tauri::State<'_, AppState>, limit: Option<usize>) -> Result<Vec<FlashOperationModel>, String> {
     let jobs = state.flash_jobs.lock().map_err(|_| "flash_jobs mutex poisoned".to_string())?;
@@ -803,6 +823,7 @@ fn bootforge_flash_history(state: tauri::State<'_, AppState>, limit: Option<usiz
     Ok(items.into_iter().take(lim).map(|t| t.2).collect())
 }
 
+#[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn bootforge_flash_active(state: tauri::State<'_, AppState>) -> Result<Vec<FlashOperationModel>, String> {
     let jobs = state.flash_jobs.lock().map_err(|_| "flash_jobs mutex poisoned".to_string())?;
@@ -815,6 +836,7 @@ fn bootforge_flash_active(state: tauri::State<'_, AppState>) -> Result<Vec<Flash
     Ok(out)
 }
 
+#[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_status(state: tauri::State<'_, AppState>, jobId: String) -> Result<FlashOperationStatus, String> {
     let jobs = state.flash_jobs.lock().map_err(|_| "flash_jobs mutex poisoned".to_string())?;
@@ -837,6 +859,7 @@ fn flash_status(state: tauri::State<'_, AppState>, jobId: String) -> Result<Flas
     })
 }
 
+#[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_history(state: tauri::State<'_, AppState>, limit: Option<usize>) -> Result<Vec<FlashHistoryEntry>, String> {
     let hist = state.flash_history.lock().map_err(|_| "flash_history mutex poisoned".to_string())?;
@@ -844,6 +867,7 @@ fn flash_history(state: tauri::State<'_, AppState>, limit: Option<usize>) -> Res
     Ok(hist.iter().take(lim).cloned().collect())
 }
 
+#[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_active(state: tauri::State<'_, AppState>) -> Result<Vec<FlashOperationStatus>, String> {
     let jobs = state.flash_jobs.lock().map_err(|_| "flash_jobs mutex poisoned".to_string())?;
@@ -1265,8 +1289,11 @@ fn main() {
     let app_state = AppState {
         #[cfg(feature = "legacy-backends")]
         backend_server: Mutex::new(None),
+        #[cfg(feature = "qualified-flash")]
         flash_jobs: Mutex::new(HashMap::new()),
+        #[cfg(feature = "qualified-flash")]
         flash_history: Mutex::new(vec![]),
+        #[cfg(feature = "qualified-flash")]
         job_counter: AtomicU64::new(0),
         device_monitor_started: Mutex::new(false),
         #[cfg(feature = "legacy-backends")]
