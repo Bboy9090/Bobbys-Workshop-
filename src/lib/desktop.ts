@@ -330,6 +330,7 @@ export type WorkflowJobRecord = {
   workflowId: string;
   serial: string | null;
   state: 'running' | 'completed' | 'failed';
+  retryOf: string | null;
   startedAtMs: number;
   finishedAtMs: number | null;
   verified: boolean;
@@ -351,4 +352,9 @@ export async function listWorkflowJobs(): Promise<WorkflowJobRecord[]> {
 
 export async function getWorkflowJob(id: string): Promise<WorkflowJobRecord> {
   return invoke<WorkflowJobRecord>('workflow_job_get', { id });
+}
+
+
+export async function retryWorkflowJob(id: string): Promise<WorkflowJobRecord> {
+  return invoke<WorkflowJobRecord>('workflow_job_retry', { id });
 }
