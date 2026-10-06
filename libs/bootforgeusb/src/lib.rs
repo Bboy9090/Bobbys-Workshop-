@@ -43,8 +43,8 @@ fn mode_hint(vendor_id: u16, product_id: u16, class: u8, subclass: u8, protocol:
     "usb"
 }
 
-fn read_strings(
-    device: &rusb::Device<rusb::GlobalContext>,
+fn read_strings<T: UsbContext>(
+    device: &rusb::Device<T>,
 ) -> (Option<String>, Option<String>, Option<String>) {
     let descriptor = match device.device_descriptor() {
         Ok(d) => d,
@@ -54,11 +54,9 @@ fn read_strings(
         Ok(h) => h,
         Err(_) => return (None, None, None),
     };
-    let timeout = std::time::Duration::from_millis(250);
-
-    let manufacturer = handle.read_manufacturer_string_ascii(&descriptor, timeout).ok();
-    let product = handle.read_product_string_ascii(&descriptor, timeout).ok();
-    let serial = handle.read_serial_number_string_ascii(&descriptor, timeout).ok();
+    let manufacturer = handle.read_manufacturer_string_ascii(&descriptor).ok();
+    let product = handle.read_product_string_ascii(&descriptor).ok();
+    let serial = handle.read_serial_number_string_ascii(&descriptor).ok();
     (manufacturer, product, serial)
 }
 
