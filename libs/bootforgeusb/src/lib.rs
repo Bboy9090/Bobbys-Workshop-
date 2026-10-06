@@ -78,7 +78,19 @@ pub fn scan() -> Result<Vec<DeviceRecord>> {
         let vendor_id = descriptor.vendor_id();
         let product_id = descriptor.product_id();
 
+        let device_uid = serial_number
+            .as_ref()
+            .map(|serial| format!("usb:{:04x}:{:04x}:{}", vendor_id, product_id, serial))
+            .unwrap_or_else(|| format!(
+                "usb:{:04x}:{:04x}:bus{}:addr{}",
+                vendor_id,
+                product_id,
+                device.bus_number(),
+                device.address()
+            ));
+
         records.push(DeviceRecord {
+            device_uid,
             vendor_id,
             product_id,
             manufacturer,
