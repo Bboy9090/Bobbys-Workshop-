@@ -35,6 +35,7 @@ export type UsbDeviceRecord = {
   protocol: number;
   busNumber: number;
   deviceAddress: number;
+  speed: string;
   platformHint: string;
   mode: string;
   transport: string;
