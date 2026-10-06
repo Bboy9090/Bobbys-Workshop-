@@ -11,7 +11,7 @@ use std::sync::Mutex;
 use tauri::{Manager, AppHandle, Emitter};
 use std::path::PathBuf;
 use std::env;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(feature = "legacy-backends")]
@@ -1222,6 +1222,7 @@ fn start_backend_server(app_handle: &AppHandle) -> Result<Child, std::io::Error>
     Ok(child)
 }
 
+#[cfg(feature = "legacy-backends")]
 fn stop_backend_server(app_handle: &AppHandle) {
     // Take the child process out of shared state while holding the lock,
     // then drop the lock before kill/wait.
@@ -1322,14 +1323,14 @@ fn main() {
             
             Ok(())
         })
-        .on_window_event(|window, event| {
+        .on_window_event(|_window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 #[cfg(feature = "legacy-backends")]
                 {
-                    stop_backend_server(&window.app_handle());
+                    stop_backend_server(&_window.app_handle());
                     shutdown_python_backend();
 
-                    let state = window.app_handle().state::<AppState>();
+                    let state = _window.app_handle().state::<AppState>();
                     let fastapi_child = {
                         let mut guard = state.fastapi_backend.lock().unwrap_or_else(|p| p.into_inner());
                         guard.take()
