@@ -331,7 +331,7 @@ export type WorkflowJobRecord = {
   id: string;
   workflowId: string;
   serial: string | null;
-  state: 'running' | 'completed' | 'failed';
+  state: 'running' | 'accepted' | 'completed' | 'failed' | 'cancelled';
   retryOf: string | null;
   startedAtMs: number;
   finishedAtMs: number | null;
