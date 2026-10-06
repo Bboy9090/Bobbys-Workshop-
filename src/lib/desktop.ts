@@ -398,3 +398,23 @@ export async function uploadMtpPath(
     sourcePath,
   });
 }
+
+
+export type CableDoctorReport = {
+  grade: 'healthy' | 'limited' | 'unstable' | 'no-device';
+  summary: string;
+  samples: number;
+  androidPresentSamples: number;
+  reconnectEvents: number;
+  observedSpeeds: string[];
+  observedModes: string[];
+  adbState: string;
+  mtpConnected: boolean;
+  fastbootPresent: boolean;
+  recommendations: string[];
+  evidence: DiagnosticEvidence[];
+};
+
+export async function runUsbCableDoctor(): Promise<CableDoctorReport> {
+  return invoke<CableDoctorReport>('usb_cable_doctor');
+}
