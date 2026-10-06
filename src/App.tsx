@@ -17,6 +17,7 @@ import {
   scanAdbDevices,
   listMtpRoot,
   listAdbUserPackages,
+  runUsbCableDoctor,
   listWorkflowJobs,
   retryWorkflowJob,
   runAdbPackageAction,
@@ -31,6 +32,7 @@ import {
   type PhoneDiagnosticReport,
   type WorkflowJobRecord,
   type AdbPackageRecord,
+  type CableDoctorReport,
 } from './lib/desktop';
 
 function formatBytes(value: number): string {
@@ -70,6 +72,8 @@ export default function App() {
   const [adbPackages, setAdbPackages] = useState<AdbPackageRecord[]>([]);
   const [packageQuery, setPackageQuery] = useState('');
   const [packageBusy, setPackageBusy] = useState<string | null>(null);
+  const [cableDoctor, setCableDoctor] = useState<CableDoctorReport | null>(null);
+  const [cableDoctorBusy, setCableDoctorBusy] = useState(false);
   const nativeRuntime = useMemo(() => isTauriRuntime(), []);
   const filteredPackages = useMemo(() => {
     const q = packageQuery.trim().toLowerCase();
@@ -153,6 +157,19 @@ export default function App() {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
       setDiagnosing(false);
+    }
+  };
+
+  const runCableDoctor = async () => {
+    if (transferBusy || diagnosing || cableDoctorBusy) return;
+    setCableDoctorBusy(true);
+    setNativeError(null);
+    try {
+      setCableDoctor(await runUsbCableDoctor());
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCableDoctorBusy(false);
     }
   };
 
@@ -415,7 +432,7 @@ export default function App() {
                     {device.productName || device.manufacturer || 'USB device'}
                   </div>
                   <div className="mt-1 text-xs text-cyan-300">{device.platformHint}</div>
-                  <div className="text-xs text-slate-400">{device.mode}</div>
+                  <div className="text-xs text-slate-400">{device.mode} · {device.speed}</div>
                   <div className="mt-2 font-mono text-[11px] text-slate-600">
                     {hex(device.vendorId)}:{hex(device.productId)}
                   </div>
@@ -494,7 +511,16 @@ export default function App() {
                       <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">USB / Cable Doctor</h3>
                       <div className="mt-1 text-sm text-slate-300">{diagnostic.connectionSummary}</div>
                     </div>
-                    <span className={
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={cableDoctorBusy || transferBusy || !nativeRuntime}
+                        onClick={() => void runCableDoctor()}
+                        className="rounded border border-cyan-800 px-3 py-1.5 text-xs font-medium text-cyan-300 disabled:opacity-40 hover:bg-cyan-950/50"
+                      >
+                        {cableDoctorBusy ? 'Testing…' : 'Run stability test'}
+                      </button>
+                      <span className={
                       diagnostic.connectionGrade === 'excellent'
                         ? 'rounded bg-emerald-950 px-2 py-1 text-xs text-emerald-300'
                         : diagnostic.connectionGrade === 'usable'
@@ -504,8 +530,60 @@ export default function App() {
                             : 'rounded bg-red-950 px-2 py-1 text-xs text-red-300'
                     }>
                       {diagnostic.connectionGrade}
-                    </span>
+                      </span>
+                    </div>
                   </div>
+
+                  {cableDoctor && (
+                    <div className="mt-3 rounded border border-slate-800 bg-slate-950/70 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-medium text-white">{cableDoctor.summary}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {cableDoctor.androidPresentSamples}/{cableDoctor.samples} Android USB samples present · {cableDoctor.reconnectEvents} identity changes
+                          </div>
+                        </div>
+                        <span className={
+                          cableDoctor.grade === 'healthy'
+                            ? 'rounded bg-emerald-950 px-2 py-1 text-xs text-emerald-300'
+                            : cableDoctor.grade === 'limited'
+                              ? 'rounded bg-amber-950 px-2 py-1 text-xs text-amber-300'
+                              : 'rounded bg-red-950 px-2 py-1 text-xs text-red-300'
+                        }>
+                          {cableDoctor.grade}
+                        </span>
+                      </div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                        <div className="rounded border border-slate-800 p-2 text-xs">
+                          <span className="text-slate-500">Speed</span>
+                          <div className="mt-1 text-white">{cableDoctor.observedSpeeds.join(', ') || 'Unavailable'}</div>
+                        </div>
+                        <div className="rounded border border-slate-800 p-2 text-xs">
+                          <span className="text-slate-500">Mode</span>
+                          <div className="mt-1 text-white">{cableDoctor.observedModes.join(', ') || 'Unavailable'}</div>
+                        </div>
+                        <div className="rounded border border-slate-800 p-2 text-xs">
+                          <span className="text-slate-500">Transports</span>
+                          <div className="mt-1 text-white">ADB {cableDoctor.adbState} · MTP {cableDoctor.mtpConnected ? 'yes' : 'no'} · Fastboot {cableDoctor.fastbootPresent ? 'yes' : 'no'}</div>
+                        </div>
+                      </div>
+                      {cableDoctor.recommendations.length > 0 && (
+                        <div className="mt-3 space-y-1">
+                          {cableDoctor.recommendations.map((item) => (
+                            <div key={item} className="text-xs text-cyan-300">• {item}</div>
+                          ))}
+                        </div>
+                      )}
+                      <details className="mt-3">
+                        <summary className="cursor-pointer text-xs text-slate-400">Cable test evidence</summary>
+                        <div className="mt-2 space-y-1 font-mono text-[10px] text-slate-600">
+                          {cableDoctor.evidence.map((item, index) => (
+                            <div key={`${item.source}-${index}`}>{item.source}: {item.detail}</div>
+                          ))}
+                        </div>
+                      </details>
+                    </div>
+                  )}
 
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                     {diagnostic.usbConnections.length ? diagnostic.usbConnections.map((usb, index) => (
@@ -513,7 +591,7 @@ export default function App() {
                         <div className="text-sm font-medium text-white">{usb.productName || usb.manufacturer || usb.platformHint}</div>
                         <div className="mt-1 text-xs text-cyan-300">{usb.platformHint} · {usb.mode}</div>
                         <div className="mt-1 font-mono text-[11px] text-slate-500">
-                          {hex(usb.vendorId)}:{hex(usb.productId)} · bus {usb.busNumber} · addr {usb.deviceAddress}
+                          {hex(usb.vendorId)}:{hex(usb.productId)} · {usb.speed} · bus {usb.busNumber} · addr {usb.deviceAddress}
                         </div>
                         <div className="mt-1 break-all text-[10px] text-slate-600">
                           {usb.serialNumber || 'no descriptor serial'} · {usb.evidenceSource}
