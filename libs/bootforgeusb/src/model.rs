@@ -14,6 +14,7 @@ pub struct DeviceRecord {
     pub protocol: u8,
     pub bus_number: u8,
     pub device_address: u8,
+    pub speed: String,
     pub platform_hint: String,
     pub mode: String,
     pub transport: String,
