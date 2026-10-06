@@ -165,3 +165,22 @@ describe('auditable workflow job ledger', () => {
     expect(app).toContain('workflowJobs');
   });
 });
+
+
+describe('workflow job durability and retries', () => {
+  it('persists workflow job history and exposes retry without fake cancellation', () => {
+    const jobs = read('src-tauri/src/workflow_jobs.rs');
+    expect(jobs).toContain('workflow-jobs.jsonl');
+    expect(jobs).toContain('persist_terminal_job');
+    expect(jobs).toContain('load_persisted_jobs');
+    expect(jobs).toContain('workflow_job_retry');
+    expect(jobs).toContain('retry_of');
+    expect(jobs).not.toContain('workflow_job_cancel');
+  });
+
+  it('renders retry only for terminal jobs', () => {
+    const app = read('src/App.tsx');
+    expect(app).toContain("job.state !== 'running'");
+    expect(app).toContain('retryWorkflowJob');
+  });
+});
