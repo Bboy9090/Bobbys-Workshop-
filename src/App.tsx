@@ -290,6 +290,16 @@ export default function App() {
     action: 'enable' | 'disable-user' | 'clear-data' | 'uninstall-user',
   ) => {
     if (!adbSelectedSerial || transferBusy || packageBusy) return;
+    if (
+      (action === 'clear-data' || action === 'uninstall-user') &&
+      !window.confirm(
+        action === 'clear-data'
+          ? `Clear all app data for ${packageName}? This cannot be undone.`
+          : `Uninstall ${packageName} for the current Android user?`,
+      )
+    ) {
+      return;
+    }
     setPackageBusy(packageName);
     setNativeError(null);
     try {
