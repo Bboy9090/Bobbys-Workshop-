@@ -21,6 +21,21 @@ pub struct DiagnosticFinding {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct UsbConnectionSummary {
+    pub vendor_id: u16,
+    pub product_id: u16,
+    pub manufacturer: Option<String>,
+    pub product_name: Option<String>,
+    pub serial_number: Option<String>,
+    pub platform_hint: String,
+    pub mode: String,
+    pub bus_number: u8,
+    pub device_address: u8,
+    pub evidence_source: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DiagnosticDeviceSummary {
     pub manufacturer: Option<String>,
     pub model: Option<String>,
@@ -37,6 +52,10 @@ pub struct DiagnosticDeviceSummary {
 #[serde(rename_all = "camelCase")]
 pub struct PhoneDiagnosticReport {
     pub usb_devices_seen: usize,
+    pub android_usb_devices_seen: usize,
+    pub usb_connections: Vec<UsbConnectionSummary>,
+    pub connection_grade: &'static str,
+    pub connection_summary: String,
     pub adb_devices_seen: usize,
     pub authorized_adb_devices: usize,
     pub mtp_connected: bool,
@@ -107,6 +126,25 @@ pub async fn diagnose_phone() -> Result<PhoneDiagnosticReport, String> {
 
     let authorized: Vec<_> = adb.iter().filter(|d| d.authorized).collect();
     let selected = authorized.first().map(|d| d.serial.clone());
+    let android_usb: Vec<_> = usb
+        .iter()
+        .filter(|d| d.platform_hint.starts_with("android-"))
+        .collect();
+    let usb_connections = android_usb
+        .iter()
+        .map(|d| UsbConnectionSummary {
+            vendor_id: d.vendor_id,
+            product_id: d.product_id,
+            manufacturer: d.manufacturer.clone(),
+            product_name: d.product_name.clone(),
+            serial_number: d.serial_number.clone(),
+            platform_hint: d.platform_hint.clone(),
+            mode: d.mode.clone(),
+            bus_number: d.bus_number,
+            device_address: d.device_address,
+            evidence_source: d.evidence_source.clone(),
+        })
+        .collect::<Vec<_>>();
 
     let mut evidence = Vec::new();
     for d in &usb {
@@ -188,7 +226,7 @@ pub async fn diagnose_phone() -> Result<PhoneDiagnosticReport, String> {
 
     let mut findings = Vec::new();
 
-    if usb.is_empty() && adb.is_empty() && mtp.is_none() && fastboot.is_empty() {
+    if android_usb.is_empty() && adb.is_empty() && mtp.is_none() && fastboot.is_empty() {
         findings.push(DiagnosticFinding {
             id: "no-device".to_string(),
             severity: "error",
@@ -198,13 +236,63 @@ pub async fn diagnose_phone() -> Result<PhoneDiagnosticReport, String> {
         });
     }
 
-    if !usb.is_empty() && mtp.is_none() && adb.is_empty() && fastboot.is_empty() {
+    if !android_usb.is_empty() && mtp.is_none() && adb.is_empty() && fastboot.is_empty() {
         findings.push(DiagnosticFinding {
             id: "usb-only".to_string(),
             severity: "warning",
             title: "USB present, no Android transport available".to_string(),
             detail: "The Mac sees USB hardware, but BobFWTools cannot establish MTP, ADB, or Fastboot.".to_string(),
             recommendation: Some("On Android, choose File Transfer for MTP or authorize USB debugging for ADB.".to_string()),
+        });
+    }
+
+    if android_usb.len() > 1 {
+        findings.push(DiagnosticFinding {
+            id: "multiple-android-usb".to_string(),
+            severity: "warning",
+            title: "Multiple Android USB devices detected".to_string(),
+            detail: format!("{} Android-class USB devices are visible. Workflow selection may be ambiguous.", android_usb.len()),
+            recommendation: Some("For destructive or recovery work, connect only the phone you intend to service.".to_string()),
+        });
+    }
+
+    if mtp.is_some() && authorized.is_empty() && fastboot.is_empty() {
+        findings.push(DiagnosticFinding {
+            id: "mtp-only".to_string(),
+            severity: "ok",
+            title: "File transfer works; ADB is not authorized".to_string(),
+            detail: "MTP is healthy, so the USB data path is working. Developer-mode workflows are unavailable until ADB is enabled and authorized.".to_string(),
+            recommendation: Some("No change is needed for file transfer. Enable USB debugging only if you need ADB workflows.".to_string()),
+        });
+    }
+
+    if !authorized.is_empty() && mtp.is_none() {
+        findings.push(DiagnosticFinding {
+            id: "adb-only".to_string(),
+            severity: "warning",
+            title: "ADB works but MTP is unavailable".to_string(),
+            detail: "The USB data path and debugging authorization are working, but Android is not exposing a usable MTP session.".to_string(),
+            recommendation: Some("Unlock the phone and change USB preferences to File Transfer if you need file browsing.".to_string()),
+        });
+    }
+
+    if android_usb.iter().any(|d| d.mode == "samsung-download") {
+        findings.push(DiagnosticFinding {
+            id: "samsung-download-mode".to_string(),
+            severity: "ok",
+            title: "Samsung Download Mode detected".to_string(),
+            detail: "The USB descriptor matches BobFWTools' Samsung Download Mode evidence rule.".to_string(),
+            recommendation: Some("Use only Samsung recovery/firmware workflows qualified for this exact model and firmware package.".to_string()),
+        });
+    }
+
+    if android_usb.iter().any(|d| d.mode == "mediatek-preloader") {
+        findings.push(DiagnosticFinding {
+            id: "mediatek-preloader".to_string(),
+            severity: "ok",
+            title: "MediaTek preloader mode detected".to_string(),
+            detail: "The USB descriptor matches BobFWTools' MediaTek preloader evidence rule.".to_string(),
+            recommendation: Some("Use only authorized MediaTek recovery workflows compatible with this device.".to_string()),
         });
     }
 
@@ -258,6 +346,16 @@ pub async fn diagnose_phone() -> Result<PhoneDiagnosticReport, String> {
         });
     }
 
+    let (connection_grade, connection_summary) = if !authorized.is_empty() && mtp.is_some() {
+        ("excellent", "USB data, MTP, and authorized ADB are all available.".to_string())
+    } else if mtp.is_some() || !authorized.is_empty() || !fastboot.is_empty() {
+        ("usable", "At least one verified Android data transport is available, but not all normal-service transports are active.".to_string())
+    } else if !android_usb.is_empty() {
+        ("limited", "Android USB hardware is visible, but no usable MTP, ADB, or Fastboot transport is established.".to_string())
+    } else {
+        ("none", "No Android-class USB connection or Android service transport is currently visible.".to_string())
+    };
+
     let matrix = crate::workflow_capabilities::workflow_capabilities().await?;
     let available_workflows = matrix
         .workflows
@@ -274,6 +372,10 @@ pub async fn diagnose_phone() -> Result<PhoneDiagnosticReport, String> {
 
     Ok(PhoneDiagnosticReport {
         usb_devices_seen: usb.len(),
+        android_usb_devices_seen: android_usb.len(),
+        usb_connections,
+        connection_grade,
+        connection_summary,
         adb_devices_seen: adb.len(),
         authorized_adb_devices: authorized.len(),
         mtp_connected: mtp.is_some(),
