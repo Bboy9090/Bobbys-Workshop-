@@ -34,6 +34,12 @@ pub struct AdbTextResult {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AdbPackageRecord {
+    pub package_name: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AdbActionResult {
     pub serial: String,
     pub workflow: &'static str,
@@ -367,5 +373,109 @@ pub fn adb_install_apk(serial: String, apk_path: String) -> Result<AdbActionResu
         verified: true,
         message: format!("APK installed from {}", path.display()),
         evidence_source: "adb:install-r+success-token",
+    })
+}
+
+
+fn validate_package_name(package: &str) -> Result<(), String> {
+    if package.is_empty() || package.len() > 255 {
+        return Err("Invalid package name".to_string());
+    }
+    if !package
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')
+    {
+        return Err("Package name contains unsupported characters".to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn adb_list_user_packages(serial: String) -> Result<Vec<AdbPackageRecord>, String> {
+    require_authorized(&serial)?;
+    let output = require_success(
+        run_adb(&["-s", &serial, "shell", "pm", "list", "packages", "-3"])?,
+        "adb list user packages",
+    )?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut packages = stdout
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("package:"))
+        .map(|name| AdbPackageRecord {
+            package_name: name.to_string(),
+        })
+        .collect::<Vec<_>>();
+    packages.sort_by(|a, b| a.package_name.cmp(&b.package_name));
+    Ok(packages)
+}
+
+#[tauri::command]
+pub fn adb_package_action(
+    serial: String,
+    package_name: String,
+    action: String,
+) -> Result<AdbActionResult, String> {
+    require_authorized(&serial)?;
+    validate_package_name(&package_name)?;
+
+    let (workflow, args): (&'static str, Vec<&str>) = match action.as_str() {
+        "enable" => (
+            "app-enable",
+            vec!["-s", &serial, "shell", "pm", "enable", &package_name],
+        ),
+        "disable-user" => (
+            "app-disable-user",
+            vec![
+                "-s",
+                &serial,
+                "shell",
+                "pm",
+                "disable-user",
+                "--user",
+                "0",
+                &package_name,
+            ],
+        ),
+        "clear-data" => (
+            "app-clear-data",
+            vec!["-s", &serial, "shell", "pm", "clear", &package_name],
+        ),
+        "uninstall-user" => (
+            "app-uninstall-user",
+            vec![
+                "-s",
+                &serial,
+                "shell",
+                "pm",
+                "uninstall",
+                "--user",
+                "0",
+                &package_name,
+            ],
+        ),
+        _ => return Err("Unsupported package action".to_string()),
+    };
+
+    let output = require_success(run_adb(&args)?, workflow)?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let verified = match action.as_str() {
+        "enable" | "disable-user" => !stdout.to_lowercase().contains("error"),
+        "clear-data" | "uninstall-user" => stdout.contains("Success"),
+        _ => false,
+    };
+
+    if !verified {
+        return Err(format!(
+            "{workflow} returned success exit status but could not be verified: {stdout}"
+        ));
+    }
+
+    Ok(AdbActionResult {
+        serial,
+        workflow,
+        accepted: true,
+        verified: true,
+        message: format!("{workflow} completed for {package_name}"),
+        evidence_source: "adb:pm+verified-output",
     })
 }
