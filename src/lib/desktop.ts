@@ -262,3 +262,47 @@ export async function runAdbPackageAction(
 ): Promise<AdbActionResult> {
   return invoke<AdbActionResult>('adb_package_action', { serial, packageName, action });
 }
+
+
+export type DiagnosticEvidence = {
+  source: string;
+  detail: string;
+};
+
+export type DiagnosticFinding = {
+  id: string;
+  severity: 'ok' | 'warning' | 'error';
+  title: string;
+  detail: string;
+  recommendation: string | null;
+};
+
+export type DiagnosticDeviceSummary = {
+  manufacturer: string | null;
+  model: string | null;
+  serial: string | null;
+  androidVersion: string | null;
+  sdk: string | null;
+  securityPatch: string | null;
+  bootloader: string | null;
+  verifiedBootState: string | null;
+  batterySummary: string | null;
+};
+
+export type PhoneDiagnosticReport = {
+  usbDevicesSeen: number;
+  adbDevicesSeen: number;
+  authorizedAdbDevices: number;
+  mtpConnected: boolean;
+  fastbootPresent: boolean;
+  selectedAdbSerial: string | null;
+  device: DiagnosticDeviceSummary;
+  availableWorkflows: string[];
+  blockedWorkflows: string[];
+  findings: DiagnosticFinding[];
+  evidence: DiagnosticEvidence[];
+};
+
+export async function diagnosePhone(): Promise<PhoneDiagnosticReport> {
+  return invoke<PhoneDiagnosticReport>('diagnose_phone');
+}
