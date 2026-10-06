@@ -358,3 +358,43 @@ export async function getWorkflowJob(id: string): Promise<WorkflowJobRecord> {
 export async function retryWorkflowJob(id: string): Promise<WorkflowJobRecord> {
   return invoke<WorkflowJobRecord>('workflow_job_retry', { id });
 }
+
+
+export type MtpBrowserObject = {
+  filename: string;
+  path: string[];
+  isFolder: boolean;
+  sizeBytes: number;
+};
+
+export async function listMtpDirectory(
+  storageIndex: number,
+  path: string[],
+): Promise<MtpBrowserObject[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<MtpBrowserObject[]>('mtp_list_directory', { storageIndex, path });
+}
+
+export async function downloadMtpPath(
+  storageIndex: number,
+  objectPath: string[],
+  destinationPath: string,
+): Promise<MtpTransferResult> {
+  return invoke<MtpTransferResult>('mtp_download_path', {
+    storageIndex,
+    objectPath,
+    destinationPath,
+  });
+}
+
+export async function uploadMtpPath(
+  storageIndex: number,
+  folderPath: string[],
+  sourcePath: string,
+): Promise<MtpTransferResult> {
+  return invoke<MtpTransferResult>('mtp_upload_path', {
+    storageIndex,
+    folderPath,
+    sourcePath,
+  });
+}
