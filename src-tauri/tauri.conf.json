@@ -39,9 +39,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "bundle/resources/**/*"
-    ],
+    "resources": [],
     "copyright": "© 2026 Bobby Blanco",
     "category": "Utilities",
     "shortDescription": "Android connectivity and diagnostics for macOS.",
