@@ -40,9 +40,7 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "bundle/resources/**/*",
-      "python/runtime/**/*",
-      "python/fastapi_backend/**/*"
+      "bundle/resources/**/*"
     ],
     "copyright": "© 2026 Bobby Blanco",
     "category": "Utilities",
