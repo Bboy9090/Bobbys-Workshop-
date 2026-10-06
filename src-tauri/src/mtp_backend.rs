@@ -15,7 +15,9 @@ pub struct MtpStatus {
     pub manufacturer: String,
     pub model: String,
     pub serial_number: String,
+    pub device_family: String,
     pub storages: Vec<MtpStorageSummary>,
+    pub capabilities: Vec<&'static str>,
     pub evidence_source: &'static str,
 }
 
@@ -27,6 +29,23 @@ pub struct MtpRootObject {
     pub is_folder: bool,
 }
 
+fn classify_device_family(manufacturer: &str, model: &str) -> String {
+    let haystack = format!("{} {}", manufacturer, model).to_ascii_lowercase();
+    if haystack.contains("samsung") {
+        "samsung".to_string()
+    } else if haystack.contains("google") || haystack.contains("pixel") {
+        "google".to_string()
+    } else if haystack.contains("motorola") {
+        "motorola".to_string()
+    } else if haystack.contains("xiaomi") || haystack.contains("redmi") || haystack.contains("poco") {
+        "xiaomi".to_string()
+    } else if haystack.contains("oneplus") {
+        "oneplus".to_string()
+    } else {
+        "android-or-mtp-device".to_string()
+    }
+}
+
 #[tauri::command]
 pub async fn mtp_status() -> Result<MtpStatus, String> {
     let device = MtpDevice::open_first()
@@ -34,6 +53,8 @@ pub async fn mtp_status() -> Result<MtpStatus, String> {
         .map_err(|e| format!("No usable MTP device: {e}"))?;
 
     let info = device.device_info();
+    let manufacturer = info.manufacturer.clone();
+    let model = info.model.clone();
     let storages = device
         .storages()
         .await
@@ -47,10 +68,23 @@ pub async fn mtp_status() -> Result<MtpStatus, String> {
 
     Ok(MtpStatus {
         connected: true,
-        manufacturer: info.manufacturer.clone(),
-        model: info.model.clone(),
+        device_family: classify_device_family(&manufacturer, &model),
+        manufacturer,
+        model,
         serial_number: info.serial_number.clone(),
         storages,
+        capabilities: vec![
+            "device-info",
+            "storage-info",
+            "list",
+            "download",
+            "upload",
+            "delete",
+            "move",
+            "copy",
+            "rename",
+            "create-folder",
+        ],
         evidence_source: "mtp:GetDeviceInfo+GetStorageInfo",
     })
 }
