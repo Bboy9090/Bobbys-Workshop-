@@ -8,10 +8,7 @@ import {
   getAdbDeviceInfo,
   getAdbLogcatSnapshot,
   installApkOnDevice,
-  openAndroidFactoryResetSettings,
-  openAndroidNetworkSettings,
   prepareAdb,
-  rebootAdbDevice,
   getMtpStatus,
   getNativeUsbDevices,
   getWorkflowCapabilities,
@@ -19,6 +16,8 @@ import {
   saveAdbScreenshot,
   scanAdbDevices,
   listMtpRoot,
+  listWorkflowJobs,
+  startWorkflowJob,
   uploadMtpFile,
   type AdbDeviceRecord,
   type MtpRootObject,
@@ -27,6 +26,7 @@ import {
   type UsbDeviceRecord,
   type DeviceCapabilityMatrix,
   type PhoneDiagnosticReport,
+  type WorkflowJobRecord,
 } from './lib/desktop';
 
 function formatBytes(value: number): string {
@@ -62,7 +62,17 @@ export default function App() {
   const [lastTransfer, setLastTransfer] = useState<MtpTransferResult | null>(null);
   const [diagnostic, setDiagnostic] = useState<PhoneDiagnosticReport | null>(null);
   const [diagnosing, setDiagnosing] = useState(false);
+  const [workflowJobs, setWorkflowJobs] = useState<WorkflowJobRecord[]>([]);
   const nativeRuntime = useMemo(() => isTauriRuntime(), []);
+
+  const refreshJobs = useCallback(async () => {
+    if (!nativeRuntime) return;
+    try {
+      setWorkflowJobs(await listWorkflowJobs());
+    } catch {
+      // The job ledger should never make core transport refresh fail.
+    }
+  }, [nativeRuntime]);
 
   const refresh = useCallback(async () => {
     if (transferBusy) return;
@@ -86,6 +96,7 @@ export default function App() {
 
       const matrix = await getWorkflowCapabilities();
       setCapabilities(matrix);
+      await refreshJobs();
 
       if (mtpStatus?.storages.length) {
         const safeIndex = Math.min(storageIndex, mtpStatus.storages.length - 1);
@@ -101,7 +112,7 @@ export default function App() {
     } finally {
       setRefreshing(false);
     }
-  }, [storageIndex, transferBusy, adbSelectedSerial]);
+  }, [storageIndex, transferBusy, adbSelectedSerial, refreshJobs]);
 
   const runDiagnosis = async () => {
     if (transferBusy || diagnosing) return;
@@ -206,17 +217,27 @@ export default function App() {
     setTransferBusy(true);
     setNativeError(null);
     try {
-      let result = null;
-      if (action === 'network') result = await openAndroidNetworkSettings(adbSelectedSerial);
-      if (action === 'factory-reset-settings') result = await openAndroidFactoryResetSettings(adbSelectedSerial);
-      if (action === 'install-apk') result = await installApkOnDevice(adbSelectedSerial);
-      if (action === 'reboot-normal') result = await rebootAdbDevice(adbSelectedSerial, 'normal');
-      if (action === 'reboot-recovery') result = await rebootAdbDevice(adbSelectedSerial, 'recovery');
-      if (action === 'reboot-bootloader') result = await rebootAdbDevice(adbSelectedSerial, 'bootloader');
-      if (action === 'reboot-download') result = await rebootAdbDevice(adbSelectedSerial, 'download');
-      if (result) {
-        setAdbOutput(`${result.message}\n${result.evidenceSource}${result.verified ? '\nVerified' : '\nCommand accepted; device state change is not yet post-verified.'}`);
+      if (action === 'install-apk') {
+        const result = await installApkOnDevice(adbSelectedSerial);
+        if (result) {
+          setAdbOutput(`${result.message}\n${result.evidenceSource}\nVerified`);
+        }
+        return;
       }
+
+      const workflowMap = {
+        network: 'adb-network-settings',
+        'factory-reset-settings': 'adb-factory-reset-settings',
+        'reboot-normal': 'adb-reboot-normal',
+        'reboot-recovery': 'adb-reboot-recovery',
+        'reboot-bootloader': 'adb-reboot-bootloader',
+        'reboot-download': 'adb-reboot-download',
+      } as const;
+      const job = await startWorkflowJob(workflowMap[action], adbSelectedSerial);
+      setAdbOutput(
+        `Job ${job.id}\n${job.summary}\n${job.evidence.join('\n') || 'No evidence returned'}\nState: ${job.state}${job.verified ? ' · verified' : ''}`,
+      );
+      await refreshJobs();
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -507,6 +528,51 @@ export default function App() {
                 </details>
               </>
             )}
+          </section>
+
+          <section className="mb-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-white">Recent one-click jobs</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Audited workflow runs with truthful completion state and evidence.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void refreshJobs()}
+                className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+              >
+                Refresh jobs
+              </button>
+            </div>
+            <div className="mt-3 space-y-2">
+              {workflowJobs.length === 0 ? (
+                <div className="rounded border border-slate-800 bg-slate-950/50 p-3 text-sm text-slate-500">
+                  No audited one-click jobs have run in this app session yet.
+                </div>
+              ) : workflowJobs.slice(0, 8).map((job) => (
+                <div key={job.id} className="rounded border border-slate-800 bg-slate-950/50 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="font-mono text-xs text-white">{job.workflowId}</span>
+                      <span className="ml-2 font-mono text-[10px] text-slate-600">{job.id}</span>
+                    </div>
+                    <span className={
+                      job.state === 'completed'
+                        ? job.verified ? 'text-xs text-emerald-300' : 'text-xs text-cyan-300'
+                        : job.state === 'failed' ? 'text-xs text-red-300' : 'text-xs text-amber-300'
+                    }>
+                      {job.state}{job.verified ? ' · verified' : ''}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-slate-400">{job.summary}</div>
+                  {job.evidence.length > 0 && (
+                    <div className="mt-2 break-all font-mono text-[10px] text-slate-600">{job.evidence.join(' · ')}</div>
+                  )}
+                </div>
+              ))}
+            </div>
           </section>
 
           <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-5">
