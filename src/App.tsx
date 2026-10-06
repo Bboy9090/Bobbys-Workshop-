@@ -3,8 +3,14 @@ import {
   chooseDownloadDestination,
   chooseUploadSource,
   downloadMtpFile,
+  getAdbBatteryInfo,
   getAdbDeviceInfo,
   getAdbLogcatSnapshot,
+  installApkOnDevice,
+  openAndroidFactoryResetSettings,
+  openAndroidNetworkSettings,
+  prepareAdb,
+  rebootAdbDevice,
   getMtpStatus,
   getNativeUsbDevices,
   getWorkflowCapabilities,
@@ -137,6 +143,60 @@ export default function App() {
     try {
       const result = await downloadMtpFile(storageIndex, object.handle, destination);
       setLastTransfer(result);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  const runOneClickAdb = async () => {
+    if (transferBusy) return;
+    setTransferBusy(true);
+    setNativeError(null);
+    try {
+      const devices = await prepareAdb();
+      setAdbDevices(devices);
+      setAdbOutput(devices.length ? `ADB ready: ${devices.length} device(s) detected.` : 'ADB server ready; no device detected.');
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  const runAdbBattery = async () => {
+    if (!adbSelectedSerial || transferBusy) return;
+    setTransferBusy(true);
+    setNativeError(null);
+    try {
+      const result = await getAdbBatteryInfo(adbSelectedSerial);
+      setAdbOutput(`Verified battery info (${result.evidenceSource})\n${result.output}`);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  const runSimpleAdbAction = async (
+    action: 'network' | 'factory-reset-settings' | 'install-apk' | 'reboot-normal' | 'reboot-recovery' | 'reboot-bootloader' | 'reboot-download',
+  ) => {
+    if (!adbSelectedSerial || transferBusy) return;
+    setTransferBusy(true);
+    setNativeError(null);
+    try {
+      let result = null;
+      if (action === 'network') result = await openAndroidNetworkSettings(adbSelectedSerial);
+      if (action === 'factory-reset-settings') result = await openAndroidFactoryResetSettings(adbSelectedSerial);
+      if (action === 'install-apk') result = await installApkOnDevice(adbSelectedSerial);
+      if (action === 'reboot-normal') result = await rebootAdbDevice(adbSelectedSerial, 'normal');
+      if (action === 'reboot-recovery') result = await rebootAdbDevice(adbSelectedSerial, 'recovery');
+      if (action === 'reboot-bootloader') result = await rebootAdbDevice(adbSelectedSerial, 'bootloader');
+      if (action === 'reboot-download') result = await rebootAdbDevice(adbSelectedSerial, 'download');
+      if (result) {
+        setAdbOutput(`${result.message}\n${result.evidenceSource}${result.verified ? '\nVerified' : '\nCommand accepted; device state change is not yet post-verified.'}`);
+      }
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -515,13 +575,26 @@ export default function App() {
                   ))}
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   <button
                     type="button"
-                    disabled={
-                      transferBusy ||
-                      !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized
-                    }
+                    disabled={transferBusy}
+                    onClick={() => void runOneClickAdb()}
+                    className="rounded bg-cyan-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-cyan-600"
+                  >
+                    Prepare ADB
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runAdbBattery()}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Battery info
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
                     onClick={() => void runAdbDeviceInfo()}
                     className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
                   >
@@ -540,14 +613,67 @@ export default function App() {
                   </button>
                   <button
                     type="button"
-                    disabled={
-                      transferBusy ||
-                      !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized
-                    }
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
                     onClick={() => void runAdbScreenshot()}
                     className="rounded bg-violet-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-violet-600"
                   >
-                    Save screenshot to Mac
+                    Save screenshot
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('network')}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Network settings
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('factory-reset-settings')}
+                    className="rounded bg-amber-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-amber-600"
+                  >
+                    Factory reset settings
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('install-apk')}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Install APK
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('reboot-normal')}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Reboot
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('reboot-recovery')}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Reboot recovery
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('reboot-bootloader')}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Reboot bootloader
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('reboot-download')}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Samsung download mode
                   </button>
                 </div>
 
