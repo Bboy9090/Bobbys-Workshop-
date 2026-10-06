@@ -200,3 +200,21 @@ describe('ADB App Manager UI', () => {
     expect(adb).toContain('"uninstall-user"');
   });
 });
+
+
+describe('nested MTP browser', () => {
+  it('wires path-aware listing, upload, download, and breadcrumbs', () => {
+    const backend = read('src-tauri/src/mtp_backend.rs');
+    const bridge = read('src/lib/desktop.ts');
+    const app = read('src/App.tsx');
+
+    expect(backend).toContain('pub async fn mtp_list_directory');
+    expect(backend).toContain('pub async fn mtp_download_path');
+    expect(backend).toContain('pub async fn mtp_upload_path');
+    expect(bridge).toContain('listMtpDirectory');
+    expect(bridge).toContain('downloadMtpPath');
+    expect(bridge).toContain('uploadMtpPath');
+    expect(app).toContain('Current Android folder');
+    expect(app).toContain('openMtpFolder');
+  });
+});
