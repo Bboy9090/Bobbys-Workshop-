@@ -27,7 +27,7 @@ use python_backend::{launch_python_backend, shutdown_python_backend};
 use py_client::PyWorkerClient;
 #[cfg(feature = "legacy-backends")]
 use fastapi_backend::{launch_fastapi_backend, shutdown_fastapi_backend};
-use mtp_backend::{mtp_status, mtp_list_root};
+use mtp_backend::{mtp_status, mtp_list_root, mtp_download_file, mtp_upload_file};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -1256,6 +1256,7 @@ fn main() {
     };
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
         .setup(|app| {
             let state = app.state::<AppState>();
@@ -1339,6 +1340,8 @@ fn main() {
             bootforgeusb_scan,
             mtp_status,
             mtp_list_root,
+            mtp_download_file,
+            mtp_upload_file,
             flash_start,
             flash_cancel,
             flash_status,
