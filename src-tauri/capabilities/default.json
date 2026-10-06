@@ -6,10 +6,6 @@
     "main"
   ],
   "permissions": [
-    "core:default",
-    {
-      "identifier": "shell:allow-sidecar",
-      "allow": [{ "name": "binaries/phoenix_backend", "sidecar": true }]
-    }
+    "core:default"
   ]
 }
