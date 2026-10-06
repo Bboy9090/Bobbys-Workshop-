@@ -1,7 +1,7 @@
 {
-  "name": "phoenix-forge",
+  "name": "bobfwtools",
   "private": true,
-  "version": "5.0.0",
+  "version": "0.1.0",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -61,7 +61,8 @@
     "build:complete": "node -e \"process.platform === 'win32' ? require('child_process').execSync('powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-complete-bundle.ps1', {stdio: 'inherit'}) : require('child_process').execSync('bash scripts/build-complete-bundle.sh', {stdio: 'inherit'})\"",
     "build:complete:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-complete-bundle.ps1",
     "build:complete:macos": "bash scripts/build-complete-bundle.sh",
-    "bundle:python": "node -e \"process.platform === 'win32' ? require('child_process').execSync('powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bundle-python-complete.ps1', {stdio: 'inherit'}) : require('child_process').execSync('bash scripts/bundle-python-complete.sh', {stdio: 'inherit'})\""
+    "bundle:python": "node -e \"process.platform === 'win32' ? require('child_process').execSync('powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bundle-python-complete.ps1', {stdio: 'inherit'}) : require('child_process').execSync('bash scripts/bundle-python-complete.sh', {stdio: 'inherit'})\"",
+    "verify:reality": "node scripts/verify-production-reality.mjs"
   },
   "dependencies": {
     "@github/spark": ">=0.43.1 <1",
@@ -153,5 +154,6 @@
     "packages": [
       "packages/*"
     ]
-  }
+  },
+  "description": "BobFWTools — professional macOS Android device connectivity, MTP, ADB/Fastboot diagnostics, transfer, and support tooling."
 }
