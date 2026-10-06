@@ -163,6 +163,13 @@ pub async fn workflow_capabilities() -> Result<DeviceCapabilityMatrix, String> {
                 evidence: authorized_adb.iter().map(|d| format!("{}:{}", d.serial, d.evidence_source)).collect(),
             },
             WorkflowCapability {
+                id: "adb-app-manager",
+                transport: "adb",
+                enabled: !authorized_adb.is_empty(),
+                reason: adb_reason.clone(),
+                evidence: authorized_adb.iter().map(|d| format!("{}:{}", d.serial, d.evidence_source)).collect(),
+            },
+            WorkflowCapability {
                 id: "fastboot-present",
                 transport: "fastboot",
                 enabled: fastboot_present,
