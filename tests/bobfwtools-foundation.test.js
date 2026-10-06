@@ -80,6 +80,7 @@ describe('BobFWTools production foundation', () => {
       'adb-network-settings',
       'adb-factory-reset-settings',
       'adb-install-apk',
+      'adb-app-manager',
       'fastboot-present',
       'usb-observation',
     ]) {
