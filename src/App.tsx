@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   chooseDownloadDestination,
   chooseUploadSource,
-  downloadMtpFile,
   diagnosePhone,
   getAdbBatteryInfo,
   getAdbDeviceInfo,
@@ -15,16 +14,17 @@ import {
   isTauriRuntime,
   saveAdbScreenshot,
   scanAdbDevices,
-  listMtpRoot,
+  listMtpDirectory,
+  downloadMtpPath,
+  uploadMtpPath,
   listAdbUserPackages,
   runUsbCableDoctor,
   listWorkflowJobs,
   retryWorkflowJob,
   runAdbPackageAction,
   startWorkflowJob,
-  uploadMtpFile,
   type AdbDeviceRecord,
-  type MtpRootObject,
+  type MtpBrowserObject,
   type MtpStatus,
   type MtpTransferResult,
   type UsbDeviceRecord,
@@ -59,9 +59,8 @@ export default function App() {
   const [adbSelectedSerial, setAdbSelectedSerial] = useState<string | null>(null);
   const [adbOutput, setAdbOutput] = useState<string | null>(null);
   const [storageIndex, setStorageIndex] = useState(0);
-  const [rootObjects, setRootObjects] = useState<MtpRootObject[]>([]);
-  const [selectedFolderHandle, setSelectedFolderHandle] = useState<string | null>(null);
-  const [selectedFolderName, setSelectedFolderName] = useState<string>('Storage root');
+  const [mtpPath, setMtpPath] = useState<string[]>([]);
+  const [mtpObjects, setMtpObjects] = useState<MtpBrowserObject[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [transferBusy, setTransferBusy] = useState(false);
   const [nativeError, setNativeError] = useState<string | null>(null);
@@ -116,18 +115,22 @@ export default function App() {
       if (mtpStatus?.storages.length) {
         const safeIndex = Math.min(storageIndex, mtpStatus.storages.length - 1);
         setStorageIndex(safeIndex);
-        setRootObjects(await listMtpRoot(safeIndex));
+        try {
+          setMtpObjects(await listMtpDirectory(safeIndex, mtpPath));
+        } catch {
+          setMtpPath([]);
+          setMtpObjects(await listMtpDirectory(safeIndex, []));
+        }
       } else {
-        setRootObjects([]);
-        setSelectedFolderHandle(null);
-        setSelectedFolderName('Storage root');
+        setMtpObjects([]);
+        setMtpPath([]);
       }
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
       setRefreshing(false);
     }
-  }, [storageIndex, transferBusy, adbSelectedSerial, refreshJobs]);
+  }, [storageIndex, mtpPath, transferBusy, adbSelectedSerial, refreshJobs]);
 
   const retryJob = async (id: string) => {
     if (transferBusy) return;
@@ -176,13 +179,23 @@ export default function App() {
   const openStorage = async (index: number) => {
     if (transferBusy) return;
     setStorageIndex(index);
-    setSelectedFolderHandle(null);
-    setSelectedFolderName('Storage root');
+    setMtpPath([]);
     setNativeError(null);
     try {
-      setRootObjects(await listMtpRoot(index));
+      setMtpObjects(await listMtpDirectory(index, []));
     } catch (error) {
-      setRootObjects([]);
+      setMtpObjects([]);
+      setNativeError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const openMtpFolder = async (path: string[]) => {
+    if (transferBusy) return;
+    setNativeError(null);
+    try {
+      setMtpObjects(await listMtpDirectory(storageIndex, path));
+      setMtpPath(path);
+    } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
     }
   };
@@ -196,9 +209,9 @@ export default function App() {
     setNativeError(null);
     setLastTransfer(null);
     try {
-      const result = await uploadMtpFile(storageIndex, source, selectedFolderHandle);
+      const result = await uploadMtpPath(storageIndex, mtpPath, source);
       setLastTransfer(result);
-      setRootObjects(await listMtpRoot(storageIndex));
+      setMtpObjects(await listMtpDirectory(storageIndex, mtpPath));
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -206,7 +219,7 @@ export default function App() {
     }
   };
 
-  const downloadFile = async (object: MtpRootObject) => {
+  const downloadFile = async (object: MtpBrowserObject) => {
     if (object.isFolder || transferBusy) return;
     const destination = await chooseDownloadDestination(object.filename || 'android-file');
     if (!destination) return;
@@ -215,7 +228,7 @@ export default function App() {
     setNativeError(null);
     setLastTransfer(null);
     try {
-      const result = await downloadMtpFile(storageIndex, object.handle, destination);
+      const result = await downloadMtpPath(storageIndex, object.path, destination);
       setLastTransfer(result);
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
