@@ -32,7 +32,7 @@ use py_client::PyWorkerClient;
 #[cfg(feature = "legacy-backends")]
 use fastapi_backend::{launch_fastapi_backend, shutdown_fastapi_backend};
 use mtp_backend::{mtp_status, mtp_list_root, mtp_download_file, mtp_upload_file};
-use adb_workflows::{adb_scan, adb_device_info, adb_logcat_snapshot, adb_screenshot, adb_prepare, adb_battery_info, adb_reboot_mode, adb_open_network_settings, adb_open_factory_reset_settings, adb_install_apk};
+use adb_workflows::{adb_scan, adb_device_info, adb_logcat_snapshot, adb_screenshot, adb_prepare, adb_battery_info, adb_reboot_mode, adb_open_network_settings, adb_open_factory_reset_settings, adb_install_apk, adb_list_user_packages, adb_package_action};
 use workflow_capabilities::workflow_capabilities;
 
 #[cfg(target_os = "windows")]
@@ -1370,6 +1370,8 @@ fn main() {
             adb_open_network_settings,
             adb_open_factory_reset_settings,
             adb_install_apk,
+            adb_list_user_packages,
+            adb_package_action,
             workflow_capabilities,
             flash_start,
             flash_cancel,
