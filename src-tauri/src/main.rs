@@ -1386,13 +1386,6 @@ fn main() {
             workflow_job_list,
             workflow_job_get,
             workflow_job_retry,
-            flash_start,
-            flash_cancel,
-            flash_status,
-            flash_history,
-            flash_active,
-            bootforge_flash_history,
-            bootforge_flash_active,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
