@@ -1,15 +1,19 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs::{self, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowJobRecord {
     pub id: String,
     pub workflow_id: String,
     pub serial: Option<String>,
-    pub state: &'static str,
+    pub state: String,
+    pub retry_of: Option<String>,
     pub started_at_ms: u64,
     pub finished_at_ms: Option<u64>,
     pub verified: bool,
@@ -21,8 +25,38 @@ pub struct WorkflowJobRecord {
 static JOBS: OnceLock<Mutex<HashMap<String, WorkflowJobRecord>>> = OnceLock::new();
 static COUNTER: OnceLock<Mutex<u64>> = OnceLock::new();
 
+fn history_path() -> Option<PathBuf> {
+    dirs::data_local_dir().map(|base| base.join("BobFWTools").join("workflow-jobs.jsonl"))
+}
+
+fn load_persisted_jobs() -> HashMap<String, WorkflowJobRecord> {
+    let Some(path) = history_path() else { return HashMap::new() };
+    let Ok(file) = fs::File::open(path) else { return HashMap::new() };
+    let mut map = HashMap::new();
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        if let Ok(record) = serde_json::from_str::<WorkflowJobRecord>(&line) {
+            map.insert(record.id.clone(), record);
+        }
+    }
+    map
+}
+
+fn persist_terminal_job(record: &WorkflowJobRecord) {
+    if !matches!(record.state.as_str(), "completed" | "failed") {
+        return;
+    }
+    let Some(path) = history_path() else { return };
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) else { return };
+    if let Ok(line) = serde_json::to_string(record) {
+        let _ = writeln!(file, "{line}");
+    }
+}
+
 fn jobs() -> &'static Mutex<HashMap<String, WorkflowJobRecord>> {
-    JOBS.get_or_init(|| Mutex::new(HashMap::new()))
+    JOBS.get_or_init(|| Mutex::new(load_persisted_jobs()))
 }
 
 fn next_id() -> String {
@@ -49,22 +83,26 @@ fn put(record: WorkflowJobRecord) {
 fn update_success(id: &str, summary: String, verified: bool, evidence: Vec<String>) -> Result<WorkflowJobRecord, String> {
     let mut map = jobs().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let job = map.get_mut(id).ok_or_else(|| format!("Workflow job {id} disappeared"))?;
-    job.state = "completed";
+    job.state = "completed".to_string();
     job.finished_at_ms = Some(now_ms());
     job.summary = summary;
     job.verified = verified;
     job.evidence = evidence;
-    Ok(job.clone())
+    let record = job.clone();
+    persist_terminal_job(&record);
+    Ok(record)
 }
 
 fn update_failure(id: &str, error: String) -> WorkflowJobRecord {
     let mut map = jobs().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let job = map.get_mut(id).expect("workflow job must exist before execution");
-    job.state = "failed";
+    job.state = "failed".to_string();
     job.finished_at_ms = Some(now_ms());
     job.error = Some(error.clone());
     job.summary = error;
-    job.clone()
+    let record = job.clone();
+    persist_terminal_job(&record);
+    record
 }
 
 #[tauri::command]
@@ -90,9 +128,10 @@ pub fn workflow_job_get(id: String) -> Result<WorkflowJobRecord, String> {
 }
 
 #[tauri::command]
-pub async fn workflow_job_start(
+async fn start_job_internal(
     workflow_id: String,
     serial: Option<String>,
+    retry_of: Option<String>,
 ) -> Result<WorkflowJobRecord, String> {
     const ALLOWED: &[&str] = &[
         "diagnose-phone",
@@ -116,7 +155,8 @@ pub async fn workflow_job_start(
         id: id.clone(),
         workflow_id: workflow_id.clone(),
         serial: serial.clone(),
-        state: "running",
+        state: "running".to_string(),
+        retry_of,
         started_at_ms: now_ms(),
         finished_at_ms: None,
         verified: false,
@@ -193,4 +233,22 @@ pub async fn workflow_job_start(
         Ok((summary, verified, evidence)) => update_success(&id, summary, verified, evidence),
         Err(error) => Ok(update_failure(&id, error)),
     }
+}
+
+
+#[tauri::command]
+pub async fn workflow_job_start(
+    workflow_id: String,
+    serial: Option<String>,
+) -> Result<WorkflowJobRecord, String> {
+    start_job_internal(workflow_id, serial, None).await
+}
+
+#[tauri::command]
+pub async fn workflow_job_retry(id: String) -> Result<WorkflowJobRecord, String> {
+    let previous = workflow_job_get(id.clone())?;
+    if previous.state == "running" {
+        return Err("A running workflow job cannot be retried".to_string());
+    }
+    start_job_internal(previous.workflow_id, previous.serial, Some(id)).await
 }
