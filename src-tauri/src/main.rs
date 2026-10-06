@@ -1271,12 +1271,13 @@ fn main() {
                         Ok(port) => {
                             println!("[Tauri] Legacy Python backend launched on port {}", port);
                             let client = PyWorkerClient::new(port);
-                            let state_for_client = state.clone();
+                            let handle_for_client = handle.clone();
                             tokio::spawn(async move {
                                 tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
                                 match client.health().await {
                                     Ok(health) => {
                                         println!("[Tauri] Legacy Python backend healthy: {}", health.version);
+                                        let state_for_client = handle_for_client.state::<AppState>();
                                         if let Ok(mut guard) = state_for_client.py_client.lock() {
                                             *guard = Some(client);
                                         }
