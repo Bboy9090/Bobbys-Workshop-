@@ -288,6 +288,7 @@ export type UsbConnectionSummary = {
   mode: string;
   busNumber: number;
   deviceAddress: number;
+  speed: string;
   evidenceSource: string;
 };
 
