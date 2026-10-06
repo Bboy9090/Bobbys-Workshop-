@@ -37,6 +37,12 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      - name: Run BobFWTools production contract tests
+        run: npm test
+
+      - name: Audit root npm dependency tree
+        run: npm audit --audit-level=moderate
+
       - name: Check BootForge USB
         run: cargo check --manifest-path libs/bootforgeusb/Cargo.toml
 
@@ -49,16 +55,22 @@ jobs:
       - name: Build universal BobFWTools.app
         run: npm run tauri:build:macos:ci
 
-      - name: Inspect app bundle
+      - name: Verify universal app bundle
+        run: bash scripts/verify-bobfwtools-macos-app.sh
+
+      - name: Inspect unsigned CI artifact
         run: |
-          test -d src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
-          find src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app -maxdepth 3 -type f -print
-          test ! -e src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app/Contents/Resources/server
-          test ! -e src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app/Contents/Resources/python
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
+          find "$APP" -maxdepth 3 -type f -print
+          if codesign -dv "$APP" >/dev/null 2>&1; then
+            echo "CI app unexpectedly carries a signature; inspect release-signing policy."
+            exit 1
+          fi
+          echo "Unsigned CI artifact confirmed. Signing/notarization is a separate release gate."
 
       - name: Upload BobFWTools app artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BobFWTools-universal-macOS
+          name: BobFWTools-universal-macOS-unsigned
           path: src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
           if-no-files-found: error
