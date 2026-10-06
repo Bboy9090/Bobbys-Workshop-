@@ -3,6 +3,7 @@ import {
   chooseDownloadDestination,
   chooseUploadSource,
   downloadMtpFile,
+  diagnosePhone,
   getAdbBatteryInfo,
   getAdbDeviceInfo,
   getAdbLogcatSnapshot,
@@ -25,6 +26,7 @@ import {
   type MtpTransferResult,
   type UsbDeviceRecord,
   type DeviceCapabilityMatrix,
+  type PhoneDiagnosticReport,
 } from './lib/desktop';
 
 function formatBytes(value: number): string {
@@ -58,6 +60,8 @@ export default function App() {
   const [transferBusy, setTransferBusy] = useState(false);
   const [nativeError, setNativeError] = useState<string | null>(null);
   const [lastTransfer, setLastTransfer] = useState<MtpTransferResult | null>(null);
+  const [diagnostic, setDiagnostic] = useState<PhoneDiagnosticReport | null>(null);
+  const [diagnosing, setDiagnosing] = useState(false);
   const nativeRuntime = useMemo(() => isTauriRuntime(), []);
 
   const refresh = useCallback(async () => {
@@ -98,6 +102,22 @@ export default function App() {
       setRefreshing(false);
     }
   }, [storageIndex, transferBusy, adbSelectedSerial]);
+
+  const runDiagnosis = async () => {
+    if (transferBusy || diagnosing) return;
+    setDiagnosing(true);
+    setNativeError(null);
+    try {
+      const report = await diagnosePhone();
+      setDiagnostic(report);
+      if (report.selectedAdbSerial) setAdbSelectedSerial(report.selectedAdbSerial);
+      await refresh();
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDiagnosing(false);
+    }
+  };
 
   const openStorage = async (index: number) => {
     if (transferBusy) return;
@@ -332,6 +352,125 @@ export default function App() {
               </div>
             </div>
           )}
+
+          <section className="mb-4 rounded-lg border border-cyan-900/70 bg-cyan-950/10 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-base font-semibold text-white">Diagnose This Phone</h2>
+                <p className="mt-1 max-w-2xl text-sm text-slate-400">
+                  One scan checks physical USB, MTP, ADB authorization, Fastboot, verified device properties,
+                  battery state, and the workflows BobFWTools can actually run right now.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void runDiagnosis()}
+                disabled={diagnosing || transferBusy || !nativeRuntime}
+                className="rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40 hover:bg-cyan-500"
+              >
+                {diagnosing ? 'Diagnosing…' : 'Diagnose This Phone'}
+              </button>
+            </div>
+
+            {diagnostic && (
+              <>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <div className="text-[10px] uppercase text-slate-600">USB</div>
+                    <div className="mt-1 text-sm text-white">{diagnostic.usbDevicesSeen} observed</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <div className="text-[10px] uppercase text-slate-600">MTP</div>
+                    <div className="mt-1 text-sm text-white">{diagnostic.mtpConnected ? 'Ready' : 'Unavailable'}</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <div className="text-[10px] uppercase text-slate-600">ADB</div>
+                    <div className="mt-1 text-sm text-white">
+                      {diagnostic.authorizedAdbDevices}/{diagnostic.adbDevicesSeen} authorized
+                    </div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <div className="text-[10px] uppercase text-slate-600">Fastboot</div>
+                    <div className="mt-1 text-sm text-white">{diagnostic.fastbootPresent ? 'Detected' : 'Not detected'}</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <div className="text-[10px] uppercase text-slate-600">Workflows</div>
+                    <div className="mt-1 text-sm text-white">{diagnostic.availableWorkflows.length} ready</div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                  <div className="rounded border border-slate-800 bg-slate-950/50 p-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Verified device profile</h3>
+                    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      <span className="text-slate-500">Device</span>
+                      <span className="text-white">{[diagnostic.device.manufacturer, diagnostic.device.model].filter(Boolean).join(' ') || 'Unavailable'}</span>
+                      <span className="text-slate-500">Serial</span>
+                      <span className="break-all font-mono text-xs text-white">{diagnostic.device.serial || 'Unavailable'}</span>
+                      <span className="text-slate-500">Android</span>
+                      <span className="text-white">{diagnostic.device.androidVersion || 'Unavailable'}{diagnostic.device.sdk ? ` · SDK ${diagnostic.device.sdk}` : ''}</span>
+                      <span className="text-slate-500">Security patch</span>
+                      <span className="text-white">{diagnostic.device.securityPatch || 'Unavailable'}</span>
+                      <span className="text-slate-500">Bootloader</span>
+                      <span className="break-all text-white">{diagnostic.device.bootloader || 'Unavailable'}</span>
+                      <span className="text-slate-500">Verified boot</span>
+                      <span className="text-white">{diagnostic.device.verifiedBootState || 'Unavailable'}</span>
+                      <span className="text-slate-500">Battery</span>
+                      <span className="text-white">{diagnostic.device.batterySummary || 'Unavailable'}</span>
+                    </div>
+                  </div>
+
+                  <div className="rounded border border-slate-800 bg-slate-950/50 p-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Findings</h3>
+                    <div className="mt-3 space-y-2">
+                      {diagnostic.findings.length === 0 ? (
+                        <div className="text-sm text-slate-500">No diagnostic findings were produced.</div>
+                      ) : diagnostic.findings.map((finding) => (
+                        <div key={finding.id} className="rounded border border-slate-800 p-3">
+                          <div className={
+                            finding.severity === 'ok'
+                              ? 'text-sm font-medium text-emerald-300'
+                              : finding.severity === 'warning'
+                                ? 'text-sm font-medium text-amber-300'
+                                : 'text-sm font-medium text-red-300'
+                          }>
+                            {finding.title}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-400">{finding.detail}</div>
+                          {finding.recommendation && (
+                            <div className="mt-2 text-xs text-cyan-300">{finding.recommendation}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ready now</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {diagnostic.availableWorkflows.length ? diagnostic.availableWorkflows.map((workflow) => (
+                      <span key={workflow} className="rounded bg-emerald-950 px-2 py-1 text-xs text-emerald-300">
+                        {workflow}
+                      </span>
+                    )) : <span className="text-xs text-slate-500">No executable workflows currently available.</span>}
+                  </div>
+                </div>
+
+                <details className="mt-4 rounded border border-slate-800 bg-slate-950/40 p-3">
+                  <summary className="cursor-pointer text-xs font-medium text-slate-300">Evidence and blocked workflows</summary>
+                  <div className="mt-3 space-y-1 font-mono text-[11px] text-slate-500">
+                    {diagnostic.evidence.map((item, index) => (
+                      <div key={`${item.source}-${index}`}>{item.source}: {item.detail}</div>
+                    ))}
+                    {diagnostic.blockedWorkflows.map((item) => (
+                      <div key={item}>blocked: {item}</div>
+                    ))}
+                  </div>
+                </details>
+              </>
+            )}
+          </section>
 
           <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
