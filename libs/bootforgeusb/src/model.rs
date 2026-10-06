@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceRecord {
+    pub device_uid: String,
     pub vendor_id: u16,
     pub product_id: u16,
     pub manufacturer: Option<String>,
