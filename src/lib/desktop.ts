@@ -277,6 +277,19 @@ export type DiagnosticFinding = {
   recommendation: string | null;
 };
 
+export type UsbConnectionSummary = {
+  vendorId: number;
+  productId: number;
+  manufacturer: string | null;
+  productName: string | null;
+  serialNumber: string | null;
+  platformHint: string;
+  mode: string;
+  busNumber: number;
+  deviceAddress: number;
+  evidenceSource: string;
+};
+
 export type DiagnosticDeviceSummary = {
   manufacturer: string | null;
   model: string | null;
@@ -291,6 +304,10 @@ export type DiagnosticDeviceSummary = {
 
 export type PhoneDiagnosticReport = {
   usbDevicesSeen: number;
+  androidUsbDevicesSeen: number;
+  usbConnections: UsbConnectionSummary[];
+  connectionGrade: 'excellent' | 'usable' | 'limited' | 'none';
+  connectionSummary: string;
   adbDevicesSeen: number;
   authorizedAdbDevices: number;
   mtpConnected: boolean;
