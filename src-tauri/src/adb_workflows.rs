@@ -34,6 +34,17 @@ pub struct AdbTextResult {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AdbActionResult {
+    pub serial: String,
+    pub workflow: &'static str,
+    pub accepted: bool,
+    pub verified: bool,
+    pub message: String,
+    pub evidence_source: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AdbFileResult {
     pub serial: String,
     pub workflow: &'static str,
@@ -222,5 +233,139 @@ pub fn adb_screenshot(serial: String, destination_path: String) -> Result<AdbFil
         bytes: written,
         verified: true,
         evidence_source: "adb:exec-out-screencap+png-signature+local-size",
+    })
+}
+
+
+#[tauri::command]
+pub fn adb_prepare() -> Result<Vec<AdbDeviceRecord>, String> {
+    require_success(run_adb(&["start-server"])?, "adb start-server")?;
+    adb_scan()
+}
+
+#[tauri::command]
+pub fn adb_battery_info(serial: String) -> Result<AdbTextResult, String> {
+    require_authorized(&serial)?;
+    let output = require_success(
+        run_adb(&["-s", &serial, "shell", "dumpsys", "battery"])?,
+        "adb battery info",
+    )?;
+    let text = String::from_utf8_lossy(&output.stdout).to_string();
+    if text.trim().is_empty() {
+        return Err("ADB battery info returned no data".to_string());
+    }
+    Ok(AdbTextResult {
+        serial,
+        workflow: "battery-info",
+        output: text,
+        verified: true,
+        evidence_source: "adb:dumpsys-battery",
+    })
+}
+
+#[tauri::command]
+pub fn adb_reboot_mode(serial: String, mode: String) -> Result<AdbActionResult, String> {
+    require_authorized(&serial)?;
+    let (workflow, args): (&'static str, Vec<&str>) = match mode.as_str() {
+        "normal" => ("reboot-normal", vec!["-s", &serial, "reboot"]),
+        "recovery" => ("reboot-recovery", vec!["-s", &serial, "reboot", "recovery"]),
+        "bootloader" => ("reboot-bootloader", vec!["-s", &serial, "reboot", "bootloader"]),
+        "download" => ("reboot-download", vec!["-s", &serial, "reboot", "download"]),
+        _ => return Err("Unsupported reboot mode".to_string()),
+    };
+
+    require_success(run_adb(&args)?, workflow)?;
+
+    Ok(AdbActionResult {
+        serial,
+        workflow,
+        accepted: true,
+        verified: false,
+        message: "ADB accepted the reboot command. The device will temporarily disconnect while changing modes.".to_string(),
+        evidence_source: "adb:reboot-command-accepted",
+    })
+}
+
+#[tauri::command]
+pub fn adb_open_network_settings(serial: String) -> Result<AdbActionResult, String> {
+    require_authorized(&serial)?;
+    require_success(
+        run_adb(&[
+            "-s",
+            &serial,
+            "shell",
+            "am",
+            "start",
+            "-a",
+            "android.settings.NETWORK_SETTINGS",
+        ])?,
+        "open network settings",
+    )?;
+
+    Ok(AdbActionResult {
+        serial,
+        workflow: "open-network-settings",
+        accepted: true,
+        verified: true,
+        message: "Android network settings opened on the connected device.".to_string(),
+        evidence_source: "adb:am-start-network-settings",
+    })
+}
+
+#[tauri::command]
+pub fn adb_open_factory_reset_settings(serial: String) -> Result<AdbActionResult, String> {
+    require_authorized(&serial)?;
+    require_success(
+        run_adb(&[
+            "-s",
+            &serial,
+            "shell",
+            "am",
+            "start",
+            "-a",
+            "android.settings.FACTORY_RESET",
+        ])?,
+        "open factory reset settings",
+    )?;
+
+    Ok(AdbActionResult {
+        serial,
+        workflow: "open-factory-reset-settings",
+        accepted: true,
+        verified: true,
+        message: "Android factory-reset settings opened. Final wipe confirmation remains on the device.".to_string(),
+        evidence_source: "adb:am-start-factory-reset-settings",
+    })
+}
+
+#[tauri::command]
+pub fn adb_install_apk(serial: String, apk_path: String) -> Result<AdbActionResult, String> {
+    require_authorized(&serial)?;
+    let path = PathBuf::from(&apk_path);
+    if !path.is_file() {
+        return Err("APK path must point to a readable file".to_string());
+    }
+    if path.extension().and_then(|ext| ext.to_str()).map(|ext| ext.eq_ignore_ascii_case("apk")) != Some(true) {
+        return Err("Only .apk files are accepted by this workflow".to_string());
+    }
+
+    let path_string = path.to_string_lossy().to_string();
+    let output = require_success(
+        run_adb(&["-s", &serial, "install", "-r", &path_string])?,
+        "adb install apk",
+    )?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let verified = stdout.lines().any(|line| line.trim() == "Success");
+    if !verified {
+        return Err(format!("ADB install returned success exit status but did not report Success: {}", stdout.trim()));
+    }
+
+    Ok(AdbActionResult {
+        serial,
+        workflow: "install-apk",
+        accepted: true,
+        verified: true,
+        message: format!("APK installed from {}", path.display()),
+        evidence_source: "adb:install-r+success-token",
     })
 }
