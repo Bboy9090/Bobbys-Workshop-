@@ -6,7 +6,9 @@
     windows_subsystem = "windows"
 )]
 
-use std::process::{Command, Child, Stdio};
+use std::process::{Command, Stdio};
+#[cfg(feature = "legacy-backends")]
+use std::process::Child;
 use std::sync::Mutex;
 use tauri::{Manager, AppHandle, Emitter};
 use std::path::PathBuf;
@@ -258,6 +260,7 @@ fn emit_device_event(app_handle: &AppHandle, event: DeviceHotplugEvent) {
     }
 }
 
+#[cfg(feature = "legacy-backends")]
 fn run_command_capture_lines(mut cmd: Command) -> Result<Vec<String>, String> {
     // Hide console window on Windows
     #[cfg(target_os = "windows")]
@@ -293,6 +296,7 @@ fn fastboot_exists() -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(feature = "legacy-backends")]
 fn adb_exists() -> bool {
     let mut cmd = Command::new("adb");
     cmd.arg("version")
@@ -307,6 +311,7 @@ fn adb_exists() -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(feature = "legacy-backends")]
 fn adb_list_serials() -> Vec<String> {
     let mut cmd = Command::new("adb");
     cmd.args(["devices"]);
@@ -338,6 +343,7 @@ fn adb_list_serials() -> Vec<String> {
         .collect()
 }
 
+#[cfg(feature = "legacy-backends")]
 fn fastboot_list_serials() -> Vec<String> {
     let mut cmd = Command::new("fastboot");
     cmd.args(["devices"]);
@@ -379,6 +385,7 @@ struct AppState {
     fastapi_backend: Mutex<Option<Child>>,
 }
 
+#[cfg(feature = "legacy-backends")]
 fn env_var_truthy(name: &str) -> bool {
     match env::var(name) {
         Ok(v) => matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"),
@@ -386,14 +393,17 @@ fn env_var_truthy(name: &str) -> bool {
     }
 }
 
+#[cfg(feature = "legacy-backends")]
 fn should_start_node_backend() -> bool {
     env_var_truthy("BOBFW_ENABLE_LEGACY_NODE_BACKEND")
 }
 
+#[cfg(feature = "legacy-backends")]
 fn should_start_python_backend() -> bool {
     env_var_truthy("BOBFW_ENABLE_LEGACY_PYTHON_BACKEND")
 }
 
+#[cfg(feature = "legacy-backends")]
 fn should_start_fastapi_backend() -> bool {
     env_var_truthy("BOBFW_ENABLE_LEGACY_FASTAPI_BACKEND")
 }
@@ -726,10 +736,10 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
         );
 
         // Ensure no closures keep borrowing `state` before we lock other mutexes.
-        drop(set_job_status);
-        drop(push_log);
-        drop(complete_step);
-        drop(cancel_requested);
+        let _ = set_job_status;
+        let _ = push_log;
+        let _ = complete_step;
+        let _ = cancel_requested;
 
         // Save a lightweight history entry for flash-api consumers
         let end = now_ms();
@@ -941,6 +951,7 @@ fn start_device_monitor_once(app_handle: &AppHandle, state: tauri::State<'_, App
     });
 }
 
+#[cfg(feature = "legacy-backends")]
 fn get_log_directory() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
@@ -974,6 +985,7 @@ fn get_log_directory() -> PathBuf {
     }
 }
 
+#[cfg(feature = "legacy-backends")]
 fn find_node_executable(app_handle: &AppHandle) -> Option<PathBuf> {
     // First, try to find bundled Node.js in resources
     // In Tauri v2, use app_handle.path().resource_dir()
@@ -1061,6 +1073,7 @@ fn find_node_executable(app_handle: &AppHandle) -> Option<PathBuf> {
     None
 }
 
+#[cfg(feature = "legacy-backends")]
 fn start_backend_server(app_handle: &AppHandle) -> Result<Child, std::io::Error> {
     println!("[Tauri] Starting backend API server...");
     
