@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use futures::stream;
-use mtp_rs::mtp::{MtpDevice, NewObjectInfo};
+use mtp_rs::mtp::{MtpDevice, NewObjectInfo, ObjectHandle, Storage};
 use serde::Serialize;
 use std::path::PathBuf;
 use tokio::io::AsyncReadExt;
@@ -35,6 +35,15 @@ pub struct MtpRootObject {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct MtpBrowserObject {
+    pub filename: String,
+    pub path: Vec<String>,
+    pub is_folder: bool,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MtpTransferResult {
     pub operation: &'static str,
     pub filename: String,
@@ -42,6 +51,74 @@ pub struct MtpTransferResult {
     pub verified: bool,
     pub destination: String,
     pub evidence_source: &'static str,
+}
+
+async fn resolve_folder_path(
+    storage: &Storage,
+    path: &[String],
+) -> Result<Option<ObjectHandle>, String> {
+    let mut parent = None;
+
+    for segment in path {
+        if segment.is_empty() || segment == "." || segment == ".." {
+            return Err("MTP folder path contains an invalid segment".to_string());
+        }
+
+        let objects = storage
+            .list_objects(parent)
+            .await
+            .map_err(|e| format!("MTP listing failed while resolving {segment}: {e}"))?;
+
+        let mut matches = objects
+            .into_iter()
+            .filter(|object| object.is_folder() && object.filename == *segment);
+
+        let found = matches
+            .next()
+            .ok_or_else(|| format!("MTP folder path segment was not found: {segment}"))?;
+
+        if matches.next().is_some() {
+            return Err(format!(
+                "MTP folder path is ambiguous because multiple folders are named {segment}"
+            ));
+        }
+
+        parent = Some(found.handle);
+    }
+
+    Ok(parent)
+}
+
+async fn find_object_by_path(
+    storage: &Storage,
+    path: &[String],
+) -> Result<mtp_rs::mtp::ObjectInfo, String> {
+    let (filename, parent_path) = path
+        .split_last()
+        .ok_or_else(|| "MTP object path cannot be empty".to_string())?;
+
+    let parent = resolve_folder_path(storage, parent_path).await?;
+    let objects = storage
+        .list_objects(parent)
+        .await
+        .map_err(|e| format!("MTP listing failed while resolving object: {e}"))?;
+
+    let mut matches = objects
+        .into_iter()
+        .filter(|object| object.filename == *filename);
+
+    let found = matches
+        .next()
+        .ok_or_else(|| format!("MTP object was not found: {}", path.join("/")))?;
+
+    if matches.next().is_some() {
+        return Err(format!(
+            "MTP object path is ambiguous because multiple objects share this name: {}",
+            path.join("/")
+        ));
+    }
+
+    Ok(found)
 }
 
 fn classify_device_family(manufacturer: &str, model: &str) -> String {
@@ -329,5 +406,217 @@ pub async fn mtp_upload_file(
         verified: true,
         destination: format!("mtp:{storage_index}:{:?}", uploaded_handle),
         evidence_source: "mtp:SendObjectInfo+SendObject+post-list-verification",
+    })
+}
+
+
+#[tauri::command]
+pub async fn mtp_list_directory(
+    storage_index: usize,
+    path: Vec<String>,
+) -> Result<Vec<MtpBrowserObject>, String> {
+    let device = MtpDevice::open_first()
+        .await
+        .map_err(|e| format!("No usable MTP device: {e}"))?;
+
+    let storages = device
+        .storages()
+        .await
+        .map_err(|e| format!("MTP storage discovery failed: {e}"))?;
+    let storage = storages
+        .get(storage_index)
+        .ok_or_else(|| format!("MTP storage index {storage_index} does not exist"))?;
+
+    let parent = resolve_folder_path(storage, &path).await?;
+    let objects = storage
+        .list_objects(parent)
+        .await
+        .map_err(|e| format!("MTP directory listing failed: {e}"))?;
+
+    Ok(objects
+        .into_iter()
+        .map(|object| {
+            let mut object_path = path.clone();
+            object_path.push(object.filename.clone());
+            MtpBrowserObject {
+                filename: object.filename,
+                path: object_path,
+                is_folder: object.is_folder(),
+                size_bytes: object.size,
+            }
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn mtp_download_path(
+    storage_index: usize,
+    object_path: Vec<String>,
+    destination_path: String,
+) -> Result<MtpTransferResult, String> {
+    let device = MtpDevice::open_first()
+        .await
+        .map_err(|e| format!("No usable MTP device: {e}"))?;
+
+    let storages = device
+        .storages()
+        .await
+        .map_err(|e| format!("MTP storage discovery failed: {e}"))?;
+    let storage = storages
+        .get(storage_index)
+        .ok_or_else(|| format!("MTP storage index {storage_index} does not exist"))?;
+
+    let object = find_object_by_path(storage, &object_path).await?;
+    if object.is_folder() {
+        return Err("Folder download is not exposed by this command; choose a file.".to_string());
+    }
+
+    let destination = PathBuf::from(&destination_path);
+    if let Some(parent) = destination.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| format!("Failed to create destination directory: {e}"))?;
+    }
+
+    let mut output = tokio::fs::File::create(&destination)
+        .await
+        .map_err(|e| format!("Failed to create download destination: {e}"))?;
+
+    let mut download = storage
+        .download_windowed_default(object.handle)
+        .await
+        .map_err(|e| format!("MTP download initialization failed: {e}"))?;
+
+    let expected = download.size();
+    let mut written = 0_u64;
+
+    while let Some(window) = download.next_window().await {
+        let bytes = window.map_err(|e| format!("MTP download failed: {e}"))?;
+        tokio::io::AsyncWriteExt::write_all(&mut output, &bytes)
+            .await
+            .map_err(|e| format!("Failed writing downloaded bytes: {e}"))?;
+        written += bytes.len() as u64;
+    }
+
+    tokio::io::AsyncWriteExt::flush(&mut output)
+        .await
+        .map_err(|e| format!("Failed to flush downloaded file: {e}"))?;
+    drop(output);
+
+    let on_disk = tokio::fs::metadata(&destination)
+        .await
+        .map_err(|e| format!("Failed to verify downloaded file: {e}"))?
+        .len();
+
+    if written != on_disk || (expected > 0 && on_disk != expected) {
+        let _ = tokio::fs::remove_file(&destination).await;
+        return Err(format!(
+            "Download verification failed: stream wrote {written} bytes, file contains {on_disk}, expected {expected}"
+        ));
+    }
+
+    Ok(MtpTransferResult {
+        operation: "download",
+        filename: object.filename,
+        bytes: on_disk,
+        verified: true,
+        destination: destination.to_string_lossy().to_string(),
+        evidence_source: "mtp:path-resolve+windowed-download+local-size-verification",
+    })
+}
+
+#[tauri::command]
+pub async fn mtp_upload_path(
+    storage_index: usize,
+    folder_path: Vec<String>,
+    source_path: String,
+) -> Result<MtpTransferResult, String> {
+    let device = MtpDevice::open_first()
+        .await
+        .map_err(|e| format!("No usable MTP device: {e}"))?;
+
+    let storages = device
+        .storages()
+        .await
+        .map_err(|e| format!("MTP storage discovery failed: {e}"))?;
+    let storage = storages
+        .get(storage_index)
+        .ok_or_else(|| format!("MTP storage index {storage_index} does not exist"))?;
+
+    let parent = resolve_folder_path(storage, &folder_path).await?;
+
+    let source = PathBuf::from(&source_path);
+    let metadata = tokio::fs::metadata(&source)
+        .await
+        .map_err(|e| format!("Source file is not readable: {e}"))?;
+    if !metadata.is_file() {
+        return Err("MTP upload source must be a regular file".to_string());
+    }
+
+    let filename = source
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Source filename is not valid UTF-8".to_string())?
+        .to_string();
+
+    let file = tokio::fs::File::open(&source)
+        .await
+        .map_err(|e| format!("Failed to open upload source: {e}"))?;
+
+    let data_stream = stream::unfold(file, |mut file| async move {
+        let mut buffer = vec![0_u8; 1024 * 1024];
+        match file.read(&mut buffer).await {
+            Ok(0) => None,
+            Ok(read) => {
+                buffer.truncate(read);
+                Some((Ok::<Bytes, std::io::Error>(Bytes::from(buffer)), file))
+            }
+            Err(error) => Some((Err(error), file)),
+        }
+    });
+
+    let info = NewObjectInfo::file(&filename, metadata.len());
+    let upload = storage.upload(parent, info, Box::pin(data_stream)).await;
+
+    let uploaded_handle = match upload {
+        Ok(handle) => handle,
+        Err(error) => {
+            let partial = error.partial;
+            let message = error.to_string();
+            if let Some(partial_handle) = partial {
+                let cleanup = storage.delete(partial_handle).await;
+                return match cleanup {
+                    Ok(_) => Err(format!("MTP upload failed and partial object was removed: {message}")),
+                    Err(cleanup_error) => Err(format!(
+                        "MTP upload failed and partial cleanup also failed: {message}; cleanup: {cleanup_error}"
+                    )),
+                };
+            }
+            return Err(format!("MTP upload failed: {message}"));
+        }
+    };
+
+    let objects = storage
+        .list_objects(parent)
+        .await
+        .map_err(|e| format!("Upload completed but verification listing failed: {e}"))?;
+    let verified = objects
+        .iter()
+        .any(|object| object.handle == uploaded_handle && object.filename == filename);
+
+    if !verified {
+        return Err("MTP upload returned success but post-upload verification could not find the object".to_string());
+    }
+
+    let mut destination_path = folder_path;
+    destination_path.push(filename.clone());
+
+    Ok(MtpTransferResult {
+        operation: "upload",
+        filename,
+        bytes: metadata.len(),
+        verified: true,
+        destination: format!("mtp:/{}", destination_path.join("/")),
+        evidence_source: "mtp:path-resolve+SendObjectInfo+SendObject+post-list-verification",
     })
 }
