@@ -143,3 +143,25 @@ describe('USB Cable Doctor diagnostics', () => {
     expect(app).toContain('diagnostic.connectionGrade');
   });
 });
+
+
+describe('auditable workflow job ledger', () => {
+  it('allows only explicit one-click workflows and records terminal state', () => {
+    const jobs = read('src-tauri/src/workflow_jobs.rs');
+    expect(jobs).toContain('const ALLOWED');
+    expect(jobs).toContain('workflow_job_start');
+    expect(jobs).toContain('workflow_job_list');
+    expect(jobs).toContain('workflow_job_get');
+    expect(jobs).toContain('state: "running"');
+    expect(jobs).toContain('job.state = "completed"');
+    expect(jobs).toContain('job.state = "failed"');
+    expect(jobs).not.toContain('shell -c');
+  });
+
+  it('shows recent one-click jobs in the desktop UI', () => {
+    const app = read('src/App.tsx');
+    expect(app).toContain('Recent one-click jobs');
+    expect(app).toContain('startWorkflowJob');
+    expect(app).toContain('workflowJobs');
+  });
+});
