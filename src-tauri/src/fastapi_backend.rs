@@ -3,7 +3,7 @@
 
 use std::process::{Command, Child, Stdio};
 use std::path::PathBuf;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use std::io::Error;
 
 #[cfg(target_os = "windows")]
