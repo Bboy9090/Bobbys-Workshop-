@@ -2153,23 +2153,13 @@ app.get('/api/flash/devices/:serial', async (req, res) => {
 
 app.get('/api/flash/devices/:serial/partitions', async (req, res) => {
   const { serial } = req.params;
-  
-  try {
-    const partitions = ['boot', 'system', 'vendor', 'recovery', 'userdata', 
-                       'cache', 'vbmeta', 'dtbo', 'persist'];
-    
-    res.json({
-      success: true,
-      serial,
-      partitions,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get partitions'
-    });
-  }
+  return res.status(501).json({
+    success: false,
+    error: 'PARTITION_DISCOVERY_UNAVAILABLE',
+    message: 'Partition discovery is disabled until a real device-backed implementation is wired for the current mode.',
+    serial,
+    timestamp: new Date().toISOString()
+  });
 });
 
 app.post('/api/flash/validate-image', async (req, res) => {
@@ -2219,119 +2209,25 @@ app.post('/api/flash/validate-image', async (req, res) => {
 });
 
 app.post('/api/flash/start', async (req, res) => {
-  const config = req.body;
-  
-  if (!config.deviceSerial || !config.flashMethod || !config.partitions || config.partitions.length === 0) {
+  const config = req.body ?? {};
+  if (!config.deviceSerial || !config.flashMethod || !Array.isArray(config.partitions) || config.partitions.length === 0) {
     return res.status(400).json({
       success: false,
-      error: 'Missing required fields: deviceSerial, flashMethod, partitions'
+      error: 'VALIDATION_ERROR',
+      message: 'Missing required fields: deviceSerial, flashMethod, partitions'
     });
   }
-  
-  const jobId = `flash-job-${jobCounter++}-${Date.now()}`;
-  
-  const jobStatus = {
-    jobId,
-    status: 'queued',
-    progress: 0,
-    currentStep: 'Initializing',
-    totalSteps: config.partitions.length,
-    completedSteps: 0,
-    bytesWritten: 0,
-    totalBytes: config.partitions.reduce((sum, p) => sum + (p.size || 100000000), 0),
-    speed: 0,
-    timeElapsed: 0,
-    timeRemaining: 0,
-    logs: [`[${new Date().toISOString()}] Flash job ${jobId} created`],
-    startTime: Date.now()
-  };
-  
-  activeFlashJobs.set(jobId, { config, status: jobStatus });
-  
-  simulateFlashOperation(jobId, config);
-  
-  res.json({
-    success: true,
-    jobId,
-    status: 'queued',
+
+  return res.status(501).json({
+    success: false,
+    error: 'FLASH_BACKEND_UNAVAILABLE',
+    message: 'Flashing is disabled until a real executor, preflight, progress source, verification step, and rollback policy are qualified on physical hardware.',
     deviceSerial: config.deviceSerial,
-    startTime: Date.now(),
-    message: 'Flash operation queued'
+    flashMethod: config.flashMethod,
+    requestedPartitions: config.partitions.map((p) => p?.name).filter(Boolean),
+    timestamp: new Date().toISOString()
   });
 });
-
-// Import shared simulate function
-import { simulateFlashOperation as sharedSimulateFlashOperation } from './routes/v1/flash-shared.js';
-
-function simulateFlashOperation(jobId, config) {
-  const job = activeFlashJobs.get(jobId);
-  if (!job) return;
-  
-  job.status.status = 'running';
-  job.status.logs.push(`[${new Date().toISOString()}] Starting flash operation`);
-  job.status.currentStep = `Flashing ${config.partitions[0].name}`;
-  
-  broadcastFlashProgress(jobId, {
-    type: 'progress',
-    status: job.status
-  });
-  
-  let stepIndex = 0;
-  const stepInterval = setInterval(() => {
-    const job = activeFlashJobs.get(jobId);
-    if (!job) {
-      clearInterval(stepInterval);
-      return;
-    }
-    
-    job.status.progress += 10;
-    job.status.timeElapsed = Math.floor((Date.now() - job.status.startTime) / 1000);
-    job.status.speed = Math.floor(Math.random() * 20 + 10);
-    
-    if (job.status.progress >= 100) {
-      job.status.progress = 100;
-      job.status.status = 'completed';
-      job.status.currentStep = 'Completed';
-      job.status.logs.push(`[${new Date().toISOString()}] Flash operation completed successfully`);
-      
-      flashHistory.unshift({
-        jobId,
-        deviceSerial: config.deviceSerial,
-        deviceBrand: config.deviceBrand,
-        flashMethod: config.flashMethod,
-        partitions: config.partitions.map(p => p.name),
-        status: 'completed',
-        startTime: job.status.startTime,
-        endTime: Date.now(),
-        duration: Math.floor((Date.now() - job.status.startTime) / 1000),
-        bytesWritten: job.status.totalBytes,
-        averageSpeed: Math.floor(Math.random() * 20 + 10)
-      });
-      
-      if (flashHistory.length > 50) {
-        flashHistory = flashHistory.slice(0, 50);
-      }
-      
-      broadcastFlashProgress(jobId, {
-        type: 'completed',
-        status: job.status
-      });
-      
-      clearInterval(stepInterval);
-      setTimeout(() => activeFlashJobs.delete(jobId), 5000);
-    } else if (job.status.progress % 30 === 0 && stepIndex < config.partitions.length - 1) {
-      stepIndex++;
-      job.status.completedSteps = stepIndex;
-      job.status.currentStep = `Flashing ${config.partitions[stepIndex].name}`;
-      job.status.logs.push(`[${new Date().toISOString()}] Flashing partition: ${config.partitions[stepIndex].name}`);
-    }
-    
-    broadcastFlashProgress(jobId, {
-      type: 'progress',
-      status: job.status
-    });
-  }, 1000);
-}
 
 app.post('/api/flash/pause/:jobId', async (req, res) => {
   const { jobId } = req.params;
