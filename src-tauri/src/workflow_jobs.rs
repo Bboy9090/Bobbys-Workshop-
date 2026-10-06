@@ -142,7 +142,7 @@ pub async fn workflow_job_start(
                 vec![r.evidence_source.to_string()],
             )),
             None => Err("adb-device-info requires a selected serial".to_string()),
-        }
+        },
         "adb-battery-info" => match serial.clone() {
             Some(serial) => crate::adb_workflows::adb_battery_info(serial).map(|r| (
                 "Battery information captured".to_string(),
@@ -150,7 +150,7 @@ pub async fn workflow_job_start(
                 vec![r.evidence_source.to_string()],
             )),
             None => Err("adb-battery-info requires a selected serial".to_string()),
-        }
+        },
         "adb-logcat" => match serial.clone() {
             Some(serial) => crate::adb_workflows::adb_logcat_snapshot(serial, Some(250)).map(|r| (
                 "Logcat snapshot captured".to_string(),
@@ -158,7 +158,7 @@ pub async fn workflow_job_start(
                 vec![r.evidence_source.to_string()],
             )),
             None => Err("adb-logcat requires a selected serial".to_string()),
-        }
+        },
         "adb-reboot-normal" | "adb-reboot-recovery" | "adb-reboot-bootloader" | "adb-reboot-download" => match serial.clone() {
             Some(serial) => {
                 let mode = workflow_id.trim_start_matches("adb-reboot-").to_string();
@@ -169,7 +169,7 @@ pub async fn workflow_job_start(
                 ))
             }
             None => Err("ADB reboot requires a selected serial".to_string()),
-        }
+        },
         "adb-network-settings" => match serial.clone() {
             Some(serial) => crate::adb_workflows::adb_open_network_settings(serial).map(|r| (
                 r.message,
@@ -177,7 +177,7 @@ pub async fn workflow_job_start(
                 vec![r.evidence_source.to_string()],
             )),
             None => Err("Network settings requires a selected serial".to_string()),
-        }
+        },
         "adb-factory-reset-settings" => match serial.clone() {
             Some(serial) => crate::adb_workflows::adb_open_factory_reset_settings(serial).map(|r| (
                 r.message,
@@ -185,7 +185,7 @@ pub async fn workflow_job_start(
                 vec![r.evidence_source.to_string()],
             )),
             None => Err("Factory reset settings requires a selected serial".to_string()),
-        }
+        },
         _ => Err("Workflow dispatch mismatch".to_string()),
     };
 
