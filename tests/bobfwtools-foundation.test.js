@@ -75,6 +75,11 @@ describe('BobFWTools production foundation', () => {
       'adb-device-info',
       'adb-logcat',
       'adb-screenshot',
+      'adb-battery-info',
+      'adb-reboot',
+      'adb-network-settings',
+      'adb-factory-reset-settings',
+      'adb-install-apk',
       'fastboot-present',
       'usb-observation',
     ]) {
