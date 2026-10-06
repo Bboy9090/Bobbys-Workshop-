@@ -25,3 +25,4 @@ mtp-rs = "0.32"
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+legacy-backends = []
