@@ -372,10 +372,15 @@ fn env_var_truthy(name: &str) -> bool {
 }
 
 fn should_start_node_backend() -> bool {
-    // ALWAYS AUTO-START backend for complete standalone experience
-    // Backend is required for full functionality
-    // Set BW_DISABLE_NODE_BACKEND=1 to disable (not recommended)
-    !env_var_truthy("BW_DISABLE_NODE_BACKEND")
+    env_var_truthy("BOBFW_ENABLE_LEGACY_NODE_BACKEND")
+}
+
+fn should_start_python_backend() -> bool {
+    env_var_truthy("BOBFW_ENABLE_LEGACY_PYTHON_BACKEND")
+}
+
+fn should_start_fastapi_backend() -> bool {
+    env_var_truthy("BOBFW_ENABLE_LEGACY_FASTAPI_BACKEND")
 }
 
 #[tauri::command]
@@ -1258,57 +1263,47 @@ fn main() {
             // Start in-process device monitor (Tauri events)
             start_device_monitor_once(&handle, state.clone());
 
-            // Launch Python backend service (legacy)
-            if let Ok(resource_dir) = handle.path().resource_dir() {
-                match launch_python_backend(&resource_dir) {
-                    Ok(port) => {
-                        println!("[Tauri] Python backend launched on port {}", port);
-                        
-                        // Create Python client and verify health
-                        let client = PyWorkerClient::new(port);
-                        let state_for_client = state.clone();
-                        
-                        // Spawn async task to check health
-                        tokio::spawn(async move {
-                            // Wait a moment for Python to start
-                            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-                            
-                            match client.health().await {
-                                Ok(health) => {
-                                    println!("[Tauri] Python backend healthy: {} (uptime: {}ms)", 
-                                        health.version, health.uptime_ms);
-                                    
-                                    // Store client and port in state
-                                    if let Ok(mut py_client_guard) = state_for_client.py_client.lock() {
-                                        *py_client_guard = Some(client);
+            // Legacy Python backend is disabled by default. Native Rust/Tauri
+            // USB, MTP, ADB and Fastboot paths are the BobFWTools production core.
+            if should_start_python_backend() {
+                if let Ok(resource_dir) = handle.path().resource_dir() {
+                    match launch_python_backend(&resource_dir) {
+                        Ok(port) => {
+                            println!("[Tauri] Legacy Python backend launched on port {}", port);
+                            let client = PyWorkerClient::new(port);
+                            let state_for_client = state.clone();
+                            tokio::spawn(async move {
+                                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                                match client.health().await {
+                                    Ok(health) => {
+                                        println!("[Tauri] Legacy Python backend healthy: {}", health.version);
+                                        if let Ok(mut guard) = state_for_client.py_client.lock() {
+                                            *guard = Some(client);
+                                        }
+                                        if let Ok(mut guard) = state_for_client.py_backend_port.lock() {
+                                            *guard = Some(port);
+                                        }
                                     }
-                                    if let Ok(mut port_guard) = state_for_client.py_backend_port.lock() {
-                                        *port_guard = Some(port);
-                                    }
+                                    Err(e) => eprintln!("[Tauri] Legacy Python backend health check failed: {}", e),
                                 }
-                                Err(e) => {
-                                    eprintln!("[Tauri] Python backend health check failed: {}", e);
-                                    eprintln!("[Tauri] Python backend may not be fully ready");
-                                }
-                            }
-                        });
-                    }
-                    Err(e) => {
-                        eprintln!("[Tauri] Failed to launch Python backend: {}", e);
-                        eprintln!("[Tauri] Python backend is optional - continuing without it");
+                            });
+                        }
+                        Err(e) => eprintln!("[Tauri] Legacy Python backend disabled after launch failure: {}", e),
                     }
                 }
             }
+
             
-            // Launch FastAPI backend (Secret Rooms)
-            match launch_fastapi_backend(&handle) {
-                Ok(child) => {
-                    println!("[Tauri] FastAPI backend started successfully");
-                    // Store in state if needed
-                }
-                Err(e) => {
-                    eprintln!("[Tauri] Failed to start FastAPI backend: {}", e);
-                    eprintln!("[Tauri] FastAPI backend is optional - continuing without it");
+            // Legacy FastAPI service is opt-in and not part of the App Store core.
+            if should_start_fastapi_backend() {
+                match launch_fastapi_backend(&handle) {
+                    Ok(child) => {
+                        println!("[Tauri] Legacy FastAPI backend started");
+                        if let Ok(mut guard) = state.fastapi_backend.lock() {
+                            *guard = Some(child);
+                        }
+                    }
+                    Err(e) => eprintln!("[Tauri] Legacy FastAPI backend launch failed: {}", e),
                 }
             }
 
