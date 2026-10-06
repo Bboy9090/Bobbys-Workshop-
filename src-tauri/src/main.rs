@@ -22,6 +22,7 @@ mod py_client;
 mod fastapi_backend;
 mod mtp_backend;
 mod adb_workflows;
+mod workflow_capabilities;
 #[cfg(feature = "legacy-backends")]
 use python_backend::{launch_python_backend, shutdown_python_backend};
 #[cfg(feature = "legacy-backends")]
@@ -30,6 +31,7 @@ use py_client::PyWorkerClient;
 use fastapi_backend::{launch_fastapi_backend, shutdown_fastapi_backend};
 use mtp_backend::{mtp_status, mtp_list_root, mtp_download_file, mtp_upload_file};
 use adb_workflows::{adb_scan, adb_device_info, adb_logcat_snapshot, adb_screenshot};
+use workflow_capabilities::workflow_capabilities;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -1348,6 +1350,7 @@ fn main() {
             adb_device_info,
             adb_logcat_snapshot,
             adb_screenshot,
+            workflow_capabilities,
             flash_start,
             flash_cancel,
             flash_status,
