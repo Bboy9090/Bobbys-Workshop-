@@ -41,15 +41,16 @@ async function getCPUUsage(deviceSerial) {
 
     const total = parts.reduce((sum, val) => sum + val, 0);
     const idle = parts[3];
-    const usage = total > 0 ? ((total - idle) / total) * 100 : 0;
+    const usage = total > 0 ? ((total - idle) / total) * 100 : null;
 
     // Get CPU cores count
     const coresResult = await ADBLibrary.shell(deviceSerial, 'cat /proc/cpuinfo | grep processor | wc -l');
-    const cores = parseInt(coresResult.stdout.trim()) || 1;
+    const parsedCores = coresResult.success ? parseInt(coresResult.stdout.trim(), 10) : NaN;
+    const cores = Number.isFinite(parsedCores) && parsedCores > 0 ? parsedCores : null;
 
     return {
       success: true,
-      usage: Math.round(usage * 100) / 100,
+      usage: usage === null ? null : Math.round(usage * 100) / 100,
       cores: cores,
       details: {
         user: parts[0],
@@ -85,12 +86,12 @@ async function getMemoryUsage(deviceSerial) {
       }
     });
 
-    const total = memInfo['MemTotal'] || 0;
-    const free = memInfo['MemFree'] || 0;
-    const available = memInfo['MemAvailable'] || memInfo['MemFree'] || 0;
-    const cached = memInfo['Cached'] || 0;
-    const buffers = memInfo['Buffers'] || 0;
-    const used = total - available;
+    const total = memInfo['MemTotal'] ?? null;
+    const free = memInfo['MemFree'] ?? null;
+    const available = memInfo['MemAvailable'] ?? memInfo['MemFree'] ?? null;
+    const cached = memInfo['Cached'] ?? null;
+    const buffers = memInfo['Buffers'] ?? null;
+    const used = total !== null && available !== null ? total - available : null;
 
     return {
       success: true,
@@ -100,7 +101,7 @@ async function getMemoryUsage(deviceSerial) {
       available,
       cached,
       buffers,
-      usagePercent: total > 0 ? (used / total) * 100 : 0,
+      usagePercent: total !== null && total > 0 && used !== null ? (used / total) * 100 : null,
       details: memInfo
     };
   } catch (error) {
@@ -133,16 +134,16 @@ async function getBatteryInfo(deviceSerial) {
 
     return {
       success: true,
-      level: batteryInfo.level || 0,
-      scale: batteryInfo.scale || 100,
-      status: batteryInfo.status || 0, // 1=unknown, 2=charging, 3=discharging, 4=not charging, 5=full
-      health: batteryInfo.health || 0, // 1=unknown, 2=good, 3=overheat, 4=dead, 5=overvoltage, 6=unspecified failure, 7=cold
-      plugged: batteryInfo.plugged || 0, // 0=unplugged, 1=AC, 2=USB, 4=wireless
-      voltage: batteryInfo.voltage || 0,
-      temperature: batteryInfo.temperature || 0, // Temperature in tenths of degrees Celsius
-      technology: batteryInfo.technology || 'unknown',
-      present: batteryInfo.present !== false,
-      percentage: batteryInfo.scale > 0 ? (batteryInfo.level / batteryInfo.scale) * 100 : 0
+      level: batteryInfo.level ?? null,
+      scale: batteryInfo.scale ?? null,
+      status: batteryInfo.status ?? null,
+      health: batteryInfo.health ?? null,
+      plugged: batteryInfo.plugged ?? null,
+      voltage: batteryInfo.voltage ?? null,
+      temperature: batteryInfo.temperature ?? null,
+      technology: batteryInfo.technology ?? null,
+      present: batteryInfo.present ?? null,
+      percentage: Number.isFinite(batteryInfo.level) && Number.isFinite(batteryInfo.scale) && batteryInfo.scale > 0 ? (batteryInfo.level / batteryInfo.scale) * 100 : null
     };
   } catch (error) {
     return { success: false, error: error.message };
@@ -196,18 +197,18 @@ router.get('/:serial', async (req, res) => {
         used: memoryResult.used,
         free: memoryResult.free,
         available: memoryResult.available,
-        usagePercent: Math.round(memoryResult.usagePercent * 100) / 100,
+        usagePercent: memoryResult.usagePercent === null ? null : Math.round(memoryResult.usagePercent * 100) / 100,
         cached: memoryResult.cached,
         buffers: memoryResult.buffers
       } : { error: memoryResult.error },
       battery: batteryResult.success ? {
         level: batteryResult.level,
-        percentage: Math.round(batteryResult.percentage * 100) / 100,
+        percentage: batteryResult.percentage === null ? null : Math.round(batteryResult.percentage * 100) / 100,
         status: batteryResult.status,
         health: batteryResult.health,
         plugged: batteryResult.plugged,
         voltage: batteryResult.voltage,
-        temperature: batteryResult.temperature ? batteryResult.temperature / 10 : 0, // Convert to Celsius
+        temperature: batteryResult.temperature === null ? null : batteryResult.temperature / 10,
         technology: batteryResult.technology,
         present: batteryResult.present
       } : { error: batteryResult.error }
