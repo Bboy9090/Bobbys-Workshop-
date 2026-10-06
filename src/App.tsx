@@ -16,8 +16,10 @@ import {
   saveAdbScreenshot,
   scanAdbDevices,
   listMtpRoot,
+  listAdbUserPackages,
   listWorkflowJobs,
   retryWorkflowJob,
+  runAdbPackageAction,
   startWorkflowJob,
   uploadMtpFile,
   type AdbDeviceRecord,
@@ -28,6 +30,7 @@ import {
   type DeviceCapabilityMatrix,
   type PhoneDiagnosticReport,
   type WorkflowJobRecord,
+  type AdbPackageRecord,
 } from './lib/desktop';
 
 function formatBytes(value: number): string {
@@ -64,7 +67,14 @@ export default function App() {
   const [diagnostic, setDiagnostic] = useState<PhoneDiagnosticReport | null>(null);
   const [diagnosing, setDiagnosing] = useState(false);
   const [workflowJobs, setWorkflowJobs] = useState<WorkflowJobRecord[]>([]);
+  const [adbPackages, setAdbPackages] = useState<AdbPackageRecord[]>([]);
+  const [packageQuery, setPackageQuery] = useState('');
+  const [packageBusy, setPackageBusy] = useState<string | null>(null);
   const nativeRuntime = useMemo(() => isTauriRuntime(), []);
+  const filteredPackages = useMemo(() => {
+    const q = packageQuery.trim().toLowerCase();
+    return q ? adbPackages.filter((pkg) => pkg.packageName.toLowerCase().includes(q)) : adbPackages;
+  }, [adbPackages, packageQuery]);
 
   const refreshJobs = useCallback(async () => {
     if (!nativeRuntime) return;
@@ -258,6 +268,38 @@ export default function App() {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
       setTransferBusy(false);
+    }
+  };
+
+  const refreshPackages = async () => {
+    if (!adbSelectedSerial || transferBusy) return;
+    setTransferBusy(true);
+    setNativeError(null);
+    try {
+      setAdbPackages(await listAdbUserPackages(adbSelectedSerial));
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+      setAdbPackages([]);
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  const packageAction = async (
+    packageName: string,
+    action: 'enable' | 'disable-user' | 'clear-data' | 'uninstall-user',
+  ) => {
+    if (!adbSelectedSerial || transferBusy || packageBusy) return;
+    setPackageBusy(packageName);
+    setNativeError(null);
+    try {
+      const result = await runAdbPackageAction(adbSelectedSerial, packageName, action);
+      setAdbOutput(`${result.message}\n${result.evidenceSource}\nVerified`);
+      setAdbPackages(await listAdbUserPackages(adbSelectedSerial));
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPackageBusy(null);
     }
   };
 
@@ -542,6 +584,80 @@ export default function App() {
                     ))}
                   </div>
                 </details>
+              </>
+            )}
+          </section>
+
+          <section className="mb-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-white">ADB App Manager</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Manage third-party packages on the selected authorized device. Package actions are validated and allowlisted.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                onClick={() => void refreshPackages()}
+                className="rounded bg-slate-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+              >
+                Load apps
+              </button>
+            </div>
+
+            {adbPackages.length > 0 && (
+              <>
+                <div className="mt-3">
+                  <input
+                    value={packageQuery}
+                    onChange={(event) => setPackageQuery(event.target.value)}
+                    placeholder="Search package names…"
+                    className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-600"
+                  />
+                </div>
+                <div className="mt-3 max-h-80 overflow-y-auto rounded border border-slate-800">
+                  {filteredPackages.map((pkg) => (
+                    <div key={pkg.packageName} className="flex flex-wrap items-center gap-2 border-b border-slate-800 bg-slate-950/50 px-3 py-2 last:border-b-0">
+                      <div className="min-w-0 flex-1 break-all font-mono text-xs text-slate-200">{pkg.packageName}</div>
+                      <button
+                        type="button"
+                        disabled={!!packageBusy}
+                        onClick={() => void packageAction(pkg.packageName, 'enable')}
+                        className="rounded border border-slate-700 px-2 py-1 text-[11px] text-emerald-300 disabled:opacity-40 hover:bg-slate-800"
+                      >
+                        Enable
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!packageBusy}
+                        onClick={() => void packageAction(pkg.packageName, 'disable-user')}
+                        className="rounded border border-slate-700 px-2 py-1 text-[11px] text-amber-300 disabled:opacity-40 hover:bg-slate-800"
+                      >
+                        Disable
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!packageBusy}
+                        onClick={() => void packageAction(pkg.packageName, 'clear-data')}
+                        className="rounded border border-slate-700 px-2 py-1 text-[11px] text-orange-300 disabled:opacity-40 hover:bg-slate-800"
+                      >
+                        Clear data
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!packageBusy}
+                        onClick={() => void packageAction(pkg.packageName, 'uninstall-user')}
+                        className="rounded border border-red-900 px-2 py-1 text-[11px] text-red-300 disabled:opacity-40 hover:bg-red-950/40"
+                      >
+                        Uninstall user
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 text-xs text-slate-600">
+                  {filteredPackages.length} of {adbPackages.length} user-installed packages shown.
+                </div>
               </>
             )}
           </section>
