@@ -49,7 +49,7 @@
     "bundle:fastapi": "node -e \"process.platform === 'win32' ? require('child_process').execSync('powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bundle-fastapi-backend.ps1', {stdio: 'inherit'}) : require('child_process').execSync('bash scripts/bundle-fastapi-backend.sh', {stdio: 'inherit'})\"",
     "tauri:build": "npm run build && npm run prepare:bundle && npm run bundle:fastapi && cargo tauri build && node -e \"process.platform === 'win32' ? require('child_process').execSync('powershell -NoProfile -ExecutionPolicy Bypass -File scripts/copy-server-to-release.ps1', {stdio: 'inherit'}) : require('child_process').execSync('bash -c \\\"cp -r src-tauri/bundle/resources/server src-tauri/target/release/\\\"', {stdio: 'inherit'})\"",
     "tauri:build:windows": "npm run build && npm run prepare:bundle && cargo tauri build --target x86_64-pc-windows-msvc",
-    "tauri:build:macos": "npm run build && npm run prepare:bundle && cargo tauri build --target x86_64-apple-darwin",
+    "tauri:build:macos": "npm run build && cargo tauri build --target universal-apple-darwin",
     "tauri:build:linux": "npm run build && npm run prepare:bundle && cargo tauri build --target x86_64-unknown-linux-gnu",
     "build:standalone": "node scripts/build-standalone.js",
     "build:windows": "node scripts/build-standalone.js --target=x86_64-pc-windows-msvc",
@@ -62,7 +62,9 @@
     "build:complete:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-complete-bundle.ps1",
     "build:complete:macos": "bash scripts/build-complete-bundle.sh",
     "bundle:python": "node -e \"process.platform === 'win32' ? require('child_process').execSync('powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bundle-python-complete.ps1', {stdio: 'inherit'}) : require('child_process').execSync('bash scripts/bundle-python-complete.sh', {stdio: 'inherit'})\"",
-    "verify:reality": "node scripts/verify-production-reality.mjs"
+    "verify:reality": "node scripts/verify-production-reality.mjs",
+    "bobfw:check": "npm run verify:reality && npm run build && cargo check --manifest-path libs/bootforgeusb/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml",
+    "bobfw:test": "npm run test && cargo test --manifest-path libs/bootforgeusb/Cargo.toml"
   },
   "dependencies": {
     "@github/spark": ">=0.43.1 <1",
