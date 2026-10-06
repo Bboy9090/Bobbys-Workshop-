@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { open, save } from '@tauri-apps/plugin-dialog';
 
 export type MtpStorageSummary = {
   description: string;
@@ -64,3 +65,55 @@ export async function listMtpRoot(storageIndex: number): Promise<MtpRootObject[]
 }
 
 export { isTauriRuntime };
+
+
+export type MtpTransferResult = {
+  operation: 'upload' | 'download';
+  filename: string;
+  bytes: number;
+  verified: boolean;
+  destination: string;
+  evidenceSource: string;
+};
+
+export async function chooseUploadSource(): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: 'Choose a file to send to Android',
+  });
+  return typeof selected === 'string' ? selected : null;
+}
+
+export async function chooseDownloadDestination(defaultName: string): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  return save({
+    title: 'Save Android file to Mac',
+    defaultPath: defaultName,
+  });
+}
+
+export async function uploadMtpFile(
+  storageIndex: number,
+  sourcePath: string,
+  parentHandle?: string | null,
+): Promise<MtpTransferResult> {
+  return invoke<MtpTransferResult>('mtp_upload_file', {
+    storageIndex,
+    sourcePath,
+    parentHandle: parentHandle ?? null,
+  });
+}
+
+export async function downloadMtpFile(
+  storageIndex: number,
+  handle: string,
+  destinationPath: string,
+): Promise<MtpTransferResult> {
+  return invoke<MtpTransferResult>('mtp_download_file', {
+    storageIndex,
+    handle,
+    destinationPath,
+  });
+}
