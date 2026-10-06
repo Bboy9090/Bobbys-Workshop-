@@ -57,7 +57,7 @@
       "exceptionDomain": "",
       "signingIdentity": null,
       "providerShortName": null,
-      "entitlements": null
+      "entitlements": "entitlements.mac.plist"
     }
   },
   "plugins": {}
