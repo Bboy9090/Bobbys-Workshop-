@@ -177,7 +177,14 @@ pub fn launch_fastapi_backend(app_handle: &AppHandle) -> Result<Child, Error> {
     
     let log_file = log_dir.join("fastapi-backend.log");
     if let Ok(file) = std::fs::File::create(&log_file) {
-        cmd.stdout(Stdio::from(file)).stderr(Stdio::from(file));
+        match file.try_clone() {
+            Ok(stderr_file) => {
+                cmd.stdout(Stdio::from(file)).stderr(Stdio::from(stderr_file));
+            }
+            Err(_) => {
+                cmd.stdout(Stdio::null()).stderr(Stdio::null());
+            }
+        }
     } else {
         cmd.stdout(Stdio::null()).stderr(Stdio::null());
     }
