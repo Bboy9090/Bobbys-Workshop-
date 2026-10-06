@@ -399,6 +399,43 @@ export default function App() {
                   </div>
                 </div>
 
+                <div className="mt-4 rounded border border-slate-800 bg-slate-950/50 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">USB / Cable Doctor</h3>
+                      <div className="mt-1 text-sm text-slate-300">{diagnostic.connectionSummary}</div>
+                    </div>
+                    <span className={
+                      diagnostic.connectionGrade === 'excellent'
+                        ? 'rounded bg-emerald-950 px-2 py-1 text-xs text-emerald-300'
+                        : diagnostic.connectionGrade === 'usable'
+                          ? 'rounded bg-cyan-950 px-2 py-1 text-xs text-cyan-300'
+                          : diagnostic.connectionGrade === 'limited'
+                            ? 'rounded bg-amber-950 px-2 py-1 text-xs text-amber-300'
+                            : 'rounded bg-red-950 px-2 py-1 text-xs text-red-300'
+                    }>
+                      {diagnostic.connectionGrade}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {diagnostic.usbConnections.length ? diagnostic.usbConnections.map((usb, index) => (
+                      <div key={`${usb.vendorId}-${usb.productId}-${usb.busNumber}-${usb.deviceAddress}-${index}`} className="rounded border border-slate-800 bg-slate-950/70 p-3">
+                        <div className="text-sm font-medium text-white">{usb.productName || usb.manufacturer || usb.platformHint}</div>
+                        <div className="mt-1 text-xs text-cyan-300">{usb.platformHint} · {usb.mode}</div>
+                        <div className="mt-1 font-mono text-[11px] text-slate-500">
+                          {hex(usb.vendorId)}:{hex(usb.productId)} · bus {usb.busNumber} · addr {usb.deviceAddress}
+                        </div>
+                        <div className="mt-1 break-all text-[10px] text-slate-600">
+                          {usb.serialNumber || 'no descriptor serial'} · {usb.evidenceSource}
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="text-sm text-slate-500">No Android-class USB descriptor is visible.</div>
+                    )}
+                  </div>
+                </div>
+
                 <div className="mt-4 grid gap-4 xl:grid-cols-2">
                   <div className="rounded border border-slate-800 bg-slate-950/50 p-4">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Verified device profile</h3>
