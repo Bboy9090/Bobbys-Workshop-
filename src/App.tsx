@@ -891,30 +891,41 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded border border-slate-800 bg-slate-950/40 p-3">
-                  <div>
-                    <div className="text-xs font-medium text-white">Upload destination</div>
-                    <div className="mt-0.5 text-xs text-slate-500">{selectedFolderName}</div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedFolderHandle(null);
-                        setSelectedFolderName('Storage root');
-                      }}
-                      disabled={transferBusy}
-                      className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 disabled:opacity-50 hover:bg-slate-800"
-                    >
-                      Use root
-                    </button>
+                <div className="mt-5 rounded border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-medium text-white">Current Android folder</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
+                        <button
+                          type="button"
+                          disabled={transferBusy}
+                          onClick={() => void openMtpFolder([])}
+                          className="rounded px-1.5 py-0.5 text-cyan-300 hover:bg-slate-800 disabled:opacity-50"
+                        >
+                          root
+                        </button>
+                        {mtpPath.map((segment, index) => (
+                          <span key={`${segment}-${index}`} className="flex items-center gap-1">
+                            <span className="text-slate-600">/</span>
+                            <button
+                              type="button"
+                              disabled={transferBusy}
+                              onClick={() => void openMtpFolder(mtpPath.slice(0, index + 1))}
+                              className="rounded px-1.5 py-0.5 text-cyan-300 hover:bg-slate-800 disabled:opacity-50"
+                            >
+                              {segment}
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                     <button
                       type="button"
                       onClick={() => void uploadFile()}
                       disabled={transferBusy}
                       className="rounded bg-cyan-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 hover:bg-cyan-600"
                     >
-                      Choose Mac file and upload
+                      Upload Mac file here
                     </button>
                   </div>
                 </div>
@@ -922,40 +933,36 @@ export default function App() {
                 <div className="mt-5">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Root folders and files
+                      Folder contents
                     </h3>
-                    <span className="text-xs text-slate-600">{rootObjects.length} objects</span>
+                    <span className="text-xs text-slate-600">{mtpObjects.length} objects</span>
                   </div>
                   <div className="mt-2 overflow-hidden rounded border border-slate-800">
-                    {rootObjects.length === 0 ? (
+                    {mtpObjects.length === 0 ? (
                       <div className="bg-slate-950/60 p-4 text-sm text-slate-500">
-                        This storage returned no root objects.
+                        This folder is empty or returned no visible objects.
                       </div>
                     ) : (
                       <ul className="divide-y divide-slate-800 bg-slate-950/60">
-                        {rootObjects.map((object) => (
-                          <li key={object.handle} className="flex items-center gap-3 px-3 py-2">
+                        {mtpObjects.map((object) => (
+                          <li key={object.path.join('/')} className="flex items-center gap-3 px-3 py-2">
                             <span className="w-12 text-[11px] uppercase text-slate-600">
                               {object.isFolder ? 'Folder' : 'File'}
                             </span>
                             <span className="min-w-0 flex-1 truncate text-sm text-slate-200">
                               {object.filename || 'Unnamed object'}
                             </span>
+                            {!object.isFolder && (
+                              <span className="text-[11px] text-slate-600">{formatBytes(object.sizeBytes)}</span>
+                            )}
                             {object.isFolder ? (
                               <button
                                 type="button"
                                 disabled={transferBusy}
-                                onClick={() => {
-                                  setSelectedFolderHandle(object.handle);
-                                  setSelectedFolderName(object.filename || 'Selected folder');
-                                }}
-                                className={`rounded border px-2 py-1 text-xs disabled:opacity-50 ${
-                                  selectedFolderHandle === object.handle
-                                    ? 'border-orange-500 text-orange-300'
-                                    : 'border-slate-700 text-slate-400 hover:bg-slate-800'
-                                }`}
+                                onClick={() => void openMtpFolder(object.path)}
+                                className="rounded border border-slate-700 px-2 py-1 text-xs text-cyan-300 disabled:opacity-50 hover:bg-slate-800"
                               >
-                                Upload here
+                                Open
                               </button>
                             ) : (
                               <button
