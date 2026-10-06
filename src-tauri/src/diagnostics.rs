@@ -1,5 +1,5 @@
 use serde::Serialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::process::Command;
 
 #[derive(Debug, Serialize)]
@@ -31,7 +31,25 @@ pub struct UsbConnectionSummary {
     pub mode: String,
     pub bus_number: u8,
     pub device_address: u8,
+    pub speed: String,
     pub evidence_source: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CableDoctorReport {
+    pub grade: &'static str,
+    pub summary: String,
+    pub samples: usize,
+    pub android_present_samples: usize,
+    pub reconnect_events: usize,
+    pub observed_speeds: Vec<String>,
+    pub observed_modes: Vec<String>,
+    pub adb_state: String,
+    pub mtp_connected: bool,
+    pub fastboot_present: bool,
+    pub recommendations: Vec<String>,
+    pub evidence: Vec<DiagnosticEvidence>,
 }
 
 #[derive(Debug, Serialize)]
@@ -142,6 +160,7 @@ pub async fn diagnose_phone() -> Result<PhoneDiagnosticReport, String> {
             mode: d.mode.clone(),
             bus_number: d.bus_number,
             device_address: d.device_address,
+            speed: d.speed.clone(),
             evidence_source: d.evidence_source.clone(),
         })
         .collect::<Vec<_>>();
@@ -395,6 +414,156 @@ pub async fn diagnose_phone() -> Result<PhoneDiagnosticReport, String> {
         available_workflows,
         blocked_workflows,
         findings,
+        evidence,
+    })
+}
+
+
+#[tauri::command]
+pub async fn usb_cable_doctor() -> Result<CableDoctorReport, String> {
+    const SAMPLE_COUNT: usize = 4;
+    let mut sample_sets: Vec<BTreeSet<String>> = Vec::with_capacity(SAMPLE_COUNT);
+    let mut observed_speeds = BTreeSet::new();
+    let mut observed_modes = BTreeSet::new();
+    let mut evidence = Vec::new();
+    let mut android_present_samples = 0usize;
+
+    for sample_index in 0..SAMPLE_COUNT {
+        let scan = bootforgeusb::scan().map_err(|e| format!("USB scan failed: {e}"))?;
+        let android: Vec<_> = scan
+            .iter()
+            .filter(|d| d.platform_hint.starts_with("android-"))
+            .collect();
+
+        if !android.is_empty() {
+            android_present_samples += 1;
+        }
+
+        let mut identities = BTreeSet::new();
+        for d in android {
+            identities.insert(d.device_uid.clone());
+            observed_speeds.insert(d.speed.clone());
+            observed_modes.insert(d.mode.clone());
+            evidence.push(DiagnosticEvidence {
+                source: "usb-sample".to_string(),
+                detail: format!(
+                    "sample {} {:04X}:{:04X} uid={} mode={} speed={} bus={} addr={} via {}",
+                    sample_index + 1,
+                    d.vendor_id,
+                    d.product_id,
+                    d.device_uid,
+                    d.mode,
+                    d.speed,
+                    d.bus_number,
+                    d.device_address,
+                    d.evidence_source
+                ),
+            });
+        }
+        sample_sets.push(identities);
+
+        if sample_index + 1 < SAMPLE_COUNT {
+            tokio::time::sleep(std::time::Duration::from_millis(350)).await;
+        }
+    }
+
+    let mut reconnect_events = 0usize;
+    for pair in sample_sets.windows(2) {
+        if pair[0] != pair[1] {
+            reconnect_events += 1;
+        }
+    }
+
+    let adb = crate::adb_workflows::adb_scan().unwrap_or_default();
+    let adb_state = if adb.iter().any(|d| d.authorized) {
+        "authorized".to_string()
+    } else if adb.iter().any(|d| d.state == "unauthorized") {
+        "unauthorized".to_string()
+    } else if adb.iter().any(|d| d.state == "offline") {
+        "offline".to_string()
+    } else if adb.is_empty() {
+        "not-detected".to_string()
+    } else {
+        adb[0].state.clone()
+    };
+    let mtp_connected = crate::mtp_backend::mtp_status().await.is_ok();
+    let fastboot_present = !fastboot_devices().is_empty();
+
+    evidence.push(DiagnosticEvidence {
+        source: "transport-cross-check".to_string(),
+        detail: format!(
+            "adb={} mtp={} fastboot={}",
+            adb_state, mtp_connected, fastboot_present
+        ),
+    });
+
+    let any_android = android_present_samples > 0;
+    let fully_present = android_present_samples == SAMPLE_COUNT;
+
+    let (grade, summary) = if !any_android && adb.is_empty() && !mtp_connected && !fastboot_present {
+        (
+            "no-device",
+            "No Android USB device or Android service transport was detected during the cable test.".to_string(),
+        )
+    } else if reconnect_events > 0 || !fully_present {
+        (
+            "unstable",
+            format!(
+                "The Android USB identity changed or disappeared {} time(s) across {} samples.",
+                reconnect_events, SAMPLE_COUNT
+            ),
+        )
+    } else if mtp_connected || adb_state == "authorized" || fastboot_present {
+        (
+            "healthy",
+            "The Android USB identity remained stable and at least one verified data transport is usable.".to_string(),
+        )
+    } else {
+        (
+            "limited",
+            "The Android USB device remained visible, but MTP, authorized ADB, and Fastboot are unavailable.".to_string(),
+        )
+    };
+
+    let mut recommendations = Vec::new();
+    match grade {
+        "no-device" => {
+            recommendations.push("Try a known data-capable USB cable and a direct Mac USB port.".to_string());
+            recommendations.push("Unlock the phone and confirm it is powered on.".to_string());
+        }
+        "unstable" => {
+            recommendations.push("Reconnect with a different known-good data cable.".to_string());
+            recommendations.push("Remove passive hubs/adapters and connect directly to the Mac for qualification.".to_string());
+            recommendations.push("Inspect the phone USB port for intermittent contact or debris.".to_string());
+        }
+        "limited" => {
+            recommendations.push("The physical USB link is stable; check Android USB preferences and choose File Transfer for MTP.".to_string());
+            recommendations.push("If ADB is needed, enable USB debugging and authorize this Mac on the phone.".to_string());
+        }
+        "healthy" => {
+            recommendations.push("The sampled USB link is stable. No cable-path change is indicated by this test.".to_string());
+        }
+        _ => {}
+    }
+
+    if adb_state == "unauthorized" {
+        recommendations.push("Approve the USB debugging authorization prompt on the unlocked phone.".to_string());
+    } else if adb_state == "offline" {
+        recommendations.push("Restart the ADB connection after reconnecting USB; the current ADB transport is offline.".to_string());
+    }
+
+    Ok(CableDoctorReport {
+        grade,
+        summary,
+        samples: SAMPLE_COUNT,
+        android_present_samples,
+        reconnect_events,
+        observed_speeds: observed_speeds.into_iter().collect(),
+        observed_modes: observed_modes.into_iter().collect(),
+        adb_state,
+        mtp_connected,
+        fastboot_present,
+        recommendations,
         evidence,
     })
 }
