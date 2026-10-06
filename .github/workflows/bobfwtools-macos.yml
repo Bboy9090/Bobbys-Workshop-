@@ -23,14 +23,19 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Validate macOS entitlements
+        run: plutil -lint src-tauri/entitlements.mac.plist
+
       - name: Production reality gate
         run: npm run verify:reality
 
       - name: Build frontend
         run: npm run build
-
-      - name: Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
 
       - name: Check BootForge USB
         run: cargo check --manifest-path libs/bootforgeusb/Cargo.toml
@@ -40,3 +45,20 @@ jobs:
 
       - name: Run BootForge USB tests
         run: cargo test --manifest-path libs/bootforgeusb/Cargo.toml
+
+      - name: Build universal BobFWTools.app
+        run: npm run tauri:build:macos:ci
+
+      - name: Inspect app bundle
+        run: |
+          test -d src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
+          find src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app -maxdepth 3 -type f -print
+          test ! -e src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app/Contents/Resources/server
+          test ! -e src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app/Contents/Resources/python
+
+      - name: Upload BobFWTools app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BobFWTools-universal-macOS
+          path: src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
+          if-no-files-found: error
