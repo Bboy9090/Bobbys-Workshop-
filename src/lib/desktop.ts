@@ -117,3 +117,64 @@ export async function downloadMtpFile(
     destinationPath,
   });
 }
+
+
+export type AdbDeviceRecord = {
+  serial: string;
+  state: string;
+  details: string[];
+  authorized: boolean;
+  evidenceSource: string;
+};
+
+export type AdbDeviceInfo = {
+  serial: string;
+  properties: Record<string, string>;
+  verified: boolean;
+  evidenceSource: string;
+};
+
+export type AdbTextResult = {
+  serial: string;
+  workflow: string;
+  output: string;
+  verified: boolean;
+  evidenceSource: string;
+};
+
+export type AdbFileResult = {
+  serial: string;
+  workflow: string;
+  destination: string;
+  bytes: number;
+  verified: boolean;
+  evidenceSource: string;
+};
+
+export async function scanAdbDevices(): Promise<AdbDeviceRecord[]> {
+  if (!isTauriRuntime()) return [];
+  try {
+    return await invoke<AdbDeviceRecord[]>('adb_scan');
+  } catch {
+    return [];
+  }
+}
+
+export async function getAdbDeviceInfo(serial: string): Promise<AdbDeviceInfo> {
+  return invoke<AdbDeviceInfo>('adb_device_info', { serial });
+}
+
+export async function getAdbLogcatSnapshot(serial: string, lines = 250): Promise<AdbTextResult> {
+  return invoke<AdbTextResult>('adb_logcat_snapshot', { serial, lines });
+}
+
+export async function saveAdbScreenshot(serial: string): Promise<AdbFileResult | null> {
+  if (!isTauriRuntime()) return null;
+  const destination = await save({
+    title: 'Save Android screenshot to Mac',
+    defaultPath: 'android-screenshot.png',
+    filters: [{ name: 'PNG image', extensions: ['png'] }],
+  });
+  if (!destination) return null;
+  return invoke<AdbFileResult>('adb_screenshot', { serial, destinationPath: destination });
+}
