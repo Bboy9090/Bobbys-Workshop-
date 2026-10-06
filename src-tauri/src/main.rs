@@ -6,11 +6,13 @@
     windows_subsystem = "windows"
 )]
 
+#[cfg(any(feature = "legacy-backends", feature = "qualified-flash"))]
 use std::process::{Command, Stdio};
 #[cfg(feature = "legacy-backends")]
 use std::process::Child;
 use std::sync::Mutex;
 use tauri::{Manager, AppHandle, Emitter};
+#[cfg(any(feature = "legacy-backends", feature = "qualified-flash"))]
 use std::path::PathBuf;
 use std::env;
 use std::collections::HashMap;
