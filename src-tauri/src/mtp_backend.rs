@@ -436,13 +436,16 @@ pub async fn mtp_list_directory(
     Ok(objects
         .into_iter()
         .map(|object| {
+            let is_folder = object.is_folder();
+            let size_bytes = object.size;
+            let filename = object.filename;
             let mut object_path = path.clone();
-            object_path.push(object.filename.clone());
+            object_path.push(filename.clone());
             MtpBrowserObject {
-                filename: object.filename,
+                filename,
                 path: object_path,
-                is_folder: object.is_folder(),
-                size_bytes: object.size,
+                is_folder,
+                size_bytes,
             }
         })
         .collect())
