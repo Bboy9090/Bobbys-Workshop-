@@ -323,3 +323,32 @@ export type PhoneDiagnosticReport = {
 export async function diagnosePhone(): Promise<PhoneDiagnosticReport> {
   return invoke<PhoneDiagnosticReport>('diagnose_phone');
 }
+
+
+export type WorkflowJobRecord = {
+  id: string;
+  workflowId: string;
+  serial: string | null;
+  state: 'running' | 'completed' | 'failed';
+  startedAtMs: number;
+  finishedAtMs: number | null;
+  verified: boolean;
+  summary: string;
+  evidence: string[];
+  error: string | null;
+};
+
+export async function startWorkflowJob(
+  workflowId: string,
+  serial?: string | null,
+): Promise<WorkflowJobRecord> {
+  return invoke<WorkflowJobRecord>('workflow_job_start', { workflowId, serial: serial ?? null });
+}
+
+export async function listWorkflowJobs(): Promise<WorkflowJobRecord[]> {
+  return invoke<WorkflowJobRecord[]>('workflow_job_list');
+}
+
+export async function getWorkflowJob(id: string): Promise<WorkflowJobRecord> {
+  return invoke<WorkflowJobRecord>('workflow_job_get', { id });
+}
