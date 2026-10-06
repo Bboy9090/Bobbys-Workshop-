@@ -1678,116 +1678,13 @@ app.post('/api/flash/validate-image', async (req, res) => {
 });
 
 app.post('/api/flash/start', async (req, res) => {
-  const config = req.body;
-  
-  if (!config.deviceSerial || !config.flashMethod || !config.partitions || config.partitions.length === 0) {
-    return res.status(400).json({
-      success: false,
-      error: 'Missing required fields: deviceSerial, flashMethod, partitions'
-    });
-  }
-  
-  const jobId = `flash-job-${jobCounter++}-${Date.now()}`;
-  
-  const jobStatus = {
-    jobId,
-    status: 'queued',
-    progress: 0,
-    currentStep: 'Initializing',
-    totalSteps: config.partitions.length,
-    completedSteps: 0,
-    bytesWritten: 0,
-    totalBytes: config.partitions.reduce((sum, p) => sum + (p.size || 100000000), 0),
-    speed: 0,
-    timeElapsed: 0,
-    timeRemaining: 0,
-    logs: [`[${new Date().toISOString()}] Flash job ${jobId} created`],
-    startTime: Date.now()
-  };
-  
-  activeFlashJobs.set(jobId, { config, status: jobStatus });
-  
-  simulateFlashOperation(jobId, config);
-  
-  res.json({
-    success: true,
-    jobId,
-    status: 'queued',
-    deviceSerial: config.deviceSerial,
-    startTime: Date.now(),
-    message: 'Flash operation queued'
+  return res.status(501).json({
+    success: false,
+    error: 'FLASH_BACKEND_UNAVAILABLE',
+    message: 'Legacy server flashing is disabled. BobFWTools only exposes hardware-qualified native executors.',
+    timestamp: new Date().toISOString()
   });
 });
-
-function simulateFlashOperation(jobId, config) {
-  const job = activeFlashJobs.get(jobId);
-  if (!job) return;
-  
-  job.status.status = 'running';
-  job.status.logs.push(`[${new Date().toISOString()}] Starting flash operation`);
-  job.status.currentStep = `Flashing ${config.partitions[0].name}`;
-  
-  broadcastFlashProgress(jobId, {
-    type: 'progress',
-    status: job.status
-  });
-  
-  let stepIndex = 0;
-  const stepInterval = setInterval(() => {
-    const job = activeFlashJobs.get(jobId);
-    if (!job) {
-      clearInterval(stepInterval);
-      return;
-    }
-    
-    job.status.progress += 10;
-    job.status.timeElapsed = Math.floor((Date.now() - job.status.startTime) / 1000);
-    job.status.speed = Math.floor(Math.random() * 20 + 10);
-    
-    if (job.status.progress >= 100) {
-      job.status.progress = 100;
-      job.status.status = 'completed';
-      job.status.currentStep = 'Completed';
-      job.status.logs.push(`[${new Date().toISOString()}] Flash operation completed successfully`);
-      
-      flashHistory.unshift({
-        jobId,
-        deviceSerial: config.deviceSerial,
-        deviceBrand: config.deviceBrand,
-        flashMethod: config.flashMethod,
-        partitions: config.partitions.map(p => p.name),
-        status: 'completed',
-        startTime: job.status.startTime,
-        endTime: Date.now(),
-        duration: Math.floor((Date.now() - job.status.startTime) / 1000),
-        bytesWritten: job.status.totalBytes,
-        averageSpeed: Math.floor(Math.random() * 20 + 10)
-      });
-      
-      if (flashHistory.length > 50) {
-        flashHistory = flashHistory.slice(0, 50);
-      }
-      
-      broadcastFlashProgress(jobId, {
-        type: 'completed',
-        status: job.status
-      });
-      
-      clearInterval(stepInterval);
-      setTimeout(() => activeFlashJobs.delete(jobId), 5000);
-    } else if (job.status.progress % 30 === 0 && stepIndex < config.partitions.length - 1) {
-      stepIndex++;
-      job.status.completedSteps = stepIndex;
-      job.status.currentStep = `Flashing ${config.partitions[stepIndex].name}`;
-      job.status.logs.push(`[${new Date().toISOString()}] Flashing partition: ${config.partitions[stepIndex].name}`);
-    }
-    
-    broadcastFlashProgress(jobId, {
-      type: 'progress',
-      status: job.status
-    });
-  }, 1000);
-}
 
 app.post('/api/flash/pause/:jobId', async (req, res) => {
   const { jobId } = req.params;
@@ -1938,25 +1835,12 @@ app.post('/api/monitor/stop', (req, res) => {
 });
 
 app.get('/api/monitor/live', (req, res) => {
-  if (!monitoringActive) {
-    return res.json({ 
-      status: 'not monitoring',
-      active: false 
-    });
-  }
-
-  const metrics = {
-    speed: (Math.random() * 30 + 5).toFixed(2),
-    cpu: Math.floor(Math.random() * 60 + 20),
-    memory: Math.floor(Math.random() * 50 + 30),
-    usb: Math.floor(Math.random() * 70 + 20),
-    disk: Math.floor(Math.random() * 40 + 10),
-    baseline: 21.25,
-    timestamp: new Date().toISOString(),
-    active: true
-  };
-  
-  res.json(metrics);
+  return res.status(501).json({
+    active: false,
+    error: 'LIVE_METRICS_UNAVAILABLE',
+    message: 'Synthetic live metrics are disabled. A real telemetry source must be connected.',
+    timestamp: new Date().toISOString()
+  });
 });
 
 app.post('/api/tests/run', async (req, res) => {
