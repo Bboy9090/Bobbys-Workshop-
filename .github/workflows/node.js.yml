@@ -49,6 +49,9 @@ jobs:
     - name: Production Reality Gate
       run: npm run verify:reality
 
+    - name: Build Frontend
+      run: npm run build
+
     - name: Check embedded USB crate
       run: cargo check --manifest-path libs/bootforgeusb/Cargo.toml --no-default-features
 
