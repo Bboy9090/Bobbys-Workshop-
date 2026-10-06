@@ -42,7 +42,7 @@ fn load_persisted_jobs() -> HashMap<String, WorkflowJobRecord> {
 }
 
 fn persist_terminal_job(record: &WorkflowJobRecord) {
-    if !matches!(record.state.as_str(), "completed" | "failed") {
+    if !matches!(record.state.as_str(), "completed" | "accepted" | "failed" | "cancelled") {
         return;
     }
     let Some(path) = history_path() else { return };
@@ -83,7 +83,7 @@ fn put(record: WorkflowJobRecord) {
 fn update_success(id: &str, summary: String, verified: bool, evidence: Vec<String>) -> Result<WorkflowJobRecord, String> {
     let mut map = jobs().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let job = map.get_mut(id).ok_or_else(|| format!("Workflow job {id} disappeared"))?;
-    job.state = "completed".to_string();
+    job.state = if verified { "completed" } else { "accepted" }.to_string();
     job.finished_at_ms = Some(now_ms());
     job.summary = summary;
     job.verified = verified;
@@ -134,6 +134,7 @@ async fn start_job_internal(
 ) -> Result<WorkflowJobRecord, String> {
     const ALLOWED: &[&str] = &[
         "diagnose-phone",
+        "usb-cable-doctor",
         "adb-device-info",
         "adb-battery-info",
         "adb-logcat",
@@ -170,6 +171,14 @@ async fn start_job_internal(
                 "Diagnosis complete: {} workflow(s) ready; connection grade {}",
                 report.available_workflows.len(),
                 report.connection_grade
+            ),
+            true,
+            report.evidence.into_iter().map(|e| format!("{}:{}", e.source, e.detail)).collect(),
+        )),
+        "usb-cable-doctor" => crate::diagnostics::usb_cable_doctor().await.map(|report| (
+            format!(
+                "Cable Doctor complete: grade {}; {} reconnect event(s) across {} samples",
+                report.grade, report.reconnect_events, report.samples
             ),
             true,
             report.evidence.into_iter().map(|e| format!("{}:{}", e.source, e.detail)).collect(),
@@ -246,8 +255,11 @@ pub async fn workflow_job_start(
 #[tauri::command]
 pub async fn workflow_job_retry(id: String) -> Result<WorkflowJobRecord, String> {
     let previous = workflow_job_get(id.clone())?;
-    if previous.state == "running" {
-        return Err("A running workflow job cannot be retried".to_string());
+    if previous.state != "failed" {
+        return Err(format!(
+            "Only failed workflow jobs can be retried (current state: {})",
+            previous.state
+        ));
     }
     start_job_internal(previous.workflow_id, previous.serial, Some(id)).await
 }
