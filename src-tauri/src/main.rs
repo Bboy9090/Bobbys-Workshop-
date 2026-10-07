@@ -31,6 +31,7 @@ mod workflow_capabilities;
 mod diagnostics;
 mod workflow_jobs;
 mod calibration_backup_exec;
+mod edl_programmer_vault;
 #[cfg(feature = "legacy-backends")]
 use python_backend::{launch_python_backend, shutdown_python_backend};
 #[cfg(feature = "legacy-backends")]
@@ -43,6 +44,7 @@ use workflow_capabilities::workflow_capabilities;
 use diagnostics::{diagnose_phone, usb_cable_doctor};
 use workflow_jobs::{workflow_job_start, workflow_job_list, workflow_job_get, workflow_job_retry};
 use calibration_backup_exec::backup_calibration_partition;
+use edl_programmer_vault::{edl_inspect_programmer, edl_enroll_programmer, edl_list_programmers};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -1471,6 +1473,9 @@ fn main() {
             edl_programmer_qualification,
             backup_calibration_partition,
             calibration_restore_preflight,
+            edl_inspect_programmer,
+            edl_enroll_programmer,
+            edl_list_programmers,
             mtp_status,
             mtp_list_root,
             mtp_download_file,
