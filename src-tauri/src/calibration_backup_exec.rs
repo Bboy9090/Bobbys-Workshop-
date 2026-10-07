@@ -229,3 +229,67 @@ mod tests {
         assert_eq!(sanitize_filename("../a/b"), ".._a_b");
     }
 }
+
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalibrationBackupInspection {
+    pub manifest: bootforgeusb::calibration::CalibrationBackupManifest,
+    pub image_path: String,
+    pub actual_bytes: u64,
+    pub actual_sha256: String,
+    pub same_device_verified: bool,
+    pub ready_for_restore_preflight: bool,
+}
+
+#[tauri::command]
+pub fn inspect_calibration_backup(
+    manifest_path: String,
+    image_path: String,
+    current_device_uid: String,
+) -> Result<CalibrationBackupInspection, String> {
+    let manifest_bytes = fs::read(&manifest_path)
+        .map_err(|e| format!("failed reading calibration manifest: {e}"))?;
+    let manifest: bootforgeusb::calibration::CalibrationBackupManifest =
+        serde_json::from_slice(&manifest_bytes)
+            .map_err(|e| format!("failed parsing calibration manifest: {e}"))?;
+
+    let image = PathBuf::from(&image_path);
+    if !image.is_file() {
+        return Err("calibration backup image does not exist".to_string());
+    }
+
+    let (actual_bytes, actual_sha256) = {
+        let mut file = File::open(&image)
+            .map_err(|e| format!("failed opening calibration image: {e}"))?;
+        let bytes = file.metadata()
+            .map_err(|e| format!("failed reading calibration image metadata: {e}"))?
+            .len();
+        let mut hasher = Sha256::new();
+        let mut buffer = vec![0u8; 1024 * 1024];
+        loop {
+            let n = file.read(&mut buffer)
+                .map_err(|e| format!("failed hashing calibration image: {e}"))?;
+            if n == 0 { break; }
+            hasher.update(&buffer[..n]);
+        }
+        (bytes, format!("{:x}", hasher.finalize()))
+    };
+
+    bootforgeusb::calibration::validate_restore_binding(
+        &manifest,
+        &current_device_uid,
+        &manifest.partition,
+        actual_bytes,
+        &actual_sha256,
+    )?;
+
+    Ok(CalibrationBackupInspection {
+        manifest,
+        image_path,
+        actual_bytes,
+        actual_sha256,
+        same_device_verified: true,
+        ready_for_restore_preflight: true,
+    })
+}
