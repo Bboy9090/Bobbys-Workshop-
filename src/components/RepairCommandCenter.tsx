@@ -3,6 +3,11 @@ import {
   getCalibrationPartitionAllowlist,
   getEdl9008Devices,
   getWorkflowPolicyCatalog,
+  scanAdbDevices,
+  chooseCalibrationBackupDirectory,
+  backupCalibrationPartition,
+  type AdbDeviceRecord,
+  type CalibrationBackupResult,
   type UsbDeviceRecord,
   type WorkflowPolicy,
   type WorkflowRiskLevel,
@@ -42,6 +47,10 @@ export default function RepairCommandCenter() {
   const [allowlist, setAllowlist] = useState<string[]>([]);
   const [edlDevices, setEdlDevices] = useState<UsbDeviceRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [adbDevices, setAdbDevices] = useState<AdbDeviceRecord[]>([]);
+  const [backupPartition, setBackupPartition] = useState('efs');
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupResult, setBackupResult] = useState<CalibrationBackupResult | null>(null);
 
   const active = useMemo(() => catalog.filter((item) => item.activeInBobfwtools), [catalog]);
   const reserved = useMemo(() => catalog.filter((item) => !item.activeInBobfwtools), [catalog]);
@@ -50,15 +59,20 @@ export default function RepairCommandCenter() {
     let cancelled = false;
     const load = async () => {
       try {
-        const [policies, partitions, edl] = await Promise.all([
+        const [policies, partitions, edl, adb] = await Promise.all([
           getWorkflowPolicyCatalog(),
           getCalibrationPartitionAllowlist(),
           getEdl9008Devices(),
+          scanAdbDevices(),
         ]);
         if (cancelled) return;
         setCatalog(policies);
         setAllowlist(partitions);
         setEdlDevices(edl);
+        setAdbDevices(adb);
+        if (partitions.length && !partitions.includes(backupPartition)) {
+          setBackupPartition(partitions[0]);
+        }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       }
@@ -70,6 +84,37 @@ export default function RepairCommandCenter() {
       window.clearInterval(id);
     };
   }, []);
+
+  const runCalibrationBackup = async () => {
+    if (backupBusy) return;
+    const authorized = adbDevices.filter((device) => device.authorized);
+    if (authorized.length !== 1) {
+      setError(
+        authorized.length === 0
+          ? 'Connect exactly one authorized ADB device with existing root/service block-read access before calibration backup.'
+          : 'Multiple authorized ADB devices are connected. Disconnect all but the unit being serviced.'
+      );
+      return;
+    }
+    const destination = await chooseCalibrationBackupDirectory();
+    if (!destination) return;
+
+    setBackupBusy(true);
+    setBackupResult(null);
+    setError(null);
+    try {
+      const result = await backupCalibrationPartition(
+        authorized[0].serial,
+        backupPartition,
+        destination,
+      );
+      setBackupResult(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBackupBusy(false);
+    }
+  };
 
   return (
     <section className="mb-4 rounded-xl border border-orange-900/70 bg-gradient-to-br from-slate-950 via-slate-950 to-orange-950/20 p-5 shadow-2xl shadow-black/20">
@@ -151,11 +196,52 @@ export default function RepairCommandCenter() {
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {allowlist.map((partition) => (
-              <span key={partition} className="rounded border border-cyan-900 bg-black/30 px-2 py-1 font-mono text-[10px] text-cyan-300">
+              <button
+                key={partition}
+                type="button"
+                onClick={() => setBackupPartition(partition)}
+                className={
+                  backupPartition === partition
+                    ? 'rounded border border-cyan-500 bg-cyan-950/50 px-2 py-1 font-mono text-[10px] text-cyan-200'
+                    : 'rounded border border-cyan-900 bg-black/30 px-2 py-1 font-mono text-[10px] text-cyan-400 hover:border-cyan-700'
+                }
+              >
                 {partition}
-              </span>
+              </button>
             ))}
           </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void runCalibrationBackup()}
+              disabled={backupBusy || adbDevices.filter((device) => device.authorized).length !== 1}
+              className="rounded bg-cyan-700 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40 hover:bg-cyan-600"
+            >
+              {backupBusy ? 'Backing up…' : 'Backup ' + backupPartition.toUpperCase()}
+            </button>
+            <span className="text-[10px] text-slate-600">
+              {adbDevices.filter((device) => device.authorized).length === 1
+                ? '1 authorized ADB unit ready for access verification'
+                : 'Requires exactly 1 authorized ADB unit'}
+            </span>
+          </div>
+
+          {backupResult && (
+            <div className="mt-3 rounded border border-emerald-900 bg-emerald-950/20 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-emerald-300">Verified calibration backup</span>
+                <span className="font-mono text-[10px] text-emerald-400">{backupResult.partition}</span>
+              </div>
+              <div className="mt-2 space-y-1 font-mono text-[10px] text-slate-500">
+                <div>bytes: {backupResult.actualBytes} / {backupResult.expectedBytes}</div>
+                <div className="break-all">sha256: {backupResult.sha256}</div>
+                <div className="break-all">image: {backupResult.backupPath}</div>
+                <div className="break-all">manifest: {backupResult.manifestPath}</div>
+                <div>access: {backupResult.accessMode}</div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="rounded-lg border border-violet-900/60 bg-violet-950/10 p-4">
