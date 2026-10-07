@@ -99,6 +99,7 @@ fn block_size(serial: &str, block_path: &str, use_su: bool) -> Result<u64, Strin
         .map_err(|e| format!("invalid block size response: {e}"))
 }
 
+#[tauri::command]
 pub fn backup_calibration_partition(
     adb_serial: String,
     partition: String,
