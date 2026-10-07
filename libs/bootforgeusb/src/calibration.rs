@@ -8,6 +8,9 @@ pub const CALIBRATION_ALLOWLIST: &[&str] = &[
     "fsg",
     "fsc",
     "persist",
+    "nvram",
+    "nvdata",
+    "nvcfg",
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
