@@ -43,7 +43,7 @@ use adb_workflows::{adb_scan, adb_device_info, adb_logcat_snapshot, adb_screensh
 use workflow_capabilities::workflow_capabilities;
 use diagnostics::{diagnose_phone, usb_cable_doctor};
 use workflow_jobs::{workflow_job_start, workflow_job_list, workflow_job_get, workflow_job_retry};
-use calibration_backup_exec::backup_calibration_partition;
+use calibration_backup_exec::{backup_calibration_partition, inspect_calibration_backup};
 use edl_programmer_vault::{edl_inspect_programmer, edl_enroll_programmer, edl_list_programmers};
 
 #[cfg(target_os = "windows")]
@@ -1472,6 +1472,7 @@ fn main() {
             calibration_backup_plan,
             edl_programmer_qualification,
             backup_calibration_partition,
+            inspect_calibration_backup,
             calibration_restore_preflight,
             edl_inspect_programmer,
             edl_enroll_programmer,
