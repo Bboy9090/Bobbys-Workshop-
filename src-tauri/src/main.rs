@@ -446,6 +446,28 @@ fn bootforgeusb_scan() -> Result<Vec<bootforgeusb::model::DeviceRecord>, String>
     bootforgeusb::scan().map_err(|e| format!("USB scan failed: {e}"))
 }
 
+#[tauri::command]
+fn workflow_policy_catalog() -> Vec<bootforgeusb::workflow_catalog::WorkflowPolicy> {
+    bootforgeusb::workflow_catalog::workflow_catalog()
+}
+
+#[tauri::command]
+fn calibration_partition_allowlist() -> Vec<String> {
+    bootforgeusb::calibration::CALIBRATION_ALLOWLIST
+        .iter()
+        .map(|value| value.to_string())
+        .collect()
+}
+
+#[tauri::command]
+fn edl_9008_devices() -> Result<Vec<bootforgeusb::model::DeviceRecord>, String> {
+    let devices = bootforgeusb::scan().map_err(|e| format!("USB scan failed: {e}"))?;
+    Ok(devices
+        .into_iter()
+        .filter(|device| bootforgeusb::edl::is_edl_9008(device.vendor_id, device.product_id))
+        .collect())
+}
+
 #[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config: FlashJobConfig) -> Result<FlashStartResponse, String> {
@@ -1389,6 +1411,9 @@ fn main() {
             get_backend_status,
             get_app_version,
             bootforgeusb_scan,
+            workflow_policy_catalog,
+            calibration_partition_allowlist,
+            edl_9008_devices,
             mtp_status,
             mtp_list_root,
             mtp_download_file,
