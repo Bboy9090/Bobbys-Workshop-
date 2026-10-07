@@ -20,4 +20,4 @@ The workspace exec server was unavailable. Node test runner, file-reading CLI, a
 ## Execution record — 2026-10-07
 Node v24.19.0 executed the actual checked-out validator and test files: 31/31 tests passed. CLI subprocess checks covered valid (0), invalid (1), malformed/unreadable/usage (2) input and non-disclosure of input text and temporary paths. URL regression checks found and corrected an escaped-character-class defect; the validator now uses native URL parsing and rejects whitespace, credentials, invalid ports, and non-HTTPS schemes while accepting normal receipt paths.
 
-Code revision: 718d71a0dd403018d60a9dd8ebd10f1728868b23. This record describes local Node execution; frontend build, repository lint, external receipt authenticity, exclusive leases, and platform runtime connections remain unverified.
+Code and expanded test revision: c63c43da67ff036edbfa57de66a7e90bf6d0547e. This record describes local Node execution; frontend build, repository lint, external receipt authenticity, exclusive leases, and platform runtime connections remain unverified.
