@@ -45,6 +45,9 @@ pub fn validate_block_path(path: &str) -> bool {
     }
     !p.components().any(|c| matches!(c, Component::ParentDir))
         && path.starts_with("/dev/block/")
+        && path.chars().all(|c| {
+            c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '-' | '.' | ':')
+        })
 }
 
 pub fn validate_restore_binding(
