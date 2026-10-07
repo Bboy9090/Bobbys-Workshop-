@@ -622,3 +622,48 @@ const cases = [
 for (const [name, input, expected] of cases) {
   test(name, () => assert.equal(validateCheckpoint(input).valid, expected));
 }
+
+
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const base = cases[0][1];
+for (const [url, expected] of [
+  ['https://example.com/results/success', true],
+  ['https://example.com/a b', false],
+  ['https://example.com:99999/log', false],
+  ['https://example.com/path@revision', true],
+  ['http://example.com/log', false],
+  ['https://user:password@example.com/log', false],
+]) {
+  test('URL contract: ' + url, () => {
+    const evidence = [{ kind: 'test', executor: 'node', result: 'pass', revision: base.source.revision, url }];
+    assert.equal(validateCheckpoint({ ...base, state: 'tested', evidence }).valid, expected);
+  });
+}
+
+test('CLI valid, invalid, malformed, missing file, and usage exits', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'checkpoint-test-'));
+  try {
+    const cli = path.join(__dirname, 'validate-checkpoint.cjs');
+    const run = args => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+    const file = path.join(directory, 'input.json');
+    fs.writeFileSync(file, JSON.stringify(base));
+    const valid = run([file]);
+    assert.equal(valid.status, 0);
+    assert.equal(JSON.parse(valid.stdout).valid, true);
+    fs.writeFileSync(file, '{}');
+    const invalid = run([file]);
+    assert.equal(invalid.status, 1);
+    assert.equal(JSON.parse(invalid.stdout).valid, false);
+    fs.writeFileSync(file, '{private-input');
+    const malformed = run([file]);
+    assert.equal(malformed.status, 2);
+    assert.equal(malformed.stderr.includes('private-input'), false);
+    assert.equal(malformed.stderr.includes(directory), false);
+    assert.equal(run([path.join(directory, 'absent')]).status, 2);
+    assert.equal(run([]).status, 2);
+    assert.equal(run([file, file]).status, 2);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
