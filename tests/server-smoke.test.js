@@ -23,8 +23,13 @@ describe('Packaged server smoke contracts', () => {
   ]) it(name + ' fails closed', async () => {
     const response = await fetch(base + '/api/v1/fastboot/' + route, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await response.json();
-    expect([400, 503]).toContain(response.status); expect(data.ok).toBe(false);
-    expect(['VALIDATION_ERROR', 'TOOL_NOT_AVAILABLE']).toContain(data.error.code);
+    expect(data.ok).toBe(false);
+    const expectedErrors = {
+      'unlock missing confirmation': ['503:TOOL_NOT_AVAILABLE', '403:POLICY_BLOCKED', '400:CONFIRMATION_REQUIRED'],
+      'unlock missing serial': ['503:TOOL_NOT_AVAILABLE', '400:VALIDATION_ERROR'],
+      'erase missing confirmation': ['503:TOOL_NOT_AVAILABLE', '400:CONFIRMATION_REQUIRED'],
+    };
+    expect(expectedErrors[name]).toContain(`${response.status}:${data.error.code}`);
   });
   it('actual lock manager denies a second owner and releases deterministically', () => {
     const serial = 'contract-lock-test';
