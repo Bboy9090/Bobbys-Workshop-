@@ -16,7 +16,7 @@
     "format:md:check": "npx -y prettier@3.3.3 --check \"**/*.md\" --ignore-path .gitignore",
     "optimize": "vite optimize",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "node scripts/test-repository.cjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:smoke": "vitest run tests/server-smoke.test.js",

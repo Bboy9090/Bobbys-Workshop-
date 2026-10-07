@@ -314,6 +314,10 @@ router.post('/batch/execute', requireAdmin, async (req, res) => {
       });
     }
 
+    if (commands.length === 0 || commands.length > 10) {
+      return res.status(400).json({ error: 'Batch limit: require 1 to 10 commands' });
+    }
+
     if (!deviceSerial) {
       return res.status(400).json({
         error: 'Device serial required'
