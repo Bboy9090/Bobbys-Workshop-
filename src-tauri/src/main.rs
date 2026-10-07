@@ -522,6 +522,13 @@ fn calibration_restore_preflight(
     )
 }
 
+#[tauri::command]
+fn hardware_service_profile_validate(
+    profile: bootforgeusb::hardware_service::HardwareServiceProfile,
+) -> bootforgeusb::hardware_service::HardwareServiceValidation {
+    bootforgeusb::hardware_service::validate_profile(&profile)
+}
+
 #[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config: FlashJobConfig) -> Result<FlashStartResponse, String> {
@@ -1477,6 +1484,7 @@ fn main() {
             edl_inspect_programmer,
             edl_enroll_programmer,
             edl_list_programmers,
+            hardware_service_profile_validate,
             mtp_status,
             mtp_list_root,
             mtp_download_file,
