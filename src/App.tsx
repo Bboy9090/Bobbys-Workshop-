@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import RepairCommandCenter from './components/RepairCommandCenter';
 import {
   chooseDownloadDestination,
   chooseUploadSource,
@@ -471,6 +472,8 @@ export default function App() {
               </div>
             </div>
           )}
+
+          <RepairCommandCenter />
 
           <section className="mb-4 rounded-lg border border-cyan-900/70 bg-cyan-950/10 p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
