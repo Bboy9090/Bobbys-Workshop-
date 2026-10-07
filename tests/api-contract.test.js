@@ -129,18 +129,19 @@ describe('API Contract Tests', () => {
         }
     });
 
-    it('unavailable Fastboot fails closed with an error envelope', async () => {
+    it('invalid Fastboot requests fail closed with an error envelope', async () => {
         const response = await fetch(`${API_V1_URL}/fastboot/unlock`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({})
         });
-        expect(response.status).toBe(503);
-        if (response.status === 503) {
+        expect([400, 503]).toContain(response.status);
+        {
+
           const data = await response.json();
           expect(data).toHaveProperty('ok', false);
           expect(data).toHaveProperty('error');
-          expect(data.error).toHaveProperty('code');
+          expect(data.error.code).toBe(response.status === 503 ? 'TOOL_NOT_AVAILABLE' : 'VALIDATION_ERROR');
           expect(data.meta).toHaveProperty('apiVersion', 'v1');
         }
     });
