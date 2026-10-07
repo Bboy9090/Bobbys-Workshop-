@@ -33,7 +33,7 @@ async function main() {
   process.once('SIGTERM', stop);
   try {
     let ready = false;
-    for (let attempt = 0; attempt < 100; attempt++) {
+    for (let attempt = 0; attempt < 600; attempt++) {
       if (server.exitCode !== null) break;
       try {
         const response = await fetch(base + '/api/v1/health', { signal: AbortSignal.timeout(500) });
