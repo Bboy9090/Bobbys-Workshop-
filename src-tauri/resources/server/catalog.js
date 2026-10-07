@@ -19,7 +19,10 @@ const __dirname = path.dirname(__filename);
 const router = express.Router();
 
 // Paths to manifest files
-const RUNTIME_DIR = path.join(__dirname, '..', 'runtime', 'manifests');
+const adjacentRuntime = path.join(__dirname, '..', 'runtime', 'manifests');
+const RUNTIME_DIR = fs.existsSync(adjacentRuntime)
+  ? adjacentRuntime
+  : path.join(__dirname, 'runtime', 'manifests');
 const TOOLS_MANIFEST = path.join(RUNTIME_DIR, 'tools.json');
 const POLICIES_MANIFEST = path.join(RUNTIME_DIR, 'policies.json');
 const WORKFLOWS_MANIFEST = path.join(RUNTIME_DIR, 'workflows.json');

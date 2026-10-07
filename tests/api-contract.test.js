@@ -51,7 +51,6 @@ describe('API Contract Tests', () => {
     });
 
     it('GET /api/v1/adb/devices returns valid envelope', async () => {
-      try {
         const response = await fetch(`${API_V1_URL}/adb/devices`);
         const data = await response.json();
         
@@ -68,14 +67,9 @@ describe('API Contract Tests', () => {
           expect(data).toHaveProperty('error');
           expect(data.error).toHaveProperty('code');
         }
-      } catch (error) {
-        // Network errors are OK in test environment
-        console.warn('ADB devices test skipped (server not available)');
-      }
     });
 
     it('GET /api/v1/fastboot/devices returns valid envelope', async () => {
-      try {
         const response = await fetch(`${API_V1_URL}/fastboot/devices`);
         const data = await response.json();
         
@@ -90,21 +84,18 @@ describe('API Contract Tests', () => {
         } else {
           expect(data).toHaveProperty('error');
         }
-      } catch (error) {
-        // Network errors are OK in test environment
-        console.warn('Fastboot devices test skipped (server not available)');
-      }
     });
   });
 
   describe('Route Mounts', () => {
     it('GET /api/v1/routes (dev-only) lists mounted routes', async () => {
-      try {
         const response = await fetch(`${API_V1_URL}/routes`, {
           headers: { 'X-Dev-Routes': '1' }
         });
         const data = await response.json();
         
+        expect(response.status).toBe(200);
+        expect(data.ok).toBe(true);
         if (response.status === 200 && data.ok) {
           expect(data.data).toHaveProperty('routes');
           expect(Array.isArray(data.data.routes)).toBe(true);
@@ -120,17 +111,13 @@ describe('API Contract Tests', () => {
           expect(routePaths.some(path => path.includes('/bootforgeusb'))).toBe(true);
           expect(routePaths.some(path => path.includes('/authorization'))).toBe(true);
         }
-      } catch (error) {
-       // Route registry might not be available in production, that's OK
-        console.warn('Route registry test skipped (server not available or not in dev mode)');
-      }
     });
   });
 
   describe('Error Envelope Format', () => {
     it('404 responses use error envelope format', async () => {
-      try {
         const response = await fetch(`${API_V1_URL}/nonexistent`);
+        expect(response.status).toBe(404);
         if (response.status === 404) {
           const data = await response.json();
           expect(data).toHaveProperty('ok', false);
@@ -140,30 +127,22 @@ describe('API Contract Tests', () => {
           expect(data).toHaveProperty('meta');
           expect(data.meta).toHaveProperty('apiVersion', 'v1');
         }
-      } catch (error) {
-        // Network errors are OK in test environment
-        console.warn('404 test skipped (server not available)');
-      }
     });
 
-    it('400 validation errors use error envelope format', async () => {
-      try {
+    it('unavailable Fastboot fails closed with an error envelope', async () => {
         const response = await fetch(`${API_V1_URL}/fastboot/unlock`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({})
         });
-        if (response.status === 400) {
+        expect(response.status).toBe(503);
+        if (response.status === 503) {
           const data = await response.json();
           expect(data).toHaveProperty('ok', false);
           expect(data).toHaveProperty('error');
           expect(data.error).toHaveProperty('code');
           expect(data.meta).toHaveProperty('apiVersion', 'v1');
         }
-      } catch (error) {
-        // Network errors are OK in test environment
-        console.warn('400 validation test skipped (server not available)');
-      }
     });
   });
 });
