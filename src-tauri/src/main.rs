@@ -30,6 +30,7 @@ mod adb_workflows;
 mod workflow_capabilities;
 mod diagnostics;
 mod workflow_jobs;
+mod calibration_backup_exec;
 #[cfg(feature = "legacy-backends")]
 use python_backend::{launch_python_backend, shutdown_python_backend};
 #[cfg(feature = "legacy-backends")]
@@ -41,6 +42,7 @@ use adb_workflows::{adb_scan, adb_device_info, adb_logcat_snapshot, adb_screensh
 use workflow_capabilities::workflow_capabilities;
 use diagnostics::{diagnose_phone, usb_cable_doctor};
 use workflow_jobs::{workflow_job_start, workflow_job_list, workflow_job_get, workflow_job_retry};
+use calibration_backup_exec::backup_calibration_partition;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -499,6 +501,23 @@ fn edl_programmer_qualification(
     qualification: bootforgeusb::edl::EdlProgrammerQualification,
 ) -> Result<(), String> {
     bootforgeusb::edl::programmer_upload_permitted(&qualification)
+}
+
+#[tauri::command]
+fn calibration_restore_preflight(
+    manifest: bootforgeusb::calibration::CalibrationBackupManifest,
+    current_device_uid: String,
+    partition: String,
+    actual_bytes: u64,
+    actual_sha256: String,
+) -> Result<(), String> {
+    bootforgeusb::calibration::validate_restore_binding(
+        &manifest,
+        &current_device_uid,
+        &partition,
+        actual_bytes,
+        &actual_sha256,
+    )
 }
 
 #[cfg(feature = "qualified-flash")]
@@ -1450,6 +1469,8 @@ fn main() {
             firmware_target_preflight,
             calibration_backup_plan,
             edl_programmer_qualification,
+            backup_calibration_partition,
+            calibration_restore_preflight,
             mtp_status,
             mtp_list_root,
             mtp_download_file,
