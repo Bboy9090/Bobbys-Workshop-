@@ -16,6 +16,7 @@ beforeAll(async () => {
   process.env.PANDORA_ROOM_PASSWORD = ADMIN_KEY;
   process.env.SECRET_ROOM_PASSCODE = ADMIN_KEY;
   process.env.TRAPDOOR_PASSCODE = ADMIN_KEY;
+  process.env.ADMIN_API_KEY = ADMIN_KEY;
   process.env.SHADOW_LOG_KEY = 'deadbeef'.repeat(8); // 32 bytes for AES-256
   
   // Create test server
@@ -51,14 +52,14 @@ describe('Trapdoor API Tests', () => {
 
     it('should reject requests with invalid password', async () => {
       const response = await fetch(`${API_BASE}/workflows`, {
-        headers: { 'x-secret-room-passcode': 'invalid-password' }
+        headers: { 'x-api-key': 'invalid-password' }
       });
       assert.strictEqual(response.status, 403);
     });
 
     it('should accept requests with valid password', async () => {
       const response = await fetch(`${API_BASE}/workflows`, {
-        headers: { 'x-secret-room-passcode': ADMIN_KEY }
+        headers: { 'x-api-key': ADMIN_KEY }
       });
       assert.ok(response.status === 200);
     });
@@ -67,7 +68,7 @@ describe('Trapdoor API Tests', () => {
   describe('Workflow Execution', () => {
     it('should list available workflows', async () => {
       const response = await fetch(`${API_BASE}/workflows`, {
-        headers: { 'x-secret-room-passcode': ADMIN_KEY }
+        headers: { 'x-api-key': ADMIN_KEY }
       });
       
       assert.strictEqual(response.status, 200);
@@ -80,7 +81,7 @@ describe('Trapdoor API Tests', () => {
       const response = await fetch(`${API_BASE}/workflow/execute`, {
         method: 'POST',
         headers: {
-          'x-secret-room-passcode': ADMIN_KEY,
+          'x-api-key': ADMIN_KEY,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -100,7 +101,7 @@ describe('Trapdoor API Tests', () => {
       const response = await fetch(`${API_BASE}/batch/execute`, {
         method: 'POST',
         headers: {
-          'x-secret-room-passcode': ADMIN_KEY,
+          'x-api-key': ADMIN_KEY,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -121,7 +122,7 @@ describe('Trapdoor API Tests', () => {
       const response = await fetch(`${API_BASE}/batch/execute`, {
         method: 'POST',
         headers: {
-          'x-secret-room-passcode': ADMIN_KEY,
+          'x-api-key': ADMIN_KEY,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ workflows })
@@ -136,7 +137,7 @@ describe('Trapdoor API Tests', () => {
   describe('Monitoring', () => {
     it('should return monitoring statistics', async () => {
       const response = await fetch(`${API_BASE}/monitoring/stats`, {
-        headers: { 'x-secret-room-passcode': ADMIN_KEY }
+        headers: { 'x-api-key': ADMIN_KEY }
       });
 
       assert.strictEqual(response.status, 200);
@@ -152,7 +153,7 @@ describe('Trapdoor API Tests', () => {
     it('should retrieve shadow logs', async () => {
       const today = new Date().toISOString().split('T')[0];
       const response = await fetch(`${API_BASE}/logs/shadow?date=${today}`, {
-        headers: { 'x-secret-room-passcode': ADMIN_KEY }
+        headers: { 'x-api-key': ADMIN_KEY }
       });
 
       // May not have logs yet, but should not error
@@ -162,7 +163,7 @@ describe('Trapdoor API Tests', () => {
     it('should allow log cleanup', async () => {
       const response = await fetch(`${API_BASE}/logs/cleanup`, {
         method: 'POST',
-        headers: { 'x-secret-room-passcode': ADMIN_KEY }
+        headers: { 'x-api-key': ADMIN_KEY }
       });
 
       assert.strictEqual(response.status, 200);
@@ -181,7 +182,7 @@ describe('Trapdoor API Tests', () => {
       for (let i = 0; i < 35; i++) {
         requests.push(
           fetch(`${API_BASE}/workflows`, {
-            headers: { 'x-secret-room-passcode': ADMIN_KEY }
+            headers: { 'x-api-key': ADMIN_KEY }
           })
         );
       }

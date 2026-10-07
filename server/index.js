@@ -158,6 +158,28 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+const apiV1Envelope = (data) => ({
+  ok: true,
+  data,
+  meta: {
+    ts: new Date().toISOString(),
+    correlationId: `health-${Date.now()}`,
+    apiVersion: 'v1'
+  }
+});
+
+app.get('/api/v1/health', (req, res) => {
+  res.status(200).json(apiV1Envelope({ status: 'ok' }));
+});
+
+app.get('/api/v1/ready', (req, res) => {
+  res.status(200).json(apiV1Envelope({
+    serverVersion: '0.1.0',
+    apiVersion: 'v1',
+    featureFlags: {}
+  }));
+});
+
 app.get('/api/system-tools', (req, res) => {
   const rustVersion = safeExec("rustc --version");
   const cargoVersion = safeExec("cargo --version");

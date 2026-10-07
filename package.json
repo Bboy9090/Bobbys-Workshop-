@@ -21,8 +21,8 @@
     "test:integration": "vitest run tests/integration",
     "test:e2e": "vitest run tests/e2e",
     "test:workflows": "node scripts/test-workflows.js",
-    "test:trapdoor": "node tests/trapdoor-api.test.js",
-    "test:workflow": "node tests/workflow-system.test.js",
+    "test:trapdoor": "vitest run tests/trapdoor-api.test.js",
+    "test:workflow": "vitest run tests/workflow-system.test.js",
     "test:all": "npm run test && npm run test:workflow && npm run test:trapdoor",
     "check:rust": "node scripts/check-rust.js",
     "check:android-tools": "node scripts/check-android-tools.js",
@@ -125,15 +125,19 @@
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react-swc": "^4.2.2",
     "@vitest/coverage-v8": "^5.0.3",
+    "cors": "^2.8.6",
     "eslint": "^9.39.2",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
+    "express": "^4.22.3",
     "globals": "^17.0.0",
+    "multer": "^1.4.5-lts.2",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.52.0",
     "vite": "^7.3.7",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "ws": "^8.22.0"
   },
   "workspaces": {
     "packages": [
