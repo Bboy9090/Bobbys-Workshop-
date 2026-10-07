@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "project": "Bobby’s Workshop",
+  "task": "Repair full test suite and hand off platform verification",
+  "owner": "Codex",
+  "timestamp": "2026-10-07T17:30:00Z",
+  "source": {
+    "repository": "https://github.com/Bboy9090/Bobbys-Workshop-",
+    "branch": "repair/workshop-test-contracts-20261007",
+    "revision": "a2de579fe2017fbbc3880569700218d23a384a88"
+  },
+  "state": "tested",
+  "blockers": [
+    "Windows Git is unavailable in the selected PowerShell PATH; cross-platform repository execution remains unverified."
+  ],
+  "dependencies": [
+    "PR #195 repair remains unmerged; PR #193 coordination remains separate."
+  ],
+  "nextAction": "Resolve the existing Windows Git installation and validate an actual checkpoint on both verified terminal executors.",
+  "evidence": [
+    {
+      "kind": "test",
+      "executor": "GitHub Actions / Node.js CI",
+      "revision": "a2de579fe2017fbbc3880569700218d23a384a88",
+      "url": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/37659263260",
+      "result": "pass"
+    }
+  ]
+}

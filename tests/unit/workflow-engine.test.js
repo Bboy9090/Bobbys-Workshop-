@@ -1,28 +1,10 @@
-// Unit tests for Workflow Engine
-import { describe, it, expect } from 'vitest';
-
-describe('Workflow Engine', () => {
-  it('should load workflow from JSON file', () => {
-    expect(true).toBe(true);
-  });
-
-  it('should list available workflows', () => {
-    expect(true).toBe(true);
-  });
-
-  it('should execute workflow steps in sequence', () => {
-    expect(true).toBe(true);
-  });
-
-  it('should handle step failures correctly', () => {
-    expect(true).toBe(true);
-  });
-
-  it('should require authorization for sensitive workflows', () => {
-    expect(true).toBe(true);
-  });
-
-  it('should log workflow execution to shadow logs', () => {
-    expect(true).toBe(true);
-  });
-});
+import { it, expect } from 'vitest';
+import { WorkflowEngine } from '../../core/tasks/workflow-engine.js';
+const logger = { logPublic: async () => ({success:true}), logShadow: async () => ({success:true}) };
+const engine = new WorkflowEngine({ shadowLogger: logger });
+it('loads the real diagnostics workflow', async () => { const result=await engine.loadWorkflow('android','adb-diagnostics'); expect(result.success).toBe(true); expect(result.workflow.steps.length).toBeGreaterThan(0); });
+it('reports a missing workflow', async () => { expect((await engine.loadWorkflow('android','not-a-real-workflow')).success).toBe(false); });
+it('lists actual workflows', async () => { const result=await engine.listWorkflows(); expect(result.success).toBe(true); expect(result.workflows.length).toBeGreaterThan(0); });
+it('loads and compiles the actual schema', async () => { await engine.loadValidationSchema(); expect(engine.validator).toBeTypeOf('function'); });
+it('rejects incomplete workflow objects after schema load', async () => { await engine.loadValidationSchema(); expect(engine.validateWorkflow({}).valid).toBe(false); });
+it('validates the actual loaded workflow', async () => { await engine.loadValidationSchema(); const result=await engine.loadWorkflow('android','adb-diagnostics'); expect(engine.validateWorkflow(result.workflow).valid).toBe(true); });
