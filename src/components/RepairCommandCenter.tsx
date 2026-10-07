@@ -6,8 +6,13 @@ import {
   scanAdbDevices,
   chooseCalibrationBackupDirectory,
   backupCalibrationPartition,
+  chooseEdlProgrammer,
+  inspectEdlProgrammer,
+  enrollEdlProgrammer,
+  listEdlProgrammers,
   type AdbDeviceRecord,
   type CalibrationBackupResult,
+  type EdlProgrammerRecord,
   type UsbDeviceRecord,
   type WorkflowPolicy,
   type WorkflowRiskLevel,
@@ -51,6 +56,12 @@ export default function RepairCommandCenter() {
   const [backupPartition, setBackupPartition] = useState('efs');
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupResult, setBackupResult] = useState<CalibrationBackupResult | null>(null);
+  const [edlProgrammers, setEdlProgrammers] = useState<EdlProgrammerRecord[]>([]);
+  const [inspectedProgrammer, setInspectedProgrammer] = useState<EdlProgrammerRecord | null>(null);
+  const [edlDeviceFamily, setEdlDeviceFamily] = useState('');
+  const [edlAuthSource, setEdlAuthSource] = useState('');
+  const [edlConfirm, setEdlConfirm] = useState('');
+  const [edlBusy, setEdlBusy] = useState(false);
 
   const active = useMemo(() => catalog.filter((item) => item.activeInBobfwtools), [catalog]);
   const reserved = useMemo(() => catalog.filter((item) => !item.activeInBobfwtools), [catalog]);
@@ -59,17 +70,19 @@ export default function RepairCommandCenter() {
     let cancelled = false;
     const load = async () => {
       try {
-        const [policies, partitions, edl, adb] = await Promise.all([
+        const [policies, partitions, edl, adb, programmers] = await Promise.all([
           getWorkflowPolicyCatalog(),
           getCalibrationPartitionAllowlist(),
           getEdl9008Devices(),
           scanAdbDevices(),
+          listEdlProgrammers(),
         ]);
         if (cancelled) return;
         setCatalog(policies);
         setAllowlist(partitions);
         setEdlDevices(edl);
         setAdbDevices(adb);
+        setEdlProgrammers(programmers);
         if (partitions.length && !partitions.includes(backupPartition)) {
           setBackupPartition(partitions[0]);
         }
@@ -84,6 +97,42 @@ export default function RepairCommandCenter() {
       window.clearInterval(id);
     };
   }, []);
+
+  const inspectProgrammer = async () => {
+    if (edlBusy) return;
+    const path = await chooseEdlProgrammer();
+    if (!path) return;
+    setEdlBusy(true);
+    setError(null);
+    try {
+      const record = await inspectEdlProgrammer(path, edlDeviceFamily.trim() || null);
+      setInspectedProgrammer(record);
+      setEdlConfirm('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEdlBusy(false);
+    }
+  };
+
+  const enrollProgrammer = async () => {
+    if (edlBusy || !inspectedProgrammer) return;
+    setEdlBusy(true);
+    setError(null);
+    try {
+      const enrolled = await enrollEdlProgrammer(
+        inspectedProgrammer,
+        edlAuthSource,
+        edlConfirm,
+      );
+      setInspectedProgrammer(enrolled);
+      setEdlProgrammers(await listEdlProgrammers());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEdlBusy(false);
+    }
+  };
 
   const runCalibrationBackup = async () => {
     if (backupBusy) return;
@@ -184,6 +233,105 @@ export default function RepairCommandCenter() {
             </div>
           </article>
         ))}
+      </div>
+
+      <div className="mt-4 rounded-lg border border-amber-900/60 bg-amber-950/10 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-400">Qualcomm EDL loader vault</div>
+            <div className="mt-1 text-sm font-medium text-white">Inspect first. Enroll authorization second. Execute later.</div>
+            <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-400">
+              Firehose programmers are hashed and rechecked on every load. Selection does not make a loader executable;
+              only an enrolled OEM/service-authorized record can ever become eligible for a future qualified executor.
+            </p>
+          </div>
+          <span className={edlDevices.length ? 'rounded bg-emerald-950 px-2 py-1 text-[10px] text-emerald-300' : 'rounded bg-slate-900 px-2 py-1 text-[10px] text-slate-500'}>
+            {edlDevices.length ? '9008 hardware live' : 'no 9008 hardware'}
+          </span>
+        </div>
+
+        <div className="mt-3 grid gap-2 lg:grid-cols-[1fr_auto]">
+          <input
+            value={edlDeviceFamily}
+            onChange={(event) => setEdlDeviceFamily(event.target.value)}
+            placeholder="Device family / platform target (optional)"
+            className="rounded border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-amber-700"
+          />
+          <button
+            type="button"
+            onClick={() => void inspectProgrammer()}
+            disabled={edlBusy}
+            className="rounded bg-amber-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 hover:bg-amber-600"
+          >
+            {edlBusy ? 'Inspecting…' : 'Inspect programmer'}
+          </button>
+        </div>
+
+        {inspectedProgrammer && (
+          <div className="mt-3 rounded border border-slate-800 bg-slate-950/70 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-mono text-xs text-white">
+                {inspectedProgrammer.path.split(/[\\/]/).pop() || inspectedProgrammer.path}
+              </span>
+              <span className={inspectedProgrammer.authorized ? 'rounded bg-emerald-950 px-2 py-1 text-[10px] text-emerald-300' : 'rounded bg-amber-950 px-2 py-1 text-[10px] text-amber-300'}>
+                {inspectedProgrammer.authorized ? 'authorized enrollment' : 'inspection only'}
+              </span>
+            </div>
+            <div className="mt-2 break-all font-mono text-[10px] text-slate-500">
+              sha256: {inspectedProgrammer.sha256}
+            </div>
+            <div className="mt-1 text-[10px] text-slate-600">
+              bytes: {inspectedProgrammer.bytes} · family: {inspectedProgrammer.deviceFamily || 'unbound'}
+            </div>
+
+            {!inspectedProgrammer.authorized && (
+              <div className="mt-3 grid gap-2 xl:grid-cols-2">
+                <input
+                  value={edlAuthSource}
+                  onChange={(event) => setEdlAuthSource(event.target.value)}
+                  placeholder="OEM/service authorization source"
+                  className="rounded border border-slate-800 bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-amber-700"
+                />
+                <input
+                  value={edlConfirm}
+                  onChange={(event) => setEdlConfirm(event.target.value)}
+                  placeholder="Type: I CONFIRM OEM OR SERVICE AUTHORIZATION"
+                  className="rounded border border-slate-800 bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-amber-700"
+                />
+                <button
+                  type="button"
+                  onClick={() => void enrollProgrammer()}
+                  disabled={edlBusy || edlConfirm !== 'I CONFIRM OEM OR SERVICE AUTHORIZATION'}
+                  className="rounded border border-amber-700 px-3 py-2 text-xs font-semibold text-amber-200 disabled:opacity-30 hover:bg-amber-950/40 xl:col-span-2"
+                >
+                  Enroll authorized programmer
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {edlProgrammers.length > 0 && (
+          <div className="mt-3">
+            <div className="text-[10px] uppercase tracking-wide text-slate-600">Enrolled vault</div>
+            <div className="mt-2 grid gap-2 lg:grid-cols-2">
+              {edlProgrammers.map((record) => (
+                <div key={record.sha256} className="rounded border border-slate-800 bg-black/20 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-mono text-[11px] text-slate-300">
+                      {record.path.split(/[\\/]/).pop() || record.path}
+                    </span>
+                    <span className={record.authorized ? 'text-[10px] text-emerald-300' : 'text-[10px] text-red-300'}>
+                      {record.authorized ? 'active' : 'suspended'}
+                    </span>
+                  </div>
+                  <div className="mt-1 truncate font-mono text-[9px] text-slate-600">{record.sha256}</div>
+                  <div className="mt-1 text-[10px] text-slate-600">{record.deviceFamily || 'unbound family'}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
