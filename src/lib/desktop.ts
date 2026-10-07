@@ -454,3 +454,40 @@ export async function getEdl9008Devices(): Promise<UsbDeviceRecord[]> {
   if (!isTauriRuntime()) return [];
   return invoke<UsbDeviceRecord[]>('edl_9008_devices');
 }
+
+
+export type CalibrationBackupResult = {
+  deviceUid: string;
+  adbSerial: string;
+  partition: string;
+  resolvedBlockPath: string;
+  backupPath: string;
+  manifestPath: string;
+  expectedBytes: number;
+  actualBytes: number;
+  sha256: string;
+  verified: boolean;
+  accessMode: string;
+};
+
+export async function chooseCalibrationBackupDirectory(): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: true,
+    title: 'Choose calibration backup folder',
+  });
+  return typeof selected === 'string' ? selected : null;
+}
+
+export async function backupCalibrationPartition(
+  adbSerial: string,
+  partition: string,
+  destinationDir: string,
+): Promise<CalibrationBackupResult> {
+  return invoke<CalibrationBackupResult>('backup_calibration_partition', {
+    adbSerial,
+    partition,
+    destinationDir,
+  });
+}
