@@ -491,3 +491,52 @@ export async function backupCalibrationPartition(
     destinationDir,
   });
 }
+
+
+export type EdlProgrammerRecord = {
+  path: string;
+  sha256: string;
+  bytes: number;
+  deviceFamily?: string | null;
+  authorized: boolean;
+  authorizationSource?: string | null;
+  enrolledAtUnixMs?: number | null;
+};
+
+export async function chooseEdlProgrammer(): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: 'Choose OEM/service Firehose programmer',
+    filters: [{ name: 'EDL programmer', extensions: ['elf', 'mbn'] }],
+  });
+  return typeof selected === 'string' ? selected : null;
+}
+
+export async function inspectEdlProgrammer(
+  path: string,
+  deviceFamily?: string | null,
+): Promise<EdlProgrammerRecord> {
+  return invoke<EdlProgrammerRecord>('edl_inspect_programmer', {
+    path,
+    deviceFamily: deviceFamily ?? null,
+  });
+}
+
+export async function enrollEdlProgrammer(
+  record: EdlProgrammerRecord,
+  authorizationSource: string,
+  confirmation: string,
+): Promise<EdlProgrammerRecord> {
+  return invoke<EdlProgrammerRecord>('edl_enroll_programmer', {
+    record,
+    authorizationSource,
+    confirmation,
+  });
+}
+
+export async function listEdlProgrammers(): Promise<EdlProgrammerRecord[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<EdlProgrammerRecord[]>('edl_list_programmers');
+}
