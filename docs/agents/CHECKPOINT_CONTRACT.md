@@ -16,3 +16,8 @@ CLI exits: 0 valid, 1 invalid contract, 2 unreadable/malformed input or usage er
 The exact validator function and 24 checked-in test inputs were evaluated in the functions V8 executor: 24 passed. Coverage includes null input, owner/revision/date/state/blocker failures, five state-specific successful receipts, mismatched revisions, failed receipts, and credential-bearing URLs.
 
 The workspace exec server was unavailable. Node test runner, file-reading CLI, application build, and repository lint were NOT RUN. PR remains draft pending those checks. This is checkpoint validation, not cross-platform runtime coordination.
+
+## Execution record — 2026-10-07
+Node v24.19.0 executed the actual checked-out validator and test files: 31/31 tests passed. CLI subprocess checks covered valid (0), invalid (1), malformed/unreadable/usage (2) input and non-disclosure of input text and temporary paths. URL regression checks found and corrected an escaped-character-class defect; the validator now uses native URL parsing and rejects whitespace, credentials, invalid ports, and non-HTTPS schemes while accepting normal receipt paths.
+
+Code revision: 718d71a0dd403018d60a9dd8ebd10f1728868b23. This record describes local Node execution; frontend build, repository lint, external receipt authenticity, exclusive leases, and platform runtime connections remain unverified.
