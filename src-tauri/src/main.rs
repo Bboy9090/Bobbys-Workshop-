@@ -468,6 +468,39 @@ fn edl_9008_devices() -> Result<Vec<bootforgeusb::model::DeviceRecord>, String> 
         .collect())
 }
 
+#[tauri::command]
+fn firmware_target_preflight(
+    device: bootforgeusb::preflight::DeviceFirmwareIdentity,
+    firmware: bootforgeusb::preflight::FirmwareTargetIdentity,
+    destructive: bool,
+) -> bootforgeusb::preflight::PreflightResult {
+    bootforgeusb::preflight::validate_target_match(&device, &firmware, destructive)
+}
+
+#[tauri::command]
+fn calibration_backup_plan(
+    device_uid: String,
+    authorized: bool,
+    root_or_service_access_verified: bool,
+    dry_run: bool,
+    partitions: Vec<bootforgeusb::calibration::CalibrationPartition>,
+) -> bootforgeusb::calibration_backup::CalibrationBackupPlan {
+    bootforgeusb::calibration_backup::build_backup_plan(
+        device_uid,
+        authorized,
+        root_or_service_access_verified,
+        dry_run,
+        partitions,
+    )
+}
+
+#[tauri::command]
+fn edl_programmer_qualification(
+    qualification: bootforgeusb::edl::EdlProgrammerQualification,
+) -> Result<(), String> {
+    bootforgeusb::edl::programmer_upload_permitted(&qualification)
+}
+
 #[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config: FlashJobConfig) -> Result<FlashStartResponse, String> {
@@ -1414,6 +1447,9 @@ fn main() {
             workflow_policy_catalog,
             calibration_partition_allowlist,
             edl_9008_devices,
+            firmware_target_preflight,
+            calibration_backup_plan,
+            edl_programmer_qualification,
             mtp_status,
             mtp_list_root,
             mtp_download_file,
