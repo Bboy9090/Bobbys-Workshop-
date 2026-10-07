@@ -420,3 +420,37 @@ export type CableDoctorReport = {
 export async function runUsbCableDoctor(): Promise<CableDoctorReport> {
   return invoke<CableDoctorReport>('usb_cable_doctor');
 }
+
+
+export type WorkflowRiskLevel = 'read-only' | 'low' | 'elevated' | 'destructive' | 'restricted';
+
+export type WorkflowPolicy = {
+  id: string;
+  category: string;
+  platform: string;
+  risk: WorkflowRiskLevel;
+  authorizationRequired: boolean;
+  deviceIdentityVerification: boolean;
+  dryRunSupported: boolean;
+  backupOrRollbackRequired: boolean;
+  auditLoggingRequired: boolean;
+  explicitConfirmationRequired: boolean;
+  physicallyQualified: boolean;
+  activeInBobfwtools: boolean;
+  notes: string;
+};
+
+export async function getWorkflowPolicyCatalog(): Promise<WorkflowPolicy[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<WorkflowPolicy[]>('workflow_policy_catalog');
+}
+
+export async function getCalibrationPartitionAllowlist(): Promise<string[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<string[]>('calibration_partition_allowlist');
+}
+
+export async function getEdl9008Devices(): Promise<UsbDeviceRecord[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<UsbDeviceRecord[]>('edl_9008_devices');
+}
