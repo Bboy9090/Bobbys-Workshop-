@@ -1,6 +1,9 @@
 pub mod calibration;
+pub mod calibration_backup;
 pub mod edl;
 pub mod model;
+pub mod preflight;
+pub mod telemetry;
 pub mod workflow_catalog;
 
 use model::DeviceRecord;
