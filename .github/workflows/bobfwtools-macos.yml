@@ -62,11 +62,16 @@ jobs:
         run: |
           APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
           find "$APP" -maxdepth 3 -type f -print
-          if codesign -dv "$APP" >/dev/null 2>&1; then
-            echo "CI app unexpectedly carries a signature; inspect release-signing policy."
+          SIGNATURE_DETAILS="$(codesign -dv --verbose=4 "$APP" 2>&1 || true)"
+          if printf '%s\n' "$SIGNATURE_DETAILS" | grep -q '^Authority='; then
+            echo "CI app unexpectedly carries an identity-backed signature; inspect release-signing policy."
             exit 1
           fi
-          echo "Unsigned CI artifact confirmed. Signing/notarization is a separate release gate."
+          if printf '%s\n' "$SIGNATURE_DETAILS" | grep -q '^Signature=adhoc'; then
+            echo "Ad-hoc CI signature confirmed. Signing/notarization remains a separate release gate."
+          else
+            echo "Unsigned CI artifact confirmed. Signing/notarization remains a separate release gate."
+          fi
 
       - name: Upload BobFWTools app artifact
         uses: actions/upload-artifact@v4

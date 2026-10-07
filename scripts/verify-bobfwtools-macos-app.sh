@@ -37,9 +37,12 @@ if find "$APP_PATH" -type f -path '*/server/*' -print -quit | grep -q .; then
 fi
 
 SIGNING="unsigned"
-if codesign -dv "$APP_PATH" >/dev/null 2>&1; then
-  codesign --verify --deep --strict "$APP_PATH" >/dev/null 2>&1 || fail "codesign verification failed"
+SIGNATURE_DETAILS="$(codesign -dv --verbose=4 "$APP_PATH" 2>&1 || true)"
+if printf '%s\n' "$SIGNATURE_DETAILS" | grep -q '^Authority='; then
+  codesign --verify --deep --strict "$APP_PATH" >/dev/null 2>&1 || fail "identity-backed codesign verification failed"
   SIGNING="signed"
+elif printf '%s\n' "$SIGNATURE_DETAILS" | grep -q '^Signature=adhoc'; then
+  SIGNING="adhoc"
 fi
 
 echo "BobFWTools macOS app verification: PASS"
