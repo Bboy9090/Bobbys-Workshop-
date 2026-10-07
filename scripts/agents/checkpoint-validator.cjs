@@ -5,7 +5,13 @@ function validateCheckpoint(value) {
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const text = v => typeof v === 'string' && v.trim().length > 0;
   const sha = v => typeof v === 'string' && /^[a-f0-9]{40}$/i.test(v);
-  const url = v => typeof v === 'string' && /^https:\/\/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{1,5})?(?:[/?#][^\\s]*)?$/i.test(v) && !v.includes('@');
+  const url = v => {
+    if (typeof v !== 'string' || /\s/.test(v) || !v.startsWith('https://')) return false;
+    try {
+      const parsed = new URL(v);
+      return parsed.protocol === 'https:' && Boolean(parsed.hostname) && !parsed.username && !parsed.password;
+    } catch { return false; }
+  };
   if (!object(value)) return { valid: false, errors: ['checkpoint must be an object'] };
   if (value.version !== 1) errors.push('version must be 1');
   for (const key of ['project','task','owner','nextAction']) {
@@ -30,3 +36,4 @@ function validateCheckpoint(value) {
   return { valid: errors.length === 0, errors };
 }
 module.exports = { validateCheckpoint };
+
