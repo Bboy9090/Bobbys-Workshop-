@@ -1306,6 +1306,31 @@ fn exact_fastboot_device_present(serial: &str) -> Result<bool, String> {
 
 
 #[cfg(feature = "qualified-flash")]
+fn verify_fastboot_target_after_write(serial: &str) -> Result<(), String> {
+    for attempt in 1..=5 {
+        match exact_fastboot_device_present(serial) {
+            Ok(true) => return Ok(()),
+            Ok(false) if attempt < 5 => {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+            }
+            Ok(false) => {
+                return Err("Exact fastboot target did not re-enumerate after destructive write".to_string());
+            }
+            Err(err) if attempt < 5 => {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                if attempt == 4 {
+                    let _ = err;
+                }
+            }
+            Err(err) => {
+                return Err(format!("Could not verify fastboot target after destructive write: {err}"));
+            }
+        }
+    }
+    Err("Post-write fastboot target verification failed".to_string())
+}
+
+#[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn bootforge_qualified_fastboot_devices() -> Result<Vec<String>, String> {
     let output = Command::new("fastboot")
@@ -1363,7 +1388,7 @@ fn bootforge_qualified_flash_inspect_image(
 }
 
 #[cfg(feature = "qualified-flash")]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, Deserialize)]
 struct QualifiedFlashPhysicalChecks {
     repeatedEnumerationStable: bool,
     expectedModeConfirmed: bool,
@@ -1380,6 +1405,7 @@ struct QualifiedFlashPhysicalChecks {
 #[derive(Debug, Clone, Deserialize)]
 struct QualifiedFlashApprovalInput {
     dossierPath: String,
+    reviewDecisionPath: Option<String>,
     expectedRecoveryJobFingerprint: String,
     deviceSerial: String,
     partitions: Vec<FlashPartition>,
@@ -1390,6 +1416,233 @@ struct QualifiedFlashApprovalInput {
     confirmation: String,
     expiresInMinutes: u64,
     physicalChecks: QualifiedFlashPhysicalChecks,
+}
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, Deserialize)]
+struct QualificationDecisionInput {
+    dossierPath: String,
+    expectedRecoveryJobFingerprint: String,
+    deviceSerial: String,
+    reviewer: String,
+    reviewerNotes: String,
+    decision: String,
+    physicalChecks: QualifiedFlashPhysicalChecks,
+}
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationDecisionReceipt {
+    schema: String,
+    decision: String,
+    grants_authority: bool,
+    executor_qualified: bool,
+    reviewer: String,
+    reviewer_notes: String,
+    device_serial: String,
+    dossier_fingerprint: String,
+    recovery_job_fingerprint: String,
+    executor_build_fingerprint: String,
+    physical_checks: QualifiedFlashPhysicalChecks,
+    generated_unix_seconds: u64,
+    receipt_fingerprint: String,
+}
+
+#[cfg(feature = "qualified-flash")]
+fn qualification_decision_material(
+    receipt: &QualificationDecisionReceipt,
+) -> Result<Vec<u8>, String> {
+    let value = serde_json::json!({
+        "schema": receipt.schema,
+        "decision": receipt.decision,
+        "grantsAuthority": receipt.grants_authority,
+        "executorQualified": receipt.executor_qualified,
+        "reviewer": receipt.reviewer,
+        "reviewerNotes": receipt.reviewer_notes,
+        "deviceSerial": receipt.device_serial,
+        "dossierFingerprint": receipt.dossier_fingerprint,
+        "recoveryJobFingerprint": receipt.recovery_job_fingerprint,
+        "executorBuildFingerprint": receipt.executor_build_fingerprint,
+        "physicalChecks": receipt.physical_checks,
+        "generatedUnixSeconds": receipt.generated_unix_seconds,
+    });
+    serde_json::to_vec(&value)
+        .map_err(|e| format!("Could not serialize qualification decision material: {e}"))
+}
+
+#[cfg(feature = "qualified-flash")]
+fn qualification_decision_fingerprint(
+    receipt: &QualificationDecisionReceipt,
+) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    let material = qualification_decision_material(receipt)?;
+    Ok(format!("{:x}", Sha256::digest(&material)))
+}
+
+#[cfg(feature = "qualified-flash")]
+fn load_and_verify_qualification_decision(
+    path: &str,
+    reviewer: &str,
+    device_serial: &str,
+    dossier_fingerprint: &str,
+    recovery_job_fingerprint: &str,
+    executor_build_fingerprint: &str,
+) -> Result<QualificationDecisionReceipt, String> {
+    let path_buf = std::path::PathBuf::from(path);
+    if !path_buf.is_file() {
+        return Err(format!(
+            "Qualification decision receipt not found: {}",
+            path_buf.display()
+        ));
+    }
+    let bytes = std::fs::read(&path_buf)
+        .map_err(|e| format!("Could not read qualification decision receipt: {e}"))?;
+    let receipt: QualificationDecisionReceipt = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Qualification decision receipt is invalid JSON: {e}"))?;
+
+    if receipt.schema != "com.bobbyblanco.bobfwtools.qualification-decision.v1" {
+        return Err("Qualification decision schema is not recognized".to_string());
+    }
+    if receipt.decision != "accept-evidence" {
+        return Err("Qualification decision does not accept the bench evidence".to_string());
+    }
+    if receipt.grants_authority || receipt.executor_qualified {
+        return Err(
+            "Qualification decision receipt must not grant authority or qualify an executor"
+                .to_string(),
+        );
+    }
+    if receipt.reviewer.trim() != reviewer.trim() {
+        return Err("Qualification decision reviewer does not match grant reviewer".to_string());
+    }
+    if receipt.device_serial != device_serial {
+        return Err("Qualification decision device serial does not match target".to_string());
+    }
+    if receipt.dossier_fingerprint != dossier_fingerprint {
+        return Err("Qualification decision dossier fingerprint does not match".to_string());
+    }
+    if receipt.recovery_job_fingerprint != recovery_job_fingerprint {
+        return Err("Qualification decision recovery-job fingerprint does not match".to_string());
+    }
+    if receipt.executor_build_fingerprint != executor_build_fingerprint {
+        return Err("Qualification decision executor-build fingerprint does not match".to_string());
+    }
+    if !all_physical_flash_checks_passed(&receipt.physical_checks) {
+        return Err(
+            "Qualification decision does not contain a complete passed physical-check record"
+                .to_string(),
+        );
+    }
+    if !valid_sha256_hex(&receipt.receipt_fingerprint) {
+        return Err("Qualification decision receipt fingerprint is malformed".to_string());
+    }
+    let expected = qualification_decision_fingerprint(&receipt)?;
+    if !expected.eq_ignore_ascii_case(&receipt.receipt_fingerprint) {
+        return Err("Qualification decision receipt fingerprint verification failed".to_string());
+    }
+
+    Ok(receipt)
+}
+
+#[cfg(feature = "qualified-flash")]
+#[tauri::command]
+fn bootforge_qualification_decision_export(
+    input: QualificationDecisionInput,
+    destination_path: String,
+) -> Result<String, String> {
+    let destination = std::path::PathBuf::from(&destination_path);
+    if destination.as_os_str().is_empty() {
+        return Err("Qualification decision destination is required".to_string());
+    }
+    let reviewer = input.reviewer.trim();
+    if reviewer.is_empty() {
+        return Err("Reviewer identity is required".to_string());
+    }
+    if input.deviceSerial.trim().is_empty() {
+        return Err("Device serial is required".to_string());
+    }
+    if input.decision != "accept-evidence" && input.decision != "reject-evidence" {
+        return Err("Decision must be accept-evidence or reject-evidence".to_string());
+    }
+
+    let review = bootforge_qualification_review(
+        input.dossierPath.clone(),
+        Some(input.expectedRecoveryJobFingerprint.clone()),
+    )?;
+    if !review.safe_to_review && input.decision == "accept-evidence" {
+        return Err(format!(
+            "Cannot accept a blocked qualification dossier: {}",
+            review.blockers.join("; ")
+        ));
+    }
+    if input.decision == "accept-evidence"
+        && !all_physical_flash_checks_passed(&input.physicalChecks)
+    {
+        return Err(
+            "Accepting bench evidence requires every physical check, destructive trial, and post-write verification to pass"
+                .to_string(),
+        );
+    }
+
+    let dossier_fingerprint = review
+        .dossier_fingerprint
+        .ok_or_else(|| "Verified dossier fingerprint is unavailable".to_string())?;
+    let recovery_job_fingerprint = review
+        .recovery_job_fingerprint
+        .ok_or_else(|| "Verified recovery-job fingerprint is unavailable".to_string())?;
+    let build = qualification_build_identity_snapshot();
+    if !build.qualified_flash_compiled {
+        return Err("Qualification decision must be recorded by the qualified bench build".to_string());
+    }
+
+    let generated_unix_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+
+    let mut receipt = QualificationDecisionReceipt {
+        schema: "com.bobbyblanco.bobfwtools.qualification-decision.v1".into(),
+        decision: input.decision,
+        grants_authority: false,
+        executor_qualified: false,
+        reviewer: reviewer.to_string(),
+        reviewer_notes: input.reviewerNotes.trim().to_string(),
+        device_serial: input.deviceSerial.trim().to_string(),
+        dossier_fingerprint,
+        recovery_job_fingerprint,
+        executor_build_fingerprint: build.executor_build_fingerprint,
+        physical_checks: input.physicalChecks,
+        generated_unix_seconds,
+        receipt_fingerprint: String::new(),
+    };
+    receipt.receipt_fingerprint = qualification_decision_fingerprint(&receipt)?;
+
+    let bytes = serde_json::to_vec_pretty(&receipt)
+        .map_err(|e| format!("Could not serialize qualification decision receipt: {e}"))?;
+    std::fs::write(&destination, bytes)
+        .map_err(|e| format!("Could not write qualification decision receipt: {e}"))?;
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "export-qualification-decision",
+        "destructive",
+        &receipt.decision,
+        Some(receipt.device_serial.clone()),
+        "Human bench-evidence decision recorded; receipt grants no executor authority.",
+        vec![
+            format!("reviewer:{}", receipt.reviewer),
+            format!("receipt-fingerprint:{}", receipt.receipt_fingerprint),
+            format!("dossier-fingerprint:{}", receipt.dossier_fingerprint),
+            format!("recovery-job-fingerprint:{}", receipt.recovery_job_fingerprint),
+            format!(
+                "executor-build-fingerprint:{}",
+                receipt.executor_build_fingerprint
+            ),
+        ],
+    );
+
+    Ok(destination.display().to_string())
 }
 
 #[cfg(feature = "qualified-flash")]
@@ -1634,6 +1887,24 @@ fn bootforge_issue_qualified_flash_grant(
         return Err("This build does not contain the qualified destructive writer".to_string());
     }
 
+    let decision_path = input
+        .reviewDecisionPath
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            "Production-qualified grant requires an accepted qualification decision receipt"
+                .to_string()
+        })?;
+    let decision_receipt = load_and_verify_qualification_decision(
+        decision_path,
+        input.reviewer.trim(),
+        serial,
+        &dossier_fingerprint,
+        &recovery_job_fingerprint,
+        &build.executor_build_fingerprint,
+    )?;
+
     let allowed_partitions = [
         "boot", "system", "vendor", "userdata", "cache", "recovery",
         "bootloader", "radio", "aboot", "vbmeta", "dtbo", "persist",
@@ -1703,6 +1974,10 @@ fn bootforge_issue_qualified_flash_grant(
             format!("reviewer-notes:{}", input.reviewerNotes.trim()),
             format!("recovery-job-fingerprint:{}", grant.recoveryJobFingerprint),
             format!("dossier-fingerprint:{}", grant.dossierFingerprint),
+            format!(
+                "qualification-decision-fingerprint:{}",
+                decision_receipt.receipt_fingerprint
+            ),
             format!("executor-build-fingerprint:{}", grant.executorBuildFingerprint),
             format!("expires-at:{}", grant.expiresAtUnixSeconds),
             format!(
@@ -1781,6 +2056,11 @@ fn validate_qualified_flash_config(config: &FlashJobConfig, grant_secret: &str) 
     }
     if config.autoReboot && !grant.autoRebootAllowed {
         return Err("Qualified flash grant does not authorize automatic reboot".to_string());
+    }
+    if !config.verifyAfterFlash {
+        return Err(
+            "Qualified destructive writes require post-write target verification".to_string(),
+        );
     }
 
     let allowed_partitions = [
@@ -1864,10 +2144,6 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
         if !pb.exists() {
             return Err(format!("Image file not found: {}", p.imagePath));
         }
-    }
-
-    if config.verifyAfterFlash {
-        return Err("verifyAfterFlash was requested, but this backend cannot yet prove post-flash content; refusing destructive execution".to_string());
     }
 
     let id = {
@@ -2119,6 +2395,29 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                         serde_json::json!({ "message": format!("Failed to run fastboot flash {}: {e}", p.name) }),
                     );
                     return;
+                }
+            }
+
+            if config.verifyAfterFlash {
+                set_job_status("running", &format!("Verifying target after {}", p.name));
+                match verify_fastboot_target_after_write(&config.deviceSerial) {
+                    Ok(()) => {
+                        push_log(&format!(
+                            "[tauri-fastboot] post-write target verification passed for {}",
+                            p.name
+                        ));
+                    }
+                    Err(err) => {
+                        push_log(&format!(
+                            "[tauri-fastboot] post-write target verification failed for {}: {}",
+                            p.name, err
+                        ));
+                        set_job_status(
+                            "failed",
+                            &format!("Post-write target verification failed: {}", p.name),
+                        );
+                        return;
+                    }
                 }
             }
 
@@ -2746,7 +3045,7 @@ mod qualified_flash_grant_tests {
                 size: std::fs::metadata(&path).unwrap().len(),
                 expectedSha256: hash.clone(),
             }],
-            verifyAfterFlash: false,
+            verifyAfterFlash: true,
             autoReboot: false,
             wipeUserData: false,
             qualificationGrant: QualifiedFlashGrant {
@@ -2777,6 +3076,16 @@ mod qualified_flash_grant_tests {
     fn valid_grant_accepts_matching_hash_and_build() {
         let config = valid_config();
         assert!(validate_qualified_flash_config(&config, "test-secret").is_ok());
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn qualified_grant_requires_post_write_target_verification() {
+        let mut config = valid_config();
+        config.verifyAfterFlash = false;
+        assert!(validate_qualified_flash_config(&config, "test-secret")
+            .unwrap_err()
+            .contains("post-write target verification"));
         let _ = std::fs::remove_file(&config.partitions[0].imagePath);
     }
 
@@ -3034,6 +3343,8 @@ bootforgeusb_transport_scan,
             bootforge_qualified_fastboot_devices,
             #[cfg(feature = "qualified-flash")]
             bootforge_qualified_flash_inspect_image,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_qualification_decision_export,
             #[cfg(feature = "qualified-flash")]
             bootforge_issue_qualification_trial_grant,
             #[cfg(feature = "qualified-flash")]

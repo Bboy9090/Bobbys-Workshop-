@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   chooseAndInspectQualifiedFlashImage,
+  exportQualificationDecision,
   getQualificationBuildIdentity,
   getQualifiedFastbootDevices,
   issueQualificationTrialGrant,
@@ -74,6 +75,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
   const [allowWipe, setAllowWipe] = useState(false);
   const [allowReboot, setAllowReboot] = useState(false);
   const [grant, setGrant] = useState<QualifiedFlashGrant | null>(null);
+  const [decisionPath, setDecisionPath] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,6 +114,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
     deviceSerial &&
     partitions.length &&
     reviewer.trim() &&
+    decisionPath &&
     confirmation === `QUALIFY ${deviceSerial}` &&
     allChecksPass,
   );
@@ -185,6 +188,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
     try {
       const issued = await issueQualificationTrialGrant({
         dossierPath: review.path,
+        reviewDecisionPath: null,
         expectedRecoveryJobFingerprint: recoveryJobFingerprint,
         deviceSerial,
         partitions,
@@ -204,6 +208,29 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
     }
   };
 
+  const exportDecision = async (decision: 'accept-evidence' | 'reject-evidence') => {
+    if (!review || !recoveryJobFingerprint || !deviceSerial || !reviewer.trim()) return;
+    setBusy(true);
+    setError(null);
+    setGrant(null);
+    try {
+      const path = await exportQualificationDecision({
+        dossierPath: review.path,
+        expectedRecoveryJobFingerprint: recoveryJobFingerprint,
+        deviceSerial,
+        reviewer: reviewer.trim(),
+        reviewerNotes: reviewerNotes.trim(),
+        decision,
+        physicalChecks: checks,
+      });
+      if (path) setDecisionPath(path);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const issueGrant = async () => {
     if (!review || !recoveryJobFingerprint || !readyToIssue) return;
     setBusy(true);
@@ -213,6 +240,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
     try {
       const issued = await issueQualifiedFlashGrant({
         dossierPath: review.path,
+        reviewDecisionPath: decisionPath,
         expectedRecoveryJobFingerprint: recoveryJobFingerprint,
         deviceSerial,
         partitions,
@@ -358,9 +386,40 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
             </div>
           </div>
 
+          <div className="mt-3 rounded border border-slate-800 bg-slate-950/60 p-4">
+            <div className="text-[10px] uppercase tracking-wide text-slate-600">Stage 2 human decision receipt</div>
+            <p className="mt-2 text-xs text-slate-400">
+              After the one-shot bench write and independent post-write verification, record the evidence decision.
+              This receipt is hash-bound and grants no authority by itself.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void exportDecision('accept-evidence')}
+                disabled={busy || !review?.safeToReview || !allChecksPass || !reviewer.trim() || !deviceSerial}
+                className="rounded border border-emerald-800 px-3 py-2 text-xs font-semibold text-emerald-300 disabled:opacity-40"
+              >
+                Accept evidence + export decision receipt
+              </button>
+              <button
+                type="button"
+                onClick={() => void exportDecision('reject-evidence')}
+                disabled={busy || !reviewer.trim() || !deviceSerial || !review}
+                className="rounded border border-rose-900 px-3 py-2 text-xs text-rose-300 disabled:opacity-40"
+              >
+                Reject evidence + export decision receipt
+              </button>
+            </div>
+            {decisionPath && (
+              <div className="mt-2 break-all font-mono text-[10px] text-cyan-400">
+                decision receipt: {decisionPath}
+              </div>
+            )}
+          </div>
+
           <div className="mt-3 rounded border border-amber-900/60 bg-amber-950/20 p-3 text-[11px] leading-5 text-amber-200">
             Stage 1 bench trial requires the first seven checks, exactly one non-critical partition, and no wipe/reboot.
-            After the bench write, verify the device independently, then mark the final two checks and issue Stage 2 production authority.
+            Stage 2 production authority additionally requires all checks plus an accepted hash-bound decision receipt.
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">

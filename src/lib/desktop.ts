@@ -778,6 +778,7 @@ export type QualifiedFlashGrant = {
 
 export type QualifiedFlashApprovalInput = {
   dossierPath: string;
+  reviewDecisionPath?: string | null;
   expectedRecoveryJobFingerprint: string;
   deviceSerial: string;
   partitions: QualifiedFlashPartition[];
@@ -789,6 +790,32 @@ export type QualifiedFlashApprovalInput = {
   expiresInMinutes: number;
   physicalChecks: QualifiedFlashPhysicalChecks;
 };
+
+export type QualificationDecisionInput = {
+  dossierPath: string;
+  expectedRecoveryJobFingerprint: string;
+  deviceSerial: string;
+  reviewer: string;
+  reviewerNotes: string;
+  decision: 'accept-evidence' | 'reject-evidence';
+  physicalChecks: QualifiedFlashPhysicalChecks;
+};
+
+export async function exportQualificationDecision(
+  input: QualificationDecisionInput,
+): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const destinationPath = await save({
+    title: 'Export qualification review decision',
+    defaultPath: 'bobfwtools-qualification-decision.json',
+    filters: [{ name: 'JSON qualification decision', extensions: ['json'] }],
+  });
+  if (!destinationPath) return null;
+  return invoke<string>('bootforge_qualification_decision_export', {
+    input,
+    destinationPath,
+  });
+}
 
 export type QualifiedFlashStartResponse = {
   jobId: string;
@@ -840,7 +867,7 @@ export async function startQualifiedFastbootFlash(
       deviceBrand: 'Qualified bench target',
       flashMethod: 'fastboot',
       partitions,
-      verifyAfterFlash: false,
+      verifyAfterFlash: true,
       autoReboot: Boolean(options?.autoReboot),
       wipeUserData: Boolean(options?.wipeUserData),
       qualificationGrant,
