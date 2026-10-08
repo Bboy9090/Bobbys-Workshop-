@@ -4,6 +4,7 @@ import {
   getEdl9008Devices,
   getWorkflowPolicyCatalog,
   scanAdbDevices,
+  scanTransportDevices,
   chooseCalibrationBackupDirectory,
   backupCalibrationPartition,
   chooseEdlProgrammer,
@@ -17,6 +18,7 @@ import {
   type CalibrationBackupResult,
   type EdlProgrammerRecord,
   type UsbDeviceRecord,
+  type TransportDevice,
   type WorkflowPolicy,
   type WorkflowRiskLevel,
 } from '../lib/desktop';
@@ -58,6 +60,8 @@ export default function RepairCommandCenter() {
   const [workstation, setWorkstation] = useState<WorkstationReadiness | null>(null);
   const [initializing, setInitializing] = useState(false);
   const [adbDevices, setAdbDevices] = useState<AdbDeviceRecord[]>([]);
+  const [transportDevices, setTransportDevices] = useState<TransportDevice[]>([]);
+  const [selectedTargetKey, setSelectedTargetKey] = useState('');
   const [backupPartition, setBackupPartition] = useState('efs');
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupResult, setBackupResult] = useState<CalibrationBackupResult | null>(null);
@@ -68,18 +72,77 @@ export default function RepairCommandCenter() {
   const [edlConfirm, setEdlConfirm] = useState('');
   const [edlBusy, setEdlBusy] = useState(false);
 
-  const active = useMemo(() => catalog.filter((item) => item.activeInBobfwtools), [catalog]);
+  const targets = useMemo(() => {
+    const adbTargets = adbDevices.map((device) => ({
+      key: `adb:${device.serial}`,
+      kind: 'adb',
+      label: `ADB · ${device.serial}${device.authorized ? ' · authorized' : ' · unauthorized'}`,
+    }));
+    const recoveryTargets = transportDevices
+      .filter((device) => ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download'].includes(device.mode))
+      .map((device) => ({
+        key: `usb:${device.deviceUid}`,
+        kind: device.mode,
+        label: `${device.productName || device.manufacturer || 'USB device'} · ${device.mode}`,
+      }));
+    return [...adbTargets, ...recoveryTargets];
+  }, [adbDevices, transportDevices]);
+
+  const selectedTarget = useMemo(
+    () => targets.find((target) => target.key === selectedTargetKey) || null,
+    [targets, selectedTargetKey],
+  );
+
+  const selectedAdbDevice = useMemo(() => {
+    if (selectedTarget?.kind !== 'adb') return null;
+    const serial = selectedTarget.key.slice('adb:'.length);
+    return adbDevices.find((device) => device.serial === serial) || null;
+  }, [selectedTarget, adbDevices]);
+
+  const applicableWorkflowIds = useMemo(() => {
+    const ids = new Set<string>(['diagnostics.usb-scan']);
+    switch (selectedTarget?.kind) {
+      case 'adb':
+        ids.add('android.adb-authorized');
+        ids.add('calibration.backup');
+        ids.add('calibration.restore');
+        break;
+      case 'qualcomm-edl':
+        ids.add('qualcomm.edl-plan');
+        break;
+      case 'mediatek-brom':
+      case 'mediatek-preloader':
+        ids.add('mediatek.brom-plan');
+        break;
+      case 'samsung-download':
+        ids.add('samsung.odin-plan');
+        break;
+      default:
+        break;
+    }
+    return ids;
+  }, [selectedTarget]);
+
+  const active = useMemo(
+    () => catalog.filter((item) => item.activeInBobfwtools && applicableWorkflowIds.has(item.id)),
+    [catalog, applicableWorkflowIds],
+  );
+  const manualActive = useMemo(
+    () => catalog.filter((item) => item.activeInBobfwtools && ['hardware-service', 'cross-platform'].includes(item.platform) && item.id !== 'diagnostics.usb-scan'),
+    [catalog],
+  );
   const reserved = useMemo(() => catalog.filter((item) => !item.activeInBobfwtools), [catalog]);
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
-        const [policies, partitions, edl, adb, programmers, readiness] = await Promise.all([
+        const [policies, partitions, edl, adb, transport, programmers, readiness] = await Promise.all([
           getWorkflowPolicyCatalog(),
           getCalibrationPartitionAllowlist(),
           getEdl9008Devices(),
           scanAdbDevices(),
+          scanTransportDevices(),
           listEdlProgrammers(),
           getWorkstationReadiness(),
         ]);
@@ -89,7 +152,17 @@ export default function RepairCommandCenter() {
         setEdlDevices(edl);
         setWorkstation(readiness);
         setAdbDevices(adb);
+        setTransportDevices(transport);
         setEdlProgrammers(programmers);
+        const availableTargetKeys = [
+          ...adb.map((device) => `adb:${device.serial}`),
+          ...transport
+            .filter((device) => ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download'].includes(device.mode))
+            .map((device) => `usb:${device.deviceUid}`),
+        ];
+        setSelectedTargetKey((current) =>
+          current && availableTargetKeys.includes(current) ? current : (availableTargetKeys[0] || '')
+        );
         if (partitions.length && !partitions.includes(backupPartition)) {
           setBackupPartition(partitions[0]);
         }
@@ -143,13 +216,12 @@ export default function RepairCommandCenter() {
 
   const runCalibrationBackup = async () => {
     if (backupBusy) return;
-    const authorized = adbDevices.filter((device) => device.authorized);
-    if (authorized.length !== 1) {
-      setError(
-        authorized.length === 0
-          ? 'Connect exactly one authorized ADB device with existing root/service block-read access before calibration backup.'
-          : 'Multiple authorized ADB devices are connected. Disconnect all but the unit being serviced.'
-      );
+    if (!selectedAdbDevice) {
+      setError('Select the ADB target you intend to service before calibration backup.');
+      return;
+    }
+    if (!selectedAdbDevice.authorized) {
+      setError('The selected ADB target is not authorized. Approve USB debugging on that exact device first.');
       return;
     }
     const destination = await chooseCalibrationBackupDirectory();
@@ -160,7 +232,7 @@ export default function RepairCommandCenter() {
     setError(null);
     try {
       const result = await backupCalibrationPartition(
-        authorized[0].serial,
+        selectedAdbDevice.serial,
         backupPartition,
         destination,
       );
@@ -200,6 +272,31 @@ export default function RepairCommandCenter() {
           Command Center backend error: {error}
         </div>
       )}
+
+      <div className="mt-4 rounded-lg border border-cyan-900/60 bg-cyan-950/10 p-4">
+        <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+          <label className="text-xs text-slate-400">
+            Detected target
+            <select
+              value={selectedTargetKey}
+              onChange={(event) => setSelectedTargetKey(event.target.value)}
+              className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+            >
+              <option value="">No supported phone/recovery target selected</option>
+              {targets.map((target) => (
+                <option key={target.key} value={target.key}>{target.label}</option>
+              ))}
+            </select>
+          </label>
+          <div className="rounded border border-slate-800 bg-black/20 px-3 py-2 text-right">
+            <div className="text-[10px] uppercase tracking-wide text-slate-600">Applicable workflows</div>
+            <div className="mt-1 text-sm font-semibold text-cyan-300">{active.length}</div>
+          </div>
+        </div>
+        <div className="mt-2 text-[11px] text-slate-500">
+          The primary workflow grid is filtered to the selected target. Manual bench and removable-media tools stay separate.
+        </div>
+      </div>
 
       <div className="mt-5 rounded-lg border border-slate-800 bg-black/20 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -290,7 +387,16 @@ export default function RepairCommandCenter() {
         )}
       </div>
 
-      <div className="mt-5 grid gap-3 xl:grid-cols-2">
+      <div className="mt-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-500">Selected-device workflows</div>
+            <div className="mt-1 text-xs text-slate-500">
+              {selectedTarget ? selectedTarget.label : 'Connect/select a supported device to reveal its repair lanes.'}
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 grid gap-3 xl:grid-cols-2">
         {active.map((workflow) => (
           <article key={workflow.id} className="rounded-lg border border-slate-800 bg-slate-950/70 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -329,8 +435,29 @@ export default function RepairCommandCenter() {
             </div>
           </article>
         ))}
+        </div>
       </div>
 
+      {!!manualActive.length && (
+        <details className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-4">
+          <summary className="cursor-pointer text-xs font-semibold text-slate-300">
+            Advanced/manual tools · {manualActive.length}
+          </summary>
+          <div className="mt-3 grid gap-2 lg:grid-cols-2">
+            {manualActive.map((workflow) => (
+              <div key={workflow.id} className="rounded border border-slate-800 bg-black/20 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-xs text-slate-300">{workflow.id}</span>
+                  <span className="text-[10px] text-slate-600">{workflow.platform}</span>
+                </div>
+                <div className="mt-1 text-[11px] text-slate-500">{workflow.notes}</div>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {selectedTarget?.kind === 'qualcomm-edl' && (
       <div className="mt-4 rounded-lg border border-amber-900/60 bg-amber-950/10 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -429,8 +556,10 @@ export default function RepairCommandCenter() {
           </div>
         )}
       </div>
+      )}
 
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        {selectedTarget?.kind === 'adb' && (
         <div className="rounded-lg border border-cyan-900/60 bg-cyan-950/10 p-4">
           <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-500">Calibration data shield</div>
           <div className="mt-1 text-sm font-medium text-white">Backup before the dangerous stuff.</div>
@@ -459,15 +588,17 @@ export default function RepairCommandCenter() {
             <button
               type="button"
               onClick={() => void runCalibrationBackup()}
-              disabled={backupBusy || adbDevices.filter((device) => device.authorized).length !== 1}
+              disabled={backupBusy || !selectedAdbDevice?.authorized}
               className="rounded bg-cyan-700 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40 hover:bg-cyan-600"
             >
               {backupBusy ? 'Backing up…' : 'Backup ' + backupPartition.toUpperCase()}
             </button>
             <span className="text-[10px] text-slate-600">
-              {adbDevices.filter((device) => device.authorized).length === 1
-                ? '1 authorized ADB unit ready for access verification'
-                : 'Requires exactly 1 authorized ADB unit'}
+              {selectedAdbDevice
+                ? selectedAdbDevice.authorized
+                  ? `selected target ${selectedAdbDevice.serial} is authorized`
+                  : `selected target ${selectedAdbDevice.serial} needs USB-debugging authorization`
+                : 'Select an ADB target to use Calibration Shield'}
             </span>
           </div>
 
@@ -487,6 +618,7 @@ export default function RepairCommandCenter() {
             </div>
           )}
         </div>
+        )}
 
         <div className="rounded-lg border border-violet-900/60 bg-violet-950/10 p-4">
           <div className="text-[10px] font-semibold uppercase tracking-wide text-violet-400">Future flagship lane</div>

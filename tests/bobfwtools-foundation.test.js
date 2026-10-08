@@ -221,6 +221,26 @@ describe('nested MTP browser', () => {
 });
 
 
+describe('device-specific command center', () => {
+  it('filters primary workflows to the selected detected target', () => {
+    const commandCenter = read('src/components/RepairCommandCenter.tsx');
+
+    expect(commandCenter).toContain('Detected target');
+    expect(commandCenter).toContain('Applicable workflows');
+    expect(commandCenter).toContain('scanTransportDevices');
+    expect(commandCenter).toContain('applicableWorkflowIds');
+    expect(commandCenter).toContain("case 'qualcomm-edl'");
+    expect(commandCenter).toContain("case 'mediatek-brom'");
+    expect(commandCenter).toContain("case 'samsung-download'");
+    expect(commandCenter).toContain("case 'adb'");
+    expect(commandCenter).toContain('Advanced/manual tools');
+    expect(commandCenter).toContain('selectedAdbDevice.serial');
+    expect(commandCenter).toContain("selectedTarget?.kind === 'qualcomm-edl'");
+    expect(commandCenter).toContain("selectedTarget?.kind === 'adb'");
+  });
+});
+
+
 describe('workstation driver evidence', () => {
   it('distinguishes missing drivers from an unavailable Windows driver-store probe', () => {
     const workstation = read('src-tauri/src/workstation.rs');
