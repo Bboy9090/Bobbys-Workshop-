@@ -147,13 +147,31 @@ export class WorkflowEngine {
 
     const workflow = workflowResult.workflow;
     
-    // Check authorization if required
-    if (workflow.requires_authorization && !authorization) {
-      return {
-        success: false,
-        error: 'Authorization required',
-        authorizationPrompt: workflow.authorization_prompt
-      };
+    // Enforce explicit authorization and device identity before sensitive work.
+    const sensitiveWorkflow = workflow.requires_authorization ||
+      workflow.risk_level === 'high' ||
+      workflow.risk_level === 'destructive';
+    if (sensitiveWorkflow) {
+      if (!authorization || authorization.confirmed !== true) {
+        return {
+          success: false,
+          error: 'Explicit authorization confirmation required',
+          authorizationPrompt: workflow.authorization_prompt,
+          legalNotice: workflow.legal_notice
+        };
+      }
+      if (!deviceSerial) {
+        return {
+          success: false,
+          error: 'Device identity is required before sensitive workflow execution'
+        };
+      }
+      if (authorization.deviceSerial && authorization.deviceSerial !== deviceSerial) {
+        return {
+          success: false,
+          error: 'Authorized device identity does not match selected device'
+        };
+      }
     }
 
     // Log workflow start
