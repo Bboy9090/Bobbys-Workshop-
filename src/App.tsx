@@ -578,6 +578,55 @@ export default function App() {
             </div>
           )}
 
+          {(adbDevices.length > 0 || usbDevices.length > 0) && (
+            <section className="mb-4 rounded-lg border border-emerald-900/70 bg-emerald-950/10 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-semibold text-white">1. Choose the detected phone</h2>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Select a phone below. BobFWTools will show only actions supported by its current connection and authorization.
+                  </p>
+                </div>
+                <span className="rounded bg-slate-900 px-2 py-1 text-xs text-slate-400">
+                  {adbDevices.length + usbDevices.length} device signal{adbDevices.length + usbDevices.length === 1 ? '' : 's'} found
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {adbDevices.map((device) => {
+                  const selected = adbSelectedSerial === device.serial;
+                  return (
+                    <button
+                      key={`adb-${device.serial}`}
+                      type="button"
+                      onClick={() => setAdbSelectedSerial(device.serial)}
+                      className={`rounded border p-4 text-left transition ${selected ? 'border-cyan-500 bg-cyan-950/30' : 'border-slate-800 bg-slate-950/60 hover:border-slate-600'}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-white">Android phone</span>
+                        <span className={device.authorized ? 'text-xs text-emerald-300' : 'text-xs text-amber-300'}>
+                          {device.authorized ? 'Authorized' : 'Needs authorization'}
+                        </span>
+                      </div>
+                      <div className="mt-2 font-mono text-xs text-cyan-300">{device.serial}</div>
+                      <div className="mt-1 text-xs text-slate-400">{device.state} · ADB connection</div>
+                      {selected && <div className="mt-3 text-xs font-medium text-cyan-200">Selected — actions below use this phone</div>}
+                    </button>
+                  );
+                })}
+                {usbDevices.map((device) => (
+                  <div key={`usb-${device.deviceUid}`} className="rounded border border-slate-800 bg-slate-950/60 p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-white">{device.productName || device.manufacturer || 'Detected USB phone/device'}</span>
+                      <span className="text-xs text-cyan-300">Detected</span>
+                    </div>
+                    <div className="mt-2 text-xs text-slate-300">{device.platformHint} · {device.mode}</div>
+                    <div className="mt-1 text-xs text-slate-500">This connection is available for matching recovery and firmware workflows.</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           {lastTransfer && (
             <div className="mb-4 rounded border border-emerald-900 bg-emerald-950/30 p-3 text-sm text-emerald-200">
               Verified {lastTransfer.operation}: {lastTransfer.filename} · {formatBytes(lastTransfer.bytes)}
@@ -590,7 +639,7 @@ export default function App() {
           <section className="mb-4 rounded-lg border border-cyan-900/70 bg-cyan-950/10 p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h2 className="text-base font-semibold text-white">Diagnose This Phone</h2>
+                <h2 className="text-base font-semibold text-white">2. Check this phone and show its safe options</h2>
                 <p className="mt-1 max-w-2xl text-sm text-slate-400">
                   One scan checks physical USB, MTP, ADB authorization, Fastboot, verified device properties,
                   battery state, and the workflows BobFWTools can actually run right now.
@@ -807,7 +856,7 @@ export default function App() {
           <section className="mb-4 rounded-lg border border-orange-900/60 bg-orange-950/10 p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h2 className="text-base font-semibold text-white">Advanced Recovery</h2>
+                <h2 className="text-base font-semibold text-white">3. Choose a safe repair workflow</h2>
                 <p className="mt-1 max-w-3xl text-sm text-slate-400">
                   Hardware-bound recovery planning for Samsung Download Mode, Qualcomm EDL, and MediaTek Download/Preloader.
                   Every destructive job is inspected, hashed, mapped, and tied to the exact USB identity before an executor can qualify.
