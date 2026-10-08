@@ -27,6 +27,7 @@ mod py_client;
 mod fastapi_backend;
 mod mtp_backend;
 mod adb_workflows;
+mod audit;
 mod workflow_capabilities;
 mod diagnostics;
 mod workflow_jobs;
@@ -40,6 +41,7 @@ use py_client::PyWorkerClient;
 #[cfg(feature = "legacy-backends")]
 use fastapi_backend::{launch_fastapi_backend, shutdown_fastapi_backend};
 use mtp_backend::{mtp_status, mtp_list_root, mtp_download_file, mtp_upload_file, mtp_list_directory, mtp_download_path, mtp_upload_path};
+use audit::{audit_recent, audit_log_path};
 use adb_workflows::{adb_scan, adb_device_info, adb_logcat_snapshot, adb_screenshot, adb_prepare, adb_battery_info, adb_reboot_mode, adb_open_network_settings, adb_open_factory_reset_settings, adb_install_apk, adb_list_user_packages, adb_package_action};
 use workflow_capabilities::workflow_capabilities;
 use diagnostics::{diagnose_phone, usb_cable_doctor};
@@ -1018,6 +1020,16 @@ fn start_device_monitor_once(app_handle: &AppHandle, state: tauri::State<'_, App
                         .or_else(|| device.manufacturer.clone())
                         .unwrap_or_else(|| format!("USB {:04X}:{:04X}", device.vendor_id, device.product_id));
 
+                    let _ = crate::audit::record(
+                        "Diagnostics",
+                        "usb-connected",
+                        "read-only",
+                        "observed",
+                        Some(uid.clone()),
+                        format!("{} connected in mode {}", display_name, device.mode),
+                        vec![format!("{:04X}:{:04X}", device.vendor_id, device.product_id), device.evidence_source.clone()],
+                    );
+
                     emit_device_event(
                         &app,
                         DeviceHotplugEvent {
@@ -1042,6 +1054,16 @@ fn start_device_monitor_once(app_handle: &AppHandle, state: tauri::State<'_, App
                         .clone()
                         .or_else(|| device.manufacturer.clone())
                         .unwrap_or_else(|| format!("USB {:04X}:{:04X}", device.vendor_id, device.product_id));
+
+                    let _ = crate::audit::record(
+                        "Diagnostics",
+                        "usb-disconnected",
+                        "read-only",
+                        "observed",
+                        Some(uid.clone()),
+                        format!("{} disconnected from mode {}", display_name, device.mode),
+                        vec![format!("{:04X}:{:04X}", device.vendor_id, device.product_id), device.evidence_source.clone()],
+                    );
 
                     emit_device_event(
                         &app,
@@ -1515,6 +1537,8 @@ fn main() {
             workflow_job_retry,
             workstation_readiness,
             workstation_initialize,
+            audit_recent,
+            audit_log_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
