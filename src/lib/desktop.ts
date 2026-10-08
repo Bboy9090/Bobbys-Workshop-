@@ -688,6 +688,65 @@ export async function scanTransportDevices(): Promise<TransportDevice[]> {
   return invoke<TransportDevice[]>('bootforgeusb_transport_scan');
 }
 
+export type SamsungFirmwareEntry = {
+  path: string;
+  size: number;
+  kind: string;
+  candidatePartition?: string | null;
+};
+
+export type SamsungFirmwareArchiveReport = {
+  path: string;
+  role: string;
+  fileSize: number;
+  md5Verified?: boolean | null;
+  embeddedMd5?: string | null;
+  calculatedMd5?: string | null;
+  containsPit: boolean;
+  containsUserdata: boolean;
+  containsMetadata: boolean;
+  downloadList: string[];
+  entries: SamsungFirmwareEntry[];
+  warnings: string[];
+};
+
+export type SamsungFlashPlan = {
+  protocol: string;
+  modeRequired: string;
+  executionEnabled: boolean;
+  destructive: boolean;
+  requiresExplicitApproval: boolean;
+  preservesUserdataByDesign: boolean;
+  roles: string[];
+  packagePaths: string[];
+  plannedPayloads: string[];
+  safetyChecks: string[];
+  warnings: string[];
+};
+
+export async function chooseSamsungFirmwarePackages(): Promise<string[]> {
+  if (!isTauriRuntime()) return [];
+  const selected = await open({
+    multiple: true,
+    directory: false,
+    title: 'Choose Samsung stock firmware packages',
+    filters: [{ name: 'Samsung firmware packages', extensions: ['md5', 'tar'] }],
+  });
+  if (!selected) return [];
+  return Array.isArray(selected) ? selected : [selected];
+}
+
+export async function inspectSamsungFirmwarePackages(
+  paths: string[],
+): Promise<SamsungFirmwareArchiveReport[]> {
+  if (!isTauriRuntime() || !paths.length) return [];
+  return invoke<SamsungFirmwareArchiveReport[]>('bootforge_firmware_inspect', { paths });
+}
+
+export async function buildSamsungFirmwarePlan(paths: string[]): Promise<SamsungFlashPlan> {
+  return invoke<SamsungFlashPlan>('bootforge_samsung_plan', { paths });
+}
+
 export type QualificationBuildIdentity = {
   packageVersion: string;
   sourceRevision: string;
@@ -793,8 +852,35 @@ export type QualifiedFlashApprovalInput = {
   physicalChecks: QualifiedFlashPhysicalChecks;
 };
 
+export type QualificationBenchEvidenceInput = {
+  dossierPath: string;
+  expectedRecoveryJobFingerprint: string;
+  deviceSerial: string;
+  reviewer: string;
+  reviewerNotes: string;
+  partitions: QualifiedFlashPartition[];
+  physicalChecks: QualifiedFlashPhysicalChecks;
+};
+
+export async function exportQualificationBenchEvidence(
+  input: QualificationBenchEvidenceInput,
+): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const destinationPath = await save({
+    title: 'Export physical bench qualification evidence',
+    defaultPath: 'bobfwtools-qualification-bench-evidence.json',
+    filters: [{ name: 'JSON bench evidence', extensions: ['json'] }],
+  });
+  if (!destinationPath) return null;
+  return invoke<string>('bootforge_qualification_bench_evidence_export', {
+    input,
+    destinationPath,
+  });
+}
+
 export type QualificationDecisionInput = {
   dossierPath: string;
+  benchEvidencePath?: string | null;
   expectedRecoveryJobFingerprint: string;
   deviceSerial: string;
   reviewer: string;

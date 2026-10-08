@@ -5,6 +5,9 @@ import {
   getWorkflowPolicyCatalog,
   scanAdbDevices,
   scanTransportDevices,
+  chooseSamsungFirmwarePackages,
+  inspectSamsungFirmwarePackages,
+  buildSamsungFirmwarePlan,
   chooseCalibrationBackupDirectory,
   backupCalibrationPartition,
   chooseEdlProgrammer,
@@ -19,6 +22,8 @@ import {
   type EdlProgrammerRecord,
   type UsbDeviceRecord,
   type TransportDevice,
+  type SamsungFirmwareArchiveReport,
+  type SamsungFlashPlan,
   type WorkflowPolicy,
   type WorkflowRiskLevel,
 } from '../lib/desktop';
@@ -71,6 +76,9 @@ export default function RepairCommandCenter() {
   const [edlAuthSource, setEdlAuthSource] = useState('');
   const [edlConfirm, setEdlConfirm] = useState('');
   const [edlBusy, setEdlBusy] = useState(false);
+  const [samsungFirmwareReports, setSamsungFirmwareReports] = useState<SamsungFirmwareArchiveReport[]>([]);
+  const [samsungFlashPlan, setSamsungFlashPlan] = useState<SamsungFlashPlan | null>(null);
+  const [samsungFirmwareBusy, setSamsungFirmwareBusy] = useState(false);
 
   const targets = useMemo(() => {
     const adbTargets = adbDevices.map((device) => ({
@@ -261,6 +269,28 @@ export default function RepairCommandCenter() {
     }
   };
 
+  const inspectSamsungFirmware = async () => {
+    if (samsungFirmwareBusy || selectedTarget?.kind !== 'samsung-download') return;
+    const paths = await chooseSamsungFirmwarePackages();
+    if (!paths.length) return;
+    setSamsungFirmwareBusy(true);
+    setSamsungFirmwareReports([]);
+    setSamsungFlashPlan(null);
+    setError(null);
+    try {
+      const [reports, plan] = await Promise.all([
+        inspectSamsungFirmwarePackages(paths),
+        buildSamsungFirmwarePlan(paths),
+      ]);
+      setSamsungFirmwareReports(reports);
+      setSamsungFlashPlan(plan);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSamsungFirmwareBusy(false);
+    }
+  };
+
   const runCalibrationBackup = async () => {
     if (backupBusy) return;
     if (!selectedAdbDevice) {
@@ -326,7 +356,11 @@ export default function RepairCommandCenter() {
             Detected target
             <select
               value={selectedTargetKey}
-              onChange={(event) => setSelectedTargetKey(event.target.value)}
+              onChange={(event) => {
+                setSelectedTargetKey(event.target.value);
+                setSamsungFirmwareReports([]);
+                setSamsungFlashPlan(null);
+              }}
               className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
             >
               <option value="">No supported phone/recovery target selected</option>
@@ -498,6 +532,76 @@ export default function RepairCommandCenter() {
         ))}
         </div>
       </div>
+
+      {selectedTarget?.kind === 'samsung-download' && (
+        <div className="mt-4 rounded-lg border border-blue-900/60 bg-blue-950/10 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-blue-400">Samsung stock firmware inspector</div>
+              <div className="mt-1 text-sm font-medium text-white">Verify the package before considering a flash plan.</div>
+              <div className="mt-2 rounded border border-amber-900/70 bg-amber-950/20 p-2 text-[11px] text-amber-200">
+                MODEL MATCH NOT CERTIFIED — Download Mode detection does not prove the exact Samsung model. Package inspection remains evidence-only until exact model identity is independently verified.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => void inspectSamsungFirmware()}
+              disabled={samsungFirmwareBusy}
+              className="rounded bg-blue-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 hover:bg-blue-600"
+            >
+              {samsungFirmwareBusy ? 'Inspecting…' : 'Choose & inspect stock packages'}
+            </button>
+          </div>
+
+          {!!samsungFirmwareReports.length && (
+            <div className="mt-3 grid gap-2 lg:grid-cols-2">
+              {samsungFirmwareReports.map((report) => (
+                <div key={report.path} className="rounded border border-slate-800 bg-slate-950/70 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs text-white">{report.role}</span>
+                    <span className={report.md5Verified === true ? 'text-[10px] text-emerald-300' : 'text-[10px] text-slate-500'}>
+                      {report.md5Verified === true ? 'MD5 verified' : 'TAR inspected'}
+                    </span>
+                  </div>
+                  <div className="mt-1 truncate text-[10px] text-slate-500" title={report.path}>
+                    {report.path.split(/[\\/]/).pop() || report.path}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-500">
+                    <span>{report.entries.length} entries</span>
+                    {report.containsPit && <span className="text-rose-300">contains PIT</span>}
+                    {report.containsUserdata && <span className="text-amber-300">contains userdata</span>}
+                    {report.containsMetadata && <span>contains metadata</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {samsungFlashPlan && (
+            <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs font-semibold text-slate-300">Guarded Samsung plan</div>
+                <span className="rounded bg-amber-950 px-2 py-1 text-[10px] text-amber-300">execution disabled</span>
+              </div>
+              <div className="mt-2 text-[11px] text-slate-500">
+                Roles: {samsungFlashPlan.roles.join(', ') || 'none'} · payloads: {samsungFlashPlan.plannedPayloads.length}
+              </div>
+              <div className="mt-1 text-[11px] text-slate-500">
+                {samsungFlashPlan.destructive
+                  ? 'Destructive package characteristics detected; explicit approval would be required after model/layout qualification.'
+                  : samsungFlashPlan.preservesUserdataByDesign
+                    ? 'Preservation-first HOME_CSC characteristics detected; model/layout qualification is still required.'
+                    : 'Package inspected; model/layout qualification is still required.'}
+              </div>
+              {!!samsungFlashPlan.warnings.length && (
+                <div className="mt-2 space-y-1 text-[10px] text-amber-300">
+                  {samsungFlashPlan.warnings.map((warning) => <div key={warning}>{warning}</div>)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {!!manualActive.length && (
         <details className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-4">

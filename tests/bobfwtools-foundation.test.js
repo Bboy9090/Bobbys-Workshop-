@@ -258,7 +258,19 @@ describe('device-specific command center', () => {
     expect(commandCenter).toContain('READY TO VERIFY');
     expect(commandCenter).toContain('selectedAdbDevice.serial');
     expect(commandCenter).toContain("selectedTarget?.kind === 'qualcomm-edl'");
+    expect(commandCenter).toContain("selectedTarget?.kind === 'samsung-download'");
+    expect(commandCenter).toContain('Samsung stock firmware inspector');
+    expect(commandCenter).toContain('MODEL MATCH NOT CERTIFIED');
+    expect(commandCenter).toContain('Choose & inspect stock packages');
     expect(commandCenter).toContain("selectedTarget?.kind === 'adb'");
+
+    const bridge = read('src/lib/desktop.ts');
+    const planner = read('libs/bootforgeusb/src/planner.rs');
+    expect(bridge).toContain('chooseSamsungFirmwarePackages');
+    expect(bridge).toContain('inspectSamsungFirmwarePackages');
+    expect(bridge).toContain('buildSamsungFirmwarePlan');
+    expect(planner).toContain('does not certify exact device-model compatibility');
+    expect(planner).toContain('exact connected device model');
   });
 });
 
