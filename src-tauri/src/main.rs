@@ -17,6 +17,8 @@ use std::path::PathBuf;
 use std::env;
 use std::collections::HashMap;
 #[cfg(feature = "qualified-flash")]
+use std::collections::HashSet;
+#[cfg(feature = "qualified-flash")]
 use std::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(feature = "legacy-backends")]
@@ -436,6 +438,8 @@ struct AppState {
     job_counter: AtomicU64,
     #[cfg(feature = "qualified-flash")]
     qualification_grant_secret: String,
+    #[cfg(feature = "qualified-flash")]
+    consumed_qualification_grants: Mutex<HashSet<String>>,
     device_monitor_started: Mutex<bool>,
     #[cfg(feature = "legacy-backends")]
     py_client: Mutex<Option<PyWorkerClient>>,
@@ -2104,6 +2108,21 @@ fn validate_qualified_flash_config(config: &FlashJobConfig, grant_secret: &str) 
 }
 
 #[cfg(feature = "qualified-flash")]
+fn consume_qualification_grant(
+    consumed: &mut HashSet<String>,
+    grant_mac: &str,
+) -> Result<(), String> {
+    let key = grant_mac.trim().to_ascii_lowercase();
+    if !valid_sha256_hex(&key) {
+        return Err("Qualified flash grant MAC is malformed".to_string());
+    }
+    if !consumed.insert(key) {
+        return Err("Qualified flash grant has already been consumed".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config: FlashJobConfig) -> Result<FlashStartResponse, String> {
     if config.flashMethod != "fastboot" {
@@ -2145,6 +2164,30 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
             return Err(format!("Image file not found: {}", p.imagePath));
         }
     }
+
+    {
+        let mut consumed = state
+            .consumed_qualification_grants
+            .lock()
+            .map_err(|_| "consumed qualification grants mutex poisoned".to_string())?;
+        consume_qualification_grant(&mut consumed, &config.qualificationGrant.grantMac)?;
+    }
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "consume-qualified-flash-grant",
+        "destructive",
+        "single-use-authority-consumed",
+        Some(config.deviceSerial.clone()),
+        "Qualified destructive capability consumed atomically before job creation.",
+        vec![
+            format!("grant-mac:{}", config.qualificationGrant.grantMac),
+            format!("qualification-status:{}", config.qualificationGrant.qualificationStatus),
+            format!("dossier-fingerprint:{}", config.qualificationGrant.dossierFingerprint),
+            format!("recovery-job-fingerprint:{}", config.qualificationGrant.recoveryJobFingerprint),
+            format!("executor-build-fingerprint:{}", config.qualificationGrant.executorBuildFingerprint),
+        ],
+    );
 
     let id = {
         let next = state.job_counter.fetch_add(1, Ordering::SeqCst) + 1;
@@ -3192,6 +3235,16 @@ mod qualified_flash_grant_tests {
     }
 
     #[test]
+    fn qualification_grant_is_single_use() {
+        let mut consumed = HashSet::new();
+        let grant_mac = "a".repeat(64);
+        assert!(consume_qualification_grant(&mut consumed, &grant_mac).is_ok());
+        assert!(consume_qualification_grant(&mut consumed, &grant_mac)
+            .unwrap_err()
+            .contains("already been consumed"));
+    }
+
+    #[test]
     fn grant_rejects_different_executor_build() {
         let mut config = valid_config();
         config.qualificationGrant.executorBuildFingerprint = "b".repeat(64);
@@ -3220,6 +3273,8 @@ fn main() {
             uuid::Uuid::new_v4().simple(),
             uuid::Uuid::new_v4().simple()
         ),
+        #[cfg(feature = "qualified-flash")]
+        consumed_qualification_grants: Mutex::new(HashSet::new()),
         device_monitor_started: Mutex::new(false),
         #[cfg(feature = "legacy-backends")]
         py_client: Mutex::new(None),
