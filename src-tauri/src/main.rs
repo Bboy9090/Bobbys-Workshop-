@@ -83,7 +83,10 @@ struct QualifiedFlashGrant {
     approvedPartitions: Vec<QualifiedFlashPartitionGrant>,
     wipeUserDataAllowed: bool,
     autoRebootAllowed: bool,
+    issuedAtUnixSeconds: u64,
     expiresAtUnixSeconds: u64,
+    dossierFingerprint: String,
+    grantMac: String,
 }
 
 #[cfg(feature = "qualified-flash")]
@@ -431,6 +434,8 @@ struct AppState {
     flash_history: Mutex<Vec<FlashHistoryEntry>>,
     #[cfg(feature = "qualified-flash")]
     job_counter: AtomicU64,
+    #[cfg(feature = "qualified-flash")]
+    qualification_grant_secret: String,
     device_monitor_started: Mutex<bool>,
     #[cfg(feature = "legacy-backends")]
     py_client: Mutex<Option<PyWorkerClient>>,
@@ -1299,11 +1304,234 @@ fn exact_fastboot_device_present(serial: &str) -> Result<bool, String> {
     }))
 }
 
+
 #[cfg(feature = "qualified-flash")]
-fn validate_qualified_flash_config(config: &FlashJobConfig) -> Result<(), String> {
+#[derive(Debug, Clone, Deserialize)]
+struct QualifiedFlashPhysicalChecks {
+    repeatedEnumerationStable: bool,
+    expectedModeConfirmed: bool,
+    endpointStabilityConfirmed: bool,
+    programmerHashVerified: bool,
+    preflightMatched: bool,
+    partitionBoundsVerified: bool,
+    backupEvidencePresent: bool,
+    destructiveBenchWritePassed: bool,
+    postWriteVerificationPassed: bool,
+}
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, Deserialize)]
+struct QualifiedFlashApprovalInput {
+    dossierPath: String,
+    expectedRecoveryJobFingerprint: String,
+    deviceSerial: String,
+    partitions: Vec<FlashPartition>,
+    wipeUserDataAllowed: bool,
+    autoRebootAllowed: bool,
+    reviewer: String,
+    reviewerNotes: String,
+    confirmation: String,
+    expiresInMinutes: u64,
+    physicalChecks: QualifiedFlashPhysicalChecks,
+}
+
+#[cfg(feature = "qualified-flash")]
+fn qualified_flash_grant_material(grant: &QualifiedFlashGrant) -> Result<Vec<u8>, String> {
+    let value = serde_json::json!({
+        "schema": grant.schema,
+        "qualificationStatus": grant.qualificationStatus,
+        "executorQualified": grant.executorQualified,
+        "deviceSerial": grant.deviceSerial,
+        "executorBuildFingerprint": grant.executorBuildFingerprint,
+        "recoveryJobFingerprint": grant.recoveryJobFingerprint,
+        "approvedPartitions": grant.approvedPartitions,
+        "wipeUserDataAllowed": grant.wipeUserDataAllowed,
+        "autoRebootAllowed": grant.autoRebootAllowed,
+        "issuedAtUnixSeconds": grant.issuedAtUnixSeconds,
+        "expiresAtUnixSeconds": grant.expiresAtUnixSeconds,
+        "dossierFingerprint": grant.dossierFingerprint,
+    });
+    serde_json::to_vec(&value)
+        .map_err(|e| format!("Could not serialize qualified flash grant material: {e}"))
+}
+
+#[cfg(feature = "qualified-flash")]
+fn qualified_flash_grant_mac(secret: &str, grant: &QualifiedFlashGrant) -> Result<String, String> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    type HmacSha256 = Hmac<Sha256>;
+    let material = qualified_flash_grant_material(grant)?;
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|e| format!("Could not initialize flash grant MAC: {e}"))?;
+    mac.update(&material);
+    Ok(format!("{:x}", mac.finalize().into_bytes()))
+}
+
+#[cfg(feature = "qualified-flash")]
+fn all_physical_flash_checks_passed(checks: &QualifiedFlashPhysicalChecks) -> bool {
+    checks.repeatedEnumerationStable
+        && checks.expectedModeConfirmed
+        && checks.endpointStabilityConfirmed
+        && checks.programmerHashVerified
+        && checks.preflightMatched
+        && checks.partitionBoundsVerified
+        && checks.backupEvidencePresent
+        && checks.destructiveBenchWritePassed
+        && checks.postWriteVerificationPassed
+}
+
+#[cfg(feature = "qualified-flash")]
+#[tauri::command]
+fn bootforge_issue_qualified_flash_grant(
+    state: tauri::State<'_, AppState>,
+    input: QualifiedFlashApprovalInput,
+) -> Result<QualifiedFlashGrant, String> {
+    let serial = input.deviceSerial.trim();
+    if serial.is_empty() {
+        return Err("Qualified device serial is required".to_string());
+    }
+    let expected_confirmation = format!("QUALIFY {}", serial);
+    if input.confirmation.trim() != expected_confirmation {
+        return Err(format!(
+            "Explicit qualification confirmation required: {}",
+            expected_confirmation
+        ));
+    }
+    if input.reviewer.trim().is_empty() {
+        return Err("Physical qualification reviewer identity is required".to_string());
+    }
+    if !all_physical_flash_checks_passed(&input.physicalChecks) {
+        return Err(
+            "Every physical qualification check, including destructive bench write and post-write verification, must pass"
+                .to_string(),
+        );
+    }
+    if input.expiresInMinutes == 0 || input.expiresInMinutes > 30 {
+        return Err("Qualified flash grants must expire within 1-30 minutes".to_string());
+    }
+    if !exact_fastboot_device_present(serial)? {
+        return Err("Exact qualified fastboot device is not currently connected".to_string());
+    }
+
+    let review = bootforge_qualification_review(
+        input.dossierPath.clone(),
+        Some(input.expectedRecoveryJobFingerprint.clone()),
+    )?;
+    if !review.safe_to_review {
+        return Err(format!(
+            "Qualification dossier is not safe to approve: {}",
+            review.blockers.join("; ")
+        ));
+    }
+    let dossier_fingerprint = review
+        .dossier_fingerprint
+        .ok_or_else(|| "Verified dossier fingerprint is unavailable".to_string())?;
+    let recovery_job_fingerprint = review
+        .recovery_job_fingerprint
+        .ok_or_else(|| "Verified recovery-job fingerprint is unavailable".to_string())?;
+    let build = qualification_build_identity_snapshot();
+    if !build.qualified_flash_compiled {
+        return Err("This build does not contain the qualified destructive writer".to_string());
+    }
+
+    let allowed_partitions = [
+        "boot", "system", "vendor", "userdata", "cache", "recovery",
+        "bootloader", "radio", "aboot", "vbmeta", "dtbo", "persist",
+    ];
+    let mut approved_partitions = Vec::new();
+    for partition in &input.partitions {
+        let name = partition.name.trim();
+        if !allowed_partitions.contains(&name) {
+            return Err(format!(
+                "Partition '{}' is not approved by the destructive writer allowlist",
+                name
+            ));
+        }
+        if !valid_sha256_hex(&partition.expectedSha256) {
+            return Err(format!("Expected SHA-256 is invalid for partition {}", name));
+        }
+        let actual = sha256_file(std::path::Path::new(&partition.imagePath))?;
+        if !actual.eq_ignore_ascii_case(&partition.expectedSha256) {
+            return Err(format!(
+                "On-disk image hash does not match qualification input for {}",
+                name
+            ));
+        }
+        approved_partitions.push(QualifiedFlashPartitionGrant {
+            name: name.to_string(),
+            imageSha256: actual,
+        });
+    }
+    if approved_partitions.is_empty() {
+        return Err("At least one qualified partition image is required".to_string());
+    }
+
+    let issued_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+    let expires_at = issued_at
+        .checked_add(input.expiresInMinutes * 60)
+        .ok_or_else(|| "Qualification grant expiry overflow".to_string())?;
+
+    let mut grant = QualifiedFlashGrant {
+        schema: "com.bobbyblanco.bobfwtools.qualified-flash-grant.v1".into(),
+        qualificationStatus: "approved".into(),
+        executorQualified: true,
+        deviceSerial: serial.to_string(),
+        executorBuildFingerprint: build.executor_build_fingerprint,
+        recoveryJobFingerprint: recovery_job_fingerprint,
+        approvedPartitions: approved_partitions,
+        wipeUserDataAllowed: input.wipeUserDataAllowed,
+        autoRebootAllowed: input.autoRebootAllowed,
+        issuedAtUnixSeconds: issued_at,
+        expiresAtUnixSeconds: expires_at,
+        dossierFingerprint: dossier_fingerprint,
+        grantMac: String::new(),
+    };
+    grant.grantMac = qualified_flash_grant_mac(&state.qualification_grant_secret, &grant)?;
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "issue-qualified-flash-grant",
+        "destructive",
+        "approved-short-lived",
+        Some(serial.to_string()),
+        "Short-lived qualified flash grant issued after explicit physical qualification review.",
+        vec![
+            format!("reviewer:{}", input.reviewer.trim()),
+            format!("reviewer-notes:{}", input.reviewerNotes.trim()),
+            format!("recovery-job-fingerprint:{}", grant.recoveryJobFingerprint),
+            format!("dossier-fingerprint:{}", grant.dossierFingerprint),
+            format!("executor-build-fingerprint:{}", grant.executorBuildFingerprint),
+            format!("expires-at:{}", grant.expiresAtUnixSeconds),
+            format!(
+                "approved-partitions:{}",
+                grant
+                    .approvedPartitions
+                    .iter()
+                    .map(|p| p.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+        ],
+    );
+
+    Ok(grant)
+}
+
+#[cfg(feature = "qualified-flash")]
+fn validate_qualified_flash_config(config: &FlashJobConfig, grant_secret: &str) -> Result<(), String> {
     let grant = &config.qualificationGrant;
     if grant.schema != "com.bobbyblanco.bobfwtools.qualified-flash-grant.v1" {
         return Err("Qualified flash grant schema is not recognized".to_string());
+    }
+    if !valid_sha256_hex(&grant.grantMac) {
+        return Err("Qualified flash grant MAC is malformed".to_string());
+    }
+    let expected_mac = qualified_flash_grant_mac(grant_secret, grant)?;
+    if !expected_mac.eq_ignore_ascii_case(&grant.grantMac) {
+        return Err("Qualified flash grant authentication failed".to_string());
     }
     if grant.qualificationStatus != "approved" || !grant.executorQualified {
         return Err("Destructive executor is not physically qualified by the supplied grant".to_string());
@@ -1391,7 +1619,7 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
         return Err("At least one partition is required".to_string());
     }
 
-    validate_qualified_flash_config(&config)?;
+    validate_qualified_flash_config(&config, &state.qualification_grant_secret)?;
 
     if !exact_fastboot_device_present(&config.deviceSerial)? {
         return Err("Qualified target is not the currently connected fastboot device".to_string());
@@ -2285,7 +2513,7 @@ mod qualified_flash_grant_tests {
     fn valid_config() -> FlashJobConfig {
         let (path, hash) = test_image("boot", b"qualified-image");
         let build = qualification_build_identity_snapshot();
-        FlashJobConfig {
+        let mut config = FlashJobConfig {
             deviceSerial: "QUALIFIED-DEVICE".into(),
             deviceBrand: "Test".into(),
             flashMethod: "fastboot".into(),
@@ -2311,15 +2539,31 @@ mod qualified_flash_grant_tests {
                 }],
                 wipeUserDataAllowed: false,
                 autoRebootAllowed: false,
+                issuedAtUnixSeconds: 1,
                 expiresAtUnixSeconds: u64::MAX,
+                dossierFingerprint: "c".repeat(64),
+                grantMac: String::new(),
             },
-        }
+        };
+        config.qualificationGrant.grantMac =
+            qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
+        config
     }
 
     #[test]
     fn valid_grant_accepts_matching_hash_and_build() {
         let config = valid_config();
-        assert!(validate_qualified_flash_config(&config).is_ok());
+        assert!(validate_qualified_flash_config(&config, "test-secret").is_ok());
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn grant_rejects_forged_mac() {
+        let mut config = valid_config();
+        config.qualificationGrant.grantMac = "d".repeat(64);
+        assert!(validate_qualified_flash_config(&config, "test-secret")
+            .unwrap_err()
+            .contains("authentication failed"));
         let _ = std::fs::remove_file(&config.partitions[0].imagePath);
     }
 
@@ -2327,7 +2571,8 @@ mod qualified_flash_grant_tests {
     fn grant_rejects_wrong_device() {
         let mut config = valid_config();
         config.qualificationGrant.deviceSerial = "OTHER".into();
-        assert!(validate_qualified_flash_config(&config)
+        config.qualificationGrant.grantMac = qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
+        assert!(validate_qualified_flash_config(&config, "test-secret")
             .unwrap_err()
             .contains("different device serial"));
         let _ = std::fs::remove_file(&config.partitions[0].imagePath);
@@ -2337,7 +2582,8 @@ mod qualified_flash_grant_tests {
     fn grant_rejects_expired_authority() {
         let mut config = valid_config();
         config.qualificationGrant.expiresAtUnixSeconds = 1;
-        assert!(validate_qualified_flash_config(&config)
+        config.qualificationGrant.grantMac = qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
+        assert!(validate_qualified_flash_config(&config, "test-secret")
             .unwrap_err()
             .contains("expired"));
         let _ = std::fs::remove_file(&config.partitions[0].imagePath);
@@ -2348,7 +2594,8 @@ mod qualified_flash_grant_tests {
         let mut config = valid_config();
         config.partitions[0].name = "super_secret".into();
         config.qualificationGrant.approvedPartitions[0].name = "super_secret".into();
-        assert!(validate_qualified_flash_config(&config)
+        config.qualificationGrant.grantMac = qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
+        assert!(validate_qualified_flash_config(&config, "test-secret")
             .unwrap_err()
             .contains("not approved by the destructive writer allowlist"));
         let _ = std::fs::remove_file(&config.partitions[0].imagePath);
@@ -2358,7 +2605,7 @@ mod qualified_flash_grant_tests {
     fn grant_rejects_image_hash_drift() {
         let config = valid_config();
         std::fs::write(&config.partitions[0].imagePath, b"tampered").unwrap();
-        assert!(validate_qualified_flash_config(&config)
+        assert!(validate_qualified_flash_config(&config, "test-secret")
             .unwrap_err()
             .contains("On-disk image hash does not match"));
         let _ = std::fs::remove_file(&config.partitions[0].imagePath);
@@ -2368,7 +2615,8 @@ mod qualified_flash_grant_tests {
     fn grant_rejects_unapproved_wipe() {
         let mut config = valid_config();
         config.wipeUserData = true;
-        assert!(validate_qualified_flash_config(&config)
+        config.qualificationGrant.grantMac = qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
+        assert!(validate_qualified_flash_config(&config, "test-secret")
             .unwrap_err()
             .contains("does not authorize userdata wipe"));
         let _ = std::fs::remove_file(&config.partitions[0].imagePath);
@@ -2378,7 +2626,8 @@ mod qualified_flash_grant_tests {
     fn grant_rejects_unapproved_reboot() {
         let mut config = valid_config();
         config.autoReboot = true;
-        assert!(validate_qualified_flash_config(&config)
+        config.qualificationGrant.grantMac = qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
+        assert!(validate_qualified_flash_config(&config, "test-secret")
             .unwrap_err()
             .contains("does not authorize automatic reboot"));
         let _ = std::fs::remove_file(&config.partitions[0].imagePath);
@@ -2388,7 +2637,8 @@ mod qualified_flash_grant_tests {
     fn grant_rejects_different_executor_build() {
         let mut config = valid_config();
         config.qualificationGrant.executorBuildFingerprint = "b".repeat(64);
-        assert!(validate_qualified_flash_config(&config)
+        config.qualificationGrant.grantMac = qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
+        assert!(validate_qualified_flash_config(&config, "test-secret")
             .unwrap_err()
             .contains("different executor build"));
         let _ = std::fs::remove_file(&config.partitions[0].imagePath);
@@ -2406,6 +2656,12 @@ fn main() {
         flash_history: Mutex::new(vec![]),
         #[cfg(feature = "qualified-flash")]
         job_counter: AtomicU64::new(0),
+        #[cfg(feature = "qualified-flash")]
+        qualification_grant_secret: format!(
+            "{}{}",
+            uuid::Uuid::new_v4().simple(),
+            uuid::Uuid::new_v4().simple()
+        ),
         device_monitor_started: Mutex::new(false),
         #[cfg(feature = "legacy-backends")]
         py_client: Mutex::new(None),
@@ -2525,6 +2781,8 @@ bootforgeusb_transport_scan,
             bootforge_qualification_export,
             bootforge_qualification_build_identity,
             bootforge_qualification_review,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_issue_qualified_flash_grant,
             #[cfg(feature = "qualified-flash")]
             flash_start,
             #[cfg(feature = "qualified-flash")]
