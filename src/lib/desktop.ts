@@ -601,3 +601,41 @@ export async function getRecentAuditEvents(limit = 100): Promise<AuditEvent[]> {
 export async function getAuditLogPath(): Promise<string> {
   return invoke<string>('audit_log_path');
 }
+
+
+export type FirehoseWriteRequest = {
+  imageBytes: number;
+  startSector: number;
+  physicalPartition: number;
+  sectorSize: number;
+  chunkSize: number;
+  partitionStartSector?: number | null;
+  partitionSectorCount?: number | null;
+};
+
+export type FirehoseChunk = {
+  index: number;
+  fileOffset: number;
+  bytes: number;
+};
+
+export type FirehoseWritePlan = {
+  allowed: boolean;
+  reasons: string[];
+  warnings: string[];
+  startSector: number;
+  physicalPartition: number;
+  sectorSize: number;
+  imageBytes: number;
+  numPartitionSectors: number;
+  paddedBytes: number;
+  endSectorExclusive: number;
+  chunkSize: number;
+  chunks: FirehoseChunk[];
+  dryRunOnly: boolean;
+  executorQualified: boolean;
+};
+
+export async function buildFirehoseWritePlan(request: FirehoseWriteRequest): Promise<FirehoseWritePlan> {
+  return invoke<FirehoseWritePlan>('firehose_write_plan', { request });
+}
