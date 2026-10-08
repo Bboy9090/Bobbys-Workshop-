@@ -825,13 +825,19 @@ export default function App() {
               <div>
                 <h2 className="text-base font-semibold text-white">Advanced Recovery</h2>
                 <p className="mt-1 max-w-3xl text-sm text-slate-400">
-                  Hardware-bound recovery planning for Samsung Download Mode, Qualcomm EDL, and MediaTek Download/Preloader.
-                  Every destructive job is inspected, hashed, mapped, and tied to the exact USB identity before an executor can qualify.
+                  Safe recovery is enabled for live hardware detection, artifact inspection, payload hashing, dry-run planning,
+                  audited job preparation, identity revalidation, and qualification evidence. Destructive writes remain locked
+                  until the exact executor/device combination passes physical qualification.
                 </p>
               </div>
-              <span className="rounded border border-orange-900 bg-orange-950/50 px-2 py-1 text-xs text-orange-300">
-                guarded recovery
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded border border-emerald-800 bg-emerald-950/40 px-2 py-1 text-xs font-semibold text-emerald-300">
+                  ENABLED
+                </span>
+                <span className="rounded border border-amber-900 bg-amber-950/50 px-2 py-1 text-xs text-amber-300">
+                  WRITE GATE LOCKED
+                </span>
+              </div>
             </div>
 
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
