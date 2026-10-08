@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   backupCalibrationPartition,
-  chooseCalibrationBackupDestination,
+  chooseCalibrationBackupDirectory,
   chooseEdlProgrammer,
   enrollEdlProgrammer,
   getCalibrationPartitionAllowlist,
@@ -71,7 +71,7 @@ export default function RecoverySafetyTools() {
       setBackupError('Select an authorized ADB device and an allowlisted calibration partition.');
       return;
     }
-    const destination = await chooseCalibrationBackupDestination();
+    const destination = await chooseCalibrationBackupDirectory();
     if (!destination) return;
 
     setBackupBusy(true);
@@ -115,7 +115,7 @@ export default function RecoverySafetyTools() {
 
     setVaultBusy(true);
     try {
-      const enrolled = await enrollEdlProgrammer(candidate, authorizationSource.trim());
+      const enrolled = await enrollEdlProgrammer(candidate, authorizationSource.trim(), 'I CONFIRM OEM OR SERVICE AUTHORIZATION');
       setCandidate(enrolled);
       setProgrammers(await listEdlProgrammers());
     } catch (err) {
