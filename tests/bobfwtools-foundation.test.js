@@ -288,6 +288,10 @@ describe('best next action routing', () => {
     expect(app).toContain("document.getElementById('safe-repair-workflows')");
     expect(app).toContain("document.getElementById('repair-command-center')");
     expect(app).toContain('await runCableDoctor()');
+    expect(app).toContain('autoPrepareRecoveryForCandidate');
+    expect(app).toContain('const paths = await autodiscoverRecoveryArtifacts(candidate.workflow)');
+    expect(app).toContain('const plan = await buildRecoveryPlan(candidate.workflow, paths)');
+    expect(app).toContain('const job = await prepareRecoveryJob(candidate, paths)');
     expect(commandCenter).toContain('id="repair-command-center"');
     expect(app).toContain('id="safe-repair-workflows"');
   });

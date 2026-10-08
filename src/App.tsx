@@ -390,11 +390,12 @@ export default function App() {
 
     if (selectedNextAction.kind === 'recovery') {
       const candidate = recoveryCandidates.find((item) => item.deviceUid === selectedDiagnosticUid);
-      if (candidate) {
-        setSelectedRecoveryUid(candidate.deviceUid);
-        setRecoveryKind(candidate.workflow);
-      }
       document.getElementById('safe-repair-workflows')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (!candidate) {
+        setNativeError('The selected USB target is no longer present in the recovery scan. Refresh detection before preparing a recovery job.');
+        return;
+      }
+      await autoPrepareRecoveryForCandidate(candidate);
       return;
     }
 
@@ -639,6 +640,39 @@ export default function App() {
     setRecoveryEvidencePath(null);
     setRecoveryCertificatePath(null);
     setRecoveryCertificateReview(null);
+  };
+
+  const autoPrepareRecoveryForCandidate = async (candidate: RecoveryCandidate) => {
+    if (recoveryBusy || !nativeRuntime) return;
+    setRecoveryBusy(true);
+    setNativeError(null);
+    setSelectedRecoveryUid(candidate.deviceUid);
+    setRecoveryKind(candidate.workflow);
+    setRecoveryArtifacts([]);
+    setRecoveryPlan(null);
+    setRecoveryJob(null);
+    setRecoveryEvidencePath(null);
+    setRecoveryCertificatePath(null);
+    setRecoveryCertificateReview(null);
+    try {
+      const paths = await autodiscoverRecoveryArtifacts(candidate.workflow);
+      if (!paths.length) {
+        throw new Error(
+          'No safe ' +
+            (candidate.workflow === 'qualcomm-edl' ? 'Qualcomm EDL' : 'MediaTek Download') +
+            ' artifacts were found for this selected recovery target in Downloads, Documents, Desktop, Projects, or repair-artifacts.',
+        );
+      }
+      const plan = await buildRecoveryPlan(candidate.workflow, paths);
+      const job = await prepareRecoveryJob(candidate, paths);
+      setRecoveryArtifacts(paths);
+      setRecoveryPlan(plan);
+      setRecoveryJob(job);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveryBusy(false);
+    }
   };
 
   const autoDiscoverRecoveryArtifacts = async () => {
