@@ -540,3 +540,44 @@ export async function listEdlProgrammers(): Promise<EdlProgrammerRecord[]> {
   if (!isTauriRuntime()) return [];
   return invoke<EdlProgrammerRecord[]>('edl_list_programmers');
 }
+
+
+export type WorkstationToolReadiness = {
+  id: string;
+  present: boolean;
+  detail: string;
+};
+
+export type WorkstationDriverReadiness = {
+  id: string;
+  applicable: boolean;
+  detected: boolean;
+  detail: string;
+  adminRequiredForInstall: boolean;
+};
+
+export type WorkspacePathReadiness = {
+  id: string;
+  path: string;
+  exists: boolean;
+};
+
+export type WorkstationReadiness = {
+  os: string;
+  architecture: string;
+  workspaceRoot: string;
+  workspacePaths: WorkspacePathReadiness[];
+  tools: WorkstationToolReadiness[];
+  drivers: WorkstationDriverReadiness[];
+  readyForDiagnostics: boolean;
+  readyForAndroidService: boolean;
+  blockers: string[];
+};
+
+export async function getWorkstationReadiness(): Promise<WorkstationReadiness> {
+  return invoke<WorkstationReadiness>('workstation_readiness');
+}
+
+export async function initializeWorkstation(): Promise<WorkstationReadiness> {
+  return invoke<WorkstationReadiness>('workstation_initialize');
+}
