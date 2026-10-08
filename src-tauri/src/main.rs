@@ -2275,7 +2275,7 @@ mod qualified_flash_grant_tests {
             "bobfwtools-qualified-flash-{}-{}-{}.img",
             name,
             std::process::id(),
-            now_ms()
+            uuid::Uuid::new_v4()
         ));
         std::fs::write(&path, bytes).unwrap();
         let hash = format!("{:x}", Sha256::digest(bytes));

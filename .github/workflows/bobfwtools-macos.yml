@@ -58,6 +58,12 @@ jobs:
       - name: Check BobFWTools Tauri core
         run: cargo check --manifest-path src-tauri/Cargo.toml
 
+      - name: Check qualified destructive writer build
+        run: cargo check --manifest-path src-tauri/Cargo.toml --features qualified-flash
+
+      - name: Test qualified destructive writer gates
+        run: cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --features qualified-flash
+
       - name: Run BootForge USB tests
         run: cargo test --manifest-path libs/bootforgeusb/Cargo.toml
 

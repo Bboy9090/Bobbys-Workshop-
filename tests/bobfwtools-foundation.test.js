@@ -221,15 +221,31 @@ describe('nested MTP browser', () => {
 });
 
 
-describe('production command surface excludes destructive flash', () => {
-  it('does not register unqualified flash commands in the default Tauri handler', () => {
+describe('production command surface excludes unqualified destructive flash', () => {
+  it('feature-gates destructive flash commands and keeps qualified-flash out of default features', () => {
     const main = read('src-tauri/src/main.rs');
+    const cargo = read('src-tauri/Cargo.toml');
     const start = main.indexOf('invoke_handler(tauri::generate_handler![');
     const end = main.indexOf('])', start);
     const handler = main.slice(start, end);
-    expect(handler).not.toContain('flash_start');
-    expect(handler).not.toContain('flash_cancel');
-    expect(handler).not.toContain('flash_status');
-    expect(handler).not.toContain('flash_history');
+
+    for (const command of [
+      'flash_start',
+      'flash_cancel',
+      'flash_status',
+      'flash_history',
+      'flash_active',
+      'bootforge_flash_history',
+      'bootforge_flash_active',
+    ]) {
+      const gated = new RegExp(
+        '#\\[cfg\\(feature = "qualified-flash"\\)\\]\\s+' + command + ','
+      );
+      expect(handler).toMatch(gated);
+    }
+
+    const defaultFeatures = cargo.match(/^default\s*=\s*\[(.*?)\]/m)?.[1] || '';
+    expect(defaultFeatures).not.toContain('qualified-flash');
+    expect(cargo).toContain('qualified-flash = []');
   });
 });
