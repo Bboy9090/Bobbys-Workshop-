@@ -1663,6 +1663,128 @@ fn bootforge_qualification_decision_export(
     Ok(destination.display().to_string())
 }
 
+#[cfg(all(test, feature = "qualified-flash"))]
+mod qualification_decision_tests {
+    use super::*;
+
+    fn passed_checks() -> QualifiedFlashPhysicalChecks {
+        QualifiedFlashPhysicalChecks {
+            repeatedEnumerationStable: true,
+            expectedModeConfirmed: true,
+            endpointStabilityConfirmed: true,
+            programmerHashVerified: true,
+            preflightMatched: true,
+            partitionBoundsVerified: true,
+            backupEvidencePresent: true,
+            destructiveBenchWritePassed: true,
+            postWriteVerificationPassed: true,
+        }
+    }
+
+    fn accepted_receipt() -> QualificationDecisionReceipt {
+        let mut receipt = QualificationDecisionReceipt {
+            schema: "com.bobbyblanco.bobfwtools.qualification-decision.v1".into(),
+            decision: "accept-evidence".into(),
+            grants_authority: false,
+            executor_qualified: false,
+            reviewer: "bench-reviewer".into(),
+            reviewer_notes: "verified".into(),
+            device_serial: "SERIAL123".into(),
+            dossier_fingerprint: "a".repeat(64),
+            recovery_job_fingerprint: "b".repeat(64),
+            executor_build_fingerprint: "c".repeat(64),
+            physical_checks: passed_checks(),
+            generated_unix_seconds: 1_700_000_000,
+            receipt_fingerprint: String::new(),
+        };
+        receipt.receipt_fingerprint =
+            qualification_decision_fingerprint(&receipt).expect("fingerprint");
+        receipt
+    }
+
+    fn write_receipt(receipt: &QualificationDecisionReceipt) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "bobfwtools-decision-{}.json",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::write(
+            &path,
+            serde_json::to_vec_pretty(receipt).expect("serialize receipt"),
+        )
+        .expect("write receipt");
+        path
+    }
+
+    #[test]
+    fn accepted_decision_verifies_when_every_binding_matches() {
+        let receipt = accepted_receipt();
+        let path = write_receipt(&receipt);
+        let verified = load_and_verify_qualification_decision(
+            path.to_str().expect("path"),
+            "bench-reviewer",
+            "SERIAL123",
+            &"a".repeat(64),
+            &"b".repeat(64),
+            &"c".repeat(64),
+        )
+        .expect("accepted receipt should verify");
+        assert_eq!(verified.receipt_fingerprint, receipt.receipt_fingerprint);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn decision_receipt_rejects_tampering_and_authority_claims() {
+        let mut tampered = accepted_receipt();
+        tampered.reviewer_notes = "changed after fingerprint".into();
+        let tampered_path = write_receipt(&tampered);
+        assert!(load_and_verify_qualification_decision(
+            tampered_path.to_str().expect("path"),
+            "bench-reviewer",
+            "SERIAL123",
+            &"a".repeat(64),
+            &"b".repeat(64),
+            &"c".repeat(64),
+        )
+        .is_err());
+        let _ = std::fs::remove_file(tampered_path);
+
+        let mut authority = accepted_receipt();
+        authority.grants_authority = true;
+        authority.receipt_fingerprint =
+            qualification_decision_fingerprint(&authority).expect("fingerprint");
+        let authority_path = write_receipt(&authority);
+        assert!(load_and_verify_qualification_decision(
+            authority_path.to_str().expect("path"),
+            "bench-reviewer",
+            "SERIAL123",
+            &"a".repeat(64),
+            &"b".repeat(64),
+            &"c".repeat(64),
+        )
+        .is_err());
+        let _ = std::fs::remove_file(authority_path);
+    }
+
+    #[test]
+    fn rejected_decision_cannot_unlock_production_authority() {
+        let mut receipt = accepted_receipt();
+        receipt.decision = "reject-evidence".into();
+        receipt.receipt_fingerprint =
+            qualification_decision_fingerprint(&receipt).expect("fingerprint");
+        let path = write_receipt(&receipt);
+        assert!(load_and_verify_qualification_decision(
+            path.to_str().expect("path"),
+            "bench-reviewer",
+            "SERIAL123",
+            &"a".repeat(64),
+            &"b".repeat(64),
+            &"c".repeat(64),
+        )
+        .is_err());
+        let _ = std::fs::remove_file(path);
+    }
+}
+
 #[cfg(feature = "qualified-flash")]
 fn qualified_flash_grant_material(grant: &QualifiedFlashGrant) -> Result<Vec<u8>, String> {
     let value = serde_json::json!({
