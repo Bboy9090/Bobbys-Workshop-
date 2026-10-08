@@ -410,6 +410,59 @@ mod tests {
 
 
     #[test]
+    fn identity_revalidation_never_unlocks_unqualified_executor() {
+        let mut job = RecoveryJob {
+            workflow: RecoveryKind::QualcommEdl,
+            protocol: "qualcomm-sahara-firehose".into(),
+            identity: DeviceIdentitySnapshot {
+                device_uid: "usb:05c6:9008:SERIAL".into(),
+                vendor_id: 0x05c6,
+                product_id: 0x9008,
+                mode: "qualcomm-edl".into(),
+                serial_number: Some("SERIAL".into()),
+                bus_number: None,
+                device_address: None,
+            },
+            artifact_digests: vec![],
+            operations: vec![PartitionOperation {
+                partition_name: Some("boot".into()),
+                filename: "boot.img".into(),
+                start: Some(0),
+                length: Some(4096),
+                physical_partition: Some(0),
+                region: None,
+                operation: "program".into(),
+            }],
+            destructive: true,
+            requires_explicit_approval: true,
+            prerequisites_met: true,
+            identity_revalidated: false,
+            executor_qualified: false,
+            execution_ready: false,
+            blockers: vec!["Protocol executor has not yet passed physical-device qualification for this workflow.".into()],
+        };
+        let current = TransportDevice {
+            device_uid: job.identity.device_uid.clone(),
+            vendor_id: job.identity.vendor_id,
+            product_id: job.identity.product_id,
+            bus_number: 1,
+            device_address: 2,
+            manufacturer: Some("Qualcomm".into()),
+            product_name: Some("QDLoader 9008".into()),
+            serial_number: job.identity.serial_number.clone(),
+            mode: job.identity.mode.clone(),
+            endpoints: vec![],
+            bulk_in: vec![0x81],
+            bulk_out: vec![0x01],
+        };
+
+        revalidate_job_identity(&mut job, &current).unwrap();
+        assert!(job.identity_revalidated);
+        assert!(!job.executor_qualified);
+        assert!(!job.execution_ready);
+    }
+
+    #[test]
     fn identity_revalidation_requires_same_bound_device() {
         let snapshot = DeviceIdentitySnapshot {
             device_uid: "usb:05c6:9008:SERIAL".into(),
