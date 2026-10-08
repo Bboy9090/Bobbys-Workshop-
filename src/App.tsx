@@ -472,6 +472,7 @@ export default function App() {
       setRecoveryArtifacts(paths);
       setRecoveryPlan(null);
       setRecoveryJob(null);
+      setRecoveryEvidencePath(null);
       const plan = await buildRecoveryPlan(recoveryKind, paths);
       setRecoveryPlan(plan);
       const candidate = recoveryCandidates.find((item) => item.workflow === recoveryKind);
