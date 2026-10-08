@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   exportQualificationDossier,
+  getQualificationBuildIdentity,
   getWorkstationReadiness,
   listEdlProgrammers,
   scanTransportDevices,
   type EdlProgrammerRecord,
+  type QualificationBuildIdentity,
   type QualificationRecoveryIdentity,
   type TransportDevice,
   type WorkstationReadiness,
@@ -21,6 +23,7 @@ export default function QualificationDossier({
 }: QualificationDossierProps) {
   const [devices, setDevices] = useState<TransportDevice[]>([]);
   const [workstation, setWorkstation] = useState<WorkstationReadiness | null>(null);
+  const [buildIdentity, setBuildIdentity] = useState<QualificationBuildIdentity | null>(null);
   const [programmers, setProgrammers] = useState<EdlProgrammerRecord[]>([]);
   const [selectedUid, setSelectedUid] = useState('');
   const [notes, setNotes] = useState('');
@@ -49,16 +52,18 @@ export default function QualificationDossier({
 
   const refresh = async () => {
     try {
-      const [transport, host, vault] = await Promise.all([
+      const [transport, host, vault, build] = await Promise.all([
         scanTransportDevices(),
         getWorkstationReadiness(),
         listEdlProgrammers(),
+        getQualificationBuildIdentity(),
       ]);
       const recovery = transport.filter((device) =>
         ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download'].includes(device.mode),
       );
       setDevices(recovery);
       setWorkstation(host);
+      setBuildIdentity(build);
       setProgrammers(vault);
       if (!selectedUid && recovery.length) setSelectedUid(recovery[0].deviceUid);
       if (selectedUid && !recovery.some((device) => device.deviceUid === selectedUid)) {
@@ -169,6 +174,23 @@ export default function QualificationDossier({
             </div>
           ) : null}
         </div>
+      </div>
+
+      <div className="mt-3 rounded border border-slate-800 bg-slate-950/60 p-3">
+        <div className="text-[10px] uppercase tracking-wide text-slate-600">Executor build identity</div>
+        {!buildIdentity ? (
+          <div className="mt-1 text-xs text-amber-300">Build identity unavailable.</div>
+        ) : (
+          <div className="mt-2 space-y-1 text-[10px]">
+            <div className={buildIdentity.sourceRevisionAvailable ? 'text-emerald-300' : 'text-rose-300'}>
+              source revision: {buildIdentity.sourceRevisionAvailable ? buildIdentity.sourceRevision : 'UNAVAILABLE — binding blocked'}
+            </div>
+            <div className="break-all font-mono text-slate-500">executor: {buildIdentity.executorBuildFingerprint}</div>
+            <div className="text-slate-500">
+              v{buildIdentity.packageVersion} · {buildIdentity.buildProfile} · qualified-flash {buildIdentity.qualifiedFlashCompiled ? 'compiled' : 'not compiled'}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="mt-3 rounded border border-slate-800 bg-slate-950/60 p-3">

@@ -823,6 +823,54 @@ fn qualification_source_revision_available(value: &str) -> bool {
     !trimmed.is_empty() && trimmed != "unavailable"
 }
 
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationBuildIdentity {
+    package_version: String,
+    source_revision: String,
+    source_revision_available: bool,
+    build_profile: String,
+    qualified_flash_compiled: bool,
+    executor_build_fingerprint: String,
+}
+
+fn qualification_build_identity_snapshot() -> QualificationBuildIdentity {
+    use sha2::{Digest, Sha256};
+
+    let source_revision = option_env!("BOBFWTOOLS_SOURCE_REVISION")
+        .or(option_env!("GITHUB_SHA"))
+        .unwrap_or("unavailable")
+        .trim()
+        .to_string();
+    let source_revision_available = qualification_source_revision_available(&source_revision);
+    let build_profile = if cfg!(debug_assertions) { "debug" } else { "release" }.to_string();
+    let qualified_flash_compiled = cfg!(feature = "qualified-flash");
+    let package_version = env!("CARGO_PKG_VERSION").to_string();
+    let executor_descriptor = format!(
+        "bobfwtools|{}|{}|{}|qualified-flash:{}",
+        package_version,
+        source_revision,
+        build_profile,
+        qualified_flash_compiled
+    );
+    let executor_build_fingerprint = format!("{:x}", Sha256::digest(executor_descriptor.as_bytes()));
+
+    QualificationBuildIdentity {
+        package_version,
+        source_revision,
+        source_revision_available,
+        build_profile,
+        qualified_flash_compiled,
+        executor_build_fingerprint,
+    }
+}
+
+#[tauri::command]
+fn bootforge_qualification_build_identity() -> QualificationBuildIdentity {
+    qualification_build_identity_snapshot()
+}
+
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct QualificationDossierInput {
@@ -908,24 +956,10 @@ fn bootforge_qualification_export(
     let recovery_job_fingerprint = input.recovery_job_fingerprint.trim().to_ascii_lowercase();
     let fingerprint_valid = valid_sha256_hex(&recovery_job_fingerprint);
 
-    let source_revision = option_env!("BOBFWTOOLS_SOURCE_REVISION")
-        .or(option_env!("GITHUB_SHA"))
-        .unwrap_or("unavailable")
-        .trim()
-        .to_string();
-    let source_revision_available = qualification_source_revision_available(&source_revision);
-    let build_profile = if cfg!(debug_assertions) { "debug" } else { "release" };
-    let qualified_flash_compiled = cfg!(feature = "qualified-flash");
-
-    use sha2::{Digest, Sha256};
-    let executor_descriptor = format!(
-        "bobfwtools|{}|{}|{}|qualified-flash:{}",
-        env!("CARGO_PKG_VERSION"),
-        source_revision,
-        build_profile,
-        qualified_flash_compiled
-    );
-    let executor_build_fingerprint = format!("{:x}", Sha256::digest(executor_descriptor.as_bytes()));
+    let build_identity = qualification_build_identity_snapshot();
+    let source_revision = build_identity.source_revision.clone();
+    let source_revision_available = build_identity.source_revision_available;
+    let executor_build_fingerprint = build_identity.executor_build_fingerprint.clone();
 
     let device_identity_match = qualification_device_identity_matches(
         input.prepared_recovery_identity.as_ref(),
@@ -983,7 +1017,8 @@ fn bootforge_qualification_export(
     });
     let binding_bytes = serde_json::to_vec(&binding_material)
         .map_err(|e| format!("Could not serialize qualification binding material: {e}"))?;
-    let dossier_fingerprint = format!("{:x}", Sha256::digest(&binding_bytes));
+    use sha2::Digest;
+    let dossier_fingerprint = format!("{:x}", sha2::Sha256::digest(&binding_bytes));
 
     let receipt = serde_json::json!({
         "schema": "com.bobbyblanco.bobfwtools.designated-device-qualification.v1",
@@ -998,14 +1033,7 @@ fn bootforge_qualification_export(
         "recoveryJobFingerprintValid": fingerprint_valid,
         "preparedRecoveryIdentity": input.prepared_recovery_identity,
         "liveDeviceIdentityMatch": device_identity_match,
-        "executorBuild": {
-            "packageVersion": env!("CARGO_PKG_VERSION"),
-            "sourceRevision": source_revision,
-            "sourceRevisionAvailable": source_revision_available,
-            "buildProfile": build_profile,
-            "qualifiedFlashCompiled": qualified_flash_compiled,
-            "executorBuildFingerprint": executor_build_fingerprint,
-        },
+        "executorBuild": build_identity,
         "device": input.device,
         "workstation": input.workstation,
         "authorizedProgrammers": input.authorized_programmers,
@@ -2026,6 +2054,7 @@ bootforgeusb_transport_scan,
             bootforge_recovery_revalidate,
             bootforge_recovery_export_receipt,
             bootforge_qualification_export,
+            bootforge_qualification_build_identity,
             mtp_status,
             mtp_list_root,
             mtp_download_file,

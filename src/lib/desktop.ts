@@ -686,6 +686,20 @@ export async function scanTransportDevices(): Promise<TransportDevice[]> {
   return invoke<TransportDevice[]>('bootforgeusb_transport_scan');
 }
 
+export type QualificationBuildIdentity = {
+  packageVersion: string;
+  sourceRevision: string;
+  sourceRevisionAvailable: boolean;
+  buildProfile: string;
+  qualifiedFlashCompiled: boolean;
+  executorBuildFingerprint: string;
+};
+
+export async function getQualificationBuildIdentity(): Promise<QualificationBuildIdentity | null> {
+  if (!isTauriRuntime()) return null;
+  return invoke<QualificationBuildIdentity>('bootforge_qualification_build_identity');
+}
+
 export type QualificationRecoveryIdentity = {
   deviceUid: string;
   vendorId: number;
