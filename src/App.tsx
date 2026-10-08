@@ -1278,6 +1278,9 @@ export default function App() {
                           <span className="font-mono text-slate-200">{operation.partitionName || 'unnamed'}</span>
                           <span className="ml-2 text-slate-500">{operation.filename}</span>
                           {operation.length != null && <span className="ml-2 text-slate-600">{formatBytes(operation.length)}</span>}
+                          {operation.sourceOffset != null && operation.sourceOffset > 0 && (
+                            <span className="ml-2 text-amber-500">payload offset {formatBytes(operation.sourceOffset)}</span>
+                          )}
                         </div>
                       ))}
                     </div>

@@ -54,6 +54,7 @@ pub struct PartitionOperation {
     pub filename: String,
     pub start: Option<u64>,
     pub length: Option<u64>,
+    pub source_offset: Option<u64>,
     pub physical_partition: Option<u32>,
     pub region: Option<String>,
     pub operation: String,
@@ -188,11 +189,17 @@ pub fn parse_qualcomm_rawprogram(path: &Path) -> Result<Vec<PartitionOperation>,
                     .unwrap_or(512);
                 let start = start_sector.map(|v| v.saturating_mul(sector_size));
                 let length = sectors.map(|v| v.saturating_mul(sector_size));
+                let source_offset = attrs
+                    .get("file_sector_offset")
+                    .and_then(|v| parse_u64(v))
+                    .map(|v| v.saturating_mul(sector_size))
+                    .or(Some(0));
                 out.push(PartitionOperation {
                     partition_name: attrs.get("label").cloned().filter(|v| !v.is_empty()),
                     filename,
                     start,
                     length,
+                    source_offset,
                     physical_partition: attrs
                         .get("physical_partition_number")
                         .and_then(|v| parse_u32(v)),
@@ -271,6 +278,7 @@ pub fn parse_mtk_scatter(path: &Path) -> Result<Vec<PartitionOperation>, Recover
                 .or_else(|| b.get("physical_start_addr"))
                 .and_then(|v| parse_u64(v)),
             length: b.get("partition_size").and_then(|v| parse_u64(v)),
+            source_offset: Some(0),
             physical_partition: None,
             region: b
                 .get("region")
@@ -341,6 +349,87 @@ fn overlapping_operation_pairs(operations: &[PartitionOperation]) -> Vec<String>
         }
     }
     issues
+}
+
+
+fn range_integrity_issues(operations: &[PartitionOperation]) -> Vec<String> {
+    let mut issues = Vec::new();
+    for op in operations {
+        let label = op
+            .partition_name
+            .as_deref()
+            .unwrap_or(op.filename.as_str());
+        let Some(start) = op.start else {
+            issues.push(format!("operation {label} is missing a start address"));
+            continue;
+        };
+        let Some(length) = op.length else {
+            issues.push(format!("operation {label} is missing a declared length"));
+            continue;
+        };
+        if length == 0 {
+            issues.push(format!("operation {label} has zero length"));
+            continue;
+        }
+        if start.checked_add(length).is_none() {
+            issues.push(format!("operation {label} range overflows u64"));
+        }
+    }
+    issues
+}
+
+fn payload_length_issues(
+    workflow: RecoveryKind,
+    layout_path: &Path,
+    operations: &[PartitionOperation],
+) -> Result<Vec<String>, RecoveryJobError> {
+    let mut issues = Vec::new();
+    for op in operations {
+        let payload = resolve_payload_path(layout_path, &op.filename)?;
+        let size = payload
+            .metadata()
+            .map_err(|e| RecoveryJobError::Io {
+                path: payload.display().to_string(),
+                message: e.to_string(),
+            })?
+            .len();
+        let label = op
+            .partition_name
+            .as_deref()
+            .unwrap_or(op.filename.as_str());
+
+        match workflow {
+            RecoveryKind::QualcommEdl => {
+                let (Some(length), Some(offset)) = (op.length, op.source_offset) else {
+                    continue;
+                };
+                let Some(required_end) = offset.checked_add(length) else {
+                    issues.push(format!(
+                        "payload window for {label} overflows u64: offset={offset} length={length}"
+                    ));
+                    continue;
+                };
+                if size < required_end {
+                    issues.push(format!(
+                        "payload too short for {label}: {} bytes available, {} bytes required by file offset + operation length",
+                        size, required_end
+                    ));
+                }
+            }
+            RecoveryKind::MediatekDownload => {
+                let Some(length) = op.length else {
+                    continue;
+                };
+                if size > length {
+                    issues.push(format!(
+                        "payload too large for {label}: {} bytes payload exceeds declared partition size {}",
+                        size, length
+                    ));
+                }
+            }
+        }
+    }
+    Ok(issues)
 }
 
 fn collect_high_risk_partitions(operations: &[PartitionOperation]) -> Vec<String> {
@@ -468,11 +557,12 @@ pub fn recovery_job_fingerprint(job: &RecoveryJob) -> String {
         .iter()
         .map(|op| {
             format!(
-                "{}|{}|{:?}|{:?}|{:?}|{:?}|{}",
+                "{}|{}|{:?}|{:?}|{:?}|{:?}|{:?}|{}",
                 op.partition_name.as_deref().unwrap_or("<none>"),
                 op.filename,
                 op.start,
                 op.length,
+                op.source_offset,
                 op.physical_partition,
                 op.region,
                 op.operation
@@ -530,6 +620,7 @@ pub fn build_job(
     let mut artifact_digests = Vec::new();
     let mut payload_digest_map: BTreeMap<String, ArtifactDigest> = BTreeMap::new();
     let mut operations = Vec::new();
+    let mut payload_length_findings = Vec::new();
     for artifact in &plan.artifacts {
         let path = PathBuf::from(&artifact.path);
         artifact_digests.push(hash_artifact(&path, &artifact.role)?);
@@ -537,11 +628,21 @@ pub fn build_job(
             (RecoveryKind::QualcommEdl, "rawprogram") => {
                 let parsed = parse_qualcomm_rawprogram(&path)?;
                 hash_referenced_payloads(&path, &parsed, &mut payload_digest_map)?;
+                payload_length_findings.extend(payload_length_issues(
+                    RecoveryKind::QualcommEdl,
+                    &path,
+                    &parsed,
+                )?);
                 operations.extend(parsed);
             }
             (RecoveryKind::MediatekDownload, "scatter") => {
                 let parsed = parse_mtk_scatter(&path)?;
                 hash_referenced_payloads(&path, &parsed, &mut payload_digest_map)?;
+                payload_length_findings.extend(payload_length_issues(
+                    RecoveryKind::MediatekDownload,
+                    &path,
+                    &parsed,
+                )?);
                 operations.extend(parsed);
             }
             _ => {}
@@ -549,10 +650,18 @@ pub fn build_job(
     }
     let payload_digests = payload_digest_map.into_values().collect::<Vec<_>>();
     let overlap_issues = overlapping_operation_pairs(&operations);
-    let integrity_findings = overlap_issues.clone();
+    let range_issues = range_integrity_issues(&operations);
+    let mut integrity_findings = Vec::new();
+    integrity_findings.extend(overlap_issues.iter().cloned());
+    integrity_findings.extend(range_issues.iter().cloned());
+    integrity_findings.extend(payload_length_findings.iter().cloned());
+    integrity_findings.sort();
+    integrity_findings.dedup();
+
     let high_risk_partitions = collect_high_risk_partitions(&operations);
-    let integrity_checks_passed =
-        !operations.is_empty() && !payload_digests.is_empty() && overlap_issues.is_empty();
+    let integrity_checks_passed = !operations.is_empty()
+        && !payload_digests.is_empty()
+        && integrity_findings.is_empty();
 
     let mut blockers = Vec::new();
     blockers.push(
@@ -565,13 +674,15 @@ pub fn build_job(
                 .to_string(),
         );
     }
-    blockers.extend(overlap_issues);
+    blockers.extend(integrity_findings.iter().cloned());
     if !high_risk_partitions.is_empty() {
         blockers.push(format!(
             "High-risk partitions require elevated explicit approval and designated-device evidence: {}",
             high_risk_partitions.join(", ")
         ));
     }
+    let requires_explicit_approval =
+        plan.requires_explicit_approval || !high_risk_partitions.is_empty();
 
     let mut job = RecoveryJob {
         workflow: plan.workflow,
@@ -593,7 +704,7 @@ pub fn build_job(
         integrity_findings,
         high_risk_partitions,
         destructive: plan.destructive,
-        requires_explicit_approval: plan.requires_explicit_approval,
+        requires_explicit_approval,
         prerequisites_met: plan.prerequisites_met,
         identity_revalidated: false,
         executor_qualified: false,
@@ -630,6 +741,7 @@ mod tests {
         assert_eq!(ops.len(), 1);
         assert_eq!(ops[0].start, Some(2048 * 512));
         assert_eq!(ops[0].length, Some(16 * 512));
+        assert_eq!(ops[0].source_offset, Some(0));
     }
 
     #[test]
@@ -671,6 +783,7 @@ mod tests {
                 filename: "a.bin".into(),
                 start: Some(0x1000),
                 length: Some(0x1000),
+                source_offset: Some(0),
                 physical_partition: Some(0),
                 region: None,
                 operation: "program".into(),
@@ -680,6 +793,7 @@ mod tests {
                 filename: "b.bin".into(),
                 start: Some(0x1800),
                 length: Some(0x1000),
+                source_offset: Some(0),
                 physical_partition: Some(0),
                 region: None,
                 operation: "program".into(),
@@ -688,6 +802,69 @@ mod tests {
         let issues = overlapping_operation_pairs(&ops);
         assert_eq!(issues.len(), 1);
         assert!(issues[0].contains("overlapping recovery ranges"));
+    }
+
+    #[test]
+    fn flags_incomplete_or_zero_partition_ranges() {
+        let ops = vec![
+            PartitionOperation {
+                partition_name: Some("missing-start".into()),
+                filename: "a.bin".into(),
+                start: None,
+                length: Some(4096),
+                source_offset: Some(0),
+                physical_partition: Some(0),
+                region: None,
+                operation: "program".into(),
+            },
+            PartitionOperation {
+                partition_name: Some("zero-length".into()),
+                filename: "b.bin".into(),
+                start: Some(0),
+                length: Some(0),
+                source_offset: Some(0),
+                physical_partition: Some(0),
+                region: None,
+                operation: "program".into(),
+            },
+        ];
+        let issues = range_integrity_issues(&ops);
+        assert!(issues.iter().any(|issue| issue.contains("missing a start address")));
+        assert!(issues.iter().any(|issue| issue.contains("zero length")));
+    }
+
+    #[test]
+    fn qualcomm_payload_must_cover_source_offset_and_declared_length() {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = dir.path().join("rawprogram0.xml");
+        std::fs::write(
+            &layout,
+            r#"<data><program SECTOR_SIZE_IN_BYTES="512" file_sector_offset="2" filename="boot.img" label="boot" num_partition_sectors="4" physical_partition_number="0" start_sector="0" /></data>"#,
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("boot.img"), vec![0u8; 2048]).unwrap();
+        let ops = parse_qualcomm_rawprogram(&layout).unwrap();
+        assert_eq!(ops[0].source_offset, Some(1024));
+        let issues = payload_length_issues(RecoveryKind::QualcommEdl, &layout, &ops).unwrap();
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].contains("payload too short"));
+    }
+
+    #[test]
+    fn mediatek_payload_cannot_exceed_declared_partition_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = dir.path().join("scatter.txt");
+        std::fs::write(
+            &layout,
+            "- partition_index: SYS0\n  partition_name: boot\n  file_name: boot.img\n  is_download: true\n  linear_start_addr: 0x0\n  partition_size: 0x400\n  region: EMMC_USER\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("boot.img"), vec![0u8; 2048]).unwrap();
+        let ops = parse_mtk_scatter(&layout).unwrap();
+        let issues =
+            payload_length_issues(RecoveryKind::MediatekDownload, &layout, &ops).unwrap();
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].contains("payload too large"));
     }
 
     #[test]
@@ -712,6 +889,7 @@ mod tests {
                 filename: "boot.img".into(),
                 start: Some(0),
                 length: Some(4096),
+                source_offset: Some(0),
                 physical_partition: Some(0),
                 region: None,
                 operation: "program".into(),
@@ -799,6 +977,7 @@ mod tests {
                 filename: "preloader.bin".into(),
                 start: Some(0),
                 length: Some(4096),
+                source_offset: Some(0),
                 physical_partition: None,
                 region: Some("EMMC_BOOT_1".into()),
                 operation: "download".into(),
@@ -808,6 +987,7 @@ mod tests {
                 filename: "system.img".into(),
                 start: Some(8192),
                 length: Some(4096),
+                source_offset: Some(0),
                 physical_partition: None,
                 region: Some("EMMC_USER".into()),
                 operation: "download".into(),
@@ -850,6 +1030,7 @@ mod tests {
                 filename: "boot.img".into(),
                 start: Some(0),
                 length: Some(4096),
+                source_offset: Some(0),
                 physical_partition: Some(0),
                 region: None,
                 operation: "program".into(),

@@ -952,6 +952,7 @@ export type RecoveryPartitionOperation = {
   filename: string;
   start?: number | null;
   length?: number | null;
+  sourceOffset?: number | null;
   physicalPartition?: number | null;
   region?: string | null;
   operation: string;
