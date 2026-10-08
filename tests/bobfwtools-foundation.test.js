@@ -221,6 +221,24 @@ describe('nested MTP browser', () => {
 });
 
 
+describe('advanced recovery selected-device binding', () => {
+  it('locks live recovery planning to the selected hardware identity and clears stale state', () => {
+    const app = read('src/App.tsx');
+
+    expect(app).toContain('selectedRecoveryCandidate');
+    expect(app).toContain('selectedRecoveryCandidate?.workflow ?? recoveryKind');
+    expect(app).toContain('prepareRecoveryJob(selectedRecoveryCandidate, paths)');
+    expect(app).not.toContain('recoveryCandidates.find((item) => item.workflow === recoveryKind)');
+    expect(app).toContain('Lane locked to detected hardware');
+    expect(app).toContain('Manual lane selection is available only for offline artifact inspection');
+    expect(app).toContain('setRecoveryArtifacts([])');
+    expect(app).toContain('setRecoveryEvidencePath(null)');
+    expect(app).toContain('setRecoveryCertificatePath(null)');
+    expect(app).toContain('setRecoveryCertificateReview(null)');
+  });
+});
+
+
 describe('device-specific command center', () => {
   it('filters primary workflows to the selected detected target', () => {
     const commandCenter = read('src/components/RepairCommandCenter.tsx');

@@ -113,6 +113,11 @@ export default function App() {
     return q ? adbPackages.filter((pkg) => pkg.packageName.toLowerCase().includes(q)) : adbPackages;
   }, [adbPackages, packageQuery]);
 
+  const selectedRecoveryCandidate = useMemo(
+    () => recoveryCandidates.find((item) => item.deviceUid === selectedRecoveryUid) || null,
+    [recoveryCandidates, selectedRecoveryUid],
+  );
+
   const refreshJobs = useCallback(async () => {
     if (!nativeRuntime) return;
     try {
@@ -142,9 +147,22 @@ export default function App() {
         } else if (selectedRecoveryUid && !recovery.some((candidate) => candidate.deviceUid === selectedRecoveryUid)) {
           setSelectedRecoveryUid(recovery[0]?.deviceUid ?? null);
           if (recovery[0]) setRecoveryKind(recovery[0].workflow);
+          setRecoveryArtifacts([]);
+          setRecoveryPlan(null);
+          setRecoveryJob(null);
+          setRecoveryEvidencePath(null);
+          setRecoveryCertificatePath(null);
+          setRecoveryCertificateReview(null);
         }
       } catch {
         setRecoveryCandidates([]);
+        setSelectedRecoveryUid(null);
+        setRecoveryArtifacts([]);
+        setRecoveryPlan(null);
+        setRecoveryJob(null);
+        setRecoveryEvidencePath(null);
+        setRecoveryCertificatePath(null);
+        setRecoveryCertificateReview(null);
       }
 
       const adb = await scanAdbDevices();
@@ -472,24 +490,24 @@ export default function App() {
     setRecoveryCertificatePath(null);
     setRecoveryCertificateReview(null);
     try {
-      const paths = await autodiscoverRecoveryArtifacts(recoveryKind);
+      const effectiveWorkflow = selectedRecoveryCandidate?.workflow ?? recoveryKind;
+      const paths = await autodiscoverRecoveryArtifacts(effectiveWorkflow);
       if (!paths.length) {
         throw new Error(
-          'No safe ' + (recoveryKind === 'qualcomm-edl' ? 'Qualcomm EDL' : 'MediaTek Download') + ' artifacts were found in Downloads, Documents, Desktop, Projects, or repair-artifacts.',
+          'No safe ' + (effectiveWorkflow === 'qualcomm-edl' ? 'Qualcomm EDL' : 'MediaTek Download') + ' artifacts were found in Downloads, Documents, Desktop, Projects, or repair-artifacts.',
         );
       }
+      setRecoveryKind(effectiveWorkflow);
       setRecoveryArtifacts(paths);
       setRecoveryPlan(null);
       setRecoveryJob(null);
       setRecoveryEvidencePath(null);
-    setRecoveryCertificatePath(null);
-    setRecoveryCertificateReview(null);
-      const plan = await buildRecoveryPlan(recoveryKind, paths);
+      setRecoveryCertificatePath(null);
+      setRecoveryCertificateReview(null);
+      const plan = await buildRecoveryPlan(effectiveWorkflow, paths);
       setRecoveryPlan(plan);
-      const candidate = recoveryCandidates.find((item) => item.workflow === recoveryKind);
-      if (candidate) {
-        const job = await prepareRecoveryJob(candidate, paths);
-        setSelectedRecoveryUid(candidate.deviceUid);
+      if (selectedRecoveryCandidate) {
+        const job = await prepareRecoveryJob(selectedRecoveryCandidate, paths);
         setRecoveryJob(job);
       }
     } catch (error) {
@@ -504,7 +522,9 @@ export default function App() {
     setRecoveryBusy(true);
     setNativeError(null);
     try {
-      const plan = await buildRecoveryPlan(recoveryKind, recoveryArtifacts);
+      const effectiveWorkflow = selectedRecoveryCandidate?.workflow ?? recoveryKind;
+      setRecoveryKind(effectiveWorkflow);
+      const plan = await buildRecoveryPlan(effectiveWorkflow, recoveryArtifacts);
       setRecoveryPlan(plan);
       setRecoveryJob(null);
     } catch (error) {
@@ -984,8 +1004,12 @@ export default function App() {
                         onClick={() => {
                           setSelectedRecoveryUid(candidate.deviceUid);
                           setRecoveryKind(candidate.workflow);
+                          setRecoveryArtifacts([]);
                           setRecoveryPlan(null);
                           setRecoveryJob(null);
+                          setRecoveryEvidencePath(null);
+                          setRecoveryCertificatePath(null);
+                          setRecoveryCertificateReview(null);
                         }}
                         className={`w-full rounded border p-3 text-left ${
                           selectedRecoveryUid === candidate.deviceUid
@@ -1009,40 +1033,58 @@ export default function App() {
 
               <div className="rounded border border-slate-800 bg-slate-950/60 p-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recovery lane</h3>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRecoveryKind('qualcomm-edl');
-                      setRecoveryPlan(null);
-                      setRecoveryJob(null);
-                    }}
-                    className={`rounded border px-3 py-2 text-left text-xs ${
-                      recoveryKind === 'qualcomm-edl'
-                        ? 'border-orange-600 bg-orange-950/30 text-orange-200'
-                        : 'border-slate-700 text-slate-300 hover:bg-slate-900'
-                    }`}
-                  >
-                    <div className="font-semibold">Qualcomm EDL</div>
-                    <div className="mt-1 text-[11px] text-slate-500">Authenticated Sahara / Firehose repair</div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRecoveryKind('mediatek-download');
-                      setRecoveryPlan(null);
-                      setRecoveryJob(null);
-                    }}
-                    className={`rounded border px-3 py-2 text-left text-xs ${
-                      recoveryKind === 'mediatek-download'
-                        ? 'border-orange-600 bg-orange-950/30 text-orange-200'
-                        : 'border-slate-700 text-slate-300 hover:bg-slate-900'
-                    }`}
-                  >
-                    <div className="font-semibold">MediaTek Download</div>
-                    <div className="mt-1 text-[11px] text-slate-500">Preloader / BROM + legitimate DA/auth path</div>
-                  </button>
-                </div>
+                {selectedRecoveryCandidate ? (
+                  <div className="mt-3 rounded border border-orange-900/60 bg-orange-950/20 p-3">
+                    <div className="text-xs font-semibold text-orange-200">
+                      Lane locked to detected hardware: {selectedRecoveryCandidate.workflow === 'qualcomm-edl' ? 'Qualcomm EDL' : 'MediaTek Download'}
+                    </div>
+                    <div className="mt-1 text-[11px] text-slate-500">
+                      Live hardware controls the recovery protocol. Switch devices above to change lanes.
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mt-2 text-[11px] text-slate-500">
+                      Manual lane selection is available only for offline artifact inspection.
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRecoveryKind('qualcomm-edl');
+                          setRecoveryArtifacts([]);
+                          setRecoveryPlan(null);
+                          setRecoveryJob(null);
+                        }}
+                        className={`rounded border px-3 py-2 text-left text-xs ${
+                          recoveryKind === 'qualcomm-edl'
+                            ? 'border-orange-600 bg-orange-950/30 text-orange-200'
+                            : 'border-slate-700 text-slate-300 hover:bg-slate-900'
+                        }`}
+                      >
+                        <div className="font-semibold">Qualcomm EDL</div>
+                        <div className="mt-1 text-[11px] text-slate-500">Authenticated Sahara / Firehose repair</div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRecoveryKind('mediatek-download');
+                          setRecoveryArtifacts([]);
+                          setRecoveryPlan(null);
+                          setRecoveryJob(null);
+                        }}
+                        className={`rounded border px-3 py-2 text-left text-xs ${
+                          recoveryKind === 'mediatek-download'
+                            ? 'border-orange-600 bg-orange-950/30 text-orange-200'
+                            : 'border-slate-700 text-slate-300 hover:bg-slate-900'
+                        }`}
+                      >
+                        <div className="font-semibold">MediaTek Download</div>
+                        <div className="mt-1 text-[11px] text-slate-500">Preloader / BROM + legitimate DA/auth path</div>
+                      </button>
+                    </div>
+                  </>
+                )}
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button
