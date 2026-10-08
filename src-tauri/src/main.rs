@@ -431,6 +431,26 @@ fn should_start_fastapi_backend() -> bool {
     env_var_truthy("BOBFW_ENABLE_LEGACY_FASTAPI_BACKEND")
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct FrontendBackendHandshake {
+    protocol: String,
+    backend: String,
+    status: String,
+    greeting: String,
+    correlation_id: String,
+}
+
+#[tauri::command]
+fn frontend_backend_handshake() -> FrontendBackendHandshake {
+    FrontendBackendHandshake {
+        protocol: "bobfwtools-handshake-v1".to_string(),
+        backend: "native-tauri-rust".to_string(),
+        status: "ready".to_string(),
+        greeting: "Hello from BobFWTools backend — frontend connection confirmed.".to_string(),
+        correlation_id: format!("handshake-{}", uuid::Uuid::new_v4()),
+    }
+}
+
 #[tauri::command]
 fn get_backend_status() -> String {
     "BobFWTools native Rust/Tauri core active".to_string()
@@ -1467,6 +1487,7 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            frontend_backend_handshake,
             get_backend_status,
             get_app_version,
             bootforgeusb_scan,
