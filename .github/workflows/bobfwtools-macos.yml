@@ -94,3 +94,25 @@ jobs:
           name: BobFWTools-universal-macOS-unsigned
           path: src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
           if-no-files-found: error
+
+      - name: Build qualified universal BobFWTools.app
+        run: npm run tauri:build:macos:qualified:ci
+
+      - name: Verify qualified universal app bundle
+        run: |
+          bash scripts/verify-bobfwtools-macos-app.sh
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
+          BIN="$APP/Contents/MacOS/bobfwtools"
+          file "$BIN"
+          lipo -info "$BIN"
+          shasum -a 256 "$BIN"
+          strings "$BIN" | grep -F "$GITHUB_SHA"
+          strings "$BIN" | grep -F "Qualified destructive writes require post-write target verification"
+          strings "$BIN" | grep -F "bootforge_qualified_fastboot_devices"
+
+      - name: Upload qualified BobFWTools app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BobFWTools-universal-macOS-qualified-unsigned
+          path: src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
+          if-no-files-found: error
