@@ -581,3 +581,23 @@ export async function getWorkstationReadiness(): Promise<WorkstationReadiness> {
 export async function initializeWorkstation(): Promise<WorkstationReadiness> {
   return invoke<WorkstationReadiness>('workstation_initialize');
 }
+
+
+export type AuditEvent = {
+  timestampMs: number;
+  category: string;
+  action: string;
+  risk: string;
+  status: string;
+  deviceUid?: string | null;
+  detail: string;
+  evidence: string[];
+};
+
+export async function getRecentAuditEvents(limit = 100): Promise<AuditEvent[]> {
+  return invoke<AuditEvent[]>('audit_recent', { limit });
+}
+
+export async function getAuditLogPath(): Promise<string> {
+  return invoke<string>('audit_log_path');
+}
