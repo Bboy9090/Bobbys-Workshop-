@@ -1,8 +1,10 @@
 pub mod calibration;
 pub mod calibration_backup;
 pub mod edl;
+pub mod firehose_plan;
 pub mod hardware_service;
 pub mod model;
+pub mod retry_policy;
 pub mod preflight;
 pub mod telemetry;
 pub mod workflow_catalog;
