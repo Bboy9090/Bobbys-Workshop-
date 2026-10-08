@@ -923,6 +923,7 @@ export type QualificationAuditBundleReview = {
   recoveryJobMatchesExpected: boolean;
   executorBuildMatchesCurrent: boolean;
   sourceFilesMatch: boolean;
+  sourceSemanticsValid: boolean;
   grantsExecutionAuthorityClaimed: boolean;
   executionPerformedClaimed: boolean;
   safeToReview: boolean;

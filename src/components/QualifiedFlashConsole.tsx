@@ -553,6 +553,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
                 <div className="mt-1 text-[11px] text-slate-400">
                   fingerprint {auditBundleReview.bundleFingerprintValid ? 'verified' : 'failed'} ·
                   source files {auditBundleReview.sourceFilesMatch ? 'match' : 'changed'} ·
+                  semantics {auditBundleReview.sourceSemanticsValid ? 'verified' : 'failed'} ·
                   job {auditBundleReview.recoveryJobMatchesExpected ? 'matched' : 'mismatch'} ·
                   build {auditBundleReview.executorBuildMatchesCurrent ? 'matched' : 'mismatch'}
                 </div>

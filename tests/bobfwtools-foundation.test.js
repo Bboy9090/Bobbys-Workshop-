@@ -382,6 +382,10 @@ describe('qualification audit bundle', () => {
     expect(main).toContain('bootforge_qualification_audit_bundle_review');
     expect(main).toContain('Audit bundle source file hash changed');
     expect(main).toContain('Qualification audit bundle was produced by a different executor build');
+    expect(main).toContain('source_semantics_valid');
+    expect(main).toContain('Audit bundle decision is not bound to the verified bench evidence');
+    expect(main).toContain('Qualification audit bundle source semantics did not revalidate');
+    expect(bridge).toContain('sourceSemanticsValid');
     expect(bridge).toContain('exportQualificationAuditBundle');
     expect(bridge).toContain('reviewQualificationAuditBundle');
     expect(consoleUi).toContain('Export qualification audit bundle');

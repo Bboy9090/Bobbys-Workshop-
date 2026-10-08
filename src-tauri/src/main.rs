@@ -2720,6 +2720,7 @@ struct QualificationAuditBundleReview {
     recovery_job_matches_expected: bool,
     executor_build_matches_current: bool,
     source_files_match: bool,
+    source_semantics_valid: bool,
     grants_execution_authority_claimed: bool,
     execution_performed_claimed: bool,
     safe_to_review: bool,
@@ -2866,6 +2867,212 @@ fn bootforge_qualification_audit_bundle_review(
         }
     }
 
+    let mut source_semantics_valid = true;
+    let reviewer = material
+        .get("reviewer")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let device_serial = material
+        .get("deviceSerial")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    if reviewer.is_empty() {
+        source_semantics_valid = false;
+        source_blockers.push("Qualification audit bundle reviewer is missing".to_string());
+    }
+    if device_serial.is_empty() {
+        source_semantics_valid = false;
+        source_blockers.push("Qualification audit bundle device serial is missing".to_string());
+    }
+
+    if let (Some(job_fp), Some(dossier_entry), Some(bench_entry), Some(decision_entry)) = (
+        recovery_job_fingerprint.as_deref(),
+        source_files.get("qualificationDossier"),
+        source_files.get("benchEvidence"),
+        source_files.get("humanDecision"),
+    ) {
+        let dossier_path = dossier_entry.get("path").and_then(|v| v.as_str());
+        let bench_path = bench_entry.get("path").and_then(|v| v.as_str());
+        let decision_path = decision_entry.get("path").and_then(|v| v.as_str());
+
+        if let (Some(dossier_path), Some(bench_path), Some(decision_path)) =
+            (dossier_path, bench_path, decision_path)
+        {
+            match bootforge_qualification_review(
+                dossier_path.to_string(),
+                Some(job_fp.to_string()),
+            ) {
+                Ok(review) if review.safe_to_review => {
+                    let live_dossier_fp = review.dossier_fingerprint.unwrap_or_default();
+                    let bundled_dossier_fp = dossier_entry
+                        .get("dossierFingerprint")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    if !live_dossier_fp.eq_ignore_ascii_case(bundled_dossier_fp) {
+                        source_semantics_valid = false;
+                        source_blockers.push(
+                            "Audit bundle dossier fingerprint does not match live dossier verification"
+                                .to_string(),
+                        );
+                    }
+
+                    match load_and_verify_qualification_bench_evidence(
+                        bench_path,
+                        &reviewer,
+                        &device_serial,
+                        &live_dossier_fp,
+                        job_fp,
+                        &current_build.executor_build_fingerprint,
+                    ) {
+                        Ok(bench) => {
+                            let bundled_bench_fp = bench_entry
+                                .get("receiptFingerprint")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default();
+                            if !bench
+                                .receipt_fingerprint
+                                .eq_ignore_ascii_case(bundled_bench_fp)
+                            {
+                                source_semantics_valid = false;
+                                source_blockers.push(
+                                    "Audit bundle bench-evidence fingerprint does not match live verification"
+                                        .to_string(),
+                                );
+                            }
+
+                            match load_and_verify_qualification_decision(
+                                decision_path,
+                                &reviewer,
+                                &device_serial,
+                                &live_dossier_fp,
+                                job_fp,
+                                &current_build.executor_build_fingerprint,
+                            ) {
+                                Ok(decision) => {
+                                    let bundled_decision_fp = decision_entry
+                                        .get("receiptFingerprint")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or_default();
+                                    if !decision
+                                        .receipt_fingerprint
+                                        .eq_ignore_ascii_case(bundled_decision_fp)
+                                    {
+                                        source_semantics_valid = false;
+                                        source_blockers.push(
+                                            "Audit bundle decision fingerprint does not match live verification"
+                                                .to_string(),
+                                        );
+                                    }
+                                    if decision
+                                        .bench_evidence_fingerprint
+                                        .as_deref()
+                                        .map(|fp| {
+                                            fp.eq_ignore_ascii_case(
+                                                &bench.receipt_fingerprint,
+                                            )
+                                        })
+                                        != Some(true)
+                                    {
+                                        source_semantics_valid = false;
+                                        source_blockers.push(
+                                            "Audit bundle decision is not bound to the verified bench evidence"
+                                                .to_string(),
+                                        );
+                                    }
+                                }
+                                Err(err) => {
+                                    source_semantics_valid = false;
+                                    source_blockers.push(format!(
+                                        "Audit bundle decision semantics failed verification: {err}"
+                                    ));
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            source_semantics_valid = false;
+                            source_blockers.push(format!(
+                                "Audit bundle bench-evidence semantics failed verification: {err}"
+                            ));
+                        }
+                    }
+                }
+                Ok(review) => {
+                    source_semantics_valid = false;
+                    source_blockers.push(format!(
+                        "Audit bundle dossier semantics are blocked: {}",
+                        review.blockers.join("; ")
+                    ));
+                }
+                Err(err) => {
+                    source_semantics_valid = false;
+                    source_blockers.push(format!(
+                        "Audit bundle dossier semantics failed verification: {err}"
+                    ));
+                }
+            }
+
+            if let Some(readiness) = source_files.get("readinessCertificate") {
+                if !readiness.is_null() {
+                    if let Some(readiness_path) =
+                        readiness.get("path").and_then(|v| v.as_str())
+                    {
+                        match bootforge_recovery_review_readiness_certificate(
+                            readiness_path.to_string(),
+                            Some(job_fp.to_string()),
+                        ) {
+                            Ok(review) if review.safe_to_review => {
+                                let bundled_fp = readiness
+                                    .get("certificateFingerprint")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or_default();
+                                if review
+                                    .certificate_fingerprint
+                                    .as_deref()
+                                    .map(|fp| fp.eq_ignore_ascii_case(bundled_fp))
+                                    != Some(true)
+                                {
+                                    source_semantics_valid = false;
+                                    source_blockers.push(
+                                        "Audit bundle readiness fingerprint does not match live verification"
+                                            .to_string(),
+                                    );
+                                }
+                            }
+                            Ok(review) => {
+                                source_semantics_valid = false;
+                                source_blockers.push(format!(
+                                    "Audit bundle readiness semantics are blocked: {}",
+                                    review.blockers.join("; ")
+                                ));
+                            }
+                            Err(err) => {
+                                source_semantics_valid = false;
+                                source_blockers.push(format!(
+                                    "Audit bundle readiness semantics failed verification: {err}"
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            source_semantics_valid = false;
+            source_blockers.push(
+                "Qualification audit bundle source paths are incomplete".to_string(),
+            );
+        }
+    } else {
+        source_semantics_valid = false;
+        source_blockers.push(
+            "Qualification audit bundle source chain is incomplete".to_string(),
+        );
+    }
+
     let mut blockers = source_blockers;
     if !schema_valid {
         blockers.push("Qualification audit bundle schema is not recognized".to_string());
@@ -2878,6 +3085,11 @@ fn bootforge_qualification_audit_bundle_review(
     }
     if !executor_build_matches_current {
         blockers.push("Qualification audit bundle was produced by a different executor build".to_string());
+    }
+    if !source_semantics_valid {
+        blockers.push(
+            "Qualification audit bundle source semantics did not revalidate".to_string(),
+        );
     }
     if grants_execution_authority_claimed {
         blockers.push("Qualification audit bundle improperly claims execution authority".to_string());
@@ -2898,6 +3110,7 @@ fn bootforge_qualification_audit_bundle_review(
             format!("path:{}", path_buf.display()),
             format!("bundle-fingerprint-valid:{}", bundle_fingerprint_valid),
             format!("source-files-match:{}", source_files_match),
+            format!("source-semantics-valid:{}", source_semantics_valid),
             format!("job-match:{}", recovery_job_matches_expected),
             format!("executor-build-match:{}", executor_build_matches_current),
         ],
@@ -2910,6 +3123,7 @@ fn bootforge_qualification_audit_bundle_review(
         recovery_job_matches_expected,
         executor_build_matches_current,
         source_files_match,
+        source_semantics_valid,
         grants_execution_authority_claimed,
         execution_performed_claimed,
         safe_to_review,
