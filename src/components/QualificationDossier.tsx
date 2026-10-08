@@ -9,7 +9,11 @@ import {
   type WorkstationReadiness,
 } from '../lib/desktop';
 
-export default function QualificationDossier() {
+type QualificationDossierProps = {
+  recoveryJobFingerprint?: string | null;
+};
+
+export default function QualificationDossier({ recoveryJobFingerprint }: QualificationDossierProps) {
   const [devices, setDevices] = useState<TransportDevice[]>([]);
   const [workstation, setWorkstation] = useState<WorkstationReadiness | null>(null);
   const [programmers, setProgrammers] = useState<EdlProgrammerRecord[]>([]);
@@ -66,6 +70,7 @@ export default function QualificationDossier() {
         device: selected,
         workstation,
         authorizedProgrammers,
+        recoveryJobFingerprint: recoveryJobFingerprint?.trim() || '',
         operatorNotes: notes.trim(),
       });
       if (path) setSavedPath(path);
@@ -85,7 +90,7 @@ export default function QualificationDossier() {
           </div>
           <h2 className="mt-1 text-sm font-semibold text-white">Bench evidence before executor qualification</h2>
           <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-400">
-            Captures live USB identity, endpoint evidence, workstation readiness, and authorized programmer records.
+            Captures live USB identity, endpoint evidence, workstation readiness, authorized programmer records, and the exact prepared recovery-job fingerprint.
             Exporting this dossier never enables a writer and never marks an executor physically qualified.
           </p>
         </div>
@@ -148,6 +153,15 @@ export default function QualificationDossier() {
             </div>
           ) : null}
         </div>
+      </div>
+
+      <div className="mt-3 rounded border border-slate-800 bg-slate-950/60 p-3">
+        <div className="text-[10px] uppercase tracking-wide text-slate-600">Prepared recovery-job fingerprint</div>
+        {recoveryJobFingerprint ? (
+          <div className="mt-1 break-all font-mono text-[10px] text-cyan-300">{recoveryJobFingerprint}</div>
+        ) : (
+          <div className="mt-1 text-xs text-amber-300">No prepared recovery job is bound. Export is evidence-only and cannot be qualification-binding ready.</div>
+        )}
       </div>
 
       <label className="mt-3 block text-xs text-slate-500">

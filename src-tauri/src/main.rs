@@ -773,6 +773,7 @@ struct QualificationDossierInput {
     device: bootforgeusb::transport::TransportDevice,
     workstation: QualificationWorkstationSnapshot,
     authorized_programmers: Vec<QualificationProgrammerSnapshot>,
+    recovery_job_fingerprint: String,
     operator_notes: String,
 }
 
@@ -790,12 +791,60 @@ fn bootforge_qualification_export(
         .map_err(|e| format!("System clock error: {e}"))?
         .as_secs();
 
+    let recovery_job_fingerprint = input.recovery_job_fingerprint.trim().to_ascii_lowercase();
+    let fingerprint_valid = recovery_job_fingerprint.len() == 64
+        && recovery_job_fingerprint.chars().all(|c| c.is_ascii_hexdigit());
+
+    let source_revision = option_env!("BOBFWTOOLS_SOURCE_REVISION")
+        .or(option_env!("GITHUB_SHA"))
+        .unwrap_or("unavailable")
+        .trim()
+        .to_string();
+    let source_revision_available = !source_revision.is_empty() && source_revision != "unavailable";
+    let build_profile = if cfg!(debug_assertions) { "debug" } else { "release" };
+    let qualified_flash_compiled = cfg!(feature = "qualified-flash");
+
+    use sha2::{Digest, Sha256};
+    let executor_descriptor = format!(
+        "bobfwtools|{}|{}|{}|qualified-flash:{}",
+        env!("CARGO_PKG_VERSION"),
+        source_revision,
+        build_profile,
+        qualified_flash_compiled
+    );
+    let executor_build_fingerprint = format!("{:x}", Sha256::digest(executor_descriptor.as_bytes()));
+
+    let qualification_binding_ready = fingerprint_valid && source_revision_available;
+    let mut binding_blockers = Vec::new();
+    if !fingerprint_valid {
+        binding_blockers.push(
+            "A valid 64-character recovery-job SHA-256 fingerprint is required".to_string(),
+        );
+    }
+    if !source_revision_available {
+        binding_blockers.push(
+            "Executor source revision is unavailable; build is not qualification-binding ready"
+                .to_string(),
+        );
+    }
+
     let receipt = serde_json::json!({
         "schema": "com.bobbyblanco.bobfwtools.designated-device-qualification.v1",
         "generatedUnixSeconds": generated_unix_seconds,
         "qualificationStatus": "pending-physical-review",
         "executorQualified": false,
         "executionEnabledByThisDossier": false,
+        "qualificationBindingReady": qualification_binding_ready,
+        "recoveryJobFingerprint": recovery_job_fingerprint,
+        "recoveryJobFingerprintValid": fingerprint_valid,
+        "executorBuild": {
+            "packageVersion": env!("CARGO_PKG_VERSION"),
+            "sourceRevision": source_revision,
+            "sourceRevisionAvailable": source_revision_available,
+            "buildProfile": build_profile,
+            "qualifiedFlashCompiled": qualified_flash_compiled,
+            "executorBuildFingerprint": executor_build_fingerprint,
+        },
         "device": input.device,
         "workstation": input.workstation,
         "authorizedProgrammers": input.authorized_programmers,
@@ -808,8 +857,11 @@ fn bootforge_qualification_export(
             "Confirm firmware/device/layout preflight matches target",
             "Confirm dry-run partition plan stays within verified bounds",
             "Confirm backup/rollback evidence exists where required",
-            "Record designated-device bench outcome separately before any executor qualification"
-        ]
+            "Record designated-device bench outcome separately before any executor qualification",
+            "Require an exact recovery-job fingerprint match before qualification review",
+            "Require an executor source revision and build fingerprint before qualification review"
+        ],
+        "bindingBlockers": binding_blockers
     });
     let bytes = serde_json::to_vec_pretty(&receipt)
         .map_err(|e| format!("Could not serialize qualification dossier: {e}"))?;

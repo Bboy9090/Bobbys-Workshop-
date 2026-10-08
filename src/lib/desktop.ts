@@ -677,6 +677,7 @@ export type QualificationDossierInput = {
   device: TransportDevice;
   workstation: WorkstationReadiness;
   authorizedProgrammers: EdlProgrammerRecord[];
+  recoveryJobFingerprint: string;
   operatorNotes: string;
 };
 
