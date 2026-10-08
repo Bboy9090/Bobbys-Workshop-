@@ -735,6 +735,119 @@ export async function reviewQualificationDossier(
   });
 }
 
+
+export type QualifiedFlashPartition = {
+  name: string;
+  imagePath: string;
+  size: number;
+  expectedSha256: string;
+};
+
+export type QualifiedFlashPhysicalChecks = {
+  repeatedEnumerationStable: boolean;
+  expectedModeConfirmed: boolean;
+  endpointStabilityConfirmed: boolean;
+  programmerHashVerified: boolean;
+  preflightMatched: boolean;
+  partitionBoundsVerified: boolean;
+  backupEvidencePresent: boolean;
+  destructiveBenchWritePassed: boolean;
+  postWriteVerificationPassed: boolean;
+};
+
+export type QualifiedFlashPartitionGrant = {
+  name: string;
+  imageSha256: string;
+};
+
+export type QualifiedFlashGrant = {
+  schema: string;
+  qualificationStatus: string;
+  executorQualified: boolean;
+  deviceSerial: string;
+  executorBuildFingerprint: string;
+  recoveryJobFingerprint: string;
+  approvedPartitions: QualifiedFlashPartitionGrant[];
+  wipeUserDataAllowed: boolean;
+  autoRebootAllowed: boolean;
+  issuedAtUnixSeconds: number;
+  expiresAtUnixSeconds: number;
+  dossierFingerprint: string;
+  grantMac: string;
+};
+
+export type QualifiedFlashApprovalInput = {
+  dossierPath: string;
+  expectedRecoveryJobFingerprint: string;
+  deviceSerial: string;
+  partitions: QualifiedFlashPartition[];
+  wipeUserDataAllowed: boolean;
+  autoRebootAllowed: boolean;
+  reviewer: string;
+  reviewerNotes: string;
+  confirmation: string;
+  expiresInMinutes: number;
+  physicalChecks: QualifiedFlashPhysicalChecks;
+};
+
+export type QualifiedFlashStartResponse = {
+  jobId: string;
+  status: string;
+};
+
+export async function getQualifiedFastbootDevices(): Promise<string[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<string[]>('bootforge_qualified_fastboot_devices');
+}
+
+export async function chooseAndInspectQualifiedFlashImage(
+  name: string,
+): Promise<QualifiedFlashPartition | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: 'Choose image for ' + name,
+  });
+  if (!selected || Array.isArray(selected)) return null;
+  return invoke<QualifiedFlashPartition>('bootforge_qualified_flash_inspect_image', {
+    name,
+    path: selected,
+  });
+}
+
+export async function issueQualificationTrialGrant(
+  input: QualifiedFlashApprovalInput,
+): Promise<QualifiedFlashGrant> {
+  return invoke<QualifiedFlashGrant>('bootforge_issue_qualification_trial_grant', { input });
+}
+
+export async function issueQualifiedFlashGrant(
+  input: QualifiedFlashApprovalInput,
+): Promise<QualifiedFlashGrant> {
+  return invoke<QualifiedFlashGrant>('bootforge_issue_qualified_flash_grant', { input });
+}
+
+export async function startQualifiedFastbootFlash(
+  deviceSerial: string,
+  partitions: QualifiedFlashPartition[],
+  qualificationGrant: QualifiedFlashGrant,
+  options?: { wipeUserData?: boolean; autoReboot?: boolean },
+): Promise<QualifiedFlashStartResponse> {
+  return invoke<QualifiedFlashStartResponse>('flash_start', {
+    config: {
+      deviceSerial,
+      deviceBrand: 'Qualified bench target',
+      flashMethod: 'fastboot',
+      partitions,
+      verifyAfterFlash: false,
+      autoReboot: Boolean(options?.autoReboot),
+      wipeUserData: Boolean(options?.wipeUserData),
+      qualificationGrant,
+    },
+  });
+}
+
 export type QualificationRecoveryIdentity = {
   deviceUid: string;
   vendorId: number;

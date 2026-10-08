@@ -1306,6 +1306,63 @@ fn exact_fastboot_device_present(serial: &str) -> Result<bool, String> {
 
 
 #[cfg(feature = "qualified-flash")]
+#[tauri::command]
+fn bootforge_qualified_fastboot_devices() -> Result<Vec<String>, String> {
+    let output = Command::new("fastboot")
+        .arg("devices")
+        .output()
+        .map_err(|e| format!("Could not enumerate fastboot devices: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "fastboot devices failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+        .filter(|serial| !serial.trim().is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+#[cfg(feature = "qualified-flash")]
+#[tauri::command]
+fn bootforge_qualified_flash_inspect_image(
+    name: String,
+    path: String,
+) -> Result<FlashPartition, String> {
+    let partition_name = name.trim().to_ascii_lowercase();
+    let allowed_partitions = [
+        "boot", "system", "vendor", "userdata", "cache", "recovery",
+        "bootloader", "radio", "aboot", "vbmeta", "dtbo", "persist",
+    ];
+    if !allowed_partitions.contains(&partition_name.as_str()) {
+        return Err(format!(
+            "Partition '{}' is not approved by the destructive writer allowlist",
+            partition_name
+        ));
+    }
+    let path_buf = std::path::PathBuf::from(&path);
+    if !path_buf.is_file() {
+        return Err(format!("Image file not found: {}", path_buf.display()));
+    }
+    let size = std::fs::metadata(&path_buf)
+        .map_err(|e| format!("Could not read image metadata {}: {e}", path_buf.display()))?
+        .len();
+    if size == 0 {
+        return Err("Qualified flash image is empty".to_string());
+    }
+    let expected_sha256 = sha256_file(&path_buf)?;
+    Ok(FlashPartition {
+        name: partition_name,
+        imagePath: path_buf.display().to_string(),
+        size,
+        expectedSha256: expected_sha256,
+    })
+}
+
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone, Deserialize)]
 struct QualifiedFlashPhysicalChecks {
     repeatedEnumerationStable: bool,
@@ -1368,6 +1425,17 @@ fn qualified_flash_grant_mac(secret: &str, grant: &QualifiedFlashGrant) -> Resul
 }
 
 #[cfg(feature = "qualified-flash")]
+fn pre_destructive_flash_checks_passed(checks: &QualifiedFlashPhysicalChecks) -> bool {
+    checks.repeatedEnumerationStable
+        && checks.expectedModeConfirmed
+        && checks.endpointStabilityConfirmed
+        && checks.programmerHashVerified
+        && checks.preflightMatched
+        && checks.partitionBoundsVerified
+        && checks.backupEvidencePresent
+}
+
+#[cfg(feature = "qualified-flash")]
 fn all_physical_flash_checks_passed(checks: &QualifiedFlashPhysicalChecks) -> bool {
     checks.repeatedEnumerationStable
         && checks.expectedModeConfirmed
@@ -1378,6 +1446,138 @@ fn all_physical_flash_checks_passed(checks: &QualifiedFlashPhysicalChecks) -> bo
         && checks.backupEvidencePresent
         && checks.destructiveBenchWritePassed
         && checks.postWriteVerificationPassed
+}
+
+#[cfg(feature = "qualified-flash")]
+#[tauri::command]
+fn bootforge_issue_qualification_trial_grant(
+    state: tauri::State<'_, AppState>,
+    input: QualifiedFlashApprovalInput,
+) -> Result<QualifiedFlashGrant, String> {
+    let serial = input.deviceSerial.trim();
+    if serial.is_empty() {
+        return Err("Qualified device serial is required".to_string());
+    }
+    let expected_confirmation = format!("BENCH QUALIFY {}", serial);
+    if input.confirmation.trim() != expected_confirmation {
+        return Err(format!(
+            "Explicit bench qualification confirmation required: {}",
+            expected_confirmation
+        ));
+    }
+    if input.reviewer.trim().is_empty() {
+        return Err("Physical qualification reviewer identity is required".to_string());
+    }
+    if !pre_destructive_flash_checks_passed(&input.physicalChecks) {
+        return Err(
+            "Every non-destructive qualification check must pass before a bench trial"
+                .to_string(),
+        );
+    }
+    if input.expiresInMinutes == 0 || input.expiresInMinutes > 10 {
+        return Err("Bench trial grants must expire within 1-10 minutes".to_string());
+    }
+    if input.partitions.len() != 1 {
+        return Err("Bench qualification trial must target exactly one partition".to_string());
+    }
+    if input.wipeUserDataAllowed || input.autoRebootAllowed {
+        return Err("Bench qualification trial cannot authorize wipe or automatic reboot".to_string());
+    }
+    if !exact_fastboot_device_present(serial)? {
+        return Err("Exact bench fastboot device is not currently connected".to_string());
+    }
+
+    let review = bootforge_qualification_review(
+        input.dossierPath.clone(),
+        Some(input.expectedRecoveryJobFingerprint.clone()),
+    )?;
+    if !review.safe_to_review {
+        return Err(format!(
+            "Qualification dossier is not safe for a bench trial: {}",
+            review.blockers.join("; ")
+        ));
+    }
+    let dossier_fingerprint = review
+        .dossier_fingerprint
+        .ok_or_else(|| "Verified dossier fingerprint is unavailable".to_string())?;
+    let recovery_job_fingerprint = review
+        .recovery_job_fingerprint
+        .ok_or_else(|| "Verified recovery-job fingerprint is unavailable".to_string())?;
+    let build = qualification_build_identity_snapshot();
+    if !build.qualified_flash_compiled {
+        return Err("This build does not contain the qualified destructive writer".to_string());
+    }
+
+    let partition = &input.partitions[0];
+    let name = partition.name.trim();
+    let trial_allowed = [
+        "boot", "system", "vendor", "userdata", "cache", "recovery", "vbmeta", "dtbo",
+    ];
+    if !trial_allowed.contains(&name) {
+        return Err(format!(
+            "Partition '{}' is too sensitive for first-stage bench qualification",
+            name
+        ));
+    }
+    if !valid_sha256_hex(&partition.expectedSha256) {
+        return Err(format!("Expected SHA-256 is invalid for partition {}", name));
+    }
+    let actual = sha256_file(std::path::Path::new(&partition.imagePath))?;
+    if !actual.eq_ignore_ascii_case(&partition.expectedSha256) {
+        return Err(format!(
+            "On-disk image hash does not match bench qualification input for {}",
+            name
+        ));
+    }
+
+    let issued_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+    let expires_at = issued_at
+        .checked_add(input.expiresInMinutes * 60)
+        .ok_or_else(|| "Bench trial grant expiry overflow".to_string())?;
+
+    let mut grant = QualifiedFlashGrant {
+        schema: "com.bobbyblanco.bobfwtools.qualified-flash-grant.v1".into(),
+        qualificationStatus: "qualification-trial".into(),
+        executorQualified: false,
+        deviceSerial: serial.to_string(),
+        executorBuildFingerprint: build.executor_build_fingerprint,
+        recoveryJobFingerprint: recovery_job_fingerprint,
+        approvedPartitions: vec![QualifiedFlashPartitionGrant {
+            name: name.to_string(),
+            imageSha256: actual,
+        }],
+        wipeUserDataAllowed: false,
+        autoRebootAllowed: false,
+        issuedAtUnixSeconds: issued_at,
+        expiresAtUnixSeconds: expires_at,
+        dossierFingerprint: dossier_fingerprint,
+        grantMac: String::new(),
+    };
+    grant.grantMac = qualified_flash_grant_mac(&state.qualification_grant_secret, &grant)?;
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "issue-qualification-trial-grant",
+        "destructive",
+        "bench-trial-short-lived",
+        Some(serial.to_string()),
+        "One-shot bench qualification capability issued; executor remains unqualified.",
+        vec![
+            format!("reviewer:{}", input.reviewer.trim()),
+            format!("reviewer-notes:{}", input.reviewerNotes.trim()),
+            format!("partition:{}", name),
+            format!("image-sha256:{}", grant.approvedPartitions[0].imageSha256),
+            format!("recovery-job-fingerprint:{}", grant.recoveryJobFingerprint),
+            format!("dossier-fingerprint:{}", grant.dossierFingerprint),
+            format!("executor-build-fingerprint:{}", grant.executorBuildFingerprint),
+            format!("expires-at:{}", grant.expiresAtUnixSeconds),
+        ],
+    );
+
+    Ok(grant)
 }
 
 #[cfg(feature = "qualified-flash")]
@@ -1533,8 +1733,31 @@ fn validate_qualified_flash_config(config: &FlashJobConfig, grant_secret: &str) 
     if !expected_mac.eq_ignore_ascii_case(&grant.grantMac) {
         return Err("Qualified flash grant authentication failed".to_string());
     }
-    if grant.qualificationStatus != "approved" || !grant.executorQualified {
-        return Err("Destructive executor is not physically qualified by the supplied grant".to_string());
+    let is_approved = grant.qualificationStatus == "approved" && grant.executorQualified;
+    let is_trial = grant.qualificationStatus == "qualification-trial" && !grant.executorQualified;
+    if !is_approved && !is_trial {
+        return Err("Destructive executor authority is not valid for this operation".to_string());
+    }
+    if !valid_sha256_hex(&grant.dossierFingerprint) {
+        return Err("Qualified flash grant dossier fingerprint is invalid".to_string());
+    }
+    if is_trial {
+        if config.partitions.len() != 1 || grant.approvedPartitions.len() != 1 {
+            return Err("Bench qualification trial is restricted to exactly one partition".to_string());
+        }
+        if config.wipeUserData || config.autoReboot {
+            return Err("Bench qualification trial cannot wipe userdata or reboot automatically".to_string());
+        }
+        let name = config.partitions[0].name.trim();
+        let trial_allowed = [
+            "boot", "system", "vendor", "userdata", "cache", "recovery", "vbmeta", "dtbo",
+        ];
+        if !trial_allowed.contains(&name) {
+            return Err(format!(
+                "Partition '{}' is too sensitive for a bench qualification trial",
+                name
+            ));
+        }
     }
     if grant.deviceSerial != config.deviceSerial {
         return Err("Qualified flash grant is bound to a different device serial".to_string());
@@ -2558,6 +2781,32 @@ mod qualified_flash_grant_tests {
     }
 
     #[test]
+    fn signed_trial_grant_allows_one_noncritical_partition_only() {
+        let mut config = valid_config();
+        config.qualificationGrant.qualificationStatus = "qualification-trial".into();
+        config.qualificationGrant.executorQualified = false;
+        config.qualificationGrant.grantMac =
+            qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
+        assert!(validate_qualified_flash_config(&config, "test-secret").is_ok());
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn trial_grant_rejects_sensitive_partition() {
+        let mut config = valid_config();
+        config.partitions[0].name = "bootloader".into();
+        config.qualificationGrant.qualificationStatus = "qualification-trial".into();
+        config.qualificationGrant.executorQualified = false;
+        config.qualificationGrant.approvedPartitions[0].name = "bootloader".into();
+        config.qualificationGrant.grantMac =
+            qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
+        assert!(validate_qualified_flash_config(&config, "test-secret")
+            .unwrap_err()
+            .contains("too sensitive"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
     fn grant_rejects_forged_mac() {
         let mut config = valid_config();
         config.qualificationGrant.grantMac = "d".repeat(64);
@@ -2781,6 +3030,12 @@ bootforgeusb_transport_scan,
             bootforge_qualification_export,
             bootforge_qualification_build_identity,
             bootforge_qualification_review,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_qualified_fastboot_devices,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_qualified_flash_inspect_image,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_issue_qualification_trial_grant,
             #[cfg(feature = "qualified-flash")]
             bootforge_issue_qualified_flash_grant,
             #[cfg(feature = "qualified-flash")]

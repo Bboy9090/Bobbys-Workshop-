@@ -230,6 +230,7 @@ describe('production command surface excludes unqualified destructive flash', ()
     const handler = main.slice(start, end);
 
     for (const command of [
+      'bootforge_issue_qualification_trial_grant',
       'bootforge_issue_qualified_flash_grant',
       'flash_start',
       'flash_cancel',
