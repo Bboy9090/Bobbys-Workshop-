@@ -598,7 +598,10 @@ export default function App() {
           <AuditLedger />
           <RecoverySafetyTools />
           <FirehoseDryRun />
-          <QualificationDossier recoveryJobFingerprint={recoveryJob?.jobFingerprint ?? null} />
+          <QualificationDossier
+            recoveryJobFingerprint={recoveryJob?.jobFingerprint ?? null}
+            preparedRecoveryIdentity={recoveryJob?.identity ?? null}
+          />
 
           <section className="mb-4 rounded-lg border border-cyan-900/70 bg-cyan-950/10 p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">

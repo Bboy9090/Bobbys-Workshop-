@@ -5,15 +5,20 @@ import {
   listEdlProgrammers,
   scanTransportDevices,
   type EdlProgrammerRecord,
+  type QualificationRecoveryIdentity,
   type TransportDevice,
   type WorkstationReadiness,
 } from '../lib/desktop';
 
 type QualificationDossierProps = {
   recoveryJobFingerprint?: string | null;
+  preparedRecoveryIdentity?: QualificationRecoveryIdentity | null;
 };
 
-export default function QualificationDossier({ recoveryJobFingerprint }: QualificationDossierProps) {
+export default function QualificationDossier({
+  recoveryJobFingerprint,
+  preparedRecoveryIdentity,
+}: QualificationDossierProps) {
   const [devices, setDevices] = useState<TransportDevice[]>([]);
   const [workstation, setWorkstation] = useState<WorkstationReadiness | null>(null);
   const [programmers, setProgrammers] = useState<EdlProgrammerRecord[]>([]);
@@ -31,6 +36,16 @@ export default function QualificationDossier({ recoveryJobFingerprint }: Qualifi
     () => programmers.filter((programmer) => programmer.authorized),
     [programmers],
   );
+  const selectedMatchesPreparedIdentity = useMemo(() => {
+    if (!selected || !preparedRecoveryIdentity) return false;
+    return (
+      selected.deviceUid === preparedRecoveryIdentity.deviceUid &&
+      selected.vendorId === preparedRecoveryIdentity.vendorId &&
+      selected.productId === preparedRecoveryIdentity.productId &&
+      selected.mode === preparedRecoveryIdentity.mode &&
+      (selected.serialNumber ?? null) === (preparedRecoveryIdentity.serialNumber ?? null)
+    );
+  }, [selected, preparedRecoveryIdentity]);
 
   const refresh = async () => {
     try {
@@ -71,6 +86,7 @@ export default function QualificationDossier({ recoveryJobFingerprint }: Qualifi
         workstation,
         authorizedProgrammers,
         recoveryJobFingerprint: recoveryJobFingerprint?.trim() || '',
+        preparedRecoveryIdentity: preparedRecoveryIdentity ?? null,
         operatorNotes: notes.trim(),
       });
       if (path) setSavedPath(path);
@@ -161,6 +177,23 @@ export default function QualificationDossier({ recoveryJobFingerprint }: Qualifi
           <div className="mt-1 break-all font-mono text-[10px] text-cyan-300">{recoveryJobFingerprint}</div>
         ) : (
           <div className="mt-1 text-xs text-amber-300">No prepared recovery job is bound. Export is evidence-only and cannot be qualification-binding ready.</div>
+        )}
+      </div>
+      <div className="mt-3 rounded border border-slate-800 bg-slate-950/60 p-3">
+        <div className="text-[10px] uppercase tracking-wide text-slate-600">Live device identity binding</div>
+        {!preparedRecoveryIdentity ? (
+          <div className="mt-1 text-xs text-amber-300">No frozen recovery identity is available yet.</div>
+        ) : !selected ? (
+          <div className="mt-1 text-xs text-amber-300">No live recovery-mode device is selected.</div>
+        ) : (
+          <>
+            <div className={selectedMatchesPreparedIdentity ? 'mt-1 text-xs font-semibold text-emerald-300' : 'mt-1 text-xs font-semibold text-rose-300'}>
+              {selectedMatchesPreparedIdentity ? 'MATCH' : 'MISMATCH — qualification binding blocked'}
+            </div>
+            <div className="mt-1 break-all font-mono text-[10px] text-slate-500">
+              prepared: {preparedRecoveryIdentity.deviceUid}
+            </div>
+          </>
         )}
       </div>
 

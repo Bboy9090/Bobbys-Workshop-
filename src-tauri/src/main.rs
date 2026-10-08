@@ -787,6 +787,16 @@ struct QualificationProgrammerSnapshot {
     enrolled_at_unix_ms: Option<u64>,
 }
 
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationRecoveryIdentitySnapshot {
+    device_uid: String,
+    vendor_id: u16,
+    product_id: u16,
+    mode: String,
+    serial_number: Option<String>,
+}
+
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct QualificationDossierInput {
@@ -794,6 +804,7 @@ struct QualificationDossierInput {
     workstation: QualificationWorkstationSnapshot,
     authorized_programmers: Vec<QualificationProgrammerSnapshot>,
     recovery_job_fingerprint: String,
+    prepared_recovery_identity: Option<QualificationRecoveryIdentitySnapshot>,
     operator_notes: String,
 }
 
@@ -834,7 +845,20 @@ fn bootforge_qualification_export(
     );
     let executor_build_fingerprint = format!("{:x}", Sha256::digest(executor_descriptor.as_bytes()));
 
-    let qualification_binding_ready = fingerprint_valid && source_revision_available;
+    let device_identity_match = input
+        .prepared_recovery_identity
+        .as_ref()
+        .map(|prepared| {
+            prepared.device_uid == input.device.device_uid
+                && prepared.vendor_id == input.device.vendor_id
+                && prepared.product_id == input.device.product_id
+                && prepared.mode == input.device.mode
+                && prepared.serial_number == input.device.serial_number
+        })
+        .unwrap_or(false);
+
+    let qualification_binding_ready =
+        fingerprint_valid && source_revision_available && device_identity_match;
     let mut binding_blockers = Vec::new();
     if !fingerprint_valid {
         binding_blockers.push(
@@ -844,6 +868,12 @@ fn bootforge_qualification_export(
     if !source_revision_available {
         binding_blockers.push(
             "Executor source revision is unavailable; build is not qualification-binding ready"
+                .to_string(),
+        );
+    }
+    if !device_identity_match {
+        binding_blockers.push(
+            "Live recovery-mode device does not exactly match the frozen recovery-job identity"
                 .to_string(),
         );
     }
@@ -857,6 +887,8 @@ fn bootforge_qualification_export(
         "qualificationBindingReady": qualification_binding_ready,
         "recoveryJobFingerprint": recovery_job_fingerprint,
         "recoveryJobFingerprintValid": fingerprint_valid,
+        "preparedRecoveryIdentity": input.prepared_recovery_identity,
+        "liveDeviceIdentityMatch": device_identity_match,
         "executorBuild": {
             "packageVersion": env!("CARGO_PKG_VERSION"),
             "sourceRevision": source_revision,
@@ -879,6 +911,7 @@ fn bootforge_qualification_export(
             "Confirm backup/rollback evidence exists where required",
             "Record designated-device bench outcome separately before any executor qualification",
             "Require an exact recovery-job fingerprint match before qualification review",
+            "Require the live recovery-mode device to exactly match the frozen recovery-job identity",
             "Require an executor source revision and build fingerprint before qualification review"
         ],
         "bindingBlockers": binding_blockers

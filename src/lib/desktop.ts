@@ -686,11 +686,20 @@ export async function scanTransportDevices(): Promise<TransportDevice[]> {
   return invoke<TransportDevice[]>('bootforgeusb_transport_scan');
 }
 
+export type QualificationRecoveryIdentity = {
+  deviceUid: string;
+  vendorId: number;
+  productId: number;
+  mode: string;
+  serialNumber?: string | null;
+};
+
 export type QualificationDossierInput = {
   device: TransportDevice;
   workstation: WorkstationReadiness;
   authorizedProgrammers: EdlProgrammerRecord[];
   recoveryJobFingerprint: string;
+  preparedRecoveryIdentity?: QualificationRecoveryIdentity | null;
   operatorNotes: string;
 };
 
