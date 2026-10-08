@@ -676,6 +676,68 @@ fn bootforge_recovery_revalidate(
     Ok(job)
 }
 
+#[tauri::command]
+fn bootforge_recovery_export_receipt(
+    job: bootforgeusb::recovery_job::RecoveryJob,
+    plan: Option<bootforgeusb::recovery::RecoveryPlan>,
+    destination_path: String,
+) -> Result<String, String> {
+    let destination = std::path::PathBuf::from(&destination_path);
+    if destination.as_os_str().is_empty() {
+        return Err("Evidence receipt destination is required".to_string());
+    }
+
+    let generated_unix_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+
+    let gates = serde_json::json!({
+        "artifactsHashed": !job.artifact_digests.is_empty(),
+        "partitionMapNormalized": !job.operations.is_empty(),
+        "prerequisitesMet": job.prerequisites_met,
+        "hardwareIdentityRevalidated": job.identity_revalidated,
+        "executorPhysicallyQualified": job.executor_qualified,
+        "executionReady": job.execution_ready,
+    });
+
+    let receipt = serde_json::json!({
+        "schema": "com.bobbyblanco.bobfwtools.recovery-evidence.v1",
+        "generatedUnixSeconds": generated_unix_seconds,
+        "executionPerformed": false,
+        "job": job,
+        "plan": plan,
+        "qualificationGates": gates,
+        "policy": {
+            "rawWriteExecutorEnabled": false,
+            "requiresPhysicalExecutorQualification": true,
+            "securityBypassExecutionSupported": false
+        }
+    });
+
+    let bytes = serde_json::to_vec_pretty(&receipt)
+        .map_err(|e| format!("Could not serialize evidence receipt: {e}"))?;
+    std::fs::write(&destination, bytes)
+        .map_err(|e| format!("Could not write evidence receipt {}: {e}", destination.display()))?;
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "export-evidence-receipt",
+        if job.destructive { "destructive" } else { "elevated" },
+        "completed-no-execution",
+        Some(job.identity.device_uid.clone()),
+        "Recovery evidence receipt exported; no write/flash execution was performed.",
+        vec![
+            format!("destination:{}", destination.display()),
+            format!("identity-revalidated:{}", job.identity_revalidated),
+            format!("executor-qualified:{}", job.executor_qualified),
+            format!("execution-ready:{}", job.execution_ready),
+        ],
+    );
+
+    Ok(destination.display().to_string())
+}
+
 #[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config: FlashJobConfig) -> Result<FlashStartResponse, String> {
@@ -1661,6 +1723,7 @@ bootforgeusb_transport_scan,
             bootforge_recovery_plan,
             bootforge_recovery_prepare,
             bootforge_recovery_revalidate,
+            bootforge_recovery_export_receipt,
             mtp_status,
             mtp_list_root,
             mtp_download_file,

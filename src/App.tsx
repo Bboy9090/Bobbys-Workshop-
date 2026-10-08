@@ -29,6 +29,7 @@ import {
   buildRecoveryPlan,
   prepareRecoveryJob,
   revalidateRecoveryJob,
+  exportRecoveryEvidence,
   listWorkflowJobs,
   retryWorkflowJob,
   runAdbPackageAction,
@@ -94,6 +95,7 @@ export default function App() {
   const [recoveryPlan, setRecoveryPlan] = useState<RecoveryPlan | null>(null);
   const [recoveryJob, setRecoveryJob] = useState<RecoveryJob | null>(null);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [recoveryEvidencePath, setRecoveryEvidencePath] = useState<string | null>(null);
   const nativeRuntime = useMemo(() => isTauriRuntime(), []);
   const filteredPackages = useMemo(() => {
     const q = packageQuery.trim().toLowerCase();
@@ -444,6 +446,7 @@ export default function App() {
     setRecoveryArtifacts(paths);
     setRecoveryPlan(null);
     setRecoveryJob(null);
+    setRecoveryEvidencePath(null);
   };
 
   const inspectRecoveryPlan = async () => {
@@ -495,6 +498,21 @@ export default function App() {
       setRecoveryBusy(false);
     }
   };
+
+  const exportSelectedRecoveryEvidence = async () => {
+    if (!recoveryJob) return;
+    setRecoveryBusy(true);
+    setNativeError(null);
+    try {
+      const path = await exportRecoveryEvidence(recoveryJob, recoveryPlan);
+      if (path) setRecoveryEvidencePath(path);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveryBusy(false);
+    }
+  };
+
 
   return (
     <div className="flex h-screen flex-col bg-slate-950 text-slate-200">
@@ -989,11 +1007,25 @@ export default function App() {
                     >
                       {recoveryBusy ? 'Revalidating…' : recoveryJob.identityRevalidated ? 'Revalidate hardware again' : 'Revalidate hardware'}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => void exportSelectedRecoveryEvidence()}
+                      disabled={recoveryBusy}
+                      className="rounded border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-300 disabled:opacity-40 hover:bg-slate-900"
+                    >
+                      Export evidence receipt
+                    </button>
                     <span className={recoveryJob.executorQualified ? 'rounded bg-emerald-950 px-2 py-1 text-xs text-emerald-300' : 'rounded bg-amber-950 px-2 py-1 text-xs text-amber-300'}>
                       {recoveryJob.executorQualified ? 'executor qualified' : 'executor not yet physically qualified'}
                     </span>
                   </div>
                 </div>
+
+                {recoveryEvidencePath && (
+                  <div className="mt-3 rounded border border-emerald-900/60 bg-emerald-950/20 p-3 text-xs text-emerald-300">
+                    Evidence receipt saved: <span className="font-mono">{recoveryEvidencePath}</span>
+                  </div>
+                )}
 
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
                   {[

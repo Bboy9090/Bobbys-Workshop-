@@ -748,3 +748,21 @@ export async function prepareRecoveryJob(
 export async function revalidateRecoveryJob(job: RecoveryJob): Promise<RecoveryJob> {
   return invoke<RecoveryJob>('bootforge_recovery_revalidate', { job });
 }
+
+export async function exportRecoveryEvidence(
+  job: RecoveryJob,
+  plan: RecoveryPlan | null,
+): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const destinationPath = await save({
+    title: 'Export BobFWTools recovery evidence receipt',
+    defaultPath: 'bobfwtools-recovery-evidence.json',
+    filters: [{ name: 'JSON evidence receipt', extensions: ['json'] }],
+  });
+  if (!destinationPath) return null;
+  return invoke<string>('bootforge_recovery_export_receipt', {
+    job,
+    plan,
+    destinationPath,
+  });
+}
