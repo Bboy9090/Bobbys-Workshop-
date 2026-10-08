@@ -30,6 +30,7 @@ mod adb_workflows;
 mod workflow_capabilities;
 mod diagnostics;
 mod workflow_jobs;
+mod workstation;
 mod calibration_backup_exec;
 mod edl_programmer_vault;
 #[cfg(feature = "legacy-backends")]
@@ -43,6 +44,7 @@ use adb_workflows::{adb_scan, adb_device_info, adb_logcat_snapshot, adb_screensh
 use workflow_capabilities::workflow_capabilities;
 use diagnostics::{diagnose_phone, usb_cable_doctor};
 use workflow_jobs::{workflow_job_start, workflow_job_list, workflow_job_get, workflow_job_retry};
+use workstation::{workstation_readiness, workstation_initialize};
 use calibration_backup_exec::{backup_calibration_partition, inspect_calibration_backup};
 use edl_programmer_vault::{edl_inspect_programmer, edl_enroll_programmer, edl_list_programmers};
 
@@ -1511,6 +1513,8 @@ fn main() {
             workflow_job_list,
             workflow_job_get,
             workflow_job_retry,
+            workstation_readiness,
+            workstation_initialize,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
