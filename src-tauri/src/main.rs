@@ -797,6 +797,32 @@ struct QualificationRecoveryIdentitySnapshot {
     serial_number: Option<String>,
 }
 
+
+fn valid_sha256_hex(value: &str) -> bool {
+    let trimmed = value.trim();
+    trimmed.len() == 64 && trimmed.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+fn qualification_device_identity_matches(
+    prepared: Option<&QualificationRecoveryIdentitySnapshot>,
+    live: &bootforgeusb::transport::TransportDevice,
+) -> bool {
+    prepared
+        .map(|prepared| {
+            prepared.device_uid == live.device_uid
+                && prepared.vendor_id == live.vendor_id
+                && prepared.product_id == live.product_id
+                && prepared.mode == live.mode
+                && prepared.serial_number == live.serial_number
+        })
+        .unwrap_or(false)
+}
+
+fn qualification_source_revision_available(value: &str) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty() && trimmed != "unavailable"
+}
+
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct QualificationDossierInput {
@@ -806,6 +832,63 @@ struct QualificationDossierInput {
     recovery_job_fingerprint: String,
     prepared_recovery_identity: Option<QualificationRecoveryIdentitySnapshot>,
     operator_notes: String,
+}
+
+
+#[cfg(test)]
+mod qualification_binding_tests {
+    use super::*;
+
+    fn transport(uid: &str, serial: Option<&str>) -> bootforgeusb::transport::TransportDevice {
+        bootforgeusb::transport::TransportDevice {
+            device_uid: uid.to_string(),
+            vendor_id: 0x05c6,
+            product_id: 0x9008,
+            bus_number: 1,
+            device_address: 2,
+            manufacturer: Some("Qualcomm".into()),
+            product_name: Some("QDLoader 9008".into()),
+            serial_number: serial.map(str::to_string),
+            mode: "qualcomm-edl".into(),
+            endpoints: vec![],
+            bulk_in: vec![0x81],
+            bulk_out: vec![0x01],
+        }
+    }
+
+    #[test]
+    fn sha256_binding_requires_exact_hex_length() {
+        assert!(valid_sha256_hex(&"a".repeat(64)));
+        assert!(valid_sha256_hex(&"A1".repeat(32)));
+        assert!(!valid_sha256_hex(&"a".repeat(63)));
+        assert!(!valid_sha256_hex(&"g".repeat(64)));
+        assert!(!valid_sha256_hex(""));
+    }
+
+    #[test]
+    fn source_revision_fails_closed_when_unavailable() {
+        assert!(qualification_source_revision_available("abc1234"));
+        assert!(!qualification_source_revision_available(""));
+        assert!(!qualification_source_revision_available("  "));
+        assert!(!qualification_source_revision_available("unavailable"));
+    }
+
+    #[test]
+    fn qualification_requires_exact_frozen_device_identity() {
+        let prepared = QualificationRecoveryIdentitySnapshot {
+            device_uid: "usb:05c6:9008:SERIAL".into(),
+            vendor_id: 0x05c6,
+            product_id: 0x9008,
+            mode: "qualcomm-edl".into(),
+            serial_number: Some("SERIAL".into()),
+        };
+        let live = transport("usb:05c6:9008:SERIAL", Some("SERIAL"));
+        assert!(qualification_device_identity_matches(Some(&prepared), &live));
+
+        let swapped = transport("usb:05c6:9008:OTHER", Some("OTHER"));
+        assert!(!qualification_device_identity_matches(Some(&prepared), &swapped));
+        assert!(!qualification_device_identity_matches(None, &live));
+    }
 }
 
 #[tauri::command]
@@ -823,15 +906,14 @@ fn bootforge_qualification_export(
         .as_secs();
 
     let recovery_job_fingerprint = input.recovery_job_fingerprint.trim().to_ascii_lowercase();
-    let fingerprint_valid = recovery_job_fingerprint.len() == 64
-        && recovery_job_fingerprint.chars().all(|c| c.is_ascii_hexdigit());
+    let fingerprint_valid = valid_sha256_hex(&recovery_job_fingerprint);
 
     let source_revision = option_env!("BOBFWTOOLS_SOURCE_REVISION")
         .or(option_env!("GITHUB_SHA"))
         .unwrap_or("unavailable")
         .trim()
         .to_string();
-    let source_revision_available = !source_revision.is_empty() && source_revision != "unavailable";
+    let source_revision_available = qualification_source_revision_available(&source_revision);
     let build_profile = if cfg!(debug_assertions) { "debug" } else { "release" };
     let qualified_flash_compiled = cfg!(feature = "qualified-flash");
 
@@ -845,17 +927,10 @@ fn bootforge_qualification_export(
     );
     let executor_build_fingerprint = format!("{:x}", Sha256::digest(executor_descriptor.as_bytes()));
 
-    let device_identity_match = input
-        .prepared_recovery_identity
-        .as_ref()
-        .map(|prepared| {
-            prepared.device_uid == input.device.device_uid
-                && prepared.vendor_id == input.device.vendor_id
-                && prepared.product_id == input.device.product_id
-                && prepared.mode == input.device.mode
-                && prepared.serial_number == input.device.serial_number
-        })
-        .unwrap_or(false);
+    let device_identity_match = qualification_device_identity_matches(
+        input.prepared_recovery_identity.as_ref(),
+        &input.device,
+    );
 
     let qualification_binding_ready =
         fingerprint_valid && source_revision_available && device_identity_match;
@@ -878,6 +953,38 @@ fn bootforge_qualification_export(
         );
     }
 
+    let required_physical_checks = vec![
+        "Repeat USB enumeration without identity drift",
+        "Confirm expected recovery mode after reconnect",
+        "Confirm bulk endpoint stability across repeated scans",
+        "Confirm OEM/service programmer hash remains enrolled and unchanged",
+        "Confirm firmware/device/layout preflight matches target",
+        "Confirm dry-run partition plan stays within verified bounds",
+        "Confirm backup/rollback evidence exists where required",
+        "Record designated-device bench outcome separately before any executor qualification",
+        "Require an exact recovery-job fingerprint match before qualification review",
+        "Require the live recovery-mode device to exactly match the frozen recovery-job identity",
+        "Require an executor source revision and build fingerprint before qualification review",
+    ];
+
+    let binding_material = serde_json::json!({
+        "schema": "com.bobbyblanco.bobfwtools.designated-device-qualification.binding.v1",
+        "recoveryJobFingerprint": recovery_job_fingerprint,
+        "preparedRecoveryIdentity": input.prepared_recovery_identity,
+        "liveDeviceIdentityMatch": device_identity_match,
+        "executorBuildFingerprint": executor_build_fingerprint,
+        "sourceRevision": source_revision,
+        "device": input.device,
+        "workstation": input.workstation,
+        "authorizedProgrammers": input.authorized_programmers,
+        "operatorNotes": input.operator_notes,
+        "requiredPhysicalChecks": required_physical_checks,
+        "bindingBlockers": binding_blockers,
+    });
+    let binding_bytes = serde_json::to_vec(&binding_material)
+        .map_err(|e| format!("Could not serialize qualification binding material: {e}"))?;
+    let dossier_fingerprint = format!("{:x}", Sha256::digest(&binding_bytes));
+
     let receipt = serde_json::json!({
         "schema": "com.bobbyblanco.bobfwtools.designated-device-qualification.v1",
         "generatedUnixSeconds": generated_unix_seconds,
@@ -885,6 +992,8 @@ fn bootforge_qualification_export(
         "executorQualified": false,
         "executionEnabledByThisDossier": false,
         "qualificationBindingReady": qualification_binding_ready,
+        "dossierFingerprint": dossier_fingerprint,
+        "bindingMaterial": binding_material,
         "recoveryJobFingerprint": recovery_job_fingerprint,
         "recoveryJobFingerprintValid": fingerprint_valid,
         "preparedRecoveryIdentity": input.prepared_recovery_identity,
@@ -901,25 +1010,31 @@ fn bootforge_qualification_export(
         "workstation": input.workstation,
         "authorizedProgrammers": input.authorized_programmers,
         "operatorNotes": input.operator_notes,
-        "requiredPhysicalChecks": [
-            "Repeat USB enumeration without identity drift",
-            "Confirm expected recovery mode after reconnect",
-            "Confirm bulk endpoint stability across repeated scans",
-            "Confirm OEM/service programmer hash remains enrolled and unchanged",
-            "Confirm firmware/device/layout preflight matches target",
-            "Confirm dry-run partition plan stays within verified bounds",
-            "Confirm backup/rollback evidence exists where required",
-            "Record designated-device bench outcome separately before any executor qualification",
-            "Require an exact recovery-job fingerprint match before qualification review",
-            "Require the live recovery-mode device to exactly match the frozen recovery-job identity",
-            "Require an executor source revision and build fingerprint before qualification review"
-        ],
+        "requiredPhysicalChecks": required_physical_checks,
         "bindingBlockers": binding_blockers
     });
     let bytes = serde_json::to_vec_pretty(&receipt)
         .map_err(|e| format!("Could not serialize qualification dossier: {e}"))?;
     std::fs::write(&destination, bytes)
         .map_err(|e| format!("Could not write qualification dossier {}: {e}", destination.display()))?;
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "export-qualification-dossier",
+        "elevated",
+        "completed-no-execution",
+        Some(input.device.device_uid.clone()),
+        "Designated-device qualification dossier exported; executor qualification remains false.",
+        vec![
+            format!("destination:{}", destination.display()),
+            format!("dossier-fingerprint:{}", dossier_fingerprint),
+            format!("recovery-job-fingerprint:{}", recovery_job_fingerprint),
+            format!("live-device-identity-match:{}", device_identity_match),
+            format!("qualification-binding-ready:{}", qualification_binding_ready),
+            format!("executor-build-fingerprint:{}", executor_build_fingerprint),
+        ],
+    );
+
     Ok(destination.display().to_string())
 }
 
