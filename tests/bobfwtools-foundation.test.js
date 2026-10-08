@@ -381,6 +381,8 @@ describe('qualification audit bundle', () => {
     expect(main).toContain('export-qualification-audit-bundle');
     expect(main).toContain('bootforge_qualification_audit_bundle_review');
     expect(main).toContain('Audit bundle source file hash changed');
+    expect(main).toContain('Nested evidence chain verification failed');
+    expect(main).toContain('Nested decision does not reference the bundled bench-evidence receipt');
     expect(main).toContain('Qualification audit bundle was produced by a different executor build');
     expect(bridge).toContain('exportQualificationAuditBundle');
     expect(bridge).toContain('reviewQualificationAuditBundle');

@@ -2720,6 +2720,7 @@ struct QualificationAuditBundleReview {
     recovery_job_matches_expected: bool,
     executor_build_matches_current: bool,
     source_files_match: bool,
+    nested_evidence_chain_valid: bool,
     grants_execution_authority_claimed: bool,
     execution_performed_claimed: bool,
     safe_to_review: bool,
@@ -2866,6 +2867,106 @@ fn bootforge_qualification_audit_bundle_review(
         }
     }
 
+    let reviewer = material
+        .get("reviewer")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    let device_serial = material
+        .get("deviceSerial")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+
+    let nested_result = (|| -> Result<(), String> {
+        if reviewer.trim().is_empty() || device_serial.trim().is_empty() {
+            return Err("Audit bundle reviewer or device serial is missing".to_string());
+        }
+        let expected_job = recovery_job_fingerprint
+            .as_deref()
+            .ok_or_else(|| "Audit bundle recovery-job fingerprint is missing".to_string())?;
+
+        let dossier_path = source_files
+            .get("qualificationDossier")
+            .and_then(|entry| entry.get("path"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "Audit bundle dossier path is missing".to_string())?;
+        let dossier_review = bootforge_qualification_review(
+            dossier_path.to_string(),
+            Some(expected_job.to_string()),
+        )?;
+        if !dossier_review.safe_to_review {
+            return Err(format!(
+                "Nested qualification dossier is blocked: {}",
+                dossier_review.blockers.join("; ")
+            ));
+        }
+        let dossier_fingerprint = dossier_review
+            .dossier_fingerprint
+            .ok_or_else(|| "Nested dossier fingerprint is unavailable".to_string())?;
+
+        let bench_path = source_files
+            .get("benchEvidence")
+            .and_then(|entry| entry.get("path"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "Audit bundle bench-evidence path is missing".to_string())?;
+        let bench = load_and_verify_qualification_bench_evidence(
+            bench_path,
+            reviewer,
+            device_serial,
+            &dossier_fingerprint,
+            expected_job,
+            &current_build.executor_build_fingerprint,
+        )?;
+
+        let decision_path = source_files
+            .get("humanDecision")
+            .and_then(|entry| entry.get("path"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "Audit bundle decision path is missing".to_string())?;
+        let decision = load_and_verify_qualification_decision(
+            decision_path,
+            reviewer,
+            device_serial,
+            &dossier_fingerprint,
+            expected_job,
+            &current_build.executor_build_fingerprint,
+        )?;
+        let decision_bench_fingerprint = decision
+            .bench_evidence_fingerprint
+            .as_deref()
+            .ok_or_else(|| "Nested decision is missing bench-evidence fingerprint".to_string())?;
+        if !decision_bench_fingerprint.eq_ignore_ascii_case(&bench.receipt_fingerprint) {
+            return Err(
+                "Nested decision does not reference the bundled bench-evidence receipt".to_string(),
+            );
+        }
+
+        if let Some(readiness) = source_files.get("readinessCertificate") {
+            if !readiness.is_null() {
+                let readiness_path = readiness
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Nested readiness certificate path is missing".to_string())?;
+                let readiness_review = bootforge_recovery_review_readiness_certificate(
+                    readiness_path.to_string(),
+                    Some(expected_job.to_string()),
+                )?;
+                if !readiness_review.safe_to_review {
+                    return Err(format!(
+                        "Nested readiness certificate is blocked: {}",
+                        readiness_review.blockers.join("; ")
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    })();
+
+    let nested_evidence_chain_valid = nested_result.is_ok();
+    if let Err(err) = nested_result {
+        source_blockers.push(format!("Nested evidence chain verification failed: {err}"));
+    }
+
     let mut blockers = source_blockers;
     if !schema_valid {
         blockers.push("Qualification audit bundle schema is not recognized".to_string());
@@ -2898,6 +2999,7 @@ fn bootforge_qualification_audit_bundle_review(
             format!("path:{}", path_buf.display()),
             format!("bundle-fingerprint-valid:{}", bundle_fingerprint_valid),
             format!("source-files-match:{}", source_files_match),
+            format!("nested-evidence-chain-valid:{}", nested_evidence_chain_valid),
             format!("job-match:{}", recovery_job_matches_expected),
             format!("executor-build-match:{}", executor_build_matches_current),
         ],
@@ -2910,6 +3012,7 @@ fn bootforge_qualification_audit_bundle_review(
         recovery_job_matches_expected,
         executor_build_matches_current,
         source_files_match,
+        nested_evidence_chain_valid,
         grants_execution_authority_claimed,
         execution_performed_claimed,
         safe_to_review,
