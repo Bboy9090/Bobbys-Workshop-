@@ -2653,6 +2653,217 @@ fn bootforge_qualification_audit_bundle_export(
     Ok(destination.display().to_string())
 }
 
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationAuditBundleReview {
+    path: String,
+    schema_valid: bool,
+    bundle_fingerprint_valid: bool,
+    recovery_job_matches_expected: bool,
+    executor_build_matches_current: bool,
+    source_files_match: bool,
+    grants_execution_authority_claimed: bool,
+    execution_performed_claimed: bool,
+    safe_to_review: bool,
+    blockers: Vec<String>,
+    bundle_fingerprint: Option<String>,
+    recovery_job_fingerprint: Option<String>,
+    executor_build_fingerprint: Option<String>,
+}
+
+#[cfg(feature = "qualified-flash")]
+#[tauri::command]
+fn bootforge_qualification_audit_bundle_review(
+    path: String,
+    expected_recovery_job_fingerprint: Option<String>,
+) -> Result<QualificationAuditBundleReview, String> {
+    use sha2::{Digest, Sha256};
+
+    let path_buf = std::path::PathBuf::from(&path);
+    if !path_buf.is_file() {
+        return Err(format!(
+            "Qualification audit bundle not found: {}",
+            path_buf.display()
+        ));
+    }
+    let bytes = std::fs::read(&path_buf)
+        .map_err(|e| format!("Could not read qualification audit bundle: {e}"))?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Qualification audit bundle is invalid JSON: {e}"))?;
+
+    let material = value
+        .get("bundleMaterial")
+        .cloned()
+        .ok_or_else(|| "Qualification audit bundle is missing bundleMaterial".to_string())?;
+    let material_bytes = serde_json::to_vec(&material)
+        .map_err(|e| format!("Could not canonicalize qualification audit bundle: {e}"))?;
+    let recomputed = format!("{:x}", Sha256::digest(&material_bytes));
+    let bundle_fingerprint = value
+        .get("bundleFingerprint")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let bundle_fingerprint_valid = bundle_fingerprint
+        .as_deref()
+        .map(|claimed| claimed.eq_ignore_ascii_case(&recomputed))
+        .unwrap_or(false);
+
+    let schema_valid = material
+        .get("schema")
+        .and_then(|v| v.as_str())
+        == Some("com.bobbyblanco.bobfwtools.qualification-audit-bundle.v1");
+    let grants_execution_authority_claimed = material
+        .get("grantsExecutionAuthority")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let execution_performed_claimed = material
+        .get("executionPerformed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    let recovery_job_fingerprint = material
+        .get("recoveryJobFingerprint")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let expected = expected_recovery_job_fingerprint
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let recovery_job_matches_expected = match (expected, recovery_job_fingerprint.as_deref()) {
+        (Some(expected), Some(actual)) => expected.eq_ignore_ascii_case(actual),
+        (Some(_), None) => false,
+        (None, _) => true,
+    };
+
+    let executor_build_fingerprint = material
+        .get("executorBuildFingerprint")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let current_build = qualification_build_identity_snapshot();
+    let executor_build_matches_current = executor_build_fingerprint
+        .as_deref()
+        .map(|actual| actual == current_build.executor_build_fingerprint)
+        .unwrap_or(false);
+
+    let source_files = material
+        .get("sourceFiles")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| "Qualification audit bundle is missing sourceFiles".to_string())?;
+
+    let mut source_files_match = true;
+    let mut source_blockers = Vec::new();
+    for key in ["qualificationDossier", "benchEvidence", "humanDecision"] {
+        let Some(entry) = source_files.get(key) else {
+            source_files_match = false;
+            source_blockers.push(format!("Audit bundle is missing source file entry: {key}"));
+            continue;
+        };
+        let Some(path) = entry.get("path").and_then(|v| v.as_str()) else {
+            source_files_match = false;
+            source_blockers.push(format!("Audit bundle source {key} is missing path"));
+            continue;
+        };
+        let Some(expected_hash) = entry.get("fileSha256").and_then(|v| v.as_str()) else {
+            source_files_match = false;
+            source_blockers.push(format!("Audit bundle source {key} is missing SHA-256"));
+            continue;
+        };
+        match sha256_file(std::path::Path::new(path)) {
+            Ok(actual) if actual.eq_ignore_ascii_case(expected_hash) => {}
+            Ok(_) => {
+                source_files_match = false;
+                source_blockers.push(format!("Audit bundle source file hash changed: {key}"));
+            }
+            Err(err) => {
+                source_files_match = false;
+                source_blockers.push(format!("Audit bundle source {key} cannot be verified: {err}"));
+            }
+        }
+    }
+
+    if let Some(readiness) = source_files.get("readinessCertificate") {
+        if !readiness.is_null() {
+            let path = readiness
+                .get("path")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "Audit bundle readiness certificate is missing path".to_string())?;
+            let expected_hash = readiness
+                .get("fileSha256")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "Audit bundle readiness certificate is missing SHA-256".to_string())?;
+            match sha256_file(std::path::Path::new(path)) {
+                Ok(actual) if actual.eq_ignore_ascii_case(expected_hash) => {}
+                Ok(_) => {
+                    source_files_match = false;
+                    source_blockers.push(
+                        "Audit bundle readiness certificate file hash changed".to_string(),
+                    );
+                }
+                Err(err) => {
+                    source_files_match = false;
+                    source_blockers.push(format!(
+                        "Audit bundle readiness certificate cannot be verified: {err}"
+                    ));
+                }
+            }
+        }
+    }
+
+    let mut blockers = source_blockers;
+    if !schema_valid {
+        blockers.push("Qualification audit bundle schema is not recognized".to_string());
+    }
+    if !bundle_fingerprint_valid {
+        blockers.push("Qualification audit bundle fingerprint verification failed".to_string());
+    }
+    if !recovery_job_matches_expected {
+        blockers.push("Qualification audit bundle is bound to a different recovery job".to_string());
+    }
+    if !executor_build_matches_current {
+        blockers.push("Qualification audit bundle was produced by a different executor build".to_string());
+    }
+    if grants_execution_authority_claimed {
+        blockers.push("Qualification audit bundle improperly claims execution authority".to_string());
+    }
+    if execution_performed_claimed {
+        blockers.push("Qualification audit bundle improperly claims execution was performed".to_string());
+    }
+
+    let safe_to_review = blockers.is_empty();
+    let _ = crate::audit::record(
+        "Recovery",
+        "review-qualification-audit-bundle",
+        "elevated",
+        if safe_to_review { "verified" } else { "blocked" },
+        None,
+        "Qualification audit bundle reviewed; review grants no execution authority.",
+        vec![
+            format!("path:{}", path_buf.display()),
+            format!("bundle-fingerprint-valid:{}", bundle_fingerprint_valid),
+            format!("source-files-match:{}", source_files_match),
+            format!("job-match:{}", recovery_job_matches_expected),
+            format!("executor-build-match:{}", executor_build_matches_current),
+        ],
+    );
+
+    Ok(QualificationAuditBundleReview {
+        path,
+        schema_valid,
+        bundle_fingerprint_valid,
+        recovery_job_matches_expected,
+        executor_build_matches_current,
+        source_files_match,
+        grants_execution_authority_claimed,
+        execution_performed_claimed,
+        safe_to_review,
+        blockers,
+        bundle_fingerprint,
+        recovery_job_fingerprint,
+        executor_build_fingerprint,
+    })
+}
+
 #[cfg(all(test, feature = "qualified-flash"))]
 mod qualification_decision_tests {
     use super::*;
@@ -4705,6 +4916,8 @@ bootforgeusb_transport_scan,
             bootforge_qualification_decision_export,
             #[cfg(feature = "qualified-flash")]
             bootforge_qualification_audit_bundle_export,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_qualification_audit_bundle_review,
             #[cfg(feature = "qualified-flash")]
             bootforge_issue_qualification_trial_grant,
             #[cfg(feature = "qualified-flash")]

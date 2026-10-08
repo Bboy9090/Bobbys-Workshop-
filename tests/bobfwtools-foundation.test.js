@@ -377,8 +377,14 @@ describe('qualification audit bundle', () => {
     expect(main).toContain('Decision and bench-evidence fingerprints do not match');
     expect(main).toContain('bundleFingerprint');
     expect(main).toContain('export-qualification-audit-bundle');
+    expect(main).toContain('bootforge_qualification_audit_bundle_review');
+    expect(main).toContain('Audit bundle source file hash changed');
+    expect(main).toContain('Qualification audit bundle was produced by a different executor build');
     expect(bridge).toContain('exportQualificationAuditBundle');
+    expect(bridge).toContain('reviewQualificationAuditBundle');
     expect(consoleUi).toContain('Export qualification audit bundle');
+    expect(consoleUi).toContain('Review qualification audit bundle');
+    expect(consoleUi).toContain('AUDIT BUNDLE VERIFIED');
     expect(consoleUi).toContain('auditBundlePath');
   });
 });
@@ -396,6 +402,7 @@ describe('production command surface excludes unqualified destructive flash', ()
       'bootforge_qualification_bench_evidence_export',
       'bootforge_qualification_decision_export',
       'bootforge_qualification_audit_bundle_export',
+      'bootforge_qualification_audit_bundle_review',
       'bootforge_issue_qualification_trial_grant',
       'bootforge_issue_qualified_flash_grant',
       'flash_start',

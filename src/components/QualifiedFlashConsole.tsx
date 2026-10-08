@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   chooseAndInspectQualifiedFlashImage,
   exportQualificationAuditBundle,
+  reviewQualificationAuditBundle,
   exportQualificationBenchEvidence,
   exportQualificationDecision,
   getQualificationBuildIdentity,
@@ -12,6 +13,7 @@ import {
   startQualifiedFastbootFlash,
   type QualificationBuildIdentity,
   type QualificationDossierReview,
+  type QualificationAuditBundleReview,
   type QualifiedFlashGrant,
   type QualifiedFlashPartition,
   type QualifiedFlashPhysicalChecks,
@@ -80,6 +82,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
   const [benchEvidencePath, setBenchEvidencePath] = useState<string | null>(null);
   const [decisionPath, setDecisionPath] = useState<string | null>(null);
   const [auditBundlePath, setAuditBundlePath] = useState<string | null>(null);
+  const [auditBundleReview, setAuditBundleReview] = useState<QualificationAuditBundleReview | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -158,10 +161,12 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
     setBenchEvidencePath(null);
     setDecisionPath(null);
     setAuditBundlePath(null);
+    setAuditBundleReview(null);
   }, [recoveryJobFingerprint]);
 
   useEffect(() => {
     setAuditBundlePath(null);
+    setAuditBundleReview(null);
   }, [benchEvidencePath, decisionPath, deviceSerial, reviewer, review?.path]);
 
   const reviewSavedDossier = async () => {
@@ -290,6 +295,20 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
         reviewer: reviewer.trim(),
       });
       if (path) setAuditBundlePath(path);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reviewAuditBundle = async () => {
+    if (!recoveryJobFingerprint) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await reviewQualificationAuditBundle(recoveryJobFingerprint);
+      if (result) setAuditBundleReview(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -514,6 +533,34 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
             {auditBundlePath && (
               <div className="mt-2 break-all font-mono text-[10px] text-violet-400">
                 audit bundle: {auditBundlePath}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => void reviewAuditBundle()}
+              disabled={busy || !recoveryJobFingerprint}
+              className="mt-2 rounded border border-slate-700 px-3 py-2 text-xs text-slate-300 disabled:opacity-40"
+            >
+              Review qualification audit bundle
+            </button>
+            {auditBundleReview && (
+              <div className={auditBundleReview.safeToReview
+                ? 'mt-2 rounded border border-emerald-900/60 bg-emerald-950/20 p-3 text-xs text-emerald-300'
+                : 'mt-2 rounded border border-rose-900/60 bg-rose-950/20 p-3 text-xs text-rose-300'}>
+                <div className="font-semibold">
+                  {auditBundleReview.safeToReview ? 'AUDIT BUNDLE VERIFIED' : 'AUDIT BUNDLE BLOCKED'}
+                </div>
+                <div className="mt-1 text-[11px] text-slate-400">
+                  fingerprint {auditBundleReview.bundleFingerprintValid ? 'verified' : 'failed'} ·
+                  source files {auditBundleReview.sourceFilesMatch ? 'match' : 'changed'} ·
+                  job {auditBundleReview.recoveryJobMatchesExpected ? 'matched' : 'mismatch'} ·
+                  build {auditBundleReview.executorBuildMatchesCurrent ? 'matched' : 'mismatch'}
+                </div>
+                {!!auditBundleReview.blockers.length && (
+                  <div className="mt-2 space-y-1 text-[11px]">
+                    {auditBundleReview.blockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
+                  </div>
+                )}
               </div>
             )}
           </div>

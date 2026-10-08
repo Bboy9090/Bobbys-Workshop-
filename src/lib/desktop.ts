@@ -916,6 +916,42 @@ export type QualificationAuditBundleInput = {
   reviewer: string;
 };
 
+export type QualificationAuditBundleReview = {
+  path: string;
+  schemaValid: boolean;
+  bundleFingerprintValid: boolean;
+  recoveryJobMatchesExpected: boolean;
+  executorBuildMatchesCurrent: boolean;
+  sourceFilesMatch: boolean;
+  grantsExecutionAuthorityClaimed: boolean;
+  executionPerformedClaimed: boolean;
+  safeToReview: boolean;
+  blockers: string[];
+  bundleFingerprint?: string | null;
+  recoveryJobFingerprint?: string | null;
+  executorBuildFingerprint?: string | null;
+};
+
+export async function reviewQualificationAuditBundle(
+  expectedRecoveryJobFingerprint?: string | null,
+): Promise<QualificationAuditBundleReview | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: 'Review qualification audit bundle',
+    filters: [{ name: 'JSON qualification audit bundle', extensions: ['json'] }],
+  });
+  if (!selected || Array.isArray(selected)) return null;
+  return invoke<QualificationAuditBundleReview>(
+    'bootforge_qualification_audit_bundle_review',
+    {
+      path: selected,
+      expectedRecoveryJobFingerprint: expectedRecoveryJobFingerprint?.trim() || null,
+    },
+  );
+}
+
 export async function exportQualificationAuditBundle(
   input: QualificationAuditBundleInput,
 ): Promise<string | null> {
