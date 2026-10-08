@@ -598,33 +598,81 @@ fn bootforge_recovery_prepare(
     if paths.is_empty() {
         return Err("At least one recovery artifact path is required".to_string());
     }
+    let device_uid = candidate.device_uid.clone();
+    let workflow = format!("{:?}", candidate.workflow);
     let plan = bootforgeusb::recovery::build_recovery_plan(
         candidate.workflow,
         paths.into_iter().map(std::path::PathBuf::from).collect(),
     ).map_err(|e| format!("Recovery planning failed: {e}"))?;
-    bootforgeusb::recovery_job::build_job(&candidate, &plan)
-        .map_err(|e| format!("Recovery job preparation failed: {e}"))
+    let job = bootforgeusb::recovery_job::build_job(&candidate, &plan)
+        .map_err(|e| format!("Recovery job preparation failed: {e}"))?;
+
+    let evidence = job.artifact_digests.iter()
+        .map(|artifact| format!("{}:{}:{}", artifact.role, artifact.size, artifact.sha256))
+        .chain(std::iter::once(format!("normalized-operations:{}", job.operations.len())))
+        .chain(std::iter::once(format!("prerequisites-met:{}", job.prerequisites_met)))
+        .collect::<Vec<_>>();
+    let _ = crate::audit::record(
+        "Recovery",
+        "prepare-audited-job",
+        if job.destructive { "destructive" } else { "elevated" },
+        "prepared-blocked",
+        Some(device_uid),
+        format!("{} recovery job prepared; executorQualified={} executionReady={}", workflow, job.executor_qualified, job.execution_ready),
+        evidence,
+    );
+    Ok(job)
 }
 
 #[tauri::command]
 fn bootforge_recovery_revalidate(
     mut job: bootforgeusb::recovery_job::RecoveryJob,
 ) -> Result<bootforgeusb::recovery_job::RecoveryJob, String> {
+    let device_uid = job.identity.device_uid.clone();
+    let risk = if job.destructive { "destructive" } else { "elevated" };
     let devices = bootforgeusb::transport::scan_transports()
         .map_err(|e| format!("USB transport scan failed: {e}"))?;
-    let current = devices
-        .iter()
-        .find(|device| {
-            device.device_uid == job.identity.device_uid
-                && device.vendor_id == job.identity.vendor_id
-                && device.product_id == job.identity.product_id
-                && device.mode == job.identity.mode
-                && device.serial_number == job.identity.serial_number
-        })
-        .ok_or_else(|| "Recovery device identity is no longer present exactly as prepared".to_string())?;
+    let current = devices.iter().find(|device| {
+        device.device_uid == job.identity.device_uid
+            && device.vendor_id == job.identity.vendor_id
+            && device.product_id == job.identity.product_id
+            && device.mode == job.identity.mode
+            && device.serial_number == job.identity.serial_number
+    });
+
+    let Some(current) = current else {
+        let _ = crate::audit::record(
+            "Recovery",
+            "revalidate-device-identity",
+            risk,
+            "blocked",
+            Some(device_uid),
+            "Prepared recovery device identity is no longer present exactly as prepared.",
+            vec![
+                format!("expected-mode:{}", job.identity.mode),
+                format!("expected-vidpid:{:04X}:{:04X}", job.identity.vendor_id, job.identity.product_id),
+            ],
+        );
+        return Err("Recovery device identity is no longer present exactly as prepared".to_string());
+    };
 
     bootforgeusb::recovery_job::revalidate_job_identity(&mut job, current)
         .map_err(|e| format!("Recovery identity revalidation failed: {e}"))?;
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "revalidate-device-identity",
+        risk,
+        "passed",
+        Some(job.identity.device_uid.clone()),
+        "Prepared recovery job matched the currently enumerated USB device identity.",
+        vec![
+            format!("mode:{}", job.identity.mode),
+            format!("vidpid:{:04X}:{:04X}", job.identity.vendor_id, job.identity.product_id),
+            format!("serial:{}", job.identity.serial_number.clone().unwrap_or_else(|| "<none>".to_string())),
+            format!("execution-ready:{}", job.execution_ready),
+        ],
+    );
     Ok(job)
 }
 
