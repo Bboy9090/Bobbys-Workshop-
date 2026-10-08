@@ -56,6 +56,7 @@
     "bobfw:check": "npm run verify:reality && npm run typecheck && npm run build && cargo check --manifest-path libs/bootforgeusb/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml",
     "bobfw:test": "npm run test && cargo test --manifest-path libs/bootforgeusb/Cargo.toml",
     "tauri:build:macos:ci": "npm run build && tauri build --bundles app --target universal-apple-darwin",
+    "tauri:build:macos:qualified:ci": "npm run build && tauri build --bundles app --target universal-apple-darwin --features qualified-flash",
     "test:legacy": "vitest run",
     "typecheck": "tsc -b --pretty false"
   },
