@@ -7,6 +7,7 @@ use std::process::Command;
 pub struct ToolReadiness {
     pub id: &'static str,
     pub present: bool,
+    pub required_for_core_android_service: bool,
     pub detail: String,
 }
 
@@ -127,18 +128,19 @@ pub fn workstation_readiness() -> WorkstationReadiness {
         .collect::<Vec<_>>();
 
     let tool_specs = [
-        ("adb", &["version"][..], "Android Debug Bridge"),
-        ("fastboot", &["--version"][..], "Android Fastboot"),
-        ("lz4", &["--version"][..], "LZ4 firmware decompression"),
-        ("simg2img", &["--help"][..], "Android sparse-image conversion"),
+        ("adb", &["version"][..], "Android Debug Bridge", true),
+        ("fastboot", &["--version"][..], "Android Fastboot", true),
+        ("lz4", &["--version"][..], "LZ4 firmware decompression", false),
+        ("simg2img", &["--help"][..], "Android sparse-image conversion", false),
     ];
     let tools = tool_specs
         .into_iter()
-        .map(|(id, args, label)| {
+        .map(|(id, args, label, required_for_core_android_service)| {
             let resolved = resolve_command(id, args);
             ToolReadiness {
                 id,
                 present: resolved.is_some(),
+                required_for_core_android_service,
                 detail: resolved
                     .map(|path| format!("{label} · {}", path.display()))
                     .unwrap_or_else(|| format!("{label} · not found on PATH or in managed tools")),
@@ -259,6 +261,15 @@ mod tests {
     fn workspace_initialization_contract_includes_managed_tools_directory() {
         let paths = expected_paths();
         assert!(paths.iter().any(|(id, path)| *id == "tools" && path == &workspace_root().join("tools")));
+    }
+
+    #[test]
+    fn firmware_helpers_are_optional_until_an_executor_depends_on_them() {
+        let readiness = workstation_readiness();
+        let lz4 = readiness.tools.iter().find(|tool| tool.id == "lz4").unwrap();
+        let simg2img = readiness.tools.iter().find(|tool| tool.id == "simg2img").unwrap();
+        assert!(!lz4.required_for_core_android_service);
+        assert!(!simg2img.required_for_core_android_service);
     }
 
     #[test]

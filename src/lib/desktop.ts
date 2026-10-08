@@ -545,6 +545,7 @@ export async function listEdlProgrammers(): Promise<EdlProgrammerRecord[]> {
 export type WorkstationToolReadiness = {
   id: string;
   present: boolean;
+  requiredForCoreAndroidService: boolean;
   detail: string;
 };
 

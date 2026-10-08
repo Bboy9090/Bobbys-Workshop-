@@ -235,8 +235,14 @@ export default function RepairCommandCenter() {
                 <div key={tool.id} className="rounded border border-slate-800 bg-slate-950/70 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono text-xs text-slate-200">{tool.id}</span>
-                    <span className={tool.present ? 'text-[10px] text-emerald-400' : 'text-[10px] text-amber-300'}>
-                      {tool.present ? 'ready' : 'missing'}
+                    <span className={
+                      tool.present
+                        ? 'text-[10px] text-emerald-400'
+                        : tool.requiredForCoreAndroidService
+                          ? 'text-[10px] text-amber-300'
+                          : 'text-[10px] text-slate-500'
+                    }>
+                      {tool.present ? 'ready' : tool.requiredForCoreAndroidService ? 'missing' : 'optional'}
                     </span>
                   </div>
                   <div className="mt-1 text-[10px] text-slate-600">{tool.detail}</div>
