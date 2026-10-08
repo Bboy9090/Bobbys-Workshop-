@@ -26,7 +26,8 @@
       "action": "selectDevice",
       "description": "User selects target device from detected devices",
       "success_criteria": "Device selected",
-      "on_failure": "abort"
+      "on_failure": "abort",
+      "prompt_text": "Select the exact device you own or are authorized to service. Confirm the displayed model and connection identity before continuing."
     },
     {
       "id": "connectivity-test",

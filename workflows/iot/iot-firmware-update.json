@@ -6,6 +6,7 @@
   "category": "maintenance",
   "risk_level": "high",
   "requires_authorization": true,
+  "legal_notice": "Firmware updates are permitted only on devices you own or are authorized to administer. Confirm a verified backup and recovery path before continuing.",
   "authorization_prompt": "Type 'UPDATE FIRMWARE' to confirm",
   "supported_devices": ["iot", "embedded"],
   "estimated_duration": "10-20 minutes",
@@ -127,7 +128,8 @@
       "name": "Restore Previous Firmware",
       "type": "command",
       "action": "restoreFirmwareBackup",
-      "description": "Restore previous firmware from backup"
+      "description": "Restore previous firmware from backup",
+      "on_failure": "abort"
     }
   ],
   "output_format": {
