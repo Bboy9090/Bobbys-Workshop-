@@ -28,6 +28,7 @@ import {
   listAdbUserPackages,
   runUsbCableDoctor,
   scanRecoveryCandidates,
+  chooseRecoveryArtifacts,
   autodiscoverRecoveryArtifacts,
   buildRecoveryPlan,
   prepareRecoveryJob,
