@@ -125,6 +125,132 @@ export default function App() {
     [diagnostic, selectedDiagnosticUid],
   );
 
+  const selectedDeviceActions = useMemo(() => {
+    if (!selectedDiagnosticUsb) return [] as { id: string; label: string; ready: boolean; reason: string }[];
+
+    const serial = selectedDiagnosticUsb.serialNumber?.trim() || null;
+    const normalizedMode = `${selectedDiagnosticUsb.mode} ${selectedDiagnosticUsb.platformHint}`.toLowerCase();
+    const adbMatch = !!serial && adbDevices.some((device) => device.serial === serial && device.authorized);
+    const mtpMatch = !!serial && !!mtp?.serialNumber && mtp.serialNumber === serial;
+    const actions: { id: string; label: string; ready: boolean; reason: string }[] = [
+      {
+        id: 'usb-observation',
+        label: 'USB diagnostics',
+        ready: true,
+        reason: 'This exact USB device is selected and observable.',
+      },
+    ];
+
+    if (normalizedMode.includes('samsung-download')) {
+      actions.push(
+        { id: 'samsung-firmware-inspection', label: 'Samsung firmware inspection', ready: true, reason: 'Samsung Download Mode is detected on this target.' },
+        { id: 'samsung-guarded-planning', label: 'Samsung guarded flash planning', ready: true, reason: 'Planning is allowed; exact model compatibility still must be independently verified.' },
+      );
+      return actions;
+    }
+
+    if (normalizedMode.includes('qualcomm-edl')) {
+      actions.push(
+        { id: 'qualcomm-edl-diagnostics', label: 'Qualcomm EDL diagnostics', ready: true, reason: 'This target is detected in Qualcomm EDL/9008 mode.' },
+        { id: 'qualcomm-recovery-planning', label: 'EDL recovery planning', ready: true, reason: 'Artifact inspection and dry-run planning are available; destructive execution remains qualification-gated.' },
+      );
+      return actions;
+    }
+
+    if (normalizedMode.includes('mediatek-preloader') || normalizedMode.includes('mediatek-brom')) {
+      actions.push(
+        { id: 'mediatek-download-diagnostics', label: 'MediaTek recovery diagnostics', ready: true, reason: 'This target is detected in a MediaTek recovery USB mode.' },
+        { id: 'mediatek-recovery-planning', label: 'MediaTek recovery planning', ready: true, reason: 'DA/auth inspection and dry-run planning are available; bypass execution is unsupported.' },
+      );
+      return actions;
+    }
+
+    if (normalizedMode.includes('fastboot')) {
+      actions.push({
+        id: 'fastboot-present',
+        label: 'Fastboot diagnostics',
+        ready: true,
+        reason: 'This selected USB target is already in a Fastboot/bootloader mode.',
+      });
+      return actions;
+    }
+
+    actions.push(
+      {
+        id: 'mtp-browse',
+        label: 'MTP file access',
+        ready: mtpMatch,
+        reason: mtpMatch
+          ? 'The active MTP session serial matches this selected USB target.'
+          : serial
+            ? 'MTP is not proven for this selected device serial.'
+            : 'This USB descriptor has no serial, so BobFWTools cannot safely bind the MTP session to it.',
+      },
+      {
+        id: 'adb-device-info',
+        label: 'ADB diagnostics',
+        ready: adbMatch,
+        reason: adbMatch
+          ? 'An authorized ADB transport matches this selected device serial.'
+          : serial
+            ? 'No authorized ADB transport matches this selected device serial.'
+            : 'This USB descriptor has no serial, so BobFWTools cannot safely bind an ADB transport to it.',
+      },
+    );
+
+    return actions;
+  }, [selectedDiagnosticUsb, adbDevices, mtp]);
+
+  const selectedNextAction = useMemo(() => {
+    if (!selectedDiagnosticUsb) {
+      return {
+        kind: 'none' as const,
+        label: 'Select a detected device',
+        detail: 'Choose one USB target above so BobFWTools can route you to the correct service lane.',
+      };
+    }
+
+    const normalizedMode = `${selectedDiagnosticUsb.mode} ${selectedDiagnosticUsb.platformHint}`.toLowerCase();
+    if (normalizedMode.includes('qualcomm-edl') || normalizedMode.includes('mediatek-preloader') || normalizedMode.includes('mediatek-brom')) {
+      return {
+        kind: 'recovery' as const,
+        label: 'Open matching recovery lane',
+        detail: 'This target is already in a recovery USB mode. Continue with device-bound artifact inspection and dry-run planning.',
+      };
+    }
+    if (normalizedMode.includes('samsung-download')) {
+      return {
+        kind: 'command-center' as const,
+        label: 'Open Samsung firmware tools',
+        detail: 'Download Mode is detected. Inspect only stock firmware intended for the exact independently verified model.',
+      };
+    }
+    if (normalizedMode.includes('fastboot')) {
+      return {
+        kind: 'command-center' as const,
+        label: 'Open Fastboot service lane',
+        detail: 'The selected device is already in Fastboot/bootloader mode. Continue with verified target diagnostics.',
+      };
+    }
+
+    const normalTransportReady = selectedDeviceActions.some(
+      (action) => action.ready && (action.id === 'mtp-browse' || action.id === 'adb-device-info'),
+    );
+    if (!normalTransportReady) {
+      return {
+        kind: 'cable' as const,
+        label: 'Test this device connection',
+        detail: 'Normal Android is visible, but ADB/MTP is not proven for this exact target. Run the scoped stability test first.',
+      };
+    }
+
+    return {
+      kind: 'command-center' as const,
+      label: 'Continue with verified service tools',
+      detail: 'This selected device has a target-bound normal-service transport. Open the command center for the applicable safe actions.',
+    };
+  }, [selectedDiagnosticUsb, selectedDeviceActions]);
+
   const refreshJobs = useCallback(async () => {
     if (!nativeRuntime) return;
     try {
@@ -253,6 +379,27 @@ export default function App() {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
       setCableDoctorBusy(false);
+    }
+  };
+
+  const runSelectedNextAction = async () => {
+    if (selectedNextAction.kind === 'cable') {
+      await runCableDoctor();
+      return;
+    }
+
+    if (selectedNextAction.kind === 'recovery') {
+      const candidate = recoveryCandidates.find((item) => item.deviceUid === selectedDiagnosticUid);
+      if (candidate) {
+        setSelectedRecoveryUid(candidate.deviceUid);
+        setRecoveryKind(candidate.workflow);
+      }
+      document.getElementById('safe-repair-workflows')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
+    if (selectedNextAction.kind === 'command-center') {
+      document.getElementById('repair-command-center')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
 
@@ -975,14 +1122,47 @@ export default function App() {
                   </div>
                 </div>
 
+                <div className="mt-4 rounded border border-cyan-900/60 bg-cyan-950/10 p-4">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-500">Best next action</div>
+                  <div className="mt-1 text-sm font-semibold text-white">{selectedNextAction.label}</div>
+                  <div className="mt-1 max-w-3xl text-xs leading-5 text-slate-400">{selectedNextAction.detail}</div>
+                  <button
+                    type="button"
+                    onClick={() => void runSelectedNextAction()}
+                    disabled={selectedNextAction.kind === 'none' || cableDoctorBusy}
+                    className="mt-3 rounded border border-cyan-800 bg-cyan-950/30 px-3 py-2 text-xs font-semibold text-cyan-300 disabled:opacity-40"
+                  >
+                    {selectedNextAction.label}
+                  </button>
+                </div>
+
                 <div className="mt-4">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ready now</div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {diagnostic.availableWorkflows.length ? diagnostic.availableWorkflows.map((workflow) => (
-                      <span key={workflow} className="rounded bg-emerald-950 px-2 py-1 text-xs text-emerald-300">
-                        {workflow}
-                      </span>
-                    )) : <span className="text-xs text-slate-500">No executable workflows currently available.</span>}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected-device workflows</div>
+                    {selectedDiagnosticUsb && (
+                      <div className="max-w-[420px] truncate font-mono text-[10px] text-cyan-500" title={selectedDiagnosticUsb.deviceUid}>
+                        {selectedDiagnosticUsb.deviceUid}
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {selectedDeviceActions.length ? selectedDeviceActions.map((action) => (
+                      <div
+                        key={action.id}
+                        className={action.ready
+                          ? 'rounded border border-emerald-900/60 bg-emerald-950/20 p-3'
+                          : 'rounded border border-slate-800 bg-slate-950/60 p-3'}
+                      >
+                        <div className={action.ready ? 'text-xs font-semibold text-emerald-300' : 'text-xs font-semibold text-slate-500'}>
+                          {action.ready ? 'READY' : 'NOT PROVEN'} · {action.label}
+                        </div>
+                        <div className="mt-1 text-[11px] leading-5 text-slate-400">{action.reason}</div>
+                      </div>
+                    )) : (
+                      <div className="text-xs text-slate-500">
+                        Select a detected USB device above to scope workflows to that target.
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1001,7 +1181,7 @@ export default function App() {
             )}
           </section>
 
-          <section className="mb-4 rounded-lg border border-orange-900/60 bg-orange-950/10 p-5">
+          <section id="safe-repair-workflows" className="mb-4 rounded-lg border border-orange-900/60 bg-orange-950/10 p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h2 className="text-base font-semibold text-white">3. Choose a safe repair workflow</h2>

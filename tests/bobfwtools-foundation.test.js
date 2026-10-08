@@ -275,6 +275,43 @@ describe('device-specific command center', () => {
 });
 
 
+describe('best next action routing', () => {
+  it('routes selected devices to the safest relevant lane without auto-running destructive work', () => {
+    const app = read('src/App.tsx');
+    const commandCenter = read('src/components/RepairCommandCenter.tsx');
+
+    expect(app).toContain('Best next action');
+    expect(app).toContain('Open matching recovery lane');
+    expect(app).toContain('Open Samsung firmware tools');
+    expect(app).toContain('Open Fastboot service lane');
+    expect(app).toContain('Test this device connection');
+    expect(app).toContain("document.getElementById('safe-repair-workflows')");
+    expect(app).toContain("document.getElementById('repair-command-center')");
+    expect(app).toContain('await runCableDoctor()');
+    expect(commandCenter).toContain('id="repair-command-center"');
+    expect(app).toContain('id="safe-repair-workflows"');
+  });
+});
+
+
+describe('selected-device workflow filtering', () => {
+  it('requires target-specific serial or mode evidence instead of global transport readiness', () => {
+    const app = read('src/App.tsx');
+
+    expect(app).toContain('selectedDeviceActions');
+    expect(app).toContain('adbDevices.some((device) => device.serial === serial && device.authorized)');
+    expect(app).toContain('mtp.serialNumber === serial');
+    expect(app).toContain('Selected-device workflows');
+    expect(app).toContain('NOT PROVEN');
+    expect(app).toContain('Samsung firmware inspection');
+    expect(app).toContain('EDL recovery planning');
+    expect(app).toContain('MediaTek recovery planning');
+    expect(app).toContain('Fastboot diagnostics');
+    expect(app).toContain('cannot safely bind an ADB transport');
+  });
+});
+
+
 describe('device mode play-by-play guidance', () => {
   it('shows required state, entry steps, success cues, and recovery guidance for detected modes', () => {
     const guide = read('src/components/DeviceModeGuide.tsx');
