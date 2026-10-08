@@ -150,6 +150,13 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    setReview(null);
+    setGrant(null);
+    setBenchEvidencePath(null);
+    setDecisionPath(null);
+  }, [recoveryJobFingerprint]);
+
   const reviewSavedDossier = async () => {
     setBusy(true);
     setError(null);
@@ -175,6 +182,8 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
         ...current.filter((item) => item.name !== inspected.name),
         inspected,
       ]);
+      setBenchEvidencePath(null);
+      setDecisionPath(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -344,7 +353,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
                   Refresh
                 </button>
               </div>
-              <select value={deviceSerial} onChange={(e) => { setDeviceSerial(e.target.value); setGrant(null); setConfirmation(''); }} className="mt-2 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white">
+              <select value={deviceSerial} onChange={(e) => { setDeviceSerial(e.target.value); setGrant(null); setConfirmation(''); setBenchEvidencePath(null); setDecisionPath(null); }} className="mt-2 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white">
                 <option value="">Select exact fastboot serial</option>
                 {fastbootDevices.map((serial) => <option key={serial} value={serial}>{serial}</option>)}
               </select>
@@ -379,7 +388,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
                   <div className="flex items-center justify-between gap-2"><span className="font-semibold text-white">{item.name}</span><span className="text-slate-500">{formatBytes(item.size)}</span></div>
                   <div className="mt-1 break-all font-mono text-cyan-400">{item.expectedSha256}</div>
                   <div className="mt-1 truncate text-slate-600" title={item.imagePath}>{item.imagePath}</div>
-                  <button type="button" onClick={() => { setPartitions((current) => current.filter((p) => p.name !== item.name)); setGrant(null); }} className="mt-1 text-rose-300">Remove</button>
+                  <button type="button" onClick={() => { setPartitions((current) => current.filter((p) => p.name !== item.name)); setGrant(null); setBenchEvidencePath(null); setDecisionPath(null); }} className="mt-1 text-rose-300">Remove</button>
                 </div>
               ))}
             </div>
