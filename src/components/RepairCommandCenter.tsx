@@ -52,6 +52,8 @@ export default function RepairCommandCenter() {
   const [allowlist, setAllowlist] = useState<string[]>([]);
   const [edlDevices, setEdlDevices] = useState<UsbDeviceRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [workstation, setWorkstation] = useState<WorkstationReadiness | null>(null);
+  const [initializing, setInitializing] = useState(false);
   const [adbDevices, setAdbDevices] = useState<AdbDeviceRecord[]>([]);
   const [backupPartition, setBackupPartition] = useState('efs');
   const [backupBusy, setBackupBusy] = useState(false);
@@ -81,6 +83,7 @@ export default function RepairCommandCenter() {
         setCatalog(policies);
         setAllowlist(partitions);
         setEdlDevices(edl);
+        setWorkstation(readiness);
         setAdbDevices(adb);
         setEdlProgrammers(programmers);
         if (partitions.length && !partitions.includes(backupPartition)) {
@@ -193,6 +196,81 @@ export default function RepairCommandCenter() {
           Command Center backend error: {error}
         </div>
       )}
+
+      <div className="mt-5 rounded-lg border border-slate-800 bg-black/20 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Workstation readiness</div>
+            <div className="mt-1 text-sm font-medium text-white">
+              {workstation ? workstation.os + ' / ' + workstation.architecture : 'Checking host...'}
+            </div>
+            <div className="mt-1 text-xs text-slate-500">
+              {workstation?.workspaceRoot || 'BobFWTools workspace not resolved yet'}
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={initializing}
+            onClick={() => {
+              setInitializing(true);
+              void initializeWorkstation()
+                .then(setWorkstation)
+                .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                .finally(() => setInitializing(false));
+            }}
+            className="rounded border border-orange-800 bg-orange-950/30 px-3 py-2 text-xs font-medium text-orange-200 disabled:opacity-40 hover:bg-orange-950/50"
+          >
+            {initializing ? 'Initializing…' : 'Initialize workspace'}
+          </button>
+        </div>
+
+        {workstation && (
+          <>
+            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+              {workstation.tools.map((tool) => (
+                <div key={tool.id} className="rounded border border-slate-800 bg-slate-950/70 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs text-slate-200">{tool.id}</span>
+                    <span className={tool.present ? 'text-[10px] text-emerald-400' : 'text-[10px] text-amber-300'}>
+                      {tool.present ? 'ready' : 'missing'}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[10px] text-slate-600">{tool.detail}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {workstation.drivers.map((driver) => (
+                <div key={driver.id} className="rounded border border-slate-800 bg-slate-950/70 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs text-slate-200">{driver.id}</span>
+                    <span className={
+                      !driver.applicable
+                        ? 'text-[10px] text-slate-500'
+                        : driver.detected
+                          ? 'text-[10px] text-emerald-400'
+                          : 'text-[10px] text-amber-300'
+                    }>
+                      {!driver.applicable ? 'native USB' : driver.detected ? 'driver ready' : 'driver missing'}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[10px] text-slate-600">{driver.detail}</div>
+                  {driver.adminRequiredForInstall && (
+                    <div className="mt-1 text-[10px] text-orange-300">Administrator approval required to install.</div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {workstation.blockers.length > 0 && (
+              <div className="mt-3 rounded border border-amber-900/70 bg-amber-950/20 p-3 text-xs text-amber-200">
+                {workstation.blockers.join(' · ')}
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       <div className="mt-5 grid gap-3 xl:grid-cols-2">
         {active.map((workflow) => (
