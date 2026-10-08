@@ -420,3 +420,112 @@ export type CableDoctorReport = {
 export async function runUsbCableDoctor(): Promise<CableDoctorReport> {
   return invoke<CableDoctorReport>('usb_cable_doctor');
 }
+
+export type RecoveryWorkflow = 'qualcomm-edl' | 'mediatek-download';
+
+export type RecoveryCandidate = {
+  deviceUid: string;
+  vendorId: number;
+  productId: number;
+  detectedMode: string;
+  workflow: RecoveryWorkflow;
+  productName?: string | null;
+  serialNumber?: string | null;
+};
+
+export type RecoveryArtifact = {
+  path: string;
+  role: string;
+  size: number;
+  structurallyValid: boolean;
+  notes: string[];
+};
+
+export type RecoveryPlan = {
+  workflow: RecoveryWorkflow;
+  protocol: string;
+  modeRequired: string;
+  executionEnabled: boolean;
+  destructive: boolean;
+  requiresExplicitApproval: boolean;
+  requiresVendorAuthentication: boolean;
+  artifacts: RecoveryArtifact[];
+  prerequisitesMet: boolean;
+  missingPrerequisites: string[];
+  safetyChecks: string[];
+  warnings: string[];
+};
+
+export type RecoveryArtifactDigest = {
+  path: string;
+  role: string;
+  size: number;
+  sha256: string;
+};
+
+export type RecoveryPartitionOperation = {
+  partitionName?: string | null;
+  filename: string;
+  start?: number | null;
+  length?: number | null;
+  physicalPartition?: number | null;
+  region?: string | null;
+  operation: string;
+};
+
+export type RecoveryJob = {
+  workflow: RecoveryWorkflow;
+  protocol: string;
+  identity: {
+    deviceUid: string;
+    vendorId: number;
+    productId: number;
+    mode: string;
+    serialNumber?: string | null;
+    busNumber?: number | null;
+    deviceAddress?: number | null;
+  };
+  artifactDigests: RecoveryArtifactDigest[];
+  operations: RecoveryPartitionOperation[];
+  destructive: boolean;
+  requiresExplicitApproval: boolean;
+  prerequisitesMet: boolean;
+  identityRevalidated: boolean;
+  executorQualified: boolean;
+  executionReady: boolean;
+  blockers: string[];
+};
+
+export async function scanRecoveryCandidates(): Promise<RecoveryCandidate[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<RecoveryCandidate[]>('bootforge_recovery_scan');
+}
+
+export async function chooseRecoveryArtifacts(): Promise<string[]> {
+  if (!isTauriRuntime()) return [];
+  const selected = await open({
+    multiple: true,
+    directory: false,
+    title: 'Choose recovery firmware / service artifacts',
+  });
+  if (!selected) return [];
+  return Array.isArray(selected) ? selected : [selected];
+}
+
+export async function buildRecoveryPlan(
+  kind: RecoveryWorkflow,
+  paths: string[],
+): Promise<RecoveryPlan> {
+  return invoke<RecoveryPlan>('bootforge_recovery_plan', { kind, paths });
+}
+
+export async function prepareRecoveryJob(
+  candidate: RecoveryCandidate,
+  paths: string[],
+): Promise<RecoveryJob> {
+  return invoke<RecoveryJob>('bootforge_recovery_prepare', { candidate, paths });
+}
+
+export async function revalidateRecoveryJob(job: RecoveryJob): Promise<RecoveryJob> {
+  return invoke<RecoveryJob>('bootforge_recovery_revalidate', { job });
+}
