@@ -354,6 +354,9 @@ describe('physical qualification evidence binding', () => {
     expect(main).toContain('Accepted qualification evidence requires a bench-evidence receipt');
     expect(main).toContain('bench_evidence_fingerprint');
     expect(main).toContain('image hash changed since inspection');
+    expect(main).toContain('Production-qualified grant requires the verified bench-evidence receipt');
+    expect(main).toContain('Qualification decision is bound to a different bench-evidence receipt');
+    expect(main).toContain('Production grant partition inputs do not exactly match the verified bench-evidence receipt');
     expect(bridge).toContain('exportQualificationBenchEvidence');
     expect(consoleUi).toContain('Export hash-bound bench evidence');
     expect(consoleUi).toContain('benchEvidencePath');

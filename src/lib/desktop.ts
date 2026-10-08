@@ -839,6 +839,7 @@ export type QualifiedFlashGrant = {
 
 export type QualifiedFlashApprovalInput = {
   dossierPath: string;
+  benchEvidencePath?: string | null;
   reviewDecisionPath?: string | null;
   expectedRecoveryJobFingerprint: string;
   deviceSerial: string;

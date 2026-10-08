@@ -200,6 +200,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
     try {
       const issued = await issueQualificationTrialGrant({
         dossierPath: review.path,
+        benchEvidencePath: null,
         reviewDecisionPath: null,
         expectedRecoveryJobFingerprint: recoveryJobFingerprint,
         deviceSerial,
@@ -277,6 +278,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
     try {
       const issued = await issueQualifiedFlashGrant({
         dossierPath: review.path,
+        benchEvidencePath,
         reviewDecisionPath: decisionPath,
         expectedRecoveryJobFingerprint: recoveryJobFingerprint,
         deviceSerial,

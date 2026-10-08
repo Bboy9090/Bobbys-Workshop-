@@ -58,7 +58,7 @@ use std::os::windows::process::CommandExt;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "qualified-flash")]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct FlashPartition {
     name: String,
     imagePath: String,
@@ -1922,6 +1922,7 @@ struct QualifiedFlashPhysicalChecks {
 #[derive(Debug, Clone, Deserialize)]
 struct QualifiedFlashApprovalInput {
     dossierPath: String,
+    benchEvidencePath: Option<String>,
     reviewDecisionPath: Option<String>,
     expectedRecoveryJobFingerprint: String,
     deviceSerial: String,
@@ -2861,6 +2862,53 @@ fn bootforge_issue_qualified_flash_grant(
         &recovery_job_fingerprint,
         &build.executor_build_fingerprint,
     )?;
+
+    let bench_path = input
+        .benchEvidencePath
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            "Production-qualified grant requires the verified bench-evidence receipt"
+                .to_string()
+        })?;
+    let bench_receipt = load_and_verify_qualification_bench_evidence(
+        bench_path,
+        input.reviewer.trim(),
+        serial,
+        &dossier_fingerprint,
+        &recovery_job_fingerprint,
+        &build.executor_build_fingerprint,
+    )?;
+    let decision_bench_fingerprint = decision_receipt
+        .bench_evidence_fingerprint
+        .as_deref()
+        .ok_or_else(|| {
+            "Accepted qualification decision is missing its bench-evidence fingerprint"
+                .to_string()
+        })?;
+    if !decision_bench_fingerprint.eq_ignore_ascii_case(&bench_receipt.receipt_fingerprint) {
+        return Err(
+            "Qualification decision is bound to a different bench-evidence receipt".to_string(),
+        );
+    }
+    if bench_receipt.physical_checks != input.physicalChecks {
+        return Err(
+            "Production grant checks do not exactly match the verified bench-evidence receipt"
+                .to_string(),
+        );
+    }
+
+    let mut expected_bench_partitions = bench_receipt.partitions.clone();
+    expected_bench_partitions.sort_by(|a, b| a.name.cmp(&b.name));
+    let mut requested_partitions = input.partitions.clone();
+    requested_partitions.sort_by(|a, b| a.name.cmp(&b.name));
+    if expected_bench_partitions != requested_partitions {
+        return Err(
+            "Production grant partition inputs do not exactly match the verified bench-evidence receipt"
+                .to_string(),
+        );
+    }
 
     let allowed_partitions = [
         "boot", "system", "vendor", "userdata", "cache", "recovery",
