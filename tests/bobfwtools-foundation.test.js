@@ -234,6 +234,13 @@ describe('workstation driver evidence', () => {
     expect(bridge).toContain('evidenceAvailable');
     expect(commandCenter).toContain('probe unavailable');
     expect(commandCenter).toContain('driver missing');
+
+    const main = read('src-tauri/src/main.rs');
+    expect(main).toContain('QualificationToolSnapshot');
+    expect(main).toContain('QualificationDriverSnapshot');
+    expect(main).toContain('qualification_workstation_evidence_ready');
+    expect(main).toContain('workstationEvidenceReady');
+    expect(main).toContain('Windows driver-store probe evidence is unavailable');
   });
 });
 

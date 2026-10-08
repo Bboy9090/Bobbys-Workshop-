@@ -1091,10 +1091,46 @@ fn bootforge_recovery_review_readiness_certificate(
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+struct QualificationToolSnapshot {
+    id: String,
+    present: bool,
+    required_for_core_android_service: bool,
+    detail: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationDriverSnapshot {
+    id: String,
+    applicable: bool,
+    evidence_available: bool,
+    detected: bool,
+    detail: String,
+    admin_required_for_install: bool,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationWorkspacePathSnapshot {
+    id: String,
+    path: String,
+    exists: bool,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct QualificationWorkstationSnapshot {
     os: String,
     architecture: String,
     workspace_root: String,
+    #[serde(default)]
+    workspace_paths: Vec<QualificationWorkspacePathSnapshot>,
+    #[serde(default)]
+    tools: Vec<QualificationToolSnapshot>,
+    #[serde(default)]
+    drivers: Vec<QualificationDriverSnapshot>,
+    #[serde(default)]
+    driver_store_probe_available: bool,
     ready_for_diagnostics: bool,
     ready_for_android_service: bool,
     blockers: Vec<String>,
@@ -1146,6 +1182,24 @@ fn qualification_device_identity_matches(
 fn qualification_source_revision_available(value: &str) -> bool {
     let trimmed = value.trim();
     !trimmed.is_empty() && trimmed != "unavailable"
+}
+
+fn qualification_workstation_evidence_ready(
+    workstation: &QualificationWorkstationSnapshot,
+) -> bool {
+    if workstation.tools.is_empty() {
+        return false;
+    }
+    if workstation.os.eq_ignore_ascii_case("windows") {
+        workstation.driver_store_probe_available
+            && !workstation.drivers.is_empty()
+            && workstation
+                .drivers
+                .iter()
+                .all(|driver| !driver.applicable || driver.evidence_available)
+    } else {
+        true
+    }
 }
 
 
@@ -1460,8 +1514,12 @@ fn bootforge_qualification_export(
         &input.device,
     );
 
-    let qualification_binding_ready =
-        fingerprint_valid && source_revision_available && device_identity_match;
+    let workstation_evidence_ready =
+        qualification_workstation_evidence_ready(&input.workstation);
+    let qualification_binding_ready = fingerprint_valid
+        && source_revision_available
+        && device_identity_match
+        && workstation_evidence_ready;
     let mut binding_blockers = Vec::new();
     if !fingerprint_valid {
         binding_blockers.push(
@@ -1480,6 +1538,38 @@ fn bootforge_qualification_export(
                 .to_string(),
         );
     }
+    if input.workstation.tools.is_empty() {
+        binding_blockers.push(
+            "Workstation tool evidence is missing from the qualification dossier".to_string(),
+        );
+    }
+    if input.workstation.os.eq_ignore_ascii_case("windows")
+        && !input.workstation.driver_store_probe_available
+    {
+        binding_blockers.push(
+            "Windows driver-store probe evidence is unavailable; OEM driver readiness cannot be proven"
+                .to_string(),
+        );
+    }
+    if input.workstation.os.eq_ignore_ascii_case("windows")
+        && input.workstation.drivers.is_empty()
+    {
+        binding_blockers.push(
+            "Windows OEM driver evidence matrix is missing from the qualification dossier"
+                .to_string(),
+        );
+    }
+    if input.workstation.os.eq_ignore_ascii_case("windows")
+        && input
+            .workstation
+            .drivers
+            .iter()
+            .any(|driver| driver.applicable && !driver.evidence_available)
+    {
+        binding_blockers.push(
+            "One or more applicable Windows driver checks lack verifiable evidence".to_string(),
+        );
+    }
 
     let required_physical_checks = vec![
         "Repeat USB enumeration without identity drift",
@@ -1493,6 +1583,7 @@ fn bootforge_qualification_export(
         "Require an exact recovery-job fingerprint match before qualification review",
         "Require the live recovery-mode device to exactly match the frozen recovery-job identity",
         "Require an executor source revision and build fingerprint before qualification review",
+        "Require a preserved workstation tool matrix and verifiable Windows driver-store evidence before qualification review",
     ];
 
     let binding_material = serde_json::json!({
@@ -1500,6 +1591,7 @@ fn bootforge_qualification_export(
         "recoveryJobFingerprint": recovery_job_fingerprint,
         "preparedRecoveryIdentity": input.prepared_recovery_identity,
         "liveDeviceIdentityMatch": device_identity_match,
+        "workstationEvidenceReady": workstation_evidence_ready,
         "executorBuildFingerprint": executor_build_fingerprint,
         "sourceRevision": source_revision,
         "device": input.device,
@@ -1527,6 +1619,7 @@ fn bootforge_qualification_export(
         "recoveryJobFingerprintValid": fingerprint_valid,
         "preparedRecoveryIdentity": input.prepared_recovery_identity,
         "liveDeviceIdentityMatch": device_identity_match,
+        "workstationEvidenceReady": workstation_evidence_ready,
         "executorBuild": build_identity,
         "device": input.device,
         "workstation": input.workstation,
@@ -1552,6 +1645,7 @@ fn bootforge_qualification_export(
             format!("dossier-fingerprint:{}", dossier_fingerprint),
             format!("recovery-job-fingerprint:{}", recovery_job_fingerprint),
             format!("live-device-identity-match:{}", device_identity_match),
+            format!("workstation-evidence-ready:{}", workstation_evidence_ready),
             format!("qualification-binding-ready:{}", qualification_binding_ready),
             format!("executor-build-fingerprint:{}", executor_build_fingerprint),
         ],
