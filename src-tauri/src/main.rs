@@ -510,6 +510,20 @@ fn edl_programmer_qualification(
 }
 
 #[tauri::command]
+fn firehose_write_plan(
+    request: bootforgeusb::firehose_plan::FirehoseWriteRequest,
+) -> bootforgeusb::firehose_plan::FirehoseWritePlan {
+    bootforgeusb::firehose_plan::build_write_plan(&request)
+}
+
+#[tauri::command]
+fn transport_retry_decision(
+    context: bootforgeusb::retry_policy::RetryContext,
+) -> bootforgeusb::retry_policy::RetryDecision {
+    bootforgeusb::retry_policy::decide_retry(&context)
+}
+
+#[tauri::command]
 fn calibration_restore_preflight(
     manifest: bootforgeusb::calibration::CalibrationBackupManifest,
     current_device_uid: String,
@@ -1502,6 +1516,8 @@ fn main() {
             firmware_target_preflight,
             calibration_backup_plan,
             edl_programmer_qualification,
+            firehose_write_plan,
+            transport_retry_decision,
             backup_calibration_partition,
             inspect_calibration_backup,
             calibration_restore_preflight,
