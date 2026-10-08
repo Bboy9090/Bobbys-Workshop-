@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  BOBFWTOOLS_SOURCE_REVISION: ${{ github.sha }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
