@@ -40,6 +40,9 @@ jobs:
       - name: Run BobFWTools production contract tests
         run: npm test
 
+      - name: Validate workflow definitions
+        run: npm run test:workflows
+
       - name: Audit root npm dependency tree
         run: npm audit --audit-level=moderate
 

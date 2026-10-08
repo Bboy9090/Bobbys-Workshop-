@@ -32,6 +32,9 @@ jobs:
     - name: Test
       run: npm test --if-present
 
+    - name: Validate workflow definitions
+      run: npm run test:workflows
+
 
   macos-rust:
     runs-on: macos-latest
