@@ -941,6 +941,154 @@ fn bootforge_recovery_export_readiness_certificate(
     Ok(destination.display().to_string())
 }
 
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecoveryReadinessCertificateReview {
+    path: String,
+    schema_valid: bool,
+    fingerprint_valid: bool,
+    job_fingerprint_valid: bool,
+    job_matches_expected: bool,
+    readiness_status_valid: bool,
+    grants_execution_authority_claimed: bool,
+    execution_performed_claimed: bool,
+    safe_to_review: bool,
+    blockers: Vec<String>,
+    certificate_fingerprint: Option<String>,
+    job_fingerprint: Option<String>,
+    readiness_status: Option<String>,
+}
+
+#[tauri::command]
+fn bootforge_recovery_review_readiness_certificate(
+    path: String,
+    expected_job_fingerprint: Option<String>,
+) -> Result<RecoveryReadinessCertificateReview, String> {
+    use sha2::{Digest, Sha256};
+
+    let path_buf = std::path::PathBuf::from(&path);
+    if !path_buf.is_file() {
+        return Err(format!(
+            "Readiness certificate not found: {}",
+            path_buf.display()
+        ));
+    }
+    let bytes = std::fs::read(&path_buf)
+        .map_err(|e| format!("Could not read readiness certificate {}: {e}", path_buf.display()))?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Readiness certificate is not valid JSON: {e}"))?;
+
+    let material = value
+        .get("certificateMaterial")
+        .cloned()
+        .ok_or_else(|| "Readiness certificate is missing certificateMaterial".to_string())?;
+    let material_bytes = serde_json::to_vec(&material)
+        .map_err(|e| format!("Could not canonicalize readiness certificate material: {e}"))?;
+    let recomputed = format!("{:x}", Sha256::digest(&material_bytes));
+    let certificate_fingerprint = value
+        .get("certificateFingerprint")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let fingerprint_valid = certificate_fingerprint
+        .as_deref()
+        .map(|claimed| claimed.eq_ignore_ascii_case(&recomputed))
+        .unwrap_or(false);
+
+    let schema_valid = material
+        .get("schema")
+        .and_then(|v| v.as_str())
+        == Some("com.bobbyblanco.bobfwtools.recovery-readiness-certificate.v1");
+    let job_fingerprint = material
+        .get("jobFingerprint")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let job_fingerprint_valid = job_fingerprint
+        .as_deref()
+        .map(valid_sha256_hex)
+        .unwrap_or(false);
+    let expected = expected_job_fingerprint
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let job_matches_expected = match (expected, job_fingerprint.as_deref()) {
+        (Some(expected), Some(actual)) => expected.eq_ignore_ascii_case(actual),
+        (Some(_), None) => false,
+        (None, _) => true,
+    };
+    let readiness_status = material
+        .get("readinessStatus")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let readiness_status_valid = matches!(
+        readiness_status.as_deref(),
+        Some("blocked" | "review-ready" | "execution-ready")
+    );
+    let grants_execution_authority_claimed = material
+        .get("grantsExecutionAuthority")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let execution_performed_claimed = material
+        .get("executionPerformed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    let mut blockers = Vec::new();
+    if !schema_valid {
+        blockers.push("Readiness certificate schema is not recognized".to_string());
+    }
+    if !fingerprint_valid {
+        blockers.push("Readiness certificate fingerprint verification failed".to_string());
+    }
+    if !job_fingerprint_valid {
+        blockers.push("Readiness certificate job fingerprint is invalid".to_string());
+    }
+    if !job_matches_expected {
+        blockers.push("Readiness certificate is bound to a different recovery job".to_string());
+    }
+    if !readiness_status_valid {
+        blockers.push("Readiness certificate status is not recognized".to_string());
+    }
+    if grants_execution_authority_claimed {
+        blockers.push("Readiness certificate improperly claims execution authority".to_string());
+    }
+    if execution_performed_claimed {
+        blockers.push("Readiness certificate improperly claims execution was performed".to_string());
+    }
+
+    let safe_to_review = blockers.is_empty();
+    let _ = crate::audit::record(
+        "Recovery",
+        "review-readiness-certificate",
+        "elevated",
+        if safe_to_review { "verified" } else { "blocked" },
+        None,
+        "Recovery readiness certificate reviewed; review does not grant execution authority.",
+        vec![
+            format!("path:{}", path_buf.display()),
+            format!("fingerprint-valid:{}", fingerprint_valid),
+            format!("job-matches-expected:{}", job_matches_expected),
+            format!("safe-to-review:{}", safe_to_review),
+        ],
+    );
+
+    Ok(RecoveryReadinessCertificateReview {
+        path,
+        schema_valid,
+        fingerprint_valid,
+        job_fingerprint_valid,
+        job_matches_expected,
+        readiness_status_valid,
+        grants_execution_authority_claimed,
+        execution_performed_claimed,
+        safe_to_review,
+        blockers,
+        certificate_fingerprint,
+        job_fingerprint,
+        readiness_status,
+    })
+}
+
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct QualificationWorkstationSnapshot {
@@ -3783,6 +3931,7 @@ bootforgeusb_transport_scan,
             bootforge_recovery_revalidate,
             bootforge_recovery_export_receipt,
             bootforge_recovery_export_readiness_certificate,
+            bootforge_recovery_review_readiness_certificate,
             bootforge_qualification_export,
             bootforge_qualification_build_identity,
             bootforge_qualification_review,

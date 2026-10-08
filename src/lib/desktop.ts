@@ -1057,3 +1057,39 @@ export async function exportRecoveryReadinessCertificate(
     destinationPath,
   });
 }
+
+export type RecoveryReadinessCertificateReview = {
+  path: string;
+  schemaValid: boolean;
+  fingerprintValid: boolean;
+  jobFingerprintValid: boolean;
+  jobMatchesExpected: boolean;
+  readinessStatusValid: boolean;
+  grantsExecutionAuthorityClaimed: boolean;
+  executionPerformedClaimed: boolean;
+  safeToReview: boolean;
+  blockers: string[];
+  certificateFingerprint?: string | null;
+  jobFingerprint?: string | null;
+  readinessStatus?: string | null;
+};
+
+export async function reviewRecoveryReadinessCertificate(
+  expectedJobFingerprint?: string | null,
+): Promise<RecoveryReadinessCertificateReview | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: 'Review BobFWTools recovery readiness certificate',
+    filters: [{ name: 'JSON readiness certificate', extensions: ['json'] }],
+  });
+  if (!selected || Array.isArray(selected)) return null;
+  return invoke<RecoveryReadinessCertificateReview>(
+    'bootforge_recovery_review_readiness_certificate',
+    {
+      path: selected,
+      expectedJobFingerprint: expectedJobFingerprint?.trim() || null,
+    },
+  );
+}

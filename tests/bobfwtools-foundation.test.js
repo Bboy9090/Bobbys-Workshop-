@@ -228,13 +228,18 @@ describe('recovery readiness certificate', () => {
     const app = read('src/App.tsx');
 
     expect(main).toContain('bootforge_recovery_export_readiness_certificate');
+    expect(main).toContain('bootforge_recovery_review_readiness_certificate');
     expect(main).toContain('recovery-readiness-certificate.v1');
     expect(main).toContain('"grantsExecutionAuthority": false');
     expect(main).toContain('"readinessStatus": readiness_status');
     expect(main).toContain('certificateFingerprint');
+    expect(main).toContain('fingerprint verification failed');
     expect(bridge).toContain('exportRecoveryReadinessCertificate');
+    expect(bridge).toContain('reviewRecoveryReadinessCertificate');
     expect(app).toContain('Export readiness certificate');
+    expect(app).toContain('Review readiness certificate');
     expect(app).toContain('does not grant destructive execution authority');
+    expect(app).toContain('VERIFIED EVIDENCE');
   });
 });
 

@@ -35,6 +35,7 @@ import {
   revalidateRecoveryJob,
   exportRecoveryEvidence,
   exportRecoveryReadinessCertificate,
+  reviewRecoveryReadinessCertificate,
   listWorkflowJobs,
   retryWorkflowJob,
   runAdbPackageAction,
@@ -54,6 +55,7 @@ import {
   type RecoveryPlan,
   type RecoveryJob,
   type RecoveryWorkflow,
+  type RecoveryReadinessCertificateReview,
 } from './lib/desktop';
 
 function formatBytes(value: number): string {
@@ -104,6 +106,7 @@ export default function App() {
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [recoveryEvidencePath, setRecoveryEvidencePath] = useState<string | null>(null);
   const [recoveryCertificatePath, setRecoveryCertificatePath] = useState<string | null>(null);
+  const [recoveryCertificateReview, setRecoveryCertificateReview] = useState<RecoveryReadinessCertificateReview | null>(null);
   const nativeRuntime = useMemo(() => isTauriRuntime(), []);
   const filteredPackages = useMemo(() => {
     const q = packageQuery.trim().toLowerCase();
@@ -458,6 +461,7 @@ export default function App() {
     setRecoveryJob(null);
     setRecoveryEvidencePath(null);
     setRecoveryCertificatePath(null);
+    setRecoveryCertificateReview(null);
   };
 
   const autoDiscoverRecoveryArtifacts = async () => {
@@ -466,6 +470,7 @@ export default function App() {
     setNativeError(null);
     setRecoveryEvidencePath(null);
     setRecoveryCertificatePath(null);
+    setRecoveryCertificateReview(null);
     try {
       const paths = await autodiscoverRecoveryArtifacts(recoveryKind);
       if (!paths.length) {
@@ -478,6 +483,7 @@ export default function App() {
       setRecoveryJob(null);
       setRecoveryEvidencePath(null);
     setRecoveryCertificatePath(null);
+    setRecoveryCertificateReview(null);
       const plan = await buildRecoveryPlan(recoveryKind, paths);
       setRecoveryPlan(plan);
       const candidate = recoveryCandidates.find((item) => item.workflow === recoveryKind);
@@ -563,7 +569,24 @@ export default function App() {
     setNativeError(null);
     try {
       const path = await exportRecoveryReadinessCertificate(recoveryJob, recoveryPlan);
-      if (path) setRecoveryCertificatePath(path);
+      if (path) {
+        setRecoveryCertificatePath(path);
+        setRecoveryCertificateReview(null);
+      }
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveryBusy(false);
+    }
+  };
+
+  const reviewSelectedRecoveryCertificate = async () => {
+    if (!recoveryJob) return;
+    setRecoveryBusy(true);
+    setNativeError(null);
+    try {
+      const review = await reviewRecoveryReadinessCertificate(recoveryJob.jobFingerprint);
+      if (review) setRecoveryCertificateReview(review);
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -1147,6 +1170,14 @@ export default function App() {
                     >
                       Export readiness certificate
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => void reviewSelectedRecoveryCertificate()}
+                      disabled={recoveryBusy}
+                      className="rounded border border-violet-800 px-2.5 py-1 text-xs font-medium text-violet-300 disabled:opacity-40 hover:bg-violet-950/40"
+                    >
+                      Review readiness certificate
+                    </button>
                     <span className={recoveryJob.executorQualified ? 'rounded bg-emerald-950 px-2 py-1 text-xs text-emerald-300' : 'rounded bg-amber-950 px-2 py-1 text-xs text-amber-300'}>
                       {recoveryJob.executorQualified ? 'executor qualified' : 'executor not yet physically qualified'}
                     </span>
@@ -1164,6 +1195,25 @@ export default function App() {
                     <div className="mt-1 text-[11px] text-slate-400">
                       Certificate is evidence only and does not grant destructive execution authority.
                     </div>
+                  </div>
+                )}
+                {recoveryCertificateReview && (
+                  <div className={recoveryCertificateReview.safeToReview
+                    ? 'mt-3 rounded border border-emerald-900/60 bg-emerald-950/20 p-3 text-xs text-emerald-300'
+                    : 'mt-3 rounded border border-rose-900/60 bg-rose-950/20 p-3 text-xs text-rose-300'}>
+                    <div className="font-semibold">
+                      {recoveryCertificateReview.safeToReview
+                        ? `VERIFIED EVIDENCE · ${recoveryCertificateReview.readinessStatus || 'unknown'}`
+                        : 'CERTIFICATE BLOCKED'}
+                    </div>
+                    <div className="mt-1 text-[11px] text-slate-400">
+                      Fingerprint {recoveryCertificateReview.fingerprintValid ? 'verified' : 'failed'} · job binding {recoveryCertificateReview.jobMatchesExpected ? 'matched' : 'mismatch'}
+                    </div>
+                    {!!recoveryCertificateReview.blockers.length && (
+                      <div className="mt-2 space-y-1 text-[11px]">
+                        {recoveryCertificateReview.blockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
+                      </div>
+                    )}
                   </div>
                 )}
 
