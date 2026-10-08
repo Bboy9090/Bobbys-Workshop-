@@ -42,12 +42,39 @@ pub struct WorkstationReadiness {
     pub blockers: Vec<String>,
 }
 
-fn command_present(program: &str, version_args: &[&str]) -> bool {
+fn command_works(program: &std::path::Path, version_args: &[&str]) -> bool {
     Command::new(program)
         .args(version_args)
         .output()
         .map(|out| out.status.success())
         .unwrap_or(false)
+}
+
+fn managed_tool_candidates(program: &str) -> Vec<PathBuf> {
+    let root = workspace_root().join("tools");
+    #[cfg(target_os = "windows")]
+    let executable = format!("{program}.exe");
+    #[cfg(not(target_os = "windows"))]
+    let executable = program.to_string();
+
+    match program {
+        "adb" | "fastboot" => vec![
+            root.join("platform-tools").join(&executable),
+            root.join(&executable),
+        ],
+        _ => vec![root.join(&executable)],
+    }
+}
+
+fn resolve_command(program: &str, version_args: &[&str]) -> Option<PathBuf> {
+    let path_program = PathBuf::from(program);
+    if command_works(&path_program, version_args) {
+        return Some(path_program);
+    }
+
+    managed_tool_candidates(program)
+        .into_iter()
+        .find(|candidate| candidate.is_file() && command_works(candidate, version_args))
 }
 
 fn workspace_root() -> PathBuf {
@@ -98,28 +125,25 @@ pub fn workstation_readiness() -> WorkstationReadiness {
         })
         .collect::<Vec<_>>();
 
-    let tools = vec![
-        ToolReadiness {
-            id: "adb",
-            present: command_present("adb", &["version"]),
-            detail: "Android Debug Bridge".to_string(),
-        },
-        ToolReadiness {
-            id: "fastboot",
-            present: command_present("fastboot", &["--version"]),
-            detail: "Android Fastboot".to_string(),
-        },
-        ToolReadiness {
-            id: "lz4",
-            present: command_present("lz4", &["--version"]),
-            detail: "LZ4 firmware decompression".to_string(),
-        },
-        ToolReadiness {
-            id: "simg2img",
-            present: command_present("simg2img", &["--help"]),
-            detail: "Android sparse-image conversion".to_string(),
-        },
+    let tool_specs = [
+        ("adb", &["version"][..], "Android Debug Bridge"),
+        ("fastboot", &["--version"][..], "Android Fastboot"),
+        ("lz4", &["--version"][..], "LZ4 firmware decompression"),
+        ("simg2img", &["--help"][..], "Android sparse-image conversion"),
     ];
+    let tools = tool_specs
+        .into_iter()
+        .map(|(id, args, label)| {
+            let resolved = resolve_command(id, args);
+            ToolReadiness {
+                id,
+                present: resolved.is_some(),
+                detail: resolved
+                    .map(|path| format!("{label} · {}", path.display()))
+                    .unwrap_or_else(|| format!("{label} · not found on PATH or in managed tools")),
+            }
+        })
+        .collect::<Vec<_>>();
 
     let driver_catalog = windows_driver_catalog();
     let windows = cfg!(target_os = "windows");
@@ -132,6 +156,10 @@ pub fn workstation_readiness() -> WorkstationReadiness {
         || driver_catalog.contains("qcusb")
         || driver_catalog.contains("qcser")
         || driver_catalog.contains("qdloader");
+    let mediatek_detected = !windows
+        || driver_catalog.contains("mediatek")
+        || driver_catalog.contains("mtk_")
+        || driver_catalog.contains("mtk ");
 
     let drivers = vec![
         DriverReadiness {
@@ -156,6 +184,17 @@ pub fn workstation_readiness() -> WorkstationReadiness {
             },
             admin_required_for_install: windows && !qualcomm_detected,
         },
+        DriverReadiness {
+            id: "mediatek-usb-vcom",
+            applicable: windows,
+            detected: mediatek_detected,
+            detail: if windows {
+                "MediaTek USB/VCOM/Preloader driver evidence from Windows driver store".to_string()
+            } else {
+                "Not applicable: macOS/Linux use native USB/libusb access".to_string()
+            },
+            admin_required_for_install: windows && !mediatek_detected,
+        },
     ];
 
     let adb = tools.iter().find(|t| t.id == "adb").map(|t| t.present).unwrap_or(false);
@@ -172,6 +211,9 @@ pub fn workstation_readiness() -> WorkstationReadiness {
     if windows && !qualcomm_detected {
         blockers.push("Qualcomm QDLoader/9008 driver not detected in the Windows driver store.".to_string());
     }
+    if windows && !mediatek_detected {
+        blockers.push("MediaTek USB/VCOM driver not detected in the Windows driver store.".to_string());
+    }
 
     WorkstationReadiness {
         os,
@@ -181,7 +223,8 @@ pub fn workstation_readiness() -> WorkstationReadiness {
         tools,
         drivers,
         ready_for_diagnostics: true,
-        ready_for_android_service: root_exists && (adb || fastboot || (!windows || samsung_detected || qualcomm_detected)),
+        ready_for_android_service: root_exists
+            && (adb || fastboot || (!windows || samsung_detected || qualcomm_detected || mediatek_detected)),
         blockers,
     }
 }
@@ -193,4 +236,26 @@ pub fn workstation_initialize() -> Result<WorkstationReadiness, String> {
             .map_err(|e| format!("Failed to create {}: {e}", path.display()))?;
     }
     Ok(workstation_readiness())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn adb_and_fastboot_have_managed_platform_tools_candidates() {
+        let adb = managed_tool_candidates("adb");
+        let fastboot = managed_tool_candidates("fastboot");
+        assert!(adb.iter().any(|p| p.to_string_lossy().contains("platform-tools")));
+        assert!(fastboot.iter().any(|p| p.to_string_lossy().contains("platform-tools")));
+    }
+
+    #[test]
+    fn lz4_and_simg2img_have_managed_tool_candidates() {
+        let lz4 = managed_tool_candidates("lz4");
+        let simg2img = managed_tool_candidates("simg2img");
+        assert!(lz4.iter().all(|p| p.to_string_lossy().contains(".bobfwtools")));
+        assert!(simg2img.iter().all(|p| p.to_string_lossy().contains(".bobfwtools")));
+    }
 }
