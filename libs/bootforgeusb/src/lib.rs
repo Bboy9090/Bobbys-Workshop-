@@ -2,11 +2,16 @@ pub mod calibration;
 pub mod calibration_backup;
 pub mod edl;
 pub mod firehose_plan;
+pub mod firmware;
 pub mod hardware_service;
 pub mod model;
-pub mod retry_policy;
+pub mod planner;
 pub mod preflight;
+pub mod recovery;
+pub mod recovery_job;
+pub mod retry_policy;
 pub mod telemetry;
+pub mod transport;
 pub mod workflow_catalog;
 
 use model::DeviceRecord;
@@ -37,7 +42,13 @@ fn platform_hint(vendor_id: u16) -> &'static str {
     }
 }
 
-fn mode_hint(vendor_id: u16, product_id: u16, class: u8, subclass: u8, protocol: u8) -> &'static str {
+fn mode_hint(
+    vendor_id: u16,
+    product_id: u16,
+    class: u8,
+    subclass: u8,
+    protocol: u8,
+) -> &'static str {
     if vendor_id == 0x04e8 && matches!(product_id, 0x6601 | 0x685d) {
         return "samsung-download";
     }
@@ -69,9 +80,21 @@ fn read_strings<T: UsbContext>(
         Ok(h) => h,
         Err(_) => return (None, None, None),
     };
-    let manufacturer = handle.read_manufacturer_string_ascii(&descriptor).ok();
-    let product = handle.read_product_string_ascii(&descriptor).ok();
-    let serial = handle.read_serial_number_string_ascii(&descriptor).ok();
+    let manufacturer = handle
+        .read_manufacturer_string_ascii(&descriptor)
+        .ok()
+        .map(|v| v.trim_matches(char::from(0)).trim().to_string())
+        .filter(|v| !v.is_empty());
+    let product = handle
+        .read_product_string_ascii(&descriptor)
+        .ok()
+        .map(|v| v.trim_matches(char::from(0)).trim().to_string())
+        .filter(|v| !v.is_empty());
+    let serial = handle
+        .read_serial_number_string_ascii(&descriptor)
+        .ok()
+        .map(|v| v.trim_matches(char::from(0)).trim().to_string())
+        .filter(|v| !v.is_empty());
     (manufacturer, product, serial)
 }
 
@@ -94,13 +117,15 @@ pub fn scan() -> Result<Vec<DeviceRecord>> {
         let device_uid = serial_number
             .as_ref()
             .map(|serial| format!("usb:{:04x}:{:04x}:{}", vendor_id, product_id, serial))
-            .unwrap_or_else(|| format!(
-                "usb:{:04x}:{:04x}:bus{}:addr{}",
-                vendor_id,
-                product_id,
-                device.bus_number(),
-                device.address()
-            ));
+            .unwrap_or_else(|| {
+                format!(
+                    "usb:{:04x}:{:04x}:bus{}:addr{}",
+                    vendor_id,
+                    product_id,
+                    device.bus_number(),
+                    device.address()
+                )
+            });
 
         records.push(DeviceRecord {
             device_uid,
@@ -194,9 +219,18 @@ mod python_api {
                 .into_iter()
                 .map(|d| {
                     let mut m = HashMap::new();
-                    m.insert("name".into(), d.product_name.unwrap_or_else(|| format!("USB {:04X}:{:04X}", d.vendor_id, d.product_id)));
+                    m.insert(
+                        "name".into(),
+                        d.product_name.unwrap_or_else(|| {
+                            format!("USB {:04X}:{:04X}", d.vendor_id, d.product_id)
+                        }),
+                    );
                     m.insert("protocol".into(), d.mode);
-                    m.insert("serial".into(), d.serial_number.unwrap_or_else(|| format!("{:04X}:{:04X}", d.vendor_id, d.product_id)));
+                    m.insert(
+                        "serial".into(),
+                        d.serial_number
+                            .unwrap_or_else(|| format!("{:04X}:{:04X}", d.vendor_id, d.product_id)),
+                    );
                     m.insert("category".into(), d.platform_hint);
                     m
                 })

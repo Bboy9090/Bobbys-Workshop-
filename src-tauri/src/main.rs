@@ -547,6 +547,87 @@ fn hardware_service_profile_validate(
     bootforgeusb::hardware_service::validate_profile(&profile)
 }
 
+#[tauri::command]
+fn bootforgeusb_transport_scan() -> Result<Vec<bootforgeusb::transport::TransportDevice>, String> {
+    bootforgeusb::transport::scan_transports()
+        .map_err(|e| format!("USB transport scan failed: {e}"))
+}
+
+#[tauri::command]
+fn bootforge_firmware_inspect(paths: Vec<String>) -> Result<Vec<bootforgeusb::firmware::FirmwareArchiveReport>, String> {
+    if paths.is_empty() {
+        return Err("At least one firmware package path is required".to_string());
+    }
+    bootforgeusb::firmware::inspect_many(paths)
+        .map_err(|e| format!("Firmware inspection failed: {e}"))
+}
+
+#[tauri::command]
+fn bootforge_samsung_plan(paths: Vec<String>) -> Result<bootforgeusb::planner::FlashPlan, String> {
+    if paths.is_empty() {
+        return Err("At least one firmware package path is required".to_string());
+    }
+    let reports = bootforgeusb::firmware::inspect_many(paths)
+        .map_err(|e| format!("Firmware inspection failed: {e}"))?;
+    Ok(bootforgeusb::planner::build_samsung_plan(&reports))
+}
+
+#[tauri::command]
+fn bootforge_recovery_scan() -> Result<Vec<bootforgeusb::recovery::RecoveryCandidate>, String> {
+    let devices = bootforgeusb::transport::scan_transports()
+        .map_err(|e| format!("USB transport scan failed: {e}"))?;
+    Ok(bootforgeusb::recovery::scan_recovery_candidates(&devices))
+}
+
+#[tauri::command]
+fn bootforge_recovery_plan(kind: String, paths: Vec<String>) -> Result<bootforgeusb::recovery::RecoveryPlan, String> {
+    if paths.is_empty() {
+        return Err("At least one recovery artifact path is required".to_string());
+    }
+    let kind = bootforgeusb::recovery::RecoveryKind::parse(&kind)
+        .map_err(|e| format!("Recovery workflow selection failed: {e}"))?;
+    bootforgeusb::recovery::build_recovery_plan(kind, paths.into_iter().map(std::path::PathBuf::from).collect())
+        .map_err(|e| format!("Recovery planning failed: {e}"))
+}
+
+#[tauri::command]
+fn bootforge_recovery_prepare(
+    candidate: bootforgeusb::recovery::RecoveryCandidate,
+    paths: Vec<String>,
+) -> Result<bootforgeusb::recovery_job::RecoveryJob, String> {
+    if paths.is_empty() {
+        return Err("At least one recovery artifact path is required".to_string());
+    }
+    let plan = bootforgeusb::recovery::build_recovery_plan(
+        candidate.workflow,
+        paths.into_iter().map(std::path::PathBuf::from).collect(),
+    ).map_err(|e| format!("Recovery planning failed: {e}"))?;
+    bootforgeusb::recovery_job::build_job(&candidate, &plan)
+        .map_err(|e| format!("Recovery job preparation failed: {e}"))
+}
+
+#[tauri::command]
+fn bootforge_recovery_revalidate(
+    mut job: bootforgeusb::recovery_job::RecoveryJob,
+) -> Result<bootforgeusb::recovery_job::RecoveryJob, String> {
+    let devices = bootforgeusb::transport::scan_transports()
+        .map_err(|e| format!("USB transport scan failed: {e}"))?;
+    let current = devices
+        .iter()
+        .find(|device| {
+            device.device_uid == job.identity.device_uid
+                && device.vendor_id == job.identity.vendor_id
+                && device.product_id == job.identity.product_id
+                && device.mode == job.identity.mode
+                && device.serial_number == job.identity.serial_number
+        })
+        .ok_or_else(|| "Recovery device identity is no longer present exactly as prepared".to_string())?;
+
+    bootforgeusb::recovery_job::revalidate_job_identity(&mut job, current)
+        .map_err(|e| format!("Recovery identity revalidation failed: {e}"))?;
+    Ok(job)
+}
+
 #[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config: FlashJobConfig) -> Result<FlashStartResponse, String> {
@@ -1525,6 +1606,13 @@ fn main() {
             edl_enroll_programmer,
             edl_list_programmers,
             hardware_service_profile_validate,
+bootforgeusb_transport_scan,
+            bootforge_firmware_inspect,
+            bootforge_samsung_plan,
+            bootforge_recovery_scan,
+            bootforge_recovery_plan,
+            bootforge_recovery_prepare,
+            bootforge_recovery_revalidate,
             mtp_status,
             mtp_list_root,
             mtp_download_file,

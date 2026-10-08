@@ -1,5 +1,5 @@
 {
-  "id": "quick-diag",
+  "id": "quick-diagnostics",
   "name": "Quick Mobile Diagnostics",
   "description": "Fast 2-minute device health check for quick assessments",
   "platform": "android",

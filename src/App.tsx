@@ -24,6 +24,11 @@ import {
   uploadMtpPath,
   listAdbUserPackages,
   runUsbCableDoctor,
+  scanRecoveryCandidates,
+  chooseRecoveryArtifacts,
+  buildRecoveryPlan,
+  prepareRecoveryJob,
+  revalidateRecoveryJob,
   listWorkflowJobs,
   retryWorkflowJob,
   runAdbPackageAction,
@@ -38,6 +43,10 @@ import {
   type WorkflowJobRecord,
   type AdbPackageRecord,
   type CableDoctorReport,
+  type RecoveryCandidate,
+  type RecoveryPlan,
+  type RecoveryJob,
+  type RecoveryWorkflow,
 } from './lib/desktop';
 
 function formatBytes(value: number): string {
@@ -78,6 +87,13 @@ export default function App() {
   const [packageBusy, setPackageBusy] = useState<string | null>(null);
   const [cableDoctor, setCableDoctor] = useState<CableDoctorReport | null>(null);
   const [cableDoctorBusy, setCableDoctorBusy] = useState(false);
+  const [recoveryCandidates, setRecoveryCandidates] = useState<RecoveryCandidate[]>([]);
+  const [selectedRecoveryUid, setSelectedRecoveryUid] = useState<string | null>(null);
+  const [recoveryKind, setRecoveryKind] = useState<RecoveryWorkflow>('qualcomm-edl');
+  const [recoveryArtifacts, setRecoveryArtifacts] = useState<string[]>([]);
+  const [recoveryPlan, setRecoveryPlan] = useState<RecoveryPlan | null>(null);
+  const [recoveryJob, setRecoveryJob] = useState<RecoveryJob | null>(null);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
   const nativeRuntime = useMemo(() => isTauriRuntime(), []);
   const filteredPackages = useMemo(() => {
     const q = packageQuery.trim().toLowerCase();
@@ -101,6 +117,20 @@ export default function App() {
     try {
       const devices = await getNativeUsbDevices();
       setUsbDevices(devices);
+
+      try {
+        const recovery = await scanRecoveryCandidates();
+        setRecoveryCandidates(recovery);
+        if (!selectedRecoveryUid && recovery.length) {
+          setSelectedRecoveryUid(recovery[0].deviceUid);
+          setRecoveryKind(recovery[0].workflow);
+        } else if (selectedRecoveryUid && !recovery.some((candidate) => candidate.deviceUid === selectedRecoveryUid)) {
+          setSelectedRecoveryUid(recovery[0]?.deviceUid ?? null);
+          if (recovery[0]) setRecoveryKind(recovery[0].workflow);
+        }
+      } catch {
+        setRecoveryCandidates([]);
+      }
 
       const adb = await scanAdbDevices();
       setAdbDevices(adb);
@@ -135,7 +165,7 @@ export default function App() {
     } finally {
       setRefreshing(false);
     }
-  }, [storageIndex, mtpPath, transferBusy, adbSelectedSerial, refreshJobs]);
+  }, [storageIndex, mtpPath, transferBusy, adbSelectedSerial, selectedRecoveryUid, refreshJobs]);
 
   const retryJob = async (id: string) => {
     if (transferBusy) return;
@@ -406,6 +436,65 @@ export default function App() {
     }, 5000);
     return () => window.clearInterval(id);
   }, [refresh, transferBusy]);
+
+  const selectRecoveryArtifacts = async () => {
+    if (recoveryBusy) return;
+    const paths = await chooseRecoveryArtifacts();
+    if (!paths.length) return;
+    setRecoveryArtifacts(paths);
+    setRecoveryPlan(null);
+    setRecoveryJob(null);
+  };
+
+  const inspectRecoveryPlan = async () => {
+    if (recoveryBusy || !recoveryArtifacts.length) return;
+    setRecoveryBusy(true);
+    setNativeError(null);
+    try {
+      const plan = await buildRecoveryPlan(recoveryKind, recoveryArtifacts);
+      setRecoveryPlan(plan);
+      setRecoveryJob(null);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveryBusy(false);
+    }
+  };
+
+  const prepareSelectedRecoveryJob = async () => {
+    if (recoveryBusy || !recoveryArtifacts.length) return;
+    const candidate = recoveryCandidates.find((item) => item.deviceUid === selectedRecoveryUid);
+    if (!candidate) {
+      setNativeError('Connect a device in Qualcomm EDL or MediaTek Download/Preloader mode before preparing a hardware-bound recovery job.');
+      return;
+    }
+    setRecoveryBusy(true);
+    setNativeError(null);
+    try {
+      const job = await prepareRecoveryJob(candidate, recoveryArtifacts);
+      setRecoveryKind(candidate.workflow);
+      setRecoveryJob(job);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveryBusy(false);
+    }
+  };
+
+
+  const revalidateSelectedRecoveryJob = async () => {
+    if (!recoveryJob) return;
+    setRecoveryBusy(true);
+    setNativeError(null);
+    try {
+      const refreshed = await revalidateRecoveryJob(recoveryJob);
+      setRecoveryJob(refreshed);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveryBusy(false);
+    }
+  };
 
   return (
     <div className="flex h-screen flex-col bg-slate-950 text-slate-200">
@@ -698,6 +787,274 @@ export default function App() {
                 </details>
               </>
             )}
+          </section>
+
+          <section className="mb-4 rounded-lg border border-orange-900/60 bg-orange-950/10 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-base font-semibold text-white">Advanced Recovery</h2>
+                <p className="mt-1 max-w-3xl text-sm text-slate-400">
+                  Hardware-bound recovery planning for Samsung Download Mode, Qualcomm EDL, and MediaTek Download/Preloader.
+                  Every destructive job is inspected, hashed, mapped, and tied to the exact USB identity before an executor can qualify.
+                </p>
+              </div>
+              <span className="rounded border border-orange-900 bg-orange-950/50 px-2 py-1 text-xs text-orange-300">
+                guarded recovery
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              <div className="rounded border border-slate-800 bg-slate-950/60 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recovery-mode hardware</h3>
+                  <span className="text-xs text-slate-600">{recoveryCandidates.length} detected</span>
+                </div>
+                {recoveryCandidates.length === 0 ? (
+                  <div className="mt-3 text-sm text-slate-500">
+                    No Qualcomm EDL or MediaTek Download/Preloader device is connected. Planning can still inspect artifacts offline.
+                  </div>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    {recoveryCandidates.map((candidate) => (
+                      <button
+                        key={candidate.deviceUid}
+                        type="button"
+                        onClick={() => {
+                          setSelectedRecoveryUid(candidate.deviceUid);
+                          setRecoveryKind(candidate.workflow);
+                          setRecoveryPlan(null);
+                          setRecoveryJob(null);
+                        }}
+                        className={`w-full rounded border p-3 text-left ${
+                          selectedRecoveryUid === candidate.deviceUid
+                            ? 'border-orange-600 bg-orange-950/30'
+                            : 'border-slate-800 bg-slate-950/70 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-white">{candidate.productName || candidate.detectedMode}</span>
+                          <span className="font-mono text-[11px] text-orange-300">{candidate.workflow}</span>
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {candidate.detectedMode} · {hex(candidate.vendorId)}:{hex(candidate.productId)}
+                        </div>
+                        <div className="mt-1 truncate font-mono text-[10px] text-slate-600">{candidate.deviceUid}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded border border-slate-800 bg-slate-950/60 p-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recovery lane</h3>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecoveryKind('qualcomm-edl');
+                      setRecoveryPlan(null);
+                      setRecoveryJob(null);
+                    }}
+                    className={`rounded border px-3 py-2 text-left text-xs ${
+                      recoveryKind === 'qualcomm-edl'
+                        ? 'border-orange-600 bg-orange-950/30 text-orange-200'
+                        : 'border-slate-700 text-slate-300 hover:bg-slate-900'
+                    }`}
+                  >
+                    <div className="font-semibold">Qualcomm EDL</div>
+                    <div className="mt-1 text-[11px] text-slate-500">Authenticated Sahara / Firehose repair</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecoveryKind('mediatek-download');
+                      setRecoveryPlan(null);
+                      setRecoveryJob(null);
+                    }}
+                    className={`rounded border px-3 py-2 text-left text-xs ${
+                      recoveryKind === 'mediatek-download'
+                        ? 'border-orange-600 bg-orange-950/30 text-orange-200'
+                        : 'border-slate-700 text-slate-300 hover:bg-slate-900'
+                    }`}
+                  >
+                    <div className="font-semibold">MediaTek Download</div>
+                    <div className="mt-1 text-[11px] text-slate-500">Preloader / BROM + legitimate DA/auth path</div>
+                  </button>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void selectRecoveryArtifacts()}
+                    disabled={recoveryBusy || !nativeRuntime}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Choose artifacts
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void inspectRecoveryPlan()}
+                    disabled={recoveryBusy || !recoveryArtifacts.length}
+                    className="rounded bg-orange-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-orange-600"
+                  >
+                    {recoveryBusy ? 'Inspecting…' : 'Inspect recovery plan'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void prepareSelectedRecoveryJob()}
+                    disabled={recoveryBusy || !recoveryArtifacts.length || !selectedRecoveryUid}
+                    className="rounded border border-cyan-800 px-3 py-2 text-xs font-medium text-cyan-300 disabled:opacity-40 hover:bg-cyan-950/40"
+                  >
+                    Prepare audited job
+                  </button>
+                </div>
+
+                {recoveryArtifacts.length > 0 && (
+                  <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
+                    <div className="text-[10px] uppercase tracking-wide text-slate-600">Selected artifacts</div>
+                    <div className="mt-2 space-y-1">
+                      {recoveryArtifacts.map((path) => (
+                        <div key={path} className="truncate font-mono text-[11px] text-slate-400" title={path}>
+                          {path.split(/[\\/]/).pop() || path}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {recoveryPlan && (
+              <div className="mt-4 rounded border border-slate-800 bg-slate-950/60 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-slate-600">Plan</div>
+                    <div className="mt-1 font-mono text-sm text-white">{recoveryPlan.protocol}</div>
+                    <div className="mt-1 text-xs text-slate-500">Required mode: {recoveryPlan.modeRequired}</div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <span className={recoveryPlan.prerequisitesMet ? 'rounded bg-emerald-950 px-2 py-1 text-xs text-emerald-300' : 'rounded bg-amber-950 px-2 py-1 text-xs text-amber-300'}>
+                      {recoveryPlan.prerequisitesMet ? 'prerequisites met' : 'prerequisites missing'}
+                    </span>
+                    {recoveryPlan.destructive && (
+                      <span className="rounded bg-red-950 px-2 py-1 text-xs text-red-300">destructive</span>
+                    )}
+                    {recoveryPlan.requiresVendorAuthentication && (
+                      <span className="rounded bg-violet-950 px-2 py-1 text-xs text-violet-300">vendor auth required</span>
+                    )}
+                  </div>
+                </div>
+
+                {recoveryPlan.missingPrerequisites.length > 0 && (
+                  <div className="mt-3 rounded border border-amber-900/60 bg-amber-950/20 p-3 text-xs text-amber-200">
+                    Missing: {recoveryPlan.missingPrerequisites.join(' · ')}
+                  </div>
+                )}
+
+                <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  {recoveryPlan.artifacts.map((artifact) => (
+                    <div key={artifact.path} className="rounded border border-slate-800 bg-slate-950 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-xs text-white">{artifact.role}</span>
+                        <span className={artifact.structurallyValid ? 'text-[10px] text-emerald-400' : 'text-[10px] text-red-400'}>
+                          {artifact.structurallyValid ? 'valid structure' : 'invalid structure'}
+                        </span>
+                      </div>
+                      <div className="mt-1 truncate text-[11px] text-slate-500" title={artifact.path}>
+                        {artifact.path.split(/[\\/]/).pop() || artifact.path}
+                      </div>
+                      <div className="mt-1 text-[10px] text-slate-600">{formatBytes(artifact.size)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {recoveryJob && (
+              <div className="mt-4 rounded border border-cyan-900/70 bg-cyan-950/10 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-cyan-700">Audited recovery job</div>
+                    <div className="mt-1 font-mono text-sm text-cyan-200">{recoveryJob.protocol}</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {recoveryJob.operations.length} normalized partition operation(s) · {recoveryJob.artifactDigests.length} hashed artifact(s)
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void revalidateSelectedRecoveryJob()}
+                      disabled={recoveryBusy}
+                      className="rounded border border-cyan-800 px-2.5 py-1 text-xs font-medium text-cyan-300 disabled:opacity-40 hover:bg-cyan-950/40"
+                    >
+                      {recoveryBusy ? 'Revalidating…' : recoveryJob.identityRevalidated ? 'Revalidate hardware again' : 'Revalidate hardware'}
+                    </button>
+                    <span className={recoveryJob.executorQualified ? 'rounded bg-emerald-950 px-2 py-1 text-xs text-emerald-300' : 'rounded bg-amber-950 px-2 py-1 text-xs text-amber-300'}>
+                      {recoveryJob.executorQualified ? 'executor qualified' : 'executor not yet physically qualified'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                  {[
+                    ['Artifacts hashed', recoveryJob.artifactDigests.length > 0],
+                    ['Partition map normalized', recoveryJob.operations.length > 0],
+                    ['Prerequisites met', recoveryJob.prerequisitesMet],
+                    ['Hardware identity revalidated', recoveryJob.identityRevalidated],
+                    ['Executor physically qualified', recoveryJob.executorQualified],
+                  ].map(([label, ok]) => (
+                    <div key={String(label)} className="rounded border border-slate-800 bg-slate-950/70 p-3">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-600">{label}</div>
+                      <div className={ok ? 'mt-1 text-xs font-semibold text-emerald-300' : 'mt-1 text-xs font-semibold text-amber-300'}>
+                        {ok ? 'PASS' : 'BLOCKED'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                  <div className="rounded border border-slate-800 bg-slate-950/70 p-3">
+                    <div className="text-[10px] uppercase tracking-wide text-slate-600">Frozen device identity</div>
+                    <div className="mt-2 font-mono text-[11px] text-slate-300">{recoveryJob.identity.deviceUid}</div>
+                    <div className="mt-1 text-[11px] text-slate-500">
+                      {recoveryJob.identity.mode} · {hex(recoveryJob.identity.vendorId)}:{hex(recoveryJob.identity.productId)}
+                    </div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-950/70 p-3">
+                    <div className="text-[10px] uppercase tracking-wide text-slate-600">Execution blockers</div>
+                    <div className="mt-2 space-y-1 text-xs text-amber-300">
+                      {recoveryJob.blockers.length ? recoveryJob.blockers.map((blocker) => <div key={blocker}>{blocker}</div>) : <div className="text-emerald-300">No blockers.</div>}
+                    </div>
+                  </div>
+                </div>
+
+                <details className="mt-3 rounded border border-slate-800 bg-slate-950/50 p-3">
+                  <summary className="cursor-pointer text-xs text-slate-300">Artifact hashes and normalized partition operations</summary>
+                  <div className="mt-3 space-y-2">
+                    {recoveryJob.artifactDigests.map((artifact) => (
+                      <div key={artifact.path} className="font-mono text-[10px] text-slate-500">
+                        <div>{artifact.role}: {artifact.sha256}</div>
+                        <div className="truncate" title={artifact.path}>{artifact.path}</div>
+                      </div>
+                    ))}
+                    <div className="mt-3 max-h-48 overflow-auto rounded border border-slate-800">
+                      {recoveryJob.operations.map((operation, index) => (
+                        <div key={`${operation.filename}-${index}`} className="border-b border-slate-800 px-3 py-2 text-[11px] last:border-b-0">
+                          <span className="font-mono text-slate-200">{operation.partitionName || 'unnamed'}</span>
+                          <span className="ml-2 text-slate-500">{operation.filename}</span>
+                          {operation.length != null && <span className="ml-2 text-slate-600">{formatBytes(operation.length)}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </details>
+              </div>
+            )}
+
+            <div className="mt-4 rounded border border-slate-800 bg-slate-950/40 p-3 text-xs leading-5 text-slate-500">
+              BobFWTools accepts legitimate vendor recovery paths only. Auth bypasses, BootROM exploits, arbitrary unsigned loaders,
+              FRP/security bypasses, and equivalent lock circumvention are not execution paths in this engine.
+            </div>
           </section>
 
           <section className="mb-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
