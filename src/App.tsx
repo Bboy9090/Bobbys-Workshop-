@@ -997,7 +997,7 @@ export default function App() {
                     <div className="text-[10px] uppercase tracking-wide text-cyan-700">Audited recovery job</div>
                     <div className="mt-1 font-mono text-sm text-cyan-200">{recoveryJob.protocol}</div>
                     <div className="mt-1 text-xs text-slate-500">
-                      {recoveryJob.operations.length} normalized partition operation(s) · {recoveryJob.artifactDigests.length} hashed artifact(s)
+                      {recoveryJob.operations.length} normalized partition operation(s) · {recoveryJob.artifactDigests.length} layout/service artifact(s) · {recoveryJob.payloadDigests.length} hashed payload(s)
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -1029,9 +1029,10 @@ export default function App() {
                   </div>
                 )}
 
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
                   {[
-                    ['Artifacts hashed', recoveryJob.artifactDigests.length > 0],
+                    ['Artifacts + payloads hashed', recoveryJob.artifactDigests.length > 0 && recoveryJob.payloadDigests.length > 0],
+                    ['Payload integrity', recoveryJob.integrityChecksPassed],
                     ['Partition map normalized', recoveryJob.operations.length > 0],
                     ['Prerequisites met', recoveryJob.prerequisitesMet],
                     ['Hardware identity revalidated', recoveryJob.identityRevalidated],
@@ -1059,16 +1060,28 @@ export default function App() {
                     <div className="mt-2 space-y-1 text-xs text-amber-300">
                       {recoveryJob.blockers.length ? recoveryJob.blockers.map((blocker) => <div key={blocker}>{blocker}</div>) : <div className="text-emerald-300">No blockers.</div>}
                     </div>
+                    {!!recoveryJob.highRiskPartitions.length && (
+                      <div className="mt-3 text-[11px] text-amber-200">
+                        High-risk partitions: <span className="font-mono">{recoveryJob.highRiskPartitions.join(', ')}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 <details className="mt-3 rounded border border-slate-800 bg-slate-950/50 p-3">
-                  <summary className="cursor-pointer text-xs text-slate-300">Artifact hashes and normalized partition operations</summary>
+                  <summary className="cursor-pointer text-xs text-slate-300">Artifact/payload hashes and normalized partition operations</summary>
                   <div className="mt-3 space-y-2">
                     {recoveryJob.artifactDigests.map((artifact) => (
                       <div key={artifact.path} className="font-mono text-[10px] text-slate-500">
                         <div>{artifact.role}: {artifact.sha256}</div>
                         <div className="truncate" title={artifact.path}>{artifact.path}</div>
+                      </div>
+                    ))}
+                    {recoveryJob.payloadDigests.map((payload) => (
+                      <div key={'payload-' + payload.path} className="rounded border border-slate-800 bg-black/20 p-2 font-mono text-[10px] text-slate-500">
+                        <div className="text-cyan-400">payload: {payload.sha256}</div>
+                        <div className="mt-1">{formatBytes(payload.size)}</div>
+                        <div className="truncate" title={payload.path}>{payload.path}</div>
                       </div>
                     ))}
                     <div className="mt-3 max-h-48 overflow-auto rounded border border-slate-800">

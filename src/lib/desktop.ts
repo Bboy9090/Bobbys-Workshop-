@@ -756,7 +756,11 @@ export type RecoveryJob = {
     deviceAddress?: number | null;
   };
   artifactDigests: RecoveryArtifactDigest[];
+  payloadDigests: RecoveryArtifactDigest[];
   operations: RecoveryPartitionOperation[];
+  integrityChecksPassed: boolean;
+  integrityFindings: string[];
+  highRiskPartitions: string[];
   destructive: boolean;
   requiresExplicitApproval: boolean;
   prerequisitesMet: boolean;

@@ -66,7 +66,11 @@ pub struct RecoveryJob {
     pub protocol: String,
     pub identity: DeviceIdentitySnapshot,
     pub artifact_digests: Vec<ArtifactDigest>,
+    pub payload_digests: Vec<ArtifactDigest>,
     pub operations: Vec<PartitionOperation>,
+    pub integrity_checks_passed: bool,
+    pub integrity_findings: Vec<String>,
+    pub high_risk_partitions: Vec<String>,
     pub destructive: bool,
     pub requires_explicit_approval: bool,
     pub prerequisites_met: bool,
@@ -283,6 +287,121 @@ pub fn parse_mtk_scatter(path: &Path) -> Result<Vec<PartitionOperation>, Recover
     Ok(out)
 }
 
+fn resolve_payload_path(layout_path: &Path, filename: &str) -> Result<PathBuf, RecoveryJobError> {
+    if !safe_relative_path(filename) {
+        return Err(RecoveryJobError::UnsafePath(filename.to_string()));
+    }
+    let base = layout_path.parent().unwrap_or_else(|| Path::new("."));
+    let candidate = base.join(filename);
+    if !candidate.is_file() {
+        return Err(RecoveryJobError::Io {
+            path: candidate.display().to_string(),
+            message: "referenced recovery payload does not exist as a regular file".to_string(),
+        });
+    }
+    Ok(candidate)
+}
+
+fn same_storage_domain(a: &PartitionOperation, b: &PartitionOperation) -> bool {
+    match (a.physical_partition, b.physical_partition) {
+        (Some(x), Some(y)) => x == y,
+        (None, None) => a.region == b.region,
+        _ => false,
+    }
+}
+
+fn overlapping_operation_pairs(operations: &[PartitionOperation]) -> Vec<String> {
+    let mut issues = Vec::new();
+    for (i, a) in operations.iter().enumerate() {
+        let (Some(a_start), Some(a_len)) = (a.start, a.length) else {
+            continue;
+        };
+        let Some(a_end) = a_start.checked_add(a_len) else {
+            issues.push(format!("operation {} range overflows u64", a.filename));
+            continue;
+        };
+        for b in operations.iter().skip(i + 1) {
+            if !same_storage_domain(a, b) {
+                continue;
+            }
+            let (Some(b_start), Some(b_len)) = (b.start, b.length) else {
+                continue;
+            };
+            let Some(b_end) = b_start.checked_add(b_len) else {
+                issues.push(format!("operation {} range overflows u64", b.filename));
+                continue;
+            };
+            if a_start < b_end && b_start < a_end {
+                issues.push(format!(
+                    "overlapping recovery ranges: {} [{:#x},{:#x}) and {} [{:#x},{:#x})",
+                    a.filename, a_start, a_end, b.filename, b_start, b_end
+                ));
+            }
+        }
+    }
+    issues
+}
+
+fn collect_high_risk_partitions(operations: &[PartitionOperation]) -> Vec<String> {
+    let high_risk = [
+        "xbl",
+        "xbl_config",
+        "abl",
+        "sbl1",
+        "tz",
+        "hyp",
+        "rpm",
+        "devcfg",
+        "uefisecapp",
+        "bootloader",
+        "lk",
+        "lk2",
+        "preloader",
+        "pgpt",
+        "gpt",
+        "persist",
+        "modem",
+        "modemst1",
+        "modemst2",
+        "fsg",
+        "fsc",
+        "efs",
+    ];
+    let mut out = Vec::new();
+    for op in operations {
+        let Some(name) = op.partition_name.as_ref() else {
+            continue;
+        };
+        if high_risk.iter().any(|risk| name.eq_ignore_ascii_case(risk))
+            && !out
+                .iter()
+                .any(|seen: &String| seen.eq_ignore_ascii_case(name))
+        {
+            out.push(name.clone());
+        }
+    }
+    out
+}
+
+fn hash_referenced_payloads(
+    layout_path: &Path,
+    operations: &[PartitionOperation],
+    seen: &mut BTreeMap<String, ArtifactDigest>,
+) -> Result<(), RecoveryJobError> {
+    for op in operations {
+        let payload = resolve_payload_path(layout_path, &op.filename)?;
+        let digest = hash_artifact(&payload, "recovery-payload")?;
+        if digest.size == 0 {
+            return Err(RecoveryJobError::InvalidLayout {
+                path: payload.display().to_string(),
+                message: "referenced recovery payload is empty".to_string(),
+            });
+        }
+        seen.entry(payload.display().to_string()).or_insert(digest);
+    }
+    Ok(())
+}
+
 pub fn identity_from_candidate(
     candidate: &RecoveryCandidate,
     transport: Option<&TransportDevice>,
@@ -318,20 +437,31 @@ pub fn build_job(
     }
 
     let mut artifact_digests = Vec::new();
+    let mut payload_digest_map: BTreeMap<String, ArtifactDigest> = BTreeMap::new();
     let mut operations = Vec::new();
     for artifact in &plan.artifacts {
         let path = PathBuf::from(&artifact.path);
         artifact_digests.push(hash_artifact(&path, &artifact.role)?);
         match (plan.workflow, artifact.role.as_str()) {
             (RecoveryKind::QualcommEdl, "rawprogram") => {
-                operations.extend(parse_qualcomm_rawprogram(&path)?)
+                let parsed = parse_qualcomm_rawprogram(&path)?;
+                hash_referenced_payloads(&path, &parsed, &mut payload_digest_map)?;
+                operations.extend(parsed);
             }
             (RecoveryKind::MediatekDownload, "scatter") => {
-                operations.extend(parse_mtk_scatter(&path)?)
+                let parsed = parse_mtk_scatter(&path)?;
+                hash_referenced_payloads(&path, &parsed, &mut payload_digest_map)?;
+                operations.extend(parsed);
             }
             _ => {}
         }
     }
+    let payload_digests = payload_digest_map.into_values().collect::<Vec<_>>();
+    let overlap_issues = overlapping_operation_pairs(&operations);
+    let integrity_findings = overlap_issues.clone();
+    let high_risk_partitions = collect_high_risk_partitions(&operations);
+    let integrity_checks_passed =
+        !operations.is_empty() && !payload_digests.is_empty() && overlap_issues.is_empty();
 
     let mut blockers = Vec::new();
     blockers.push(
@@ -343,6 +473,13 @@ pub fn build_job(
             "No normalized partition operations were produced from the selected recovery layout."
                 .to_string(),
         );
+    }
+    blockers.extend(overlap_issues);
+    if !high_risk_partitions.is_empty() {
+        blockers.push(format!(
+            "High-risk partitions require elevated explicit approval and designated-device evidence: {}",
+            high_risk_partitions.join(", ")
+        ));
     }
 
     Ok(RecoveryJob {
@@ -358,7 +495,11 @@ pub fn build_job(
             device_address: None,
         },
         artifact_digests,
+        payload_digests,
         operations,
+        integrity_checks_passed,
+        integrity_findings,
+        high_risk_partitions,
         destructive: plan.destructive,
         requires_explicit_approval: plan.requires_explicit_approval,
         prerequisites_met: plan.prerequisites_met,
@@ -408,6 +549,52 @@ mod tests {
         assert_eq!(ops[0].length, Some(0x40000));
     }
 
+    #[test]
+    fn hashes_referenced_payloads_and_rejects_missing_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = dir.path().join("rawprogram0.xml");
+        std::fs::write(
+            &layout,
+            r#"<data><program filename="boot.img" label="boot" num_partition_sectors="8" start_sector="0" physical_partition_number="0" /></data>"#,
+        ).unwrap();
+        let ops = parse_qualcomm_rawprogram(&layout).unwrap();
+        let mut seen = BTreeMap::new();
+        assert!(hash_referenced_payloads(&layout, &ops, &mut seen).is_err());
+
+        std::fs::write(dir.path().join("boot.img"), vec![0x5au8; 1024]).unwrap();
+        hash_referenced_payloads(&layout, &ops, &mut seen).unwrap();
+        assert_eq!(seen.len(), 1);
+        let digest = seen.values().next().unwrap();
+        assert_eq!(digest.size, 1024);
+        assert_eq!(digest.sha256.len(), 64);
+    }
+
+    #[test]
+    fn detects_overlapping_partition_ranges() {
+        let ops = vec![
+            PartitionOperation {
+                partition_name: Some("a".into()),
+                filename: "a.bin".into(),
+                start: Some(0x1000),
+                length: Some(0x1000),
+                physical_partition: Some(0),
+                region: None,
+                operation: "program".into(),
+            },
+            PartitionOperation {
+                partition_name: Some("b".into()),
+                filename: "b.bin".into(),
+                start: Some(0x1800),
+                length: Some(0x1000),
+                physical_partition: Some(0),
+                region: None,
+                operation: "program".into(),
+            },
+        ];
+        let issues = overlapping_operation_pairs(&ops);
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].contains("overlapping recovery ranges"));
+    }
 
     #[test]
     fn identity_revalidation_never_unlocks_unqualified_executor() {
@@ -424,6 +611,7 @@ mod tests {
                 device_address: None,
             },
             artifact_digests: vec![],
+            payload_digests: vec![],
             operations: vec![PartitionOperation {
                 partition_name: Some("boot".into()),
                 filename: "boot.img".into(),
@@ -433,6 +621,9 @@ mod tests {
                 region: None,
                 operation: "program".into(),
             }],
+            integrity_checks_passed: true,
+            integrity_findings: vec![],
+            high_risk_partitions: vec![],
             destructive: true,
             requires_explicit_approval: true,
             prerequisites_met: true,
@@ -504,5 +695,32 @@ mod tests {
             parse_qualcomm_rawprogram(&p),
             Err(RecoveryJobError::UnsafePath(_))
         ));
+    }
+    #[test]
+    fn flags_high_risk_partitions() {
+        let ops = vec![
+            PartitionOperation {
+                partition_name: Some("preloader".into()),
+                filename: "preloader.bin".into(),
+                start: Some(0),
+                length: Some(4096),
+                physical_partition: None,
+                region: Some("EMMC_BOOT_1".into()),
+                operation: "download".into(),
+            },
+            PartitionOperation {
+                partition_name: Some("system_a".into()),
+                filename: "system.img".into(),
+                start: Some(8192),
+                length: Some(4096),
+                physical_partition: None,
+                region: Some("EMMC_USER".into()),
+                operation: "download".into(),
+            },
+        ];
+        assert_eq!(
+            collect_high_risk_partitions(&ops),
+            vec!["preloader".to_string()]
+        );
     }
 }
