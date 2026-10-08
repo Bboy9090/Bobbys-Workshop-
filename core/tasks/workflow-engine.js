@@ -147,13 +147,31 @@ export class WorkflowEngine {
 
     const workflow = workflowResult.workflow;
     
-    // Check authorization if required
-    if (workflow.requires_authorization && !authorization) {
-      return {
-        success: false,
-        error: 'Authorization required',
-        authorizationPrompt: workflow.authorization_prompt
-      };
+    // Enforce explicit authorization and device identity before sensitive work.
+    const sensitiveWorkflow = workflow.requires_authorization ||
+      workflow.risk_level === 'high' ||
+      workflow.risk_level === 'destructive';
+    if (sensitiveWorkflow) {
+      if (!authorization || authorization.confirmed !== true) {
+        return {
+          success: false,
+          error: 'Explicit authorization confirmation required',
+          authorizationPrompt: workflow.authorization_prompt,
+          legalNotice: workflow.legal_notice
+        };
+      }
+      if (!deviceSerial) {
+        return {
+          success: false,
+          error: 'Device identity is required before sensitive workflow execution'
+        };
+      }
+      if (authorization.deviceSerial && authorization.deviceSerial !== deviceSerial) {
+        return {
+          success: false,
+          error: 'Authorized device identity does not match selected device'
+        };
+      }
     }
 
     // Log workflow start
@@ -358,6 +376,20 @@ export class WorkflowEngine {
   async executeCommand(step, context) {
     const { deviceSerial, workflow } = context;
     const command = step.action;
+
+    if (!command || step.platform_specific || step.mode_specific) {
+      return {
+        success: false,
+        error: 'Command requires a resolved platform-specific or mode-specific dispatch before execution'
+      };
+    }
+
+    if (!['android', 'ios'].includes(workflow.platform)) {
+      return {
+        success: false,
+        error: `Unsupported command platform: ${workflow.platform}`
+      };
+    }
 
     let result;
 

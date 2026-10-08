@@ -8,6 +8,7 @@ import QualificationDossier from './components/QualificationDossier';
 import {
   chooseDownloadDestination,
   chooseUploadSource,
+  frontendBackendHandshake,
   diagnosePhone,
   getAdbBatteryInfo,
   getAdbDeviceInfo,
@@ -36,6 +37,7 @@ import {
   runAdbPackageAction,
   startWorkflowJob,
   type AdbDeviceRecord,
+  type FrontendBackendHandshake,
   type MtpBrowserObject,
   type MtpStatus,
   type MtpTransferResult,
@@ -80,6 +82,7 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [transferBusy, setTransferBusy] = useState(false);
   const [nativeError, setNativeError] = useState<string | null>(null);
+  const [handshake, setHandshake] = useState<FrontendBackendHandshake | null>(null);
   const [lastTransfer, setLastTransfer] = useState<MtpTransferResult | null>(null);
   const [diagnostic, setDiagnostic] = useState<PhoneDiagnosticReport | null>(null);
   const [diagnosing, setDiagnosing] = useState(false);
@@ -118,6 +121,8 @@ export default function App() {
     setNativeError(null);
 
     try {
+      const hello = await frontendBackendHandshake();
+      setHandshake(hello);
       const devices = await getNativeUsbDevices();
       setUsbDevices(devices);
 
@@ -527,6 +532,9 @@ export default function App() {
         <div className="flex items-center gap-3">
           <span className={`text-xs ${nativeRuntime ? 'text-emerald-400' : 'text-amber-300'}`}>
             {nativeRuntime ? 'Native desktop core' : 'Browser preview'}
+          </span>
+          <span className={`text-xs ${handshake?.status === 'ready' ? 'text-emerald-300' : 'text-amber-300'}`}>
+            {handshake?.status === 'ready' ? `Handshake · ${handshake.correlation_id}` : 'Handshake pending'}
           </span>
           {transferBusy && <span className="text-xs text-cyan-300">Transfer running…</span>}
           <button

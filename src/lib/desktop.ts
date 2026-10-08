@@ -46,6 +46,19 @@ function isTauriRuntime(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
+export type FrontendBackendHandshake = {
+  protocol: string;
+  backend: string;
+  status: 'ready' | string;
+  greeting: string;
+  correlation_id: string;
+};
+
+export async function frontendBackendHandshake(): Promise<FrontendBackendHandshake | null> {
+  if (!isTauriRuntime()) return null;
+  return invoke<FrontendBackendHandshake>('frontend_backend_handshake');
+}
+
 export async function getNativeUsbDevices(): Promise<UsbDeviceRecord[]> {
   if (!isTauriRuntime()) return [];
   return invoke<UsbDeviceRecord[]>('bootforgeusb_scan');
