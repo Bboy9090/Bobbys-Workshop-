@@ -2137,6 +2137,43 @@ fn consume_qualification_grant(
 }
 
 #[cfg(feature = "qualified-flash")]
+fn audit_qualified_flash_event(
+    config: &FlashJobConfig,
+    job_id: &str,
+    action: &str,
+    outcome: &str,
+    message: impl Into<String>,
+    mut evidence: Vec<String>,
+) {
+    evidence.push(format!("job-id:{job_id}"));
+    evidence.push(format!(
+        "qualification-status:{}",
+        config.qualificationGrant.qualificationStatus
+    ));
+    evidence.push(format!(
+        "dossier-fingerprint:{}",
+        config.qualificationGrant.dossierFingerprint
+    ));
+    evidence.push(format!(
+        "recovery-job-fingerprint:{}",
+        config.qualificationGrant.recoveryJobFingerprint
+    ));
+    evidence.push(format!(
+        "executor-build-fingerprint:{}",
+        config.qualificationGrant.executorBuildFingerprint
+    ));
+    let _ = crate::audit::record(
+        "Recovery",
+        action,
+        "destructive",
+        outcome,
+        Some(config.deviceSerial.clone()),
+        message.into(),
+        evidence,
+    );
+}
+
+#[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config: FlashJobConfig) -> Result<FlashStartResponse, String> {
     if config.flashMethod != "fastboot" {
@@ -2233,6 +2270,28 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
         jobs.insert(id.clone(), runtime);
     }
 
+    audit_qualified_flash_event(
+        &config,
+        &id,
+        "qualified-flash-job-accepted",
+        "accepted",
+        "Qualified destructive job accepted after all authority, identity, image, and replay checks.",
+        vec![
+            format!(
+                "partitions:{}",
+                config
+                    .partitions
+                    .iter()
+                    .map(|p| format!("{}:{}", p.name, p.expectedSha256))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+            format!("wipe-userdata:{}", config.wipeUserData),
+            format!("auto-reboot:{}", config.autoReboot),
+            format!("post-write-verification:{}", config.verifyAfterFlash),
+        ],
+    );
+
     emit_flash_update(
         &app_handle,
         &id,
@@ -2266,6 +2325,16 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                 "status",
                 serde_json::json!({ "status": status, "message": step }),
             );
+            if matches!(status, "completed" | "failed" | "cancelled") {
+                audit_qualified_flash_event(
+                    &config,
+                    &id_for_thread,
+                    "qualified-flash-job-terminal",
+                    status,
+                    format!("Qualified destructive job reached terminal state: {step}"),
+                    vec![format!("terminal-step:{step}")],
+                );
+            }
         };
 
         let push_log = |line: &str| {
@@ -2365,6 +2434,14 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                         );
                         return;
                     }
+                    audit_qualified_flash_event(
+                        &config,
+                        &id_for_thread,
+                        "qualified-flash-userdata-wiped",
+                        "success",
+                        "Authorized userdata wipe completed successfully.",
+                        vec![],
+                    );
                 }
                 Err(e) => {
                     set_job_status("failed", "Wipe failed");
@@ -2455,6 +2532,19 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                 }
             }
 
+            audit_qualified_flash_event(
+                &config,
+                &id_for_thread,
+                "qualified-flash-partition-written",
+                "success",
+                format!("Partition {} was written by fastboot.", p.name),
+                vec![
+                    format!("partition:{}", p.name),
+                    format!("image-sha256:{}", p.expectedSha256),
+                    format!("image-size:{}", p.size),
+                ],
+            );
+
             if config.verifyAfterFlash {
                 set_job_status("running", &format!("Verifying target after {}", p.name));
                 match verify_fastboot_target_after_write(&config.deviceSerial) {
@@ -2463,6 +2553,17 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                             "[tauri-fastboot] post-write target verification passed for {}",
                             p.name
                         ));
+                        audit_qualified_flash_event(
+                            &config,
+                            &id_for_thread,
+                            "qualified-flash-post-write-target-verified",
+                            "success",
+                            format!(
+                                "Exact fastboot target remained responsive after writing {}.",
+                                p.name
+                            ),
+                            vec![format!("partition:{}", p.name)],
+                        );
                     }
                     Err(err) => {
                         push_log(&format!(
@@ -2497,15 +2598,38 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
             {
                 cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
             }
-            let _ = cmd.output().map(|out| {
-                let combined = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
-                for line in combined.lines() {
-                    let line = line.trim();
-                    if !line.is_empty() {
-                        push_log(line);
+            match cmd.output() {
+                Ok(out) => {
+                    let combined = format!(
+                        "{}{}",
+                        String::from_utf8_lossy(&out.stdout),
+                        String::from_utf8_lossy(&out.stderr)
+                    );
+                    for line in combined.lines() {
+                        let line = line.trim();
+                        if !line.is_empty() {
+                            push_log(line);
+                        }
                     }
+                    if !out.status.success() {
+                        set_job_status("failed", "Authorized reboot command failed");
+                        return;
+                    }
+                    audit_qualified_flash_event(
+                        &config,
+                        &id_for_thread,
+                        "qualified-flash-reboot-issued",
+                        "success",
+                        "Authorized fastboot reboot completed successfully.",
+                        vec![],
+                    );
                 }
-            });
+                Err(err) => {
+                    push_log(&format!("[tauri-fastboot] reboot error: {err}"));
+                    set_job_status("failed", "Authorized reboot command failed");
+                    return;
+                }
+            }
             completed_steps += 1;
             complete_step(completed_steps, total_steps_local);
         }
