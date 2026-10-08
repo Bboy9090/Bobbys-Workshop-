@@ -3,10 +3,12 @@ import {
   exportQualificationDossier,
   getQualificationBuildIdentity,
   getWorkstationReadiness,
+  reviewQualificationDossier,
   listEdlProgrammers,
   scanTransportDevices,
   type EdlProgrammerRecord,
   type QualificationBuildIdentity,
+  type QualificationDossierReview,
   type QualificationRecoveryIdentity,
   type TransportDevice,
   type WorkstationReadiness,
@@ -29,6 +31,7 @@ export default function QualificationDossier({
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [savedPath, setSavedPath] = useState<string | null>(null);
+  const [review, setReview] = useState<QualificationDossierReview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const selected = useMemo(
@@ -95,6 +98,20 @@ export default function QualificationDossier({
         operatorNotes: notes.trim(),
       });
       if (path) setSavedPath(path);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+
+  const reviewDossier = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await reviewQualificationDossier(recoveryJobFingerprint);
+      if (result) setReview(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -240,6 +257,14 @@ export default function QualificationDossier({
         </button>
         <button
           type="button"
+          onClick={() => void reviewDossier()}
+          disabled={busy || !recoveryJobFingerprint}
+          className="rounded border border-cyan-800 px-3 py-2 text-xs text-cyan-300 disabled:opacity-40 hover:bg-cyan-950/40"
+        >
+          Review saved dossier
+        </button>
+        <button
+          type="button"
           onClick={() => void refresh()}
           disabled={busy}
           className="rounded border border-slate-700 px-3 py-2 text-xs text-slate-300 disabled:opacity-40 hover:bg-slate-900"
@@ -247,6 +272,30 @@ export default function QualificationDossier({
           Refresh evidence
         </button>
       </div>
+
+      {review && (
+        <div className={review.safeToReview
+          ? 'mt-3 rounded border border-emerald-900/60 bg-emerald-950/20 p-3'
+          : 'mt-3 rounded border border-rose-900/60 bg-rose-950/20 p-3'}>
+          <div className={review.safeToReview ? 'text-xs font-semibold text-emerald-300' : 'text-xs font-semibold text-rose-300'}>
+            {review.safeToReview ? 'DOSSIER VERIFIED — safe for human review only' : 'DOSSIER BLOCKED'}
+          </div>
+          <div className="mt-2 grid gap-1 text-[10px] text-slate-400 sm:grid-cols-2">
+            <div>schema: {review.schemaValid ? 'PASS' : 'BLOCK'}</div>
+            <div>dossier hash: {review.dossierFingerprintValid ? 'PASS' : 'BLOCK'}</div>
+            <div>job fingerprint: {review.recoveryJobMatchesExpected ? 'MATCH' : 'MISMATCH'}</div>
+            <div>executor build: {review.executorBuildMatchesCurrent ? 'MATCH' : 'MISMATCH'}</div>
+          </div>
+          {!!review.blockers.length && (
+            <div className="mt-2 space-y-1 text-[11px] text-rose-300">
+              {review.blockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
+            </div>
+          )}
+          <div className="mt-2 text-[10px] text-slate-600">
+            Review never qualifies or enables an executor.
+          </div>
+        </div>
+      )}
 
       {savedPath && (
         <div className="mt-3 rounded border border-emerald-900/60 bg-emerald-950/20 p-3 text-xs text-emerald-300">

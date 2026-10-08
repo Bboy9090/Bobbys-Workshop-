@@ -61,6 +61,29 @@ struct FlashPartition {
     name: String,
     imagePath: String,
     size: u64,
+    expectedSha256: String,
+}
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct QualifiedFlashPartitionGrant {
+    name: String,
+    imageSha256: String,
+}
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct QualifiedFlashGrant {
+    schema: String,
+    qualificationStatus: String,
+    executorQualified: bool,
+    deviceSerial: String,
+    executorBuildFingerprint: String,
+    recoveryJobFingerprint: String,
+    approvedPartitions: Vec<QualifiedFlashPartitionGrant>,
+    wipeUserDataAllowed: bool,
+    autoRebootAllowed: bool,
+    expiresAtUnixSeconds: u64,
 }
 
 #[cfg(feature = "qualified-flash")]
@@ -73,6 +96,7 @@ struct FlashJobConfig {
     verifyAfterFlash: bool,
     autoReboot: bool,
     wipeUserData: bool,
+    qualificationGrant: QualifiedFlashGrant,
 }
 
 #[cfg(feature = "qualified-flash")]
@@ -871,6 +895,175 @@ fn bootforge_qualification_build_identity() -> QualificationBuildIdentity {
     qualification_build_identity_snapshot()
 }
 
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationDossierReview {
+    path: String,
+    schema_valid: bool,
+    dossier_fingerprint_valid: bool,
+    recovery_job_fingerprint_valid: bool,
+    recovery_job_matches_expected: bool,
+    executor_build_matches_current: bool,
+    binding_ready_claimed: bool,
+    qualification_status_pending: bool,
+    executor_qualified_claimed: bool,
+    execution_enabled_claimed: bool,
+    safe_to_review: bool,
+    blockers: Vec<String>,
+    dossier_fingerprint: Option<String>,
+    recovery_job_fingerprint: Option<String>,
+    executor_build_fingerprint: Option<String>,
+}
+
+#[tauri::command]
+fn bootforge_qualification_review(
+    path: String,
+    expected_recovery_job_fingerprint: Option<String>,
+) -> Result<QualificationDossierReview, String> {
+    let path_buf = std::path::PathBuf::from(&path);
+    if !path_buf.is_file() {
+        return Err(format!("Qualification dossier not found: {}", path_buf.display()));
+    }
+    let bytes = std::fs::read(&path_buf)
+        .map_err(|e| format!("Could not read qualification dossier {}: {e}", path_buf.display()))?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Qualification dossier is not valid JSON: {e}"))?;
+
+    let schema_valid = value
+        .get("schema")
+        .and_then(|v| v.as_str())
+        == Some("com.bobbyblanco.bobfwtools.designated-device-qualification.v1");
+    let binding_material = value
+        .get("bindingMaterial")
+        .cloned()
+        .ok_or_else(|| "Qualification dossier is missing bindingMaterial".to_string())?;
+    let binding_bytes = serde_json::to_vec(&binding_material)
+        .map_err(|e| format!("Could not canonicalize qualification binding material: {e}"))?;
+    use sha2::Digest;
+    let recomputed_dossier_fingerprint =
+        format!("{:x}", sha2::Sha256::digest(&binding_bytes));
+    let dossier_fingerprint = value
+        .get("dossierFingerprint")
+        .and_then(|v| v.as_str())
+        .map(str::to_ascii_lowercase);
+    let dossier_fingerprint_valid = dossier_fingerprint
+        .as_deref()
+        .map(|v| v == recomputed_dossier_fingerprint)
+        .unwrap_or(false);
+
+    let recovery_job_fingerprint = value
+        .get("recoveryJobFingerprint")
+        .and_then(|v| v.as_str())
+        .map(str::to_ascii_lowercase);
+    let recovery_job_fingerprint_valid = recovery_job_fingerprint
+        .as_deref()
+        .map(valid_sha256_hex)
+        .unwrap_or(false);
+
+    let expected = expected_recovery_job_fingerprint
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    let recovery_job_matches_expected = !expected.is_empty()
+        && recovery_job_fingerprint
+            .as_deref()
+            .map(|actual| actual == expected)
+            .unwrap_or(false);
+
+    let executor_build_fingerprint = value
+        .get("executorBuild")
+        .and_then(|v| v.get("executorBuildFingerprint"))
+        .and_then(|v| v.as_str())
+        .map(str::to_ascii_lowercase);
+    let current_build = qualification_build_identity_snapshot();
+    let executor_build_matches_current = executor_build_fingerprint
+        .as_deref()
+        .map(|actual| actual == current_build.executor_build_fingerprint)
+        .unwrap_or(false);
+
+    let binding_ready_claimed = value
+        .get("qualificationBindingReady")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let qualification_status_pending = value
+        .get("qualificationStatus")
+        .and_then(|v| v.as_str())
+        == Some("pending-physical-review");
+    let executor_qualified_claimed = value
+        .get("executorQualified")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let execution_enabled_claimed = value
+        .get("executionEnabledByThisDossier")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let mut blockers = Vec::new();
+    if !schema_valid {
+        blockers.push("Qualification dossier schema is not recognized".to_string());
+    }
+    if !dossier_fingerprint_valid {
+        blockers.push("Dossier fingerprint does not match binding material".to_string());
+    }
+    if !recovery_job_fingerprint_valid {
+        blockers.push("Recovery-job fingerprint is missing or malformed".to_string());
+    }
+    if !recovery_job_matches_expected {
+        blockers.push("Dossier does not match the currently prepared recovery job".to_string());
+    }
+    if !executor_build_matches_current {
+        blockers.push("Dossier was produced by a different executor build".to_string());
+    }
+    if !binding_ready_claimed {
+        blockers.push("Dossier did not claim qualification-binding readiness".to_string());
+    }
+    if !qualification_status_pending {
+        blockers.push("Qualification status is not pending-physical-review".to_string());
+    }
+    if executor_qualified_claimed {
+        blockers.push("Imported dossier improperly claims executor qualification".to_string());
+    }
+    if execution_enabled_claimed {
+        blockers.push("Imported dossier improperly claims execution enablement".to_string());
+    }
+
+    let safe_to_review = blockers.is_empty();
+    let _ = crate::audit::record(
+        "Recovery",
+        "review-qualification-dossier",
+        "elevated",
+        if safe_to_review { "reviewable" } else { "blocked" },
+        None,
+        "Qualification dossier reviewed; review never enables an executor.",
+        vec![
+            format!("path:{}", path_buf.display()),
+            format!("safe-to-review:{}", safe_to_review),
+            format!("dossier-fingerprint-valid:{}", dossier_fingerprint_valid),
+            format!("job-match:{}", recovery_job_matches_expected),
+            format!("executor-build-match:{}", executor_build_matches_current),
+        ],
+    );
+
+    Ok(QualificationDossierReview {
+        path: path_buf.display().to_string(),
+        schema_valid,
+        dossier_fingerprint_valid,
+        recovery_job_fingerprint_valid,
+        recovery_job_matches_expected,
+        executor_build_matches_current,
+        binding_ready_claimed,
+        qualification_status_pending,
+        executor_qualified_claimed,
+        execution_enabled_claimed,
+        safe_to_review,
+        blockers,
+        dossier_fingerprint,
+        recovery_job_fingerprint,
+        executor_build_fingerprint,
+    })
+}
+
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct QualificationDossierInput {
@@ -1066,6 +1259,119 @@ fn bootforge_qualification_export(
     Ok(destination.display().to_string())
 }
 
+
+#[cfg(feature = "qualified-flash")]
+fn sha256_file(path: &std::path::Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+
+    let mut file = std::fs::File::open(path)
+        .map_err(|e| format!("Could not open image {}: {e}", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 1024 * 1024];
+    loop {
+        let n = file
+            .read(&mut buf)
+            .map_err(|e| format!("Could not read image {}: {e}", path.display()))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+#[cfg(feature = "qualified-flash")]
+fn exact_fastboot_device_present(serial: &str) -> Result<bool, String> {
+    let output = Command::new("fastboot")
+        .arg("devices")
+        .output()
+        .map_err(|e| format!("Could not enumerate fastboot devices: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "fastboot devices failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout.lines().any(|line| {
+        line.split_whitespace().next() == Some(serial)
+    }))
+}
+
+#[cfg(feature = "qualified-flash")]
+fn validate_qualified_flash_config(config: &FlashJobConfig) -> Result<(), String> {
+    let grant = &config.qualificationGrant;
+    if grant.schema != "com.bobbyblanco.bobfwtools.qualified-flash-grant.v1" {
+        return Err("Qualified flash grant schema is not recognized".to_string());
+    }
+    if grant.qualificationStatus != "approved" || !grant.executorQualified {
+        return Err("Destructive executor is not physically qualified by the supplied grant".to_string());
+    }
+    if grant.deviceSerial != config.deviceSerial {
+        return Err("Qualified flash grant is bound to a different device serial".to_string());
+    }
+    if !valid_sha256_hex(&grant.recoveryJobFingerprint) {
+        return Err("Qualified flash grant recovery-job fingerprint is invalid".to_string());
+    }
+    let build = qualification_build_identity_snapshot();
+    if grant.executorBuildFingerprint != build.executor_build_fingerprint {
+        return Err("Qualified flash grant is bound to a different executor build".to_string());
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+    if grant.expiresAtUnixSeconds <= now {
+        return Err("Qualified flash grant has expired".to_string());
+    }
+    if config.wipeUserData && !grant.wipeUserDataAllowed {
+        return Err("Qualified flash grant does not authorize userdata wipe".to_string());
+    }
+    if config.autoReboot && !grant.autoRebootAllowed {
+        return Err("Qualified flash grant does not authorize automatic reboot".to_string());
+    }
+
+    let allowed_partitions = [
+        "boot", "system", "vendor", "userdata", "cache", "recovery",
+        "bootloader", "radio", "aboot", "vbmeta", "dtbo", "persist",
+    ];
+
+    for partition in &config.partitions {
+        let name = partition.name.trim();
+        if !allowed_partitions.contains(&name) {
+            return Err(format!("Partition '{}' is not approved by the destructive writer allowlist", name));
+        }
+        if !valid_sha256_hex(&partition.expectedSha256) {
+            return Err(format!("Expected SHA-256 is invalid for partition {}", name));
+        }
+        let approved = grant
+            .approvedPartitions
+            .iter()
+            .find(|approved| approved.name == name)
+            .ok_or_else(|| format!("Partition '{}' is not present in the qualification grant", name))?;
+        if !approved.imageSha256.eq_ignore_ascii_case(&partition.expectedSha256) {
+            return Err(format!("Qualification grant hash does not match the requested image for {}", name));
+        }
+        let path = std::path::Path::new(&partition.imagePath);
+        let actual = sha256_file(path)?;
+        if !actual.eq_ignore_ascii_case(&partition.expectedSha256) {
+            return Err(format!("On-disk image hash does not match the qualified hash for {}", name));
+        }
+        let actual_size = std::fs::metadata(path)
+            .map_err(|e| format!("Could not read image metadata for {}: {e}", path.display()))?
+            .len();
+        if partition.size != 0 && partition.size != actual_size {
+            return Err(format!(
+                "Image size mismatch for {}: configured={} actual={}",
+                name, partition.size, actual_size
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config: FlashJobConfig) -> Result<FlashStartResponse, String> {
@@ -1085,12 +1391,12 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
         return Err("At least one partition is required".to_string());
     }
 
-    // Partition name allowlist (standard Android partitions only)
-    let allowed_partitions = [
-        "boot", "system", "vendor", "userdata", "cache", "recovery",
-        "bootloader", "radio", "aboot", "vbmeta", "dtbo", "persist"
-    ];
-    
+    validate_qualified_flash_config(&config)?;
+
+    if !exact_fastboot_device_present(&config.deviceSerial)? {
+        return Err("Qualified target is not the currently connected fastboot device".to_string());
+    }
+
     for p in &config.partitions {
         let partition_name = p.name.trim();
         if partition_name.is_empty() {
@@ -1100,10 +1406,6 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
         if !partition_name.chars().all(|c| c.is_alphanumeric() || c == '.' || c == '-' || c == '_') {
             return Err(format!("Invalid partition name format: {}", partition_name));
         }
-        // Additional check: warn if partition is not in allowlist (but allow it anyway for flexibility)
-        if !allowed_partitions.contains(&partition_name) {
-            eprintln!("WARNING: Partition '{}' is not in the standard allowlist", partition_name);
-        }
         if p.imagePath.trim().is_empty() {
             return Err(format!("imagePath missing for partition {}", p.name));
         }
@@ -1111,6 +1413,10 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
         if !pb.exists() {
             return Err(format!("Image file not found: {}", p.imagePath));
         }
+    }
+
+    if config.verifyAfterFlash {
+        return Err("verifyAfterFlash was requested, but this backend cannot yet prove post-flash content; refusing destructive execution".to_string());
     }
 
     let id = {
@@ -1226,10 +1532,6 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
 
         set_job_status("running", "Preparing");
         push_log("[tauri-fastboot] Starting fastboot flash job");
-        if config.verifyAfterFlash {
-            push_log("[tauri-fastboot] NOTE: verifyAfterFlash is not implemented for fastboot backend");
-        }
-
         let mut completed_steps: u64 = 0;
         let total_steps_local = total_steps;
 
@@ -1240,6 +1542,18 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                 return;
             }
 
+            match exact_fastboot_device_present(&config.deviceSerial) {
+                Ok(true) => {}
+                Ok(false) => {
+                    set_job_status("failed", "Device identity changed before wipe");
+                    return;
+                }
+                Err(err) => {
+                    push_log(&format!("[tauri-fastboot] identity revalidation error: {err}"));
+                    set_job_status("failed", "Could not revalidate device before wipe");
+                    return;
+                }
+            }
             set_job_status("running", "Wiping userdata (-w)");
             push_log("[tauri-fastboot] fastboot -w");
             let mut cmd = Command::new("fastboot");
@@ -1290,6 +1604,30 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                 return;
             }
 
+            match exact_fastboot_device_present(&config.deviceSerial) {
+                Ok(true) => {}
+                Ok(false) => {
+                    set_job_status("failed", &format!("Device identity changed before flashing {}", p.name));
+                    return;
+                }
+                Err(err) => {
+                    push_log(&format!("[tauri-fastboot] identity revalidation error: {err}"));
+                    set_job_status("failed", &format!("Could not revalidate device before flashing {}", p.name));
+                    return;
+                }
+            }
+            let current_hash = match sha256_file(std::path::Path::new(&p.imagePath)) {
+                Ok(hash) => hash,
+                Err(err) => {
+                    push_log(&format!("[tauri-fastboot] image revalidation error: {err}"));
+                    set_job_status("failed", &format!("Could not re-hash {}", p.name));
+                    return;
+                }
+            };
+            if !current_hash.eq_ignore_ascii_case(&p.expectedSha256) {
+                set_job_status("failed", &format!("Image changed before flashing {}", p.name));
+                return;
+            }
             set_job_status("running", &format!("Flashing {}", p.name));
             push_log(&format!("[tauri-fastboot] fastboot flash {} {}", p.name, p.imagePath));
 
@@ -1926,6 +2264,137 @@ fn stop_backend_server(app_handle: &AppHandle) {
     }
 }
 
+
+#[cfg(all(test, feature = "qualified-flash"))]
+mod qualified_flash_grant_tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+
+    fn test_image(name: &str, bytes: &[u8]) -> (std::path::PathBuf, String) {
+        let path = std::env::temp_dir().join(format!(
+            "bobfwtools-qualified-flash-{}-{}-{}.img",
+            name,
+            std::process::id(),
+            now_ms()
+        ));
+        std::fs::write(&path, bytes).unwrap();
+        let hash = format!("{:x}", Sha256::digest(bytes));
+        (path, hash)
+    }
+
+    fn valid_config() -> FlashJobConfig {
+        let (path, hash) = test_image("boot", b"qualified-image");
+        let build = qualification_build_identity_snapshot();
+        FlashJobConfig {
+            deviceSerial: "QUALIFIED-DEVICE".into(),
+            deviceBrand: "Test".into(),
+            flashMethod: "fastboot".into(),
+            partitions: vec![FlashPartition {
+                name: "boot".into(),
+                imagePath: path.display().to_string(),
+                size: std::fs::metadata(&path).unwrap().len(),
+                expectedSha256: hash.clone(),
+            }],
+            verifyAfterFlash: false,
+            autoReboot: false,
+            wipeUserData: false,
+            qualificationGrant: QualifiedFlashGrant {
+                schema: "com.bobbyblanco.bobfwtools.qualified-flash-grant.v1".into(),
+                qualificationStatus: "approved".into(),
+                executorQualified: true,
+                deviceSerial: "QUALIFIED-DEVICE".into(),
+                executorBuildFingerprint: build.executor_build_fingerprint,
+                recoveryJobFingerprint: "a".repeat(64),
+                approvedPartitions: vec![QualifiedFlashPartitionGrant {
+                    name: "boot".into(),
+                    imageSha256: hash,
+                }],
+                wipeUserDataAllowed: false,
+                autoRebootAllowed: false,
+                expiresAtUnixSeconds: u64::MAX,
+            },
+        }
+    }
+
+    #[test]
+    fn valid_grant_accepts_matching_hash_and_build() {
+        let config = valid_config();
+        assert!(validate_qualified_flash_config(&config).is_ok());
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn grant_rejects_wrong_device() {
+        let mut config = valid_config();
+        config.qualificationGrant.deviceSerial = "OTHER".into();
+        assert!(validate_qualified_flash_config(&config)
+            .unwrap_err()
+            .contains("different device serial"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn grant_rejects_expired_authority() {
+        let mut config = valid_config();
+        config.qualificationGrant.expiresAtUnixSeconds = 1;
+        assert!(validate_qualified_flash_config(&config)
+            .unwrap_err()
+            .contains("expired"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn grant_rejects_unapproved_partition() {
+        let mut config = valid_config();
+        config.partitions[0].name = "super_secret".into();
+        config.qualificationGrant.approvedPartitions[0].name = "super_secret".into();
+        assert!(validate_qualified_flash_config(&config)
+            .unwrap_err()
+            .contains("not approved by the destructive writer allowlist"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn grant_rejects_image_hash_drift() {
+        let config = valid_config();
+        std::fs::write(&config.partitions[0].imagePath, b"tampered").unwrap();
+        assert!(validate_qualified_flash_config(&config)
+            .unwrap_err()
+            .contains("On-disk image hash does not match"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn grant_rejects_unapproved_wipe() {
+        let mut config = valid_config();
+        config.wipeUserData = true;
+        assert!(validate_qualified_flash_config(&config)
+            .unwrap_err()
+            .contains("does not authorize userdata wipe"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn grant_rejects_unapproved_reboot() {
+        let mut config = valid_config();
+        config.autoReboot = true;
+        assert!(validate_qualified_flash_config(&config)
+            .unwrap_err()
+            .contains("does not authorize automatic reboot"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn grant_rejects_different_executor_build() {
+        let mut config = valid_config();
+        config.qualificationGrant.executorBuildFingerprint = "b".repeat(64);
+        assert!(validate_qualified_flash_config(&config)
+            .unwrap_err()
+            .contains("different executor build"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+}
+
 fn main() {
     // Initialize app state
     let app_state = AppState {
@@ -2055,6 +2524,21 @@ bootforgeusb_transport_scan,
             bootforge_recovery_export_receipt,
             bootforge_qualification_export,
             bootforge_qualification_build_identity,
+            bootforge_qualification_review,
+            #[cfg(feature = "qualified-flash")]
+            flash_start,
+            #[cfg(feature = "qualified-flash")]
+            flash_cancel,
+            #[cfg(feature = "qualified-flash")]
+            flash_status,
+            #[cfg(feature = "qualified-flash")]
+            flash_history,
+            #[cfg(feature = "qualified-flash")]
+            flash_active,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_flash_history,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_flash_active,
             mtp_status,
             mtp_list_root,
             mtp_download_file,

@@ -700,6 +700,41 @@ export async function getQualificationBuildIdentity(): Promise<QualificationBuil
   return invoke<QualificationBuildIdentity>('bootforge_qualification_build_identity');
 }
 
+export type QualificationDossierReview = {
+  path: string;
+  schemaValid: boolean;
+  dossierFingerprintValid: boolean;
+  recoveryJobFingerprintValid: boolean;
+  recoveryJobMatchesExpected: boolean;
+  executorBuildMatchesCurrent: boolean;
+  bindingReadyClaimed: boolean;
+  qualificationStatusPending: boolean;
+  executorQualifiedClaimed: boolean;
+  executionEnabledClaimed: boolean;
+  safeToReview: boolean;
+  blockers: string[];
+  dossierFingerprint?: string | null;
+  recoveryJobFingerprint?: string | null;
+  executorBuildFingerprint?: string | null;
+};
+
+export async function reviewQualificationDossier(
+  expectedRecoveryJobFingerprint?: string | null,
+): Promise<QualificationDossierReview | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: 'Review BobFWTools qualification dossier',
+    filters: [{ name: 'JSON qualification dossier', extensions: ['json'] }],
+  });
+  if (!selected || Array.isArray(selected)) return null;
+  return invoke<QualificationDossierReview>('bootforge_qualification_review', {
+    path: selected,
+    expectedRecoveryJobFingerprint: expectedRecoveryJobFingerprint?.trim() || null,
+  });
+}
+
 export type QualificationRecoveryIdentity = {
   deviceUid: string;
   vendorId: number;
