@@ -629,6 +629,20 @@ fn bootforge_recovery_scan() -> Result<Vec<bootforgeusb::recovery::RecoveryCandi
 }
 
 #[tauri::command]
+fn bootforge_recovery_autodiscover(kind: String) -> Result<Vec<String>, String> {
+    let parsed = bootforgeusb::recovery::RecoveryKind::parse(&kind)
+        .map_err(|e| format!("Recovery workflow selection failed: {e}"))?;
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| "Home directory is unavailable for automatic artifact search".to_string())?;
+    let roots = ["Downloads", "Documents", "Desktop", "Projects", "repair-artifacts"]
+        .into_iter()
+        .map(|name| home.join(name))
+        .collect::<Vec<_>>();
+    Ok(bootforgeusb::recovery::discover_recovery_artifacts(parsed, &roots))
+}
+
+#[tauri::command]
 fn bootforge_recovery_plan(kind: String, paths: Vec<String>) -> Result<bootforgeusb::recovery::RecoveryPlan, String> {
     if paths.is_empty() {
         return Err("At least one recovery artifact path is required".to_string());
@@ -3332,6 +3346,7 @@ bootforgeusb_transport_scan,
             bootforge_firmware_inspect,
             bootforge_samsung_plan,
             bootforge_recovery_scan,
+            bootforge_recovery_autodiscover,
             bootforge_recovery_plan,
             bootforge_recovery_prepare,
             bootforge_recovery_revalidate,

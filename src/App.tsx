@@ -28,7 +28,7 @@ import {
   listAdbUserPackages,
   runUsbCableDoctor,
   scanRecoveryCandidates,
-  chooseRecoveryArtifacts,
+  autodiscoverRecoveryArtifacts,
   buildRecoveryPlan,
   prepareRecoveryJob,
   revalidateRecoveryJob,
@@ -454,6 +454,34 @@ export default function App() {
     setRecoveryPlan(null);
     setRecoveryJob(null);
     setRecoveryEvidencePath(null);
+  };
+
+  const autoDiscoverRecoveryArtifacts = async () => {
+    if (recoveryBusy || !nativeRuntime) return;
+    setRecoveryBusy(true);
+    setNativeError(null);
+    try {
+      const paths = await autodiscoverRecoveryArtifacts(recoveryKind);
+      if (!paths.length) {
+        throw new Error(`No safe ${recoveryKind === 'qualcomm-edl' ? 'Qualcomm EDL' : 'MediaTek Download'} artifacts were found in Downloads, Documents, Desktop, Projects, or repair-artifacts.`);
+      }
+      setRecoveryArtifacts(paths);
+      setRecoveryPlan(null);
+      setRecoveryJob(null);
+      setRecoveryEvidencePath(null);
+      const plan = await buildRecoveryPlan(recoveryKind, paths);
+      setRecoveryPlan(plan);
+      const candidate = recoveryCandidates.find((item) => item.workflow === recoveryKind);
+      if (candidate) {
+        const job = await prepareRecoveryJob(candidate, paths);
+        setSelectedRecoveryUid(candidate.deviceUid);
+        setRecoveryJob(job);
+      }
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveryBusy(false);
+    }
   };
 
   const inspectRecoveryPlan = async () => {
@@ -924,11 +952,11 @@ export default function App() {
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => void selectRecoveryArtifacts()}
+                    onClick={() => void autoDiscoverRecoveryArtifacts()}
                     disabled={recoveryBusy || !nativeRuntime}
                     className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
                   >
-                    Choose artifacts
+                    {recoveryBusy ? 'Searching artifacts…' : 'Find artifacts & inspect'}
                   </button>
                   <button
                     type="button"

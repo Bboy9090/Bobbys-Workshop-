@@ -988,6 +988,11 @@ export async function scanRecoveryCandidates(): Promise<RecoveryCandidate[]> {
   return invoke<RecoveryCandidate[]>('bootforge_recovery_scan');
 }
 
+export async function autodiscoverRecoveryArtifacts(kind: RecoveryWorkflow): Promise<string[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<string[]>('bootforge_recovery_autodiscover', { kind });
+}
+
 export async function chooseRecoveryArtifacts(): Promise<string[]> {
   if (!isTauriRuntime()) return [];
   const selected = await open({

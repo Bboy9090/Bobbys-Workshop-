@@ -174,6 +174,64 @@ fn inspect_artifact(kind: RecoveryKind, path: PathBuf) -> Result<RecoveryArtifac
     }
 }
 
+pub fn discover_recovery_artifacts(kind: RecoveryKind, roots: &[PathBuf]) -> Vec<String> {
+    fn visit(kind: RecoveryKind, dir: &Path, depth: usize, found: &mut Vec<String>) {
+        if depth > 4 {
+            return;
+        }
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                visit(kind, &path, depth + 1, found);
+                continue;
+            }
+            let name = path.file_name().and_then(|v| v.to_str()).unwrap_or_default().to_ascii_lowercase();
+            if blocked_name(&path) {
+                continue;
+            }
+            let candidate = match kind {
+                RecoveryKind::QualcommEdl => {
+                    (name.starts_with("rawprogram") && name.ends_with(".xml"))
+                        || (name.starts_with("patch") && name.ends_with(".xml"))
+                        || name.contains("firehose")
+                        || name.contains("prog_emmc")
+                        || name.contains("prog_ufs")
+                        || name.ends_with(".mbn")
+                        || name.ends_with(".elf")
+                }
+                RecoveryKind::MediatekDownload => {
+                    (name.contains("scatter") && name.ends_with(".txt"))
+                        || name.contains("download_agent")
+                        || name.starts_with("da_")
+                        || name == "da.bin"
+                        || name.ends_with(".auth")
+                        || name.contains("auth_sv5")
+                }
+            };
+            if candidate {
+                if let Ok(report) = inspect_artifact(kind, path.clone()) {
+                    if report.structurally_valid {
+                        found.push(path.display().to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    let mut found = Vec::new();
+    for root in roots {
+        if root.is_dir() {
+            visit(kind, root, 0, &mut found);
+        }
+    }
+    found.sort();
+    found.dedup();
+    found
+}
+
 pub fn scan_recovery_candidates(devices: &[TransportDevice]) -> Vec<RecoveryCandidate> {
     devices
         .iter()
