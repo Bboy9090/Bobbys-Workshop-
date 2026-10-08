@@ -137,6 +137,8 @@ describe('Workflow E2E Tests', () => {
       const authorization = {
         userId: 'test_user',
         userInput: 'UNLOCK',
+        confirmed: true,
+        deviceSerial,
         timestamp: Date.now()
       };
 
@@ -207,7 +209,7 @@ describe('Workflow E2E Tests', () => {
 
       // Verify workflow was rejected due to missing authorization
       expect(result.success).toBe(false);
-      expect(result.error).toBe('Authorization required');
+      expect(result.error).toBe('Explicit authorization confirmation required');
       expect(result.authorizationPrompt).toBeDefined();
     });
   });
