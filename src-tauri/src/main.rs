@@ -609,6 +609,9 @@ fn bootforge_recovery_prepare(
 
     let evidence = job.artifact_digests.iter()
         .map(|artifact| format!("{}:{}:{}", artifact.role, artifact.size, artifact.sha256))
+        .chain(std::iter::once(format!("payload-digests:{}", job.payload_digests.len())))
+        .chain(std::iter::once(format!("integrity-checks-passed:{}", job.integrity_checks_passed)))
+        .chain(std::iter::once(format!("high-risk-partitions:{}", job.high_risk_partitions.join(","))))
         .chain(std::iter::once(format!("normalized-operations:{}", job.operations.len())))
         .chain(std::iter::once(format!("prerequisites-met:{}", job.prerequisites_met)))
         .collect::<Vec<_>>();
@@ -694,6 +697,8 @@ fn bootforge_recovery_export_receipt(
 
     let gates = serde_json::json!({
         "artifactsHashed": !job.artifact_digests.is_empty(),
+        "payloadsHashed": !job.payload_digests.is_empty(),
+        "payloadIntegrityPassed": job.integrity_checks_passed,
         "partitionMapNormalized": !job.operations.is_empty(),
         "prerequisitesMet": job.prerequisites_met,
         "hardwareIdentityRevalidated": job.identity_revalidated,
