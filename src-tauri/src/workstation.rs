@@ -92,6 +92,7 @@ fn expected_paths() -> Vec<(&'static str, PathBuf)> {
         ("logs", root.join("logs")),
         ("manifests", root.join("manifests")),
         ("jobs", root.join("jobs")),
+        ("tools", root.join("tools")),
     ]
 }
 
@@ -247,8 +248,17 @@ mod tests {
     fn adb_and_fastboot_have_managed_platform_tools_candidates() {
         let adb = managed_tool_candidates("adb");
         let fastboot = managed_tool_candidates("fastboot");
+        let tools_root = workspace_root().join("tools");
+        assert!(adb.iter().all(|p| p.starts_with(&tools_root)));
+        assert!(fastboot.iter().all(|p| p.starts_with(&tools_root)));
         assert!(adb.iter().any(|p| p.to_string_lossy().contains("platform-tools")));
         assert!(fastboot.iter().any(|p| p.to_string_lossy().contains("platform-tools")));
+    }
+
+    #[test]
+    fn workspace_initialization_contract_includes_managed_tools_directory() {
+        let paths = expected_paths();
+        assert!(paths.iter().any(|(id, path)| *id == "tools" && path == &workspace_root().join("tools")));
     }
 
     #[test]
