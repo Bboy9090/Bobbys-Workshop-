@@ -746,6 +746,7 @@ export type RecoveryPartitionOperation = {
 export type RecoveryJob = {
   workflow: RecoveryWorkflow;
   protocol: string;
+  jobFingerprint: string;
   identity: {
     deviceUid: string;
     vendorId: number;

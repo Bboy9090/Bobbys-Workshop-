@@ -996,6 +996,9 @@ export default function App() {
                   <div>
                     <div className="text-[10px] uppercase tracking-wide text-cyan-700">Audited recovery job</div>
                     <div className="mt-1 font-mono text-sm text-cyan-200">{recoveryJob.protocol}</div>
+                    <div className="mt-1 break-all font-mono text-[10px] text-slate-600" title={recoveryJob.jobFingerprint}>
+                      job {recoveryJob.jobFingerprint}
+                    </div>
                     <div className="mt-1 text-xs text-slate-500">
                       {recoveryJob.operations.length} normalized partition operation(s) · {recoveryJob.artifactDigests.length} layout/service artifact(s) · {recoveryJob.payloadDigests.length} hashed payload(s)
                     </div>

@@ -64,6 +64,7 @@ pub struct PartitionOperation {
 pub struct RecoveryJob {
     pub workflow: RecoveryKind,
     pub protocol: String,
+    pub job_fingerprint: String,
     pub identity: DeviceIdentitySnapshot,
     pub artifact_digests: Vec<ArtifactDigest>,
     pub payload_digests: Vec<ArtifactDigest>,
@@ -402,6 +403,96 @@ fn hash_referenced_payloads(
     Ok(())
 }
 
+
+pub fn recovery_job_fingerprint(job: &RecoveryJob) -> String {
+    fn push_field(hasher: &mut Sha256, key: &str, value: &str) {
+        hasher.update(key.as_bytes());
+        hasher.update(b"=");
+        hasher.update(value.as_bytes());
+        hasher.update(b"
+");
+    }
+
+    let mut hasher = Sha256::new();
+    push_field(&mut hasher, "schema", "bobfwtools-recovery-job-core-v1");
+    push_field(&mut hasher, "workflow", &format!("{:?}", job.workflow));
+    push_field(&mut hasher, "protocol", &job.protocol);
+    push_field(&mut hasher, "device_uid", &job.identity.device_uid);
+    push_field(&mut hasher, "vendor_id", &format!("{:04x}", job.identity.vendor_id));
+    push_field(&mut hasher, "product_id", &format!("{:04x}", job.identity.product_id));
+    push_field(&mut hasher, "mode", &job.identity.mode);
+    push_field(
+        &mut hasher,
+        "serial",
+        job.identity.serial_number.as_deref().unwrap_or("<none>"),
+    );
+    push_field(&mut hasher, "destructive", &job.destructive.to_string());
+    push_field(
+        &mut hasher,
+        "requires_explicit_approval",
+        &job.requires_explicit_approval.to_string(),
+    );
+    push_field(
+        &mut hasher,
+        "prerequisites_met",
+        &job.prerequisites_met.to_string(),
+    );
+    push_field(
+        &mut hasher,
+        "integrity_checks_passed",
+        &job.integrity_checks_passed.to_string(),
+    );
+
+    let mut artifacts = job
+        .artifact_digests
+        .iter()
+        .map(|a| format!("{}|{}|{}|{}", a.role, a.path, a.size, a.sha256))
+        .collect::<Vec<_>>();
+    artifacts.sort();
+    for value in artifacts {
+        push_field(&mut hasher, "artifact", &value);
+    }
+
+    let mut payloads = job
+        .payload_digests
+        .iter()
+        .map(|a| format!("{}|{}|{}|{}", a.role, a.path, a.size, a.sha256))
+        .collect::<Vec<_>>();
+    payloads.sort();
+    for value in payloads {
+        push_field(&mut hasher, "payload", &value);
+    }
+
+    let mut operations = job
+        .operations
+        .iter()
+        .map(|op| {
+            format!(
+                "{}|{}|{:?}|{:?}|{:?}|{:?}|{}",
+                op.partition_name.as_deref().unwrap_or("<none>"),
+                op.filename,
+                op.start,
+                op.length,
+                op.physical_partition,
+                op.region,
+                op.operation
+            )
+        })
+        .collect::<Vec<_>>();
+    operations.sort();
+    for value in operations {
+        push_field(&mut hasher, "operation", &value);
+    }
+
+    let mut high_risk = job.high_risk_partitions.clone();
+    high_risk.sort();
+    for value in high_risk {
+        push_field(&mut hasher, "high_risk_partition", &value);
+    }
+
+    format!("{:x}", hasher.finalize())
+}
+
 pub fn identity_from_candidate(
     candidate: &RecoveryCandidate,
     transport: Option<&TransportDevice>,
@@ -482,9 +573,10 @@ pub fn build_job(
         ));
     }
 
-    Ok(RecoveryJob {
+    let mut job = RecoveryJob {
         workflow: plan.workflow,
         protocol: plan.protocol.clone(),
+        job_fingerprint: String::new(),
         identity: DeviceIdentitySnapshot {
             device_uid: candidate.device_uid.clone(),
             vendor_id: candidate.vendor_id,
@@ -507,7 +599,9 @@ pub fn build_job(
         executor_qualified: false,
         execution_ready: false,
         blockers,
-    })
+    };
+    job.job_fingerprint = recovery_job_fingerprint(&job);
+    Ok(job)
 }
 
 pub fn revalidate_job_identity(
@@ -601,6 +695,7 @@ mod tests {
         let mut job = RecoveryJob {
             workflow: RecoveryKind::QualcommEdl,
             protocol: "qualcomm-sahara-firehose".into(),
+            job_fingerprint: String::new(),
             identity: DeviceIdentitySnapshot {
                 device_uid: "usb:05c6:9008:SERIAL".into(),
                 vendor_id: 0x05c6,
@@ -723,4 +818,62 @@ mod tests {
             vec!["preloader".to_string()]
         );
     }
+    #[test]
+    fn fingerprint_binds_core_job_but_not_live_gate_state() {
+        let mut job = RecoveryJob {
+            workflow: RecoveryKind::QualcommEdl,
+            protocol: "qualcomm-sahara-firehose".into(),
+            job_fingerprint: String::new(),
+            identity: DeviceIdentitySnapshot {
+                device_uid: "usb:05c6:9008:SERIAL".into(),
+                vendor_id: 0x05c6,
+                product_id: 0x9008,
+                mode: "qualcomm-edl".into(),
+                serial_number: Some("SERIAL".into()),
+                bus_number: None,
+                device_address: None,
+            },
+            artifact_digests: vec![ArtifactDigest {
+                path: "/approved/rawprogram0.xml".into(),
+                role: "rawprogram".into(),
+                size: 123,
+                sha256: "a".repeat(64),
+            }],
+            payload_digests: vec![ArtifactDigest {
+                path: "/approved/boot.img".into(),
+                role: "recovery-payload".into(),
+                size: 4096,
+                sha256: "b".repeat(64),
+            }],
+            operations: vec![PartitionOperation {
+                partition_name: Some("boot".into()),
+                filename: "boot.img".into(),
+                start: Some(0),
+                length: Some(4096),
+                physical_partition: Some(0),
+                region: None,
+                operation: "program".into(),
+            }],
+            integrity_checks_passed: true,
+            integrity_findings: vec![],
+            high_risk_partitions: vec![],
+            destructive: true,
+            requires_explicit_approval: true,
+            prerequisites_met: true,
+            identity_revalidated: false,
+            executor_qualified: false,
+            execution_ready: false,
+            blockers: vec!["qualification pending".into()],
+        };
+        let first = recovery_job_fingerprint(&job);
+        job.identity_revalidated = true;
+        job.blockers.push("operator note".into());
+        let second = recovery_job_fingerprint(&job);
+        assert_eq!(first, second);
+
+        job.payload_digests[0].sha256 = "c".repeat(64);
+        let changed = recovery_job_fingerprint(&job);
+        assert_ne!(first, changed);
+    }
+
 }
