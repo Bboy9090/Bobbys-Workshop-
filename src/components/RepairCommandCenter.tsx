@@ -133,6 +133,53 @@ export default function RepairCommandCenter() {
   );
   const reserved = useMemo(() => catalog.filter((item) => !item.activeInBobfwtools), [catalog]);
 
+  const workflowLiveStatus = (workflow: WorkflowPolicy): { label: string; detail: string; ready: boolean } => {
+    if (workflow.id === 'diagnostics.usb-scan') {
+      return { label: 'READY NOW', detail: 'Read-only USB evidence can run without a destructive gate.', ready: true };
+    }
+    if (workflow.platform === 'android' && selectedAdbDevice && !selectedAdbDevice.authorized) {
+      return {
+        label: 'AUTHORIZE DEVICE',
+        detail: 'Approve USB debugging on this exact selected phone before Android service actions.',
+        ready: false,
+      };
+    }
+    if (workflow.id === 'qualcomm.edl-plan') {
+      return {
+        label: 'PLANNING READY',
+        detail: 'Selected 9008 hardware can be inspected and prepared; write execution remains qualification-locked.',
+        ready: true,
+      };
+    }
+    if (workflow.id === 'mediatek.brom-plan') {
+      return {
+        label: 'PLANNING READY',
+        detail: 'Selected MediaTek recovery hardware can be inspected with legitimate DA/auth artifacts; writes remain locked.',
+        ready: true,
+      };
+    }
+    if (workflow.id === 'samsung.odin-plan') {
+      return {
+        label: 'PLANNING READY',
+        detail: 'Selected Samsung Download Mode target can use stock firmware inspection and guarded planning.',
+        ready: true,
+      };
+    }
+    if (workflow.id === 'calibration.backup') {
+      return selectedAdbDevice?.authorized
+        ? { label: 'READY TO VERIFY', detail: 'Selected ADB target is authorized; block-read access is still verified before backup.', ready: true }
+        : { label: 'BLOCKED', detail: 'Select and authorize the exact ADB target first.', ready: false };
+    }
+    if (!workflow.physicallyQualified) {
+      return {
+        label: 'EVIDENCE ONLY',
+        detail: 'Planning/evidence is available, but execution remains locked pending physical qualification.',
+        ready: false,
+      };
+    }
+    return { label: 'READY', detail: 'Required live target is selected; normal workflow gates still apply.', ready: true };
+  };
+
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -420,6 +467,20 @@ export default function RepairCommandCenter() {
               <Badge on={workflow.auditLoggingRequired}>audit log</Badge>
               <Badge on={workflow.explicitConfirmationRequired}>explicit confirm</Badge>
             </div>
+
+            {(() => {
+              const status = workflowLiveStatus(workflow);
+              return (
+                <div className={status.ready
+                  ? 'mt-3 rounded border border-emerald-900/60 bg-emerald-950/20 p-3'
+                  : 'mt-3 rounded border border-amber-900/60 bg-amber-950/20 p-3'}>
+                  <div className={status.ready ? 'text-[10px] font-semibold text-emerald-300' : 'text-[10px] font-semibold text-amber-300'}>
+                    {status.label}
+                  </div>
+                  <div className="mt-1 text-[11px] leading-4 text-slate-500">{status.detail}</div>
+                </div>
+              );
+            })()}
 
             <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-800 pt-3">
               <div className="text-[11px] text-slate-600">executor qualification</div>

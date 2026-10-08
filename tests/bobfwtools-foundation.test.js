@@ -252,6 +252,10 @@ describe('device-specific command center', () => {
     expect(commandCenter).toContain("case 'samsung-download'");
     expect(commandCenter).toContain("case 'adb'");
     expect(commandCenter).toContain('Advanced/manual tools');
+    expect(commandCenter).toContain('workflowLiveStatus');
+    expect(commandCenter).toContain('PLANNING READY');
+    expect(commandCenter).toContain('AUTHORIZE DEVICE');
+    expect(commandCenter).toContain('READY TO VERIFY');
     expect(commandCenter).toContain('selectedAdbDevice.serial');
     expect(commandCenter).toContain("selectedTarget?.kind === 'qualcomm-edl'");
     expect(commandCenter).toContain("selectedTarget?.kind === 'adb'");
