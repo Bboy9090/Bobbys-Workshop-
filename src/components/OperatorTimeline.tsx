@@ -69,7 +69,7 @@ export default function OperatorTimeline() {
           </div>
           <h2 className="mt-1 text-sm font-semibold text-white">USB connection and recovery-mode events</h2>
           <p className="mt-1 text-xs text-slate-500">
-            Native event stream from BobFWTools&apos; USB monitor. No simulated device events.
+            Native event stream from BobFWTools&apos; USB monitor. Entries are created from observed transport evidence.
           </p>
         </div>
         <button
