@@ -1039,3 +1039,21 @@ export async function exportRecoveryEvidence(
     destinationPath,
   });
 }
+
+export async function exportRecoveryReadinessCertificate(
+  job: RecoveryJob,
+  plan: RecoveryPlan | null,
+): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const destinationPath = await save({
+    title: 'Export BobFWTools recovery readiness certificate',
+    defaultPath: 'bobfwtools-recovery-readiness-certificate.json',
+    filters: [{ name: 'JSON readiness certificate', extensions: ['json'] }],
+  });
+  if (!destinationPath) return null;
+  return invoke<string>('bootforge_recovery_export_readiness_certificate', {
+    job,
+    plan,
+    destinationPath,
+  });
+}

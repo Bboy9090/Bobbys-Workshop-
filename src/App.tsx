@@ -34,6 +34,7 @@ import {
   prepareRecoveryJob,
   revalidateRecoveryJob,
   exportRecoveryEvidence,
+  exportRecoveryReadinessCertificate,
   listWorkflowJobs,
   retryWorkflowJob,
   runAdbPackageAction,
@@ -102,6 +103,7 @@ export default function App() {
   const [recoveryJob, setRecoveryJob] = useState<RecoveryJob | null>(null);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [recoveryEvidencePath, setRecoveryEvidencePath] = useState<string | null>(null);
+  const [recoveryCertificatePath, setRecoveryCertificatePath] = useState<string | null>(null);
   const nativeRuntime = useMemo(() => isTauriRuntime(), []);
   const filteredPackages = useMemo(() => {
     const q = packageQuery.trim().toLowerCase();
@@ -455,6 +457,7 @@ export default function App() {
     setRecoveryPlan(null);
     setRecoveryJob(null);
     setRecoveryEvidencePath(null);
+    setRecoveryCertificatePath(null);
   };
 
   const autoDiscoverRecoveryArtifacts = async () => {
@@ -462,6 +465,7 @@ export default function App() {
     setRecoveryBusy(true);
     setNativeError(null);
     setRecoveryEvidencePath(null);
+    setRecoveryCertificatePath(null);
     try {
       const paths = await autodiscoverRecoveryArtifacts(recoveryKind);
       if (!paths.length) {
@@ -473,6 +477,7 @@ export default function App() {
       setRecoveryPlan(null);
       setRecoveryJob(null);
       setRecoveryEvidencePath(null);
+    setRecoveryCertificatePath(null);
       const plan = await buildRecoveryPlan(recoveryKind, paths);
       setRecoveryPlan(plan);
       const candidate = recoveryCandidates.find((item) => item.workflow === recoveryKind);
@@ -545,6 +550,20 @@ export default function App() {
     try {
       const path = await exportRecoveryEvidence(recoveryJob, recoveryPlan);
       if (path) setRecoveryEvidencePath(path);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveryBusy(false);
+    }
+  };
+
+  const exportSelectedRecoveryCertificate = async () => {
+    if (!recoveryJob) return;
+    setRecoveryBusy(true);
+    setNativeError(null);
+    try {
+      const path = await exportRecoveryReadinessCertificate(recoveryJob, recoveryPlan);
+      if (path) setRecoveryCertificatePath(path);
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -1120,6 +1139,14 @@ export default function App() {
                     >
                       Export evidence receipt
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => void exportSelectedRecoveryCertificate()}
+                      disabled={recoveryBusy}
+                      className="rounded border border-cyan-800 px-2.5 py-1 text-xs font-medium text-cyan-300 disabled:opacity-40 hover:bg-cyan-950/40"
+                    >
+                      Export readiness certificate
+                    </button>
                     <span className={recoveryJob.executorQualified ? 'rounded bg-emerald-950 px-2 py-1 text-xs text-emerald-300' : 'rounded bg-amber-950 px-2 py-1 text-xs text-amber-300'}>
                       {recoveryJob.executorQualified ? 'executor qualified' : 'executor not yet physically qualified'}
                     </span>
@@ -1129,6 +1156,14 @@ export default function App() {
                 {recoveryEvidencePath && (
                   <div className="mt-3 rounded border border-emerald-900/60 bg-emerald-950/20 p-3 text-xs text-emerald-300">
                     Evidence receipt saved: <span className="font-mono">{recoveryEvidencePath}</span>
+                  </div>
+                )}
+                {recoveryCertificatePath && (
+                  <div className="mt-3 rounded border border-cyan-900/60 bg-cyan-950/20 p-3 text-xs text-cyan-300">
+                    Readiness certificate saved: <span className="font-mono">{recoveryCertificatePath}</span>
+                    <div className="mt-1 text-[11px] text-slate-400">
+                      Certificate is evidence only and does not grant destructive execution authority.
+                    </div>
                   </div>
                 )}
 

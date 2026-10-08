@@ -221,6 +221,24 @@ describe('nested MTP browser', () => {
 });
 
 
+describe('recovery readiness certificate', () => {
+  it('exports a fingerprinted authority-free readiness snapshot through the GUI', () => {
+    const main = read('src-tauri/src/main.rs');
+    const bridge = read('src/lib/desktop.ts');
+    const app = read('src/App.tsx');
+
+    expect(main).toContain('bootforge_recovery_export_readiness_certificate');
+    expect(main).toContain('recovery-readiness-certificate.v1');
+    expect(main).toContain('"grantsExecutionAuthority": false');
+    expect(main).toContain('"readinessStatus": readiness_status');
+    expect(main).toContain('certificateFingerprint');
+    expect(bridge).toContain('exportRecoveryReadinessCertificate');
+    expect(app).toContain('Export readiness certificate');
+    expect(app).toContain('does not grant destructive execution authority');
+  });
+});
+
+
 describe('production command surface excludes unqualified destructive flash', () => {
   it('feature-gates destructive flash commands and keeps qualified-flash out of default features', () => {
     const main = read('src-tauri/src/main.rs');

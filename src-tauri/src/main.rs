@@ -811,6 +811,136 @@ fn bootforge_recovery_export_receipt(
 }
 
 
+
+
+#[tauri::command]
+fn bootforge_recovery_export_readiness_certificate(
+    job: bootforgeusb::recovery_job::RecoveryJob,
+    plan: Option<bootforgeusb::recovery::RecoveryPlan>,
+    destination_path: String,
+) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+
+    let destination = std::path::PathBuf::from(&destination_path);
+    if destination.as_os_str().is_empty() {
+        return Err("Readiness certificate destination is required".to_string());
+    }
+
+    let artifacts_hashed = !job.artifact_digests.is_empty();
+    let payloads_hashed = !job.payload_digests.is_empty();
+    let partition_map_normalized = !job.operations.is_empty();
+    let gates = serde_json::json!({
+        "artifactsHashed": artifacts_hashed,
+        "payloadsHashed": payloads_hashed,
+        "payloadIntegrityPassed": job.integrity_checks_passed,
+        "partitionMapNormalized": partition_map_normalized,
+        "prerequisitesMet": job.prerequisites_met,
+        "hardwareIdentityRevalidated": job.identity_revalidated,
+        "executorPhysicallyQualified": job.executor_qualified,
+        "executionReady": job.execution_ready,
+    });
+
+    let review_ready = artifacts_hashed
+        && payloads_hashed
+        && job.integrity_checks_passed
+        && partition_map_normalized
+        && job.prerequisites_met
+        && job.identity_revalidated;
+
+    let readiness_status = if job.execution_ready {
+        "execution-ready"
+    } else if review_ready {
+        "review-ready"
+    } else {
+        "blocked"
+    };
+
+    let mut blockers = job.blockers.clone();
+    if !artifacts_hashed {
+        blockers.push("No hashed recovery layout/service artifacts are present".to_string());
+    }
+    if !payloads_hashed {
+        blockers.push("No hashed recovery payloads are present".to_string());
+    }
+    if !job.integrity_checks_passed {
+        blockers.push("Payload integrity checks have not passed".to_string());
+    }
+    if !partition_map_normalized {
+        blockers.push("Partition map is not normalized".to_string());
+    }
+    if !job.prerequisites_met {
+        blockers.push("Recovery prerequisites are not satisfied".to_string());
+    }
+    if !job.identity_revalidated {
+        blockers.push("Live hardware identity has not been revalidated".to_string());
+    }
+    if !job.executor_qualified {
+        blockers.push("Executor has not completed designated-device physical qualification".to_string());
+    }
+    blockers.sort();
+    blockers.dedup();
+
+    let plan_warnings = plan
+        .as_ref()
+        .map(|value| value.warnings.clone())
+        .unwrap_or_default();
+
+    let certificate_material = serde_json::json!({
+        "schema": "com.bobbyblanco.bobfwtools.recovery-readiness-certificate.v1",
+        "readinessStatus": readiness_status,
+        "grantsExecutionAuthority": false,
+        "executionPerformed": false,
+        "jobFingerprint": job.job_fingerprint.clone(),
+        "deviceIdentity": job.identity.clone(),
+        "qualificationGates": gates,
+        "blockers": blockers,
+        "integrityFindings": job.integrity_findings.clone(),
+        "highRiskPartitions": job.high_risk_partitions.clone(),
+        "planWarnings": plan_warnings,
+        "policy": {
+            "requiresExplicitApproval": job.requires_explicit_approval,
+            "requiresPhysicalExecutorQualification": true,
+            "securityBypassExecutionSupported": false
+        }
+    });
+    let material_bytes = serde_json::to_vec(&certificate_material)
+        .map_err(|e| format!("Could not serialize readiness certificate material: {e}"))?;
+    let certificate_fingerprint = format!("{:x}", Sha256::digest(&material_bytes));
+
+    let generated_unix_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+
+    let certificate = serde_json::json!({
+        "generatedUnixSeconds": generated_unix_seconds,
+        "certificateFingerprint": certificate_fingerprint,
+        "certificateMaterial": certificate_material,
+    });
+    let bytes = serde_json::to_vec_pretty(&certificate)
+        .map_err(|e| format!("Could not serialize readiness certificate: {e}"))?;
+    std::fs::write(&destination, bytes)
+        .map_err(|e| format!("Could not write readiness certificate {}: {e}", destination.display()))?;
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "export-readiness-certificate",
+        if job.destructive { "destructive" } else { "elevated" },
+        readiness_status,
+        Some(job.identity.device_uid.clone()),
+        "Recovery readiness certificate exported; certificate grants no execution authority.",
+        vec![
+            format!("destination:{}", destination.display()),
+            format!("certificate-fingerprint:{}", certificate_fingerprint),
+            format!("job-fingerprint:{}", job.job_fingerprint),
+            format!("readiness-status:{}", readiness_status),
+            format!("execution-ready:{}", job.execution_ready),
+        ],
+    );
+
+    Ok(destination.display().to_string())
+}
+
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct QualificationWorkstationSnapshot {
@@ -3652,6 +3782,7 @@ bootforgeusb_transport_scan,
             bootforge_recovery_prepare,
             bootforge_recovery_revalidate,
             bootforge_recovery_export_receipt,
+            bootforge_recovery_export_readiness_certificate,
             bootforge_qualification_export,
             bootforge_qualification_build_identity,
             bootforge_qualification_review,
