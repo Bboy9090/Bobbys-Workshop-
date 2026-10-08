@@ -924,6 +924,7 @@ export type QualificationAuditBundleReview = {
   executorBuildMatchesCurrent: boolean;
   sourceFilesMatch: boolean;
   sourceSemanticsValid: boolean;
+  nestedEvidenceChainValid: boolean;
   grantsExecutionAuthorityClaimed: boolean;
   executionPerformedClaimed: boolean;
   safeToReview: boolean;

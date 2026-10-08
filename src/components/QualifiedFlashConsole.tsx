@@ -554,6 +554,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
                   fingerprint {auditBundleReview.bundleFingerprintValid ? 'verified' : 'failed'} ·
                   source files {auditBundleReview.sourceFilesMatch ? 'match' : 'changed'} ·
                   semantics {auditBundleReview.sourceSemanticsValid ? 'verified' : 'failed'} ·
+                  nested chain {auditBundleReview.nestedEvidenceChainValid ? 'verified' : 'blocked'} ·
                   job {auditBundleReview.recoveryJobMatchesExpected ? 'matched' : 'mismatch'} ·
                   build {auditBundleReview.executorBuildMatchesCurrent ? 'matched' : 'mismatch'}
                 </div>
