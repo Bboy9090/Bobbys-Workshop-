@@ -906,6 +906,48 @@ export async function exportQualificationDecision(
   });
 }
 
+export type QualificationAuditBundleInput = {
+  dossierPath: string;
+  benchEvidencePath: string;
+  decisionPath: string;
+  readinessCertificatePath?: string | null;
+  expectedRecoveryJobFingerprint: string;
+  deviceSerial: string;
+  reviewer: string;
+};
+
+export async function exportQualificationAuditBundle(
+  input: QualificationAuditBundleInput,
+): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+
+  const readinessCertificatePath = await open({
+    multiple: false,
+    directory: false,
+    title: 'Optional: choose recovery readiness certificate',
+    filters: [{ name: 'JSON readiness certificate', extensions: ['json'] }],
+  });
+  const normalizedReadiness =
+    readinessCertificatePath && !Array.isArray(readinessCertificatePath)
+      ? readinessCertificatePath
+      : null;
+
+  const destinationPath = await save({
+    title: 'Export qualification audit bundle',
+    defaultPath: 'bobfwtools-qualification-audit-bundle.json',
+    filters: [{ name: 'JSON qualification audit bundle', extensions: ['json'] }],
+  });
+  if (!destinationPath) return null;
+
+  return invoke<string>('bootforge_qualification_audit_bundle_export', {
+    input: {
+      ...input,
+      readinessCertificatePath: normalizedReadiness,
+    },
+    destinationPath,
+  });
+}
+
 export type QualifiedFlashStartResponse = {
   jobId: string;
   status: string;

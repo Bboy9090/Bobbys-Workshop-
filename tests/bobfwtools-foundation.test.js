@@ -366,6 +366,26 @@ describe('physical qualification evidence binding', () => {
 });
 
 
+describe('qualification audit bundle', () => {
+  it('exports one authority-free fingerprinted manifest across the verified evidence chain', () => {
+    const main = read('src-tauri/src/main.rs');
+    const bridge = read('src/lib/desktop.ts');
+    const consoleUi = read('src/components/QualifiedFlashConsole.tsx');
+
+    expect(main).toContain('QualificationAuditBundleInput');
+    expect(main).toContain('qualification-audit-bundle.v1');
+    expect(main).toContain('"grantsExecutionAuthority": false');
+    expect(main).toContain('"executionPerformed": false');
+    expect(main).toContain('Decision and bench-evidence fingerprints do not match');
+    expect(main).toContain('bundleFingerprint');
+    expect(main).toContain('export-qualification-audit-bundle');
+    expect(bridge).toContain('exportQualificationAuditBundle');
+    expect(consoleUi).toContain('Export qualification audit bundle');
+    expect(consoleUi).toContain('auditBundlePath');
+  });
+});
+
+
 describe('production command surface excludes unqualified destructive flash', () => {
   it('feature-gates destructive flash commands and keeps qualified-flash out of default features', () => {
     const main = read('src-tauri/src/main.rs');
@@ -377,6 +397,7 @@ describe('production command surface excludes unqualified destructive flash', ()
     for (const command of [
       'bootforge_qualification_bench_evidence_export',
       'bootforge_qualification_decision_export',
+      'bootforge_qualification_audit_bundle_export',
       'bootforge_issue_qualification_trial_grant',
       'bootforge_issue_qualified_flash_grant',
       'flash_start',
