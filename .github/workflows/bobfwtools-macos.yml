@@ -34,6 +34,9 @@ jobs:
       - name: Production reality gate
         run: npm run verify:reality
 
+      - name: Typecheck frontend
+        run: npm run typecheck
+
       - name: Build frontend
         run: npm run build
 

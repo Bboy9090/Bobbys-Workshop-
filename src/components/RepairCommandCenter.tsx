@@ -10,6 +10,9 @@ import {
   inspectEdlProgrammer,
   enrollEdlProgrammer,
   listEdlProgrammers,
+  getWorkstationReadiness,
+  initializeWorkstation,
+  type WorkstationReadiness,
   type AdbDeviceRecord,
   type CalibrationBackupResult,
   type EdlProgrammerRecord,
@@ -72,12 +75,13 @@ export default function RepairCommandCenter() {
     let cancelled = false;
     const load = async () => {
       try {
-        const [policies, partitions, edl, adb, programmers] = await Promise.all([
+        const [policies, partitions, edl, adb, programmers, readiness] = await Promise.all([
           getWorkflowPolicyCatalog(),
           getCalibrationPartitionAllowlist(),
           getEdl9008Devices(),
           scanAdbDevices(),
           listEdlProgrammers(),
+          getWorkstationReadiness(),
         ]);
         if (cancelled) return;
         setCatalog(policies);

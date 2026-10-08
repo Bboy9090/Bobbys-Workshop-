@@ -53,10 +53,11 @@
     "build:complete:macos": "bash scripts/build-complete-bundle.sh",
     "bundle:python": "node -e \"process.platform === 'win32' ? require('child_process').execSync('powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bundle-python-complete.ps1', {stdio: 'inherit'}) : require('child_process').execSync('bash scripts/bundle-python-complete.sh', {stdio: 'inherit'})\"",
     "verify:reality": "node scripts/verify-production-reality.mjs",
-    "bobfw:check": "npm run verify:reality && npm run build && cargo check --manifest-path libs/bootforgeusb/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml",
+    "bobfw:check": "npm run verify:reality && npm run typecheck && npm run build && cargo check --manifest-path libs/bootforgeusb/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml",
     "bobfw:test": "npm run test && cargo test --manifest-path libs/bootforgeusb/Cargo.toml",
     "tauri:build:macos:ci": "npm run build && tauri build --bundles app --target universal-apple-darwin",
-    "test:legacy": "vitest run"
+    "test:legacy": "vitest run",
+    "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.7",
@@ -144,5 +145,5 @@
       "packages/*"
     ]
   },
-  "description": "BobFWTools — professional macOS Android device connectivity, MTP, ADB/Fastboot diagnostics, transfer, and support tooling."
+  "description": "BobFWTools \u2014 professional macOS Android device connectivity, MTP, ADB/Fastboot diagnostics, transfer, and support tooling."
 }

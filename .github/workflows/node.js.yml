@@ -26,6 +26,9 @@ jobs:
     - name: Production Reality Gate
       run: npm run verify:reality
 
+    - name: Typecheck Frontend
+      run: npm run typecheck
+
     - name: Build
       run: npm run build --if-present
       
@@ -51,6 +54,9 @@ jobs:
 
     - name: Production Reality Gate
       run: npm run verify:reality
+
+    - name: Typecheck Frontend
+      run: npm run typecheck
 
     - name: Build Frontend
       run: npm run build
