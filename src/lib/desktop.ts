@@ -885,12 +885,24 @@ export type QualificationRecoveryIdentity = {
   serialNumber?: string | null;
 };
 
+export type QualificationTransportObservationSample = {
+  observedUnixMs: number;
+  device: TransportDevice;
+};
+
+export type QualificationTransportObservation = {
+  expectedDeviceUid: string;
+  attemptedSamples: number;
+  samples: QualificationTransportObservationSample[];
+};
+
 export type QualificationDossierInput = {
   device: TransportDevice;
   workstation: WorkstationReadiness;
   authorizedProgrammers: EdlProgrammerRecord[];
   recoveryJobFingerprint: string;
   preparedRecoveryIdentity?: QualificationRecoveryIdentity | null;
+  transportObservation?: QualificationTransportObservation | null;
   operatorNotes: string;
 };
 

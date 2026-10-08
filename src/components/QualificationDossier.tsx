@@ -10,6 +10,7 @@ import {
   type QualificationBuildIdentity,
   type QualificationDossierReview,
   type QualificationRecoveryIdentity,
+  type QualificationTransportObservation,
   type TransportDevice,
   type WorkstationReadiness,
 } from '../lib/desktop';
@@ -29,6 +30,7 @@ export default function QualificationDossier({
   const [programmers, setProgrammers] = useState<EdlProgrammerRecord[]>([]);
   const [selectedUid, setSelectedUid] = useState('');
   const [notes, setNotes] = useState('');
+  const [transportObservation, setTransportObservation] = useState<QualificationTransportObservation | null>(null);
   const [busy, setBusy] = useState(false);
   const [savedPath, setSavedPath] = useState<string | null>(null);
   const [review, setReview] = useState<QualificationDossierReview | null>(null);
@@ -52,6 +54,22 @@ export default function QualificationDossier({
       (selected.serialNumber ?? null) === (preparedRecoveryIdentity.serialNumber ?? null)
     );
   }, [selected, preparedRecoveryIdentity]);
+
+  const transportObservationLooksStable = useMemo(() => {
+    if (!selected || !transportObservation || transportObservation.samples.length < 3) return false;
+    const baseline = transportObservation.samples[0]?.device;
+    if (!baseline || !baseline.bulkIn.length || !baseline.bulkOut.length) return false;
+    const sort = (values: number[]) => [...values].sort((a, b) => a - b).join(',');
+    return transportObservation.samples.every(({ device }) =>
+      device.deviceUid === selected.deviceUid &&
+      device.vendorId === selected.vendorId &&
+      device.productId === selected.productId &&
+      device.mode === selected.mode &&
+      (device.serialNumber ?? null) === (selected.serialNumber ?? null) &&
+      sort(device.bulkIn) === sort(baseline.bulkIn) &&
+      sort(device.bulkOut) === sort(baseline.bulkOut)
+    );
+  }, [selected, transportObservation]);
 
   const refresh = async () => {
     try {
@@ -83,6 +101,30 @@ export default function QualificationDossier({
     return () => window.clearInterval(id);
   }, [selectedUid]);
 
+  const captureTransportObservation = async () => {
+    if (!selected) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const samples: QualificationTransportObservation['samples'] = [];
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const scan = await scanTransportDevices();
+        const device = scan.find((entry) => entry.deviceUid === selected.deviceUid);
+        if (device) samples.push({ observedUnixMs: Date.now(), device });
+        if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 250));
+      }
+      setTransportObservation({
+        expectedDeviceUid: selected.deviceUid,
+        attemptedSamples: 3,
+        samples,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const exportDossier = async () => {
     if (!selected || !workstation) return;
     setBusy(true);
@@ -95,6 +137,7 @@ export default function QualificationDossier({
         authorizedProgrammers,
         recoveryJobFingerprint: recoveryJobFingerprint?.trim() || '',
         preparedRecoveryIdentity: preparedRecoveryIdentity ?? null,
+        transportObservation,
         operatorNotes: notes.trim(),
       });
       if (path) setSavedPath(path);
@@ -143,7 +186,10 @@ export default function QualificationDossier({
             Recovery-mode device
             <select
               value={selectedUid}
-              onChange={(event) => setSelectedUid(event.target.value)}
+              onChange={(event) => {
+                setSelectedUid(event.target.value);
+                setTransportObservation(null);
+              }}
               className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white"
             >
               <option value="">Select device</option>
@@ -234,6 +280,32 @@ export default function QualificationDossier({
             </div>
           </>
         )}
+      </div>
+
+      <div className="mt-3 rounded border border-slate-800 bg-slate-950/60 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-600">Repeated transport observation</div>
+            <div className={transportObservationLooksStable ? 'mt-1 text-xs font-semibold text-emerald-300' : 'mt-1 text-xs font-semibold text-amber-300'}>
+              {transportObservationLooksStable
+                ? `STABLE · ${transportObservation?.samples.length || 0}/3 samples`
+                : transportObservation
+                  ? `BLOCKED · ${transportObservation.samples.length}/3 samples`
+                  : 'NOT CAPTURED'}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => void captureTransportObservation()}
+            disabled={busy || !selected}
+            className="rounded border border-violet-800 px-3 py-2 text-xs text-violet-300 disabled:opacity-40 hover:bg-violet-950/40"
+          >
+            {busy ? 'Capturing…' : 'Capture 3-scan stability evidence'}
+          </button>
+        </div>
+        <div className="mt-2 text-[10px] leading-4 text-slate-500">
+          Read-only USB enumeration only. Qualification binding requires exact device identity and stable non-empty bulk IN/OUT endpoints across all three samples.
+        </div>
       </div>
 
       <label className="mt-3 block text-xs text-slate-500">

@@ -245,6 +245,24 @@ describe('workstation driver evidence', () => {
 });
 
 
+describe('qualification transport stability evidence', () => {
+  it('requires repeated read-only identity and bulk endpoint observations', () => {
+    const main = read('src-tauri/src/main.rs');
+    const bridge = read('src/lib/desktop.ts');
+    const dossier = read('src/components/QualificationDossier.tsx');
+
+    expect(main).toContain('QualificationTransportObservation');
+    expect(main).toContain('qualification_transport_observation_findings');
+    expect(main).toContain('At least three successful transport samples are required');
+    expect(main).toContain('different bulk endpoints from the baseline');
+    expect(main).toContain('transportObservationReady');
+    expect(bridge).toContain('QualificationTransportObservation');
+    expect(dossier).toContain('Capture 3-scan stability evidence');
+    expect(dossier).toContain('Read-only USB enumeration only');
+  });
+});
+
+
 describe('recovery readiness certificate', () => {
   it('exports a fingerprinted authority-free readiness snapshot through the GUI', () => {
     const main = read('src-tauri/src/main.rs');

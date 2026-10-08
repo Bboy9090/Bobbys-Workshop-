@@ -1138,6 +1138,21 @@ struct QualificationWorkstationSnapshot {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+struct QualificationTransportObservationSample {
+    observed_unix_ms: u64,
+    device: bootforgeusb::transport::TransportDevice,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationTransportObservation {
+    expected_device_uid: String,
+    attempted_samples: u32,
+    samples: Vec<QualificationTransportObservationSample>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct QualificationProgrammerSnapshot {
     path: String,
     sha256: String,
@@ -1202,6 +1217,76 @@ fn qualification_workstation_evidence_ready(
     }
 }
 
+
+
+fn qualification_transport_observation_findings(
+    observation: Option<&QualificationTransportObservation>,
+    live: &bootforgeusb::transport::TransportDevice,
+) -> Vec<String> {
+    let mut findings = Vec::new();
+    let Some(observation) = observation else {
+        findings.push("Repeated transport observation is missing".to_string());
+        return findings;
+    };
+
+    if observation.expected_device_uid != live.device_uid {
+        findings.push("Transport observation is bound to a different device UID".to_string());
+    }
+    if observation.attempted_samples < 3 {
+        findings.push("At least three transport observation attempts are required".to_string());
+    }
+    if observation.samples.len() < 3 {
+        findings.push("At least three successful transport samples are required".to_string());
+    }
+
+    let mut baseline_bulk_in: Option<Vec<u8>> = None;
+    let mut baseline_bulk_out: Option<Vec<u8>> = None;
+    for (index, sample) in observation.samples.iter().enumerate() {
+        let device = &sample.device;
+        let identity_match = device.device_uid == live.device_uid
+            && device.vendor_id == live.vendor_id
+            && device.product_id == live.product_id
+            && device.mode == live.mode
+            && device.serial_number == live.serial_number;
+        if !identity_match {
+            findings.push(format!(
+                "Transport sample {} does not exactly match the selected device identity",
+                index + 1
+            ));
+        }
+
+        let mut bulk_in = device.bulk_in.clone();
+        let mut bulk_out = device.bulk_out.clone();
+        bulk_in.sort_unstable();
+        bulk_out.sort_unstable();
+
+        match (&baseline_bulk_in, &baseline_bulk_out) {
+            (None, None) => {
+                if bulk_in.is_empty() || bulk_out.is_empty() {
+                    findings.push(
+                        "Transport observation did not capture both bulk IN and bulk OUT endpoints"
+                            .to_string(),
+                    );
+                }
+                baseline_bulk_in = Some(bulk_in);
+                baseline_bulk_out = Some(bulk_out);
+            }
+            (Some(expected_in), Some(expected_out)) => {
+                if &bulk_in != expected_in || &bulk_out != expected_out {
+                    findings.push(format!(
+                        "Transport sample {} has different bulk endpoints from the baseline",
+                        index + 1
+                    ));
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    findings.sort();
+    findings.dedup();
+    findings
+}
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1427,6 +1512,7 @@ struct QualificationDossierInput {
     authorized_programmers: Vec<QualificationProgrammerSnapshot>,
     recovery_job_fingerprint: String,
     prepared_recovery_identity: Option<QualificationRecoveryIdentitySnapshot>,
+    transport_observation: Option<QualificationTransportObservation>,
     operator_notes: String,
 }
 
@@ -1467,6 +1553,35 @@ mod qualification_binding_tests {
         assert!(!qualification_source_revision_available(""));
         assert!(!qualification_source_revision_available("  "));
         assert!(!qualification_source_revision_available("unavailable"));
+    }
+
+    #[test]
+    fn repeated_transport_observation_requires_stable_identity_and_bulk_endpoints() {
+        let live = transport("usb:05c6:9008:SERIAL", Some("SERIAL"));
+        let stable = QualificationTransportObservation {
+            expected_device_uid: live.device_uid.clone(),
+            attempted_samples: 3,
+            samples: (0..3)
+                .map(|index| QualificationTransportObservationSample {
+                    observed_unix_ms: 1_000 + index,
+                    device: live.clone(),
+                })
+                .collect(),
+        };
+        assert!(qualification_transport_observation_findings(Some(&stable), &live).is_empty());
+
+        let mut drifted = stable;
+        drifted.samples[2].device.bulk_out = vec![0x02];
+        let findings =
+            qualification_transport_observation_findings(Some(&drifted), &live);
+        assert!(findings
+            .iter()
+            .any(|finding| finding.contains("different bulk endpoints")));
+
+        let missing = qualification_transport_observation_findings(None, &live);
+        assert!(missing
+            .iter()
+            .any(|finding| finding.contains("Repeated transport observation is missing")));
     }
 
     #[test]
@@ -1516,10 +1631,16 @@ fn bootforge_qualification_export(
 
     let workstation_evidence_ready =
         qualification_workstation_evidence_ready(&input.workstation);
+    let transport_findings = qualification_transport_observation_findings(
+        input.transport_observation.as_ref(),
+        &input.device,
+    );
+    let transport_observation_ready = transport_findings.is_empty();
     let qualification_binding_ready = fingerprint_valid
         && source_revision_available
         && device_identity_match
-        && workstation_evidence_ready;
+        && workstation_evidence_ready
+        && transport_observation_ready;
     let mut binding_blockers = Vec::new();
     if !fingerprint_valid {
         binding_blockers.push(
@@ -1570,6 +1691,7 @@ fn bootforge_qualification_export(
             "One or more applicable Windows driver checks lack verifiable evidence".to_string(),
         );
     }
+    binding_blockers.extend(transport_findings.iter().cloned());
 
     let required_physical_checks = vec![
         "Repeat USB enumeration without identity drift",
@@ -1592,6 +1714,9 @@ fn bootforge_qualification_export(
         "preparedRecoveryIdentity": input.prepared_recovery_identity,
         "liveDeviceIdentityMatch": device_identity_match,
         "workstationEvidenceReady": workstation_evidence_ready,
+        "transportObservationReady": transport_observation_ready,
+        "transportObservation": input.transport_observation,
+        "transportFindings": transport_findings,
         "executorBuildFingerprint": executor_build_fingerprint,
         "sourceRevision": source_revision,
         "device": input.device,
@@ -1620,6 +1745,7 @@ fn bootforge_qualification_export(
         "preparedRecoveryIdentity": input.prepared_recovery_identity,
         "liveDeviceIdentityMatch": device_identity_match,
         "workstationEvidenceReady": workstation_evidence_ready,
+        "transportObservationReady": transport_observation_ready,
         "executorBuild": build_identity,
         "device": input.device,
         "workstation": input.workstation,
@@ -1646,6 +1772,7 @@ fn bootforge_qualification_export(
             format!("recovery-job-fingerprint:{}", recovery_job_fingerprint),
             format!("live-device-identity-match:{}", device_identity_match),
             format!("workstation-evidence-ready:{}", workstation_evidence_ready),
+            format!("transport-observation-ready:{}", transport_observation_ready),
             format!("qualification-binding-ready:{}", qualification_binding_ready),
             format!("executor-build-fingerprint:{}", executor_build_fingerprint),
         ],
