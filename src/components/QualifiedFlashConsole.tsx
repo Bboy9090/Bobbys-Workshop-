@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   chooseAndInspectQualifiedFlashImage,
+  exportQualificationBenchEvidence,
   exportQualificationDecision,
   getQualificationBuildIdentity,
   getQualifiedFastbootDevices,
@@ -75,6 +76,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
   const [allowWipe, setAllowWipe] = useState(false);
   const [allowReboot, setAllowReboot] = useState(false);
   const [grant, setGrant] = useState<QualifiedFlashGrant | null>(null);
+  const [benchEvidencePath, setBenchEvidencePath] = useState<string | null>(null);
   const [decisionPath, setDecisionPath] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -114,6 +116,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
     deviceSerial &&
     partitions.length &&
     reviewer.trim() &&
+    benchEvidencePath &&
     decisionPath &&
     confirmation === `QUALIFY ${deviceSerial}` &&
     allChecksPass,
@@ -208,6 +211,30 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
     }
   };
 
+  const exportBenchEvidence = async () => {
+    if (!review || !recoveryJobFingerprint || !deviceSerial || !reviewer.trim() || !allChecksPass || !partitions.length) return;
+    setBusy(true);
+    setError(null);
+    setGrant(null);
+    setDecisionPath(null);
+    try {
+      const path = await exportQualificationBenchEvidence({
+        dossierPath: review.path,
+        expectedRecoveryJobFingerprint: recoveryJobFingerprint,
+        deviceSerial,
+        reviewer: reviewer.trim(),
+        reviewerNotes: reviewerNotes.trim(),
+        partitions,
+        physicalChecks: checks,
+      });
+      if (path) setBenchEvidencePath(path);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const exportDecision = async (decision: 'accept-evidence' | 'reject-evidence') => {
     if (!review || !recoveryJobFingerprint || !deviceSerial || !reviewer.trim()) return;
     setBusy(true);
@@ -216,6 +243,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
     try {
       const path = await exportQualificationDecision({
         dossierPath: review.path,
+        benchEvidencePath: decision === 'accept-evidence' ? benchEvidencePath : null,
         expectedRecoveryJobFingerprint: recoveryJobFingerprint,
         deviceSerial,
         reviewer: reviewer.trim(),
@@ -362,7 +390,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
             <div className="mt-3 grid gap-2 md:grid-cols-2">
               {CHECK_LABELS.map(([key, label]) => (
                 <label key={key} className="flex items-start gap-2 rounded border border-slate-800 p-2 text-xs text-slate-300">
-                  <input type="checkbox" checked={checks[key]} onChange={(e) => { setChecks((current) => ({ ...current, [key]: e.target.checked })); setGrant(null); }} />
+                  <input type="checkbox" checked={checks[key]} onChange={(e) => { setChecks((current) => ({ ...current, [key]: e.target.checked })); setGrant(null); setBenchEvidencePath(null); setDecisionPath(null); }} />
                   <span>{label}</span>
                 </label>
               ))}
@@ -371,8 +399,8 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
 
           <div className="mt-3 grid gap-3 lg:grid-cols-2">
             <div className="rounded border border-slate-800 bg-slate-950/60 p-4">
-              <label className="block text-xs text-slate-500">Reviewer identity<input value={reviewer} onChange={(e) => { setReviewer(e.target.value); setGrant(null); }} className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white" /></label>
-              <label className="mt-2 block text-xs text-slate-500">Reviewer notes<textarea value={reviewerNotes} onChange={(e) => { setReviewerNotes(e.target.value); setGrant(null); }} className="mt-1 min-h-20 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white" /></label>
+              <label className="block text-xs text-slate-500">Reviewer identity<input value={reviewer} onChange={(e) => { setReviewer(e.target.value); setGrant(null); setBenchEvidencePath(null); setDecisionPath(null); }} className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white" /></label>
+              <label className="mt-2 block text-xs text-slate-500">Reviewer notes<textarea value={reviewerNotes} onChange={(e) => { setReviewerNotes(e.target.value); setGrant(null); setBenchEvidencePath(null); setDecisionPath(null); }} className="mt-1 min-h-20 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white" /></label>
             </div>
             <div className="rounded border border-slate-800 bg-slate-950/60 p-4">
               <label className="block text-xs text-slate-500">Grant lifetime (minutes)<input type="number" min={1} max={30} value={expiresInMinutes} onChange={(e) => { setExpiresInMinutes(Math.max(1, Math.min(30, Number(e.target.value) || 1))); setGrant(null); }} className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white" /></label>
@@ -386,6 +414,27 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
             </div>
           </div>
 
+          <div className="mt-3 rounded border border-cyan-900/60 bg-cyan-950/20 p-4">
+            <div className="text-[10px] uppercase tracking-wide text-cyan-600">Stage 2 bench-evidence receipt</div>
+            <p className="mt-2 text-xs text-slate-400">
+              After the one-shot bench write and independent post-write verification, freeze the exact device, build, dossier,
+              recovery job, inspected image hashes, and passed physical checks into an authority-free receipt.
+            </p>
+            <button
+              type="button"
+              onClick={() => void exportBenchEvidence()}
+              disabled={busy || !review?.safeToReview || !allChecksPass || !reviewer.trim() || !deviceSerial || !partitions.length}
+              className="mt-3 rounded border border-cyan-800 px-3 py-2 text-xs font-semibold text-cyan-300 disabled:opacity-40"
+            >
+              Export hash-bound bench evidence
+            </button>
+            {benchEvidencePath && (
+              <div className="mt-2 break-all font-mono text-[10px] text-cyan-400">
+                bench evidence: {benchEvidencePath}
+              </div>
+            )}
+          </div>
+
           <div className="mt-3 rounded border border-slate-800 bg-slate-950/60 p-4">
             <div className="text-[10px] uppercase tracking-wide text-slate-600">Stage 2 human decision receipt</div>
             <p className="mt-2 text-xs text-slate-400">
@@ -396,7 +445,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
               <button
                 type="button"
                 onClick={() => void exportDecision('accept-evidence')}
-                disabled={busy || !review?.safeToReview || !allChecksPass || !reviewer.trim() || !deviceSerial}
+                disabled={busy || !review?.safeToReview || !allChecksPass || !reviewer.trim() || !deviceSerial || !benchEvidencePath}
                 className="rounded border border-emerald-800 px-3 py-2 text-xs font-semibold text-emerald-300 disabled:opacity-40"
               >
                 Accept evidence + export decision receipt

@@ -340,6 +340,27 @@ describe('recovery readiness certificate', () => {
 });
 
 
+describe('physical qualification evidence binding', () => {
+  it('requires an authority-free hash-bound bench evidence receipt before accepted Stage 2 decisions', () => {
+    const main = read('src-tauri/src/main.rs');
+    const bridge = read('src/lib/desktop.ts');
+    const consoleUi = read('src/components/QualifiedFlashConsole.tsx');
+
+    expect(main).toContain('QualificationBenchEvidenceReceipt');
+    expect(main).toContain('qualification-bench-evidence.v1');
+    expect(main).toContain('bootforge_qualification_bench_evidence_export');
+    expect(main).toContain('grants_authority: false');
+    expect(main).toContain('execution_enabled: false');
+    expect(main).toContain('Accepted qualification evidence requires a bench-evidence receipt');
+    expect(main).toContain('bench_evidence_fingerprint');
+    expect(main).toContain('image hash changed since inspection');
+    expect(bridge).toContain('exportQualificationBenchEvidence');
+    expect(consoleUi).toContain('Export hash-bound bench evidence');
+    expect(consoleUi).toContain('benchEvidencePath');
+  });
+});
+
+
 describe('production command surface excludes unqualified destructive flash', () => {
   it('feature-gates destructive flash commands and keeps qualified-flash out of default features', () => {
     const main = read('src-tauri/src/main.rs');
@@ -349,6 +370,7 @@ describe('production command surface excludes unqualified destructive flash', ()
     const handler = main.slice(start, end);
 
     for (const command of [
+      'bootforge_qualification_bench_evidence_export',
       'bootforge_qualification_decision_export',
       'bootforge_issue_qualification_trial_grant',
       'bootforge_issue_qualified_flash_grant',

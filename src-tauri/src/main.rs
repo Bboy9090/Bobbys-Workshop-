@@ -1905,7 +1905,7 @@ fn bootforge_qualified_flash_inspect_image(
 }
 
 #[cfg(feature = "qualified-flash")]
-#[derive(Debug, Clone, serde::Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, Deserialize)]
 struct QualifiedFlashPhysicalChecks {
     repeatedEnumerationStable: bool,
     expectedModeConfirmed: bool,
@@ -1935,10 +1935,289 @@ struct QualifiedFlashApprovalInput {
     physicalChecks: QualifiedFlashPhysicalChecks,
 }
 
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, Deserialize)]
+struct QualificationBenchEvidenceInput {
+    dossierPath: String,
+    expectedRecoveryJobFingerprint: String,
+    deviceSerial: String,
+    reviewer: String,
+    reviewerNotes: String,
+    partitions: Vec<FlashPartition>,
+    physicalChecks: QualifiedFlashPhysicalChecks,
+}
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationBenchEvidenceReceipt {
+    schema: String,
+    grants_authority: bool,
+    executor_qualified: bool,
+    execution_enabled: bool,
+    reviewer: String,
+    reviewer_notes: String,
+    device_serial: String,
+    dossier_fingerprint: String,
+    recovery_job_fingerprint: String,
+    executor_build_fingerprint: String,
+    partitions: Vec<FlashPartition>,
+    physical_checks: QualifiedFlashPhysicalChecks,
+    generated_unix_seconds: u64,
+    receipt_fingerprint: String,
+}
+
+#[cfg(feature = "qualified-flash")]
+fn qualification_bench_evidence_material(
+    receipt: &QualificationBenchEvidenceReceipt,
+) -> Result<Vec<u8>, String> {
+    let value = serde_json::json!({
+        "schema": receipt.schema,
+        "grantsAuthority": receipt.grants_authority,
+        "executorQualified": receipt.executor_qualified,
+        "executionEnabled": receipt.execution_enabled,
+        "reviewer": receipt.reviewer,
+        "reviewerNotes": receipt.reviewer_notes,
+        "deviceSerial": receipt.device_serial,
+        "dossierFingerprint": receipt.dossier_fingerprint,
+        "recoveryJobFingerprint": receipt.recovery_job_fingerprint,
+        "executorBuildFingerprint": receipt.executor_build_fingerprint,
+        "partitions": receipt.partitions,
+        "physicalChecks": receipt.physical_checks,
+        "generatedUnixSeconds": receipt.generated_unix_seconds,
+    });
+    serde_json::to_vec(&value)
+        .map_err(|e| format!("Could not serialize qualification bench evidence material: {e}"))
+}
+
+#[cfg(feature = "qualified-flash")]
+fn qualification_bench_evidence_fingerprint(
+    receipt: &QualificationBenchEvidenceReceipt,
+) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    Ok(format!(
+        "{:x}",
+        Sha256::digest(qualification_bench_evidence_material(receipt)?)
+    ))
+}
+
+#[cfg(feature = "qualified-flash")]
+fn load_and_verify_qualification_bench_evidence(
+    path: &str,
+    reviewer: &str,
+    device_serial: &str,
+    dossier_fingerprint: &str,
+    recovery_job_fingerprint: &str,
+    executor_build_fingerprint: &str,
+) -> Result<QualificationBenchEvidenceReceipt, String> {
+    let path_buf = std::path::PathBuf::from(path);
+    if !path_buf.is_file() {
+        return Err(format!(
+            "Qualification bench evidence receipt not found: {}",
+            path_buf.display()
+        ));
+    }
+    let bytes = std::fs::read(&path_buf)
+        .map_err(|e| format!("Could not read qualification bench evidence receipt: {e}"))?;
+    let receipt: QualificationBenchEvidenceReceipt = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Qualification bench evidence receipt is invalid JSON: {e}"))?;
+
+    if receipt.schema != "com.bobbyblanco.bobfwtools.qualification-bench-evidence.v1" {
+        return Err("Qualification bench evidence schema is not recognized".to_string());
+    }
+    if receipt.grants_authority || receipt.executor_qualified || receipt.execution_enabled {
+        return Err(
+            "Qualification bench evidence must not grant authority, qualify an executor, or enable execution"
+                .to_string(),
+        );
+    }
+    if receipt.reviewer.trim() != reviewer.trim() {
+        return Err("Qualification bench evidence reviewer does not match".to_string());
+    }
+    if receipt.device_serial != device_serial {
+        return Err("Qualification bench evidence device serial does not match target".to_string());
+    }
+    if receipt.dossier_fingerprint != dossier_fingerprint {
+        return Err("Qualification bench evidence dossier fingerprint does not match".to_string());
+    }
+    if receipt.recovery_job_fingerprint != recovery_job_fingerprint {
+        return Err(
+            "Qualification bench evidence recovery-job fingerprint does not match".to_string(),
+        );
+    }
+    if receipt.executor_build_fingerprint != executor_build_fingerprint {
+        return Err(
+            "Qualification bench evidence executor-build fingerprint does not match".to_string(),
+        );
+    }
+    if receipt.partitions.is_empty() {
+        return Err("Qualification bench evidence has no inspected partition images".to_string());
+    }
+    for partition in &receipt.partitions {
+        if partition.name.trim().is_empty() {
+            return Err("Qualification bench evidence contains an unnamed partition".to_string());
+        }
+        if partition.size == 0 {
+            return Err(format!(
+                "Qualification bench evidence partition {} has an invalid size",
+                partition.name
+            ));
+        }
+        if !valid_sha256_hex(&partition.expectedSha256) {
+            return Err(format!(
+                "Qualification bench evidence partition {} has an invalid SHA-256",
+                partition.name
+            ));
+        }
+    }
+    if !all_physical_flash_checks_passed(&receipt.physical_checks) {
+        return Err(
+            "Qualification bench evidence does not contain a complete passed physical-check record"
+                .to_string(),
+        );
+    }
+    if !valid_sha256_hex(&receipt.receipt_fingerprint) {
+        return Err("Qualification bench evidence receipt fingerprint is malformed".to_string());
+    }
+    let expected = qualification_bench_evidence_fingerprint(&receipt)?;
+    if !expected.eq_ignore_ascii_case(&receipt.receipt_fingerprint) {
+        return Err(
+            "Qualification bench evidence receipt fingerprint verification failed".to_string(),
+        );
+    }
+
+    Ok(receipt)
+}
+
+#[cfg(feature = "qualified-flash")]
+#[tauri::command]
+fn bootforge_qualification_bench_evidence_export(
+    input: QualificationBenchEvidenceInput,
+    destination_path: String,
+) -> Result<String, String> {
+    let destination = std::path::PathBuf::from(&destination_path);
+    if destination.as_os_str().is_empty() {
+        return Err("Qualification bench evidence destination is required".to_string());
+    }
+    let reviewer = input.reviewer.trim();
+    if reviewer.is_empty() {
+        return Err("Reviewer identity is required".to_string());
+    }
+    if input.deviceSerial.trim().is_empty() {
+        return Err("Device serial is required".to_string());
+    }
+    if input.partitions.is_empty() {
+        return Err("At least one inspected partition image is required".to_string());
+    }
+    if !all_physical_flash_checks_passed(&input.physicalChecks) {
+        return Err(
+            "Bench evidence export requires every physical check, destructive bench write, and post-write verification to pass"
+                .to_string(),
+        );
+    }
+
+    let review = bootforge_qualification_review(
+        input.dossierPath.clone(),
+        Some(input.expectedRecoveryJobFingerprint.clone()),
+    )?;
+    if !review.safe_to_review {
+        return Err(format!(
+            "Cannot record bench evidence for a blocked qualification dossier: {}",
+            review.blockers.join("; ")
+        ));
+    }
+
+    let dossier_fingerprint = review
+        .dossier_fingerprint
+        .ok_or_else(|| "Verified dossier fingerprint is unavailable".to_string())?;
+    let recovery_job_fingerprint = review
+        .recovery_job_fingerprint
+        .ok_or_else(|| "Verified recovery-job fingerprint is unavailable".to_string())?;
+    let build = qualification_build_identity_snapshot();
+    if !build.qualified_flash_compiled {
+        return Err(
+            "Qualification bench evidence must be recorded by the qualified bench build".to_string(),
+        );
+    }
+
+    for partition in &input.partitions {
+        if !valid_sha256_hex(&partition.expectedSha256) {
+            return Err(format!(
+                "Partition {} does not have a valid expected SHA-256",
+                partition.name
+            ));
+        }
+        let actual = sha256_file(std::path::Path::new(&partition.imagePath))?;
+        if !actual.eq_ignore_ascii_case(&partition.expectedSha256) {
+            return Err(format!(
+                "Partition {} image hash changed since inspection",
+                partition.name
+            ));
+        }
+    }
+
+    let generated_unix_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+
+    let mut receipt = QualificationBenchEvidenceReceipt {
+        schema: "com.bobbyblanco.bobfwtools.qualification-bench-evidence.v1".into(),
+        grants_authority: false,
+        executor_qualified: false,
+        execution_enabled: false,
+        reviewer: reviewer.to_string(),
+        reviewer_notes: input.reviewerNotes.trim().to_string(),
+        device_serial: input.deviceSerial.trim().to_string(),
+        dossier_fingerprint,
+        recovery_job_fingerprint,
+        executor_build_fingerprint: build.executor_build_fingerprint,
+        partitions: input.partitions,
+        physical_checks: input.physicalChecks,
+        generated_unix_seconds,
+        receipt_fingerprint: String::new(),
+    };
+    receipt.receipt_fingerprint = qualification_bench_evidence_fingerprint(&receipt)?;
+
+    std::fs::write(
+        &destination,
+        serde_json::to_vec_pretty(&receipt)
+            .map_err(|e| format!("Could not serialize qualification bench evidence: {e}"))?,
+    )
+    .map_err(|e| format!("Could not write qualification bench evidence receipt: {e}"))?;
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "export-qualification-bench-evidence",
+        "destructive",
+        "recorded-no-authority",
+        Some(receipt.device_serial.clone()),
+        "Physical bench evidence recorded and hash-bound; receipt grants no execution authority.",
+        vec![
+            format!("reviewer:{}", receipt.reviewer),
+            format!("receipt-fingerprint:{}", receipt.receipt_fingerprint),
+            format!("dossier-fingerprint:{}", receipt.dossier_fingerprint),
+            format!(
+                "recovery-job-fingerprint:{}",
+                receipt.recovery_job_fingerprint
+            ),
+            format!(
+                "executor-build-fingerprint:{}",
+                receipt.executor_build_fingerprint
+            ),
+            format!("partition-count:{}", receipt.partitions.len()),
+        ],
+    );
+
+    Ok(destination.display().to_string())
+}
+
 #[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone, Deserialize)]
 struct QualificationDecisionInput {
     dossierPath: String,
+    benchEvidencePath: Option<String>,
     expectedRecoveryJobFingerprint: String,
     deviceSerial: String,
     reviewer: String,
@@ -1961,6 +2240,7 @@ struct QualificationDecisionReceipt {
     dossier_fingerprint: String,
     recovery_job_fingerprint: String,
     executor_build_fingerprint: String,
+    bench_evidence_fingerprint: Option<String>,
     physical_checks: QualifiedFlashPhysicalChecks,
     generated_unix_seconds: u64,
     receipt_fingerprint: String,
@@ -1981,6 +2261,7 @@ fn qualification_decision_material(
         "dossierFingerprint": receipt.dossier_fingerprint,
         "recoveryJobFingerprint": receipt.recovery_job_fingerprint,
         "executorBuildFingerprint": receipt.executor_build_fingerprint,
+        "benchEvidenceFingerprint": receipt.bench_evidence_fingerprint,
         "physicalChecks": receipt.physical_checks,
         "generatedUnixSeconds": receipt.generated_unix_seconds,
     });
@@ -2044,6 +2325,18 @@ fn load_and_verify_qualification_decision(
     }
     if receipt.executor_build_fingerprint != executor_build_fingerprint {
         return Err("Qualification decision executor-build fingerprint does not match".to_string());
+    }
+    if receipt.decision == "accept-evidence"
+        && !receipt
+            .bench_evidence_fingerprint
+            .as_deref()
+            .map(valid_sha256_hex)
+            .unwrap_or(false)
+    {
+        return Err(
+            "Accepted qualification decision is missing a valid bench-evidence fingerprint"
+                .to_string(),
+        );
     }
     if !all_physical_flash_checks_passed(&receipt.physical_checks) {
         return Err(
@@ -2113,6 +2406,29 @@ fn bootforge_qualification_decision_export(
         return Err("Qualification decision must be recorded by the qualified bench build".to_string());
     }
 
+    let bench_evidence_fingerprint = if input.decision == "accept-evidence" {
+        let path = input
+            .benchEvidencePath
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "Accepted qualification evidence requires a bench-evidence receipt".to_string())?;
+        let bench = load_and_verify_qualification_bench_evidence(
+            path,
+            reviewer,
+            input.deviceSerial.trim(),
+            &dossier_fingerprint,
+            &recovery_job_fingerprint,
+            &build.executor_build_fingerprint,
+        )?;
+        if bench.physical_checks != input.physicalChecks {
+            return Err("Qualification decision checks do not exactly match the bench-evidence receipt".to_string());
+        }
+        Some(bench.receipt_fingerprint)
+    } else {
+        None
+    };
+
     let generated_unix_seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| format!("System clock error: {e}"))?
@@ -2129,6 +2445,7 @@ fn bootforge_qualification_decision_export(
         dossier_fingerprint,
         recovery_job_fingerprint,
         executor_build_fingerprint: build.executor_build_fingerprint,
+        bench_evidence_fingerprint,
         physical_checks: input.physicalChecks,
         generated_unix_seconds,
         receipt_fingerprint: String::new(),
@@ -2192,6 +2509,7 @@ mod qualification_decision_tests {
             dossier_fingerprint: "a".repeat(64),
             recovery_job_fingerprint: "b".repeat(64),
             executor_build_fingerprint: "c".repeat(64),
+            bench_evidence_fingerprint: Some("d".repeat(64)),
             physical_checks: passed_checks(),
             generated_unix_seconds: 1_700_000_000,
             receipt_fingerprint: String::new(),
@@ -4160,6 +4478,8 @@ bootforgeusb_transport_scan,
             bootforge_qualified_fastboot_devices,
             #[cfg(feature = "qualified-flash")]
             bootforge_qualified_flash_inspect_image,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_qualification_bench_evidence_export,
             #[cfg(feature = "qualified-flash")]
             bootforge_qualification_decision_export,
             #[cfg(feature = "qualified-flash")]
