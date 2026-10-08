@@ -377,6 +377,20 @@ export class WorkflowEngine {
     const { deviceSerial, workflow } = context;
     const command = step.action;
 
+    if (!command || step.platform_specific || step.mode_specific) {
+      return {
+        success: false,
+        error: 'Command requires a resolved platform-specific or mode-specific dispatch before execution'
+      };
+    }
+
+    if (!['android', 'ios'].includes(workflow.platform)) {
+      return {
+        success: false,
+        error: `Unsupported command platform: ${workflow.platform}`
+      };
+    }
+
     let result;
 
     // Determine platform and execute appropriate command

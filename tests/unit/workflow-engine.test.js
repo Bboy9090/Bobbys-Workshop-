@@ -76,3 +76,15 @@ describe('Sensitive workflow execution gates', () => {
     expect(result.error).toMatch(/does not match/i);
   });
 });
+
+describe('Dispatch safety', () => {
+  it('rejects unsupported command platforms before dispatch', async () => {
+    const engine = new WorkflowEngine({ workflowsDir: './workflows' });
+    const result = await engine.executeCommand(
+      { type: 'command', action: 'fastboot devices' },
+      { deviceSerial: 'DEVICE-1', workflow: { platform: 'mobile' } }
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/unsupported command platform/i);
+  });
+});
