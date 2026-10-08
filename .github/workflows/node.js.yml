@@ -2,9 +2,9 @@ name: Node.js CI
 
 on:
   push:
-    branches: [ "main", "master", "main-tool-kit" ]
+    branches: [ "main", "master", "main-tool-kit", "feat/bobfwtools-macos-foundation" ]
   pull_request:
-    branches: [ "main", "master", "main-tool-kit" ]
+    branches: [ "main", "master", "main-tool-kit", "feat/bobfwtools-macos-foundation" ]
 
 permissions:
   contents: read

@@ -2,7 +2,7 @@ name: BobFWTools macOS Core
 
 on:
   pull_request:
-    branches: [ "main-tool-kit" ]
+    branches: [ "main-tool-kit", "feat/bobfwtools-macos-foundation" ]
   push:
     branches: [ "feat/bobfwtools-macos-foundation" ]
 
