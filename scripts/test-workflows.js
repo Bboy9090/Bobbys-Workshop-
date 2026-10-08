@@ -68,7 +68,7 @@ for (const file of files) {
   for (const step of workflow.steps || []) {
     if (stepIds.has(step.id)) errors.push(`${relative}: duplicate step id "${step.id}"`);
     stepIds.add(step.id);
-    if (step.type === 'command' && !step.action) {
+    if (step.type === 'command' && !step.action && !step.platform_specific) {
       errors.push(`${relative}: command step "${step.id}" is missing action`);
     }
     if (step.type === 'prompt' && !step.prompt_text) {
