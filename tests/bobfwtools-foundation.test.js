@@ -275,6 +275,42 @@ describe('device-specific command center', () => {
 });
 
 
+describe('device mode play-by-play guidance', () => {
+  it('shows required state, entry steps, success cues, and recovery guidance for detected modes', () => {
+    const guide = read('src/components/DeviceModeGuide.tsx');
+    const app = read('src/App.tsx');
+
+    expect(guide).toContain('Samsung Download Mode');
+    expect(guide).toContain('Qualcomm EDL 9008');
+    expect(guide).toContain('MediaTek Preloader / Download Mode');
+    expect(guide).toContain('Fastboot / Bootloader Mode');
+    expect(guide).toContain('Normal Android USB / ADB / MTP');
+    expect(guide).toContain('Required state:');
+    expect(guide).toContain('What success looks like');
+    expect(guide).toContain('If it does not work');
+    expect(guide).toContain('Do not blindly short board test points');
+    expect(guide).toContain('Do not use SLA/DAA bypasses or BootROM exploits');
+    expect(app).toContain('<DeviceModeGuide');
+  });
+});
+
+
+describe('device-scoped cable doctor', () => {
+  it('can target one detected Android USB UID instead of repeatedly sampling the whole fleet', () => {
+    const diagnostics = read('src-tauri/src/diagnostics.rs');
+    const bridge = read('src/lib/desktop.ts');
+    const app = read('src/App.tsx');
+
+    expect(diagnostics).toContain('target_device_uid: Option<String>');
+    expect(diagnostics).toContain('.map(|target| d.device_uid == target)');
+    expect(bridge).toContain('runUsbCableDoctor(targetDeviceUid?: string | null)');
+    expect(app).toContain('selectedDiagnosticUid');
+    expect(app).toContain('Test this device');
+    expect(app).toContain('Cable target');
+  });
+});
+
+
 describe('workstation driver evidence', () => {
   it('distinguishes missing drivers from an unavailable Windows driver-store probe', () => {
     const workstation = read('src-tauri/src/workstation.rs');

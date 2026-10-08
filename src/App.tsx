@@ -6,6 +6,7 @@ import RecoverySafetyTools from './components/RecoverySafetyTools';
 import FirehoseDryRun from './components/FirehoseDryRun';
 import QualificationDossier from './components/QualificationDossier';
 import QualifiedFlashConsole from './components/QualifiedFlashConsole';
+import { DeviceModeGuide } from './components/DeviceModeGuide';
 import {
   chooseDownloadDestination,
   chooseUploadSource,
@@ -90,6 +91,7 @@ export default function App() {
   const [handshake, setHandshake] = useState<FrontendBackendHandshake | null>(null);
   const [lastTransfer, setLastTransfer] = useState<MtpTransferResult | null>(null);
   const [diagnostic, setDiagnostic] = useState<PhoneDiagnosticReport | null>(null);
+  const [selectedDiagnosticUid, setSelectedDiagnosticUid] = useState<string | null>(null);
   const [diagnosing, setDiagnosing] = useState(false);
   const [workflowJobs, setWorkflowJobs] = useState<WorkflowJobRecord[]>([]);
   const [adbPackages, setAdbPackages] = useState<AdbPackageRecord[]>([]);
@@ -116,6 +118,11 @@ export default function App() {
   const selectedRecoveryCandidate = useMemo(
     () => recoveryCandidates.find((item) => item.deviceUid === selectedRecoveryUid) || null,
     [recoveryCandidates, selectedRecoveryUid],
+  );
+
+  const selectedDiagnosticUsb = useMemo(
+    () => diagnostic?.usbConnections.find((item) => item.deviceUid === selectedDiagnosticUid) || null,
+    [diagnostic, selectedDiagnosticUid],
   );
 
   const refreshJobs = useCallback(async () => {
@@ -222,6 +229,11 @@ export default function App() {
     try {
       const report = await diagnosePhone();
       setDiagnostic(report);
+      setSelectedDiagnosticUid((current) =>
+        current && report.usbConnections.some((item) => item.deviceUid === current)
+          ? current
+          : report.usbConnections[0]?.deviceUid ?? null,
+      );
       if (report.selectedAdbSerial) setAdbSelectedSerial(report.selectedAdbSerial);
       await refresh();
     } catch (error) {
@@ -236,7 +248,7 @@ export default function App() {
     setCableDoctorBusy(true);
     setNativeError(null);
     try {
-      setCableDoctor(await runUsbCableDoctor());
+      setCableDoctor(await runUsbCableDoctor(selectedDiagnosticUid));
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -809,6 +821,11 @@ export default function App() {
                       >
                         {cableDoctorBusy ? 'Testing…' : 'Run stability test'}
                       </button>
+                      {selectedDiagnosticUid && (
+                        <span className="max-w-[360px] truncate font-mono text-[10px] text-cyan-500" title={selectedDiagnosticUid}>
+                          target {selectedDiagnosticUid}
+                        </span>
+                      )}
                       <span className={
                       diagnostic.connectionGrade === 'excellent'
                         ? 'rounded bg-emerald-950 px-2 py-1 text-xs text-emerald-300'
@@ -876,8 +893,17 @@ export default function App() {
 
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                     {diagnostic.usbConnections.length ? diagnostic.usbConnections.map((usb, index) => (
-                      <div key={`${usb.vendorId}-${usb.productId}-${usb.busNumber}-${usb.deviceAddress}-${index}`} className="rounded border border-slate-800 bg-slate-950/70 p-3">
-                        <div className="text-sm font-medium text-white">{usb.productName || usb.manufacturer || usb.platformHint}</div>
+                      <div key={`${usb.vendorId}-${usb.productId}-${usb.busNumber}-${usb.deviceAddress}-${index}`} className={selectedDiagnosticUid === usb.deviceUid ? 'rounded border border-cyan-700 bg-cyan-950/20 p-3' : 'rounded border border-slate-800 bg-slate-950/70 p-3'}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="text-sm font-medium text-white">{usb.productName || usb.manufacturer || usb.platformHint}</div>
+                          <button
+                            type="button"
+                            onClick={() => { setSelectedDiagnosticUid(usb.deviceUid); setCableDoctor(null); }}
+                            className={selectedDiagnosticUid === usb.deviceUid ? 'rounded border border-cyan-700 px-2 py-1 text-[10px] font-semibold text-cyan-300' : 'rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-400'}
+                          >
+                            {selectedDiagnosticUid === usb.deviceUid ? 'Cable target' : 'Test this device'}
+                          </button>
+                        </div>
                         <div className="mt-1 text-xs text-cyan-300">{usb.platformHint} · {usb.mode}</div>
                         <div className="mt-1 font-mono text-[11px] text-slate-500">
                           {hex(usb.vendorId)}:{hex(usb.productId)} · {usb.speed} · bus {usb.busNumber} · addr {usb.deviceAddress}
@@ -890,6 +916,16 @@ export default function App() {
                       <div className="text-sm text-slate-500">No Android-class USB descriptor is visible.</div>
                     )}
                   </div>
+                  {selectedDiagnosticUsb && (
+                    <div className="mt-3">
+                      <DeviceModeGuide
+                        mode={selectedDiagnosticUsb.mode}
+                        platformHint={selectedDiagnosticUsb.platformHint}
+                        manufacturer={selectedDiagnosticUsb.manufacturer}
+                        productName={selectedDiagnosticUsb.productName}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-4 grid gap-4 xl:grid-cols-2">

@@ -292,6 +292,7 @@ export type DiagnosticFinding = {
 };
 
 export type UsbConnectionSummary = {
+  deviceUid: string;
   vendorId: number;
   productId: number;
   manufacturer: string | null;
@@ -430,8 +431,10 @@ export type CableDoctorReport = {
   evidence: DiagnosticEvidence[];
 };
 
-export async function runUsbCableDoctor(): Promise<CableDoctorReport> {
-  return invoke<CableDoctorReport>('usb_cable_doctor');
+export async function runUsbCableDoctor(targetDeviceUid?: string | null): Promise<CableDoctorReport> {
+  return invoke<CableDoctorReport>('usb_cable_doctor', {
+    targetDeviceUid: targetDeviceUid?.trim() || null,
+  });
 }
 
 
