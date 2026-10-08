@@ -565,6 +565,7 @@ export type WorkstationToolReadiness = {
 export type WorkstationDriverReadiness = {
   id: string;
   applicable: boolean;
+  evidenceAvailable: boolean;
   detected: boolean;
   detail: string;
   adminRequiredForInstall: boolean;
@@ -583,6 +584,7 @@ export type WorkstationReadiness = {
   workspacePaths: WorkspacePathReadiness[];
   tools: WorkstationToolReadiness[];
   drivers: WorkstationDriverReadiness[];
+  driverStoreProbeAvailable: boolean;
   readyForDiagnostics: boolean;
   readyForAndroidService: boolean;
   blockers: string[];

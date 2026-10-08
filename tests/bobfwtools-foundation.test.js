@@ -221,6 +221,23 @@ describe('nested MTP browser', () => {
 });
 
 
+describe('workstation driver evidence', () => {
+  it('distinguishes missing drivers from an unavailable Windows driver-store probe', () => {
+    const workstation = read('src-tauri/src/workstation.rs');
+    const bridge = read('src/lib/desktop.ts');
+    const commandCenter = read('src/components/RepairCommandCenter.tsx');
+
+    expect(workstation).toContain('driver_store_probe_available');
+    expect(workstation).toContain('evidence_available');
+    expect(workstation).toContain('Windows driver-store probe unavailable');
+    expect(bridge).toContain('driverStoreProbeAvailable');
+    expect(bridge).toContain('evidenceAvailable');
+    expect(commandCenter).toContain('probe unavailable');
+    expect(commandCenter).toContain('driver missing');
+  });
+});
+
+
 describe('recovery readiness certificate', () => {
   it('exports a fingerprinted authority-free readiness snapshot through the GUI', () => {
     const main = read('src-tauri/src/main.rs');

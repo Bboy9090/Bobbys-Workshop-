@@ -258,11 +258,19 @@ export default function RepairCommandCenter() {
                     <span className={
                       !driver.applicable
                         ? 'text-[10px] text-slate-500'
-                        : driver.detected
-                          ? 'text-[10px] text-emerald-400'
-                          : 'text-[10px] text-amber-300'
+                        : !driver.evidenceAvailable
+                          ? 'text-[10px] text-rose-300'
+                          : driver.detected
+                            ? 'text-[10px] text-emerald-400'
+                            : 'text-[10px] text-amber-300'
                     }>
-                      {!driver.applicable ? 'native USB' : driver.detected ? 'driver ready' : 'driver missing'}
+                      {!driver.applicable
+                        ? 'native USB'
+                        : !driver.evidenceAvailable
+                          ? 'probe unavailable'
+                          : driver.detected
+                            ? 'driver ready'
+                            : 'driver missing'}
                     </span>
                   </div>
                   <div className="mt-1 text-[10px] text-slate-600">{driver.detail}</div>

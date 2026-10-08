@@ -16,6 +16,7 @@ pub struct ToolReadiness {
 pub struct DriverReadiness {
     pub id: &'static str,
     pub applicable: bool,
+    pub evidence_available: bool,
     pub detected: bool,
     pub detail: String,
     pub admin_required_for_install: bool,
@@ -38,6 +39,7 @@ pub struct WorkstationReadiness {
     pub workspace_paths: Vec<WorkspacePathReadiness>,
     pub tools: Vec<ToolReadiness>,
     pub drivers: Vec<DriverReadiness>,
+    pub driver_store_probe_available: bool,
     pub ready_for_diagnostics: bool,
     pub ready_for_android_service: bool,
     pub blockers: Vec<String>,
@@ -98,19 +100,19 @@ fn expected_paths() -> Vec<(&'static str, PathBuf)> {
 }
 
 #[cfg(target_os = "windows")]
-fn windows_driver_catalog() -> String {
-    Command::new("pnputil")
-        .args(["/enum-drivers"])
-        .output()
-        .ok()
-        .filter(|out| out.status.success())
-        .map(|out| String::from_utf8_lossy(&out.stdout).to_ascii_lowercase())
-        .unwrap_or_default()
+fn windows_driver_catalog() -> (bool, String) {
+    match Command::new("pnputil").args(["/enum-drivers"]).output() {
+        Ok(out) if out.status.success() => (
+            true,
+            String::from_utf8_lossy(&out.stdout).to_ascii_lowercase(),
+        ),
+        _ => (false, String::new()),
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
-fn windows_driver_catalog() -> String {
-    String::new()
+fn windows_driver_catalog() -> (bool, String) {
+    (true, String::new())
 }
 
 #[tauri::command]
@@ -148,55 +150,73 @@ pub fn workstation_readiness() -> WorkstationReadiness {
         })
         .collect::<Vec<_>>();
 
-    let driver_catalog = windows_driver_catalog();
+    let (driver_store_probe_available, driver_catalog) = windows_driver_catalog();
     let windows = cfg!(target_os = "windows");
     let samsung_detected = !windows
-        || driver_catalog.contains("samsung")
-        || driver_catalog.contains("ssud")
-        || driver_catalog.contains("ssudadb");
+        || (driver_store_probe_available
+            && (driver_catalog.contains("samsung")
+                || driver_catalog.contains("ssud")
+                || driver_catalog.contains("ssudadb")));
     let qualcomm_detected = !windows
-        || driver_catalog.contains("qualcomm")
-        || driver_catalog.contains("qcusb")
-        || driver_catalog.contains("qcser")
-        || driver_catalog.contains("qdloader");
+        || (driver_store_probe_available
+            && (driver_catalog.contains("qualcomm")
+                || driver_catalog.contains("qcusb")
+                || driver_catalog.contains("qcser")
+                || driver_catalog.contains("qdloader")));
     let mediatek_detected = !windows
-        || driver_catalog.contains("mediatek")
-        || driver_catalog.contains("mtk_")
-        || driver_catalog.contains("mtk ");
+        || (driver_store_probe_available
+            && (driver_catalog.contains("mediatek")
+                || driver_catalog.contains("mtk_")
+                || driver_catalog.contains("mtk ")));
 
     let drivers = vec![
         DriverReadiness {
             id: "samsung-usb",
             applicable: windows,
+            evidence_available: !windows || driver_store_probe_available,
             detected: samsung_detected,
-            detail: if windows {
-                "Samsung Android USB driver evidence from Windows driver store".to_string()
-            } else {
+            detail: if !windows {
                 "Not applicable: macOS/Linux use native USB/libusb access".to_string()
+            } else if !driver_store_probe_available {
+                "Windows driver-store evidence unavailable: pnputil /enum-drivers could not be queried".to_string()
+            } else if samsung_detected {
+                "Samsung Android USB driver evidence detected in Windows driver store".to_string()
+            } else {
+                "Windows driver store queried; no Samsung Android USB driver evidence found".to_string()
             },
-            admin_required_for_install: windows && !samsung_detected,
+            admin_required_for_install: windows && driver_store_probe_available && !samsung_detected,
         },
         DriverReadiness {
             id: "qualcomm-qdloader-9008",
             applicable: windows,
+            evidence_available: !windows || driver_store_probe_available,
             detected: qualcomm_detected,
-            detail: if windows {
-                "Qualcomm HS-USB/QDLoader driver evidence from Windows driver store".to_string()
-            } else {
+            detail: if !windows {
                 "Not applicable: macOS/Linux use native USB/libusb access".to_string()
+            } else if !driver_store_probe_available {
+                "Windows driver-store evidence unavailable: pnputil /enum-drivers could not be queried".to_string()
+            } else if qualcomm_detected {
+                "Qualcomm HS-USB/QDLoader driver evidence detected in Windows driver store".to_string()
+            } else {
+                "Windows driver store queried; no Qualcomm HS-USB/QDLoader driver evidence found".to_string()
             },
-            admin_required_for_install: windows && !qualcomm_detected,
+            admin_required_for_install: windows && driver_store_probe_available && !qualcomm_detected,
         },
         DriverReadiness {
             id: "mediatek-usb-vcom",
             applicable: windows,
+            evidence_available: !windows || driver_store_probe_available,
             detected: mediatek_detected,
-            detail: if windows {
-                "MediaTek USB/VCOM/Preloader driver evidence from Windows driver store".to_string()
-            } else {
+            detail: if !windows {
                 "Not applicable: macOS/Linux use native USB/libusb access".to_string()
+            } else if !driver_store_probe_available {
+                "Windows driver-store evidence unavailable: pnputil /enum-drivers could not be queried".to_string()
+            } else if mediatek_detected {
+                "MediaTek USB/VCOM/Preloader driver evidence detected in Windows driver store".to_string()
+            } else {
+                "Windows driver store queried; no MediaTek USB/VCOM/Preloader driver evidence found".to_string()
             },
-            admin_required_for_install: windows && !mediatek_detected,
+            admin_required_for_install: windows && driver_store_probe_available && !mediatek_detected,
         },
     ];
 
@@ -208,14 +228,21 @@ pub fn workstation_readiness() -> WorkstationReadiness {
     if !root_exists {
         blockers.push("BobFWTools workspace has not been initialized yet.".to_string());
     }
-    if windows && !samsung_detected {
-        blockers.push("Samsung USB driver not detected in the Windows driver store.".to_string());
-    }
-    if windows && !qualcomm_detected {
-        blockers.push("Qualcomm QDLoader/9008 driver not detected in the Windows driver store.".to_string());
-    }
-    if windows && !mediatek_detected {
-        blockers.push("MediaTek USB/VCOM driver not detected in the Windows driver store.".to_string());
+    if windows && !driver_store_probe_available {
+        blockers.push(
+            "Windows driver-store probe unavailable; BobFWTools cannot prove OEM driver readiness."
+                .to_string(),
+        );
+    } else if windows {
+        if !samsung_detected {
+            blockers.push("Samsung USB driver not detected in the Windows driver store.".to_string());
+        }
+        if !qualcomm_detected {
+            blockers.push("Qualcomm QDLoader/9008 driver not detected in the Windows driver store.".to_string());
+        }
+        if !mediatek_detected {
+            blockers.push("MediaTek USB/VCOM driver not detected in the Windows driver store.".to_string());
+        }
     }
 
     WorkstationReadiness {
@@ -225,6 +252,7 @@ pub fn workstation_readiness() -> WorkstationReadiness {
         workspace_paths: paths,
         tools,
         drivers,
+        driver_store_probe_available: !windows || driver_store_probe_available,
         ready_for_diagnostics: true,
         ready_for_android_service: root_exists
             && (adb || fastboot || (!windows || samsung_detected || qualcomm_detected || mediatek_detected)),
