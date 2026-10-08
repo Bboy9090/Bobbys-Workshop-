@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   chooseAndInspectQualifiedFlashImage,
+  exportQualificationAuditBundle,
   exportQualificationBenchEvidence,
   exportQualificationDecision,
   getQualificationBuildIdentity,
@@ -78,6 +79,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
   const [grant, setGrant] = useState<QualifiedFlashGrant | null>(null);
   const [benchEvidencePath, setBenchEvidencePath] = useState<string | null>(null);
   const [decisionPath, setDecisionPath] = useState<string | null>(null);
+  const [auditBundlePath, setAuditBundlePath] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -155,7 +157,12 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
     setGrant(null);
     setBenchEvidencePath(null);
     setDecisionPath(null);
+    setAuditBundlePath(null);
   }, [recoveryJobFingerprint]);
+
+  useEffect(() => {
+    setAuditBundlePath(null);
+  }, [benchEvidencePath, decisionPath, deviceSerial, reviewer, review?.path]);
 
   const reviewSavedDossier = async () => {
     setBusy(true);
@@ -262,6 +269,27 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
         physicalChecks: checks,
       });
       if (path) setDecisionPath(path);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const exportAuditBundle = async () => {
+    if (!review || !recoveryJobFingerprint || !deviceSerial || !reviewer.trim() || !benchEvidencePath || !decisionPath) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const path = await exportQualificationAuditBundle({
+        dossierPath: review.path,
+        benchEvidencePath,
+        decisionPath,
+        expectedRecoveryJobFingerprint: recoveryJobFingerprint,
+        deviceSerial,
+        reviewer: reviewer.trim(),
+      });
+      if (path) setAuditBundlePath(path);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -473,6 +501,19 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
             {decisionPath && (
               <div className="mt-2 break-all font-mono text-[10px] text-cyan-400">
                 decision receipt: {decisionPath}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => void exportAuditBundle()}
+              disabled={busy || !benchEvidencePath || !decisionPath || !review?.safeToReview}
+              className="mt-3 rounded border border-violet-800 px-3 py-2 text-xs font-semibold text-violet-300 disabled:opacity-40"
+            >
+              Export qualification audit bundle
+            </button>
+            {auditBundlePath && (
+              <div className="mt-2 break-all font-mono text-[10px] text-violet-400">
+                audit bundle: {auditBundlePath}
               </div>
             )}
           </div>

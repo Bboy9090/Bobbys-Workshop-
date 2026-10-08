@@ -2480,6 +2480,179 @@ fn bootforge_qualification_decision_export(
     Ok(destination.display().to_string())
 }
 
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, Deserialize)]
+struct QualificationAuditBundleInput {
+    dossierPath: String,
+    benchEvidencePath: String,
+    decisionPath: String,
+    readinessCertificatePath: Option<String>,
+    expectedRecoveryJobFingerprint: String,
+    deviceSerial: String,
+    reviewer: String,
+}
+
+#[cfg(feature = "qualified-flash")]
+#[tauri::command]
+fn bootforge_qualification_audit_bundle_export(
+    input: QualificationAuditBundleInput,
+    destination_path: String,
+) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+
+    let destination = std::path::PathBuf::from(&destination_path);
+    if destination.as_os_str().is_empty() {
+        return Err("Qualification audit bundle destination is required".to_string());
+    }
+    let reviewer = input.reviewer.trim();
+    let serial = input.deviceSerial.trim();
+    if reviewer.is_empty() || serial.is_empty() {
+        return Err("Reviewer identity and device serial are required".to_string());
+    }
+
+    let dossier_review = bootforge_qualification_review(
+        input.dossierPath.clone(),
+        Some(input.expectedRecoveryJobFingerprint.clone()),
+    )?;
+    if !dossier_review.safe_to_review {
+        return Err(format!(
+            "Qualification dossier is not safe to bundle: {}",
+            dossier_review.blockers.join("; ")
+        ));
+    }
+    let dossier_fingerprint = dossier_review
+        .dossier_fingerprint
+        .clone()
+        .ok_or_else(|| "Verified dossier fingerprint is unavailable".to_string())?;
+    let recovery_job_fingerprint = dossier_review
+        .recovery_job_fingerprint
+        .clone()
+        .ok_or_else(|| "Verified recovery-job fingerprint is unavailable".to_string())?;
+    let build = qualification_build_identity_snapshot();
+    if !build.qualified_flash_compiled {
+        return Err("Qualification audit bundle must be exported by the qualified bench build".to_string());
+    }
+
+    let bench = load_and_verify_qualification_bench_evidence(
+        &input.benchEvidencePath,
+        reviewer,
+        serial,
+        &dossier_fingerprint,
+        &recovery_job_fingerprint,
+        &build.executor_build_fingerprint,
+    )?;
+    let decision = load_and_verify_qualification_decision(
+        &input.decisionPath,
+        reviewer,
+        serial,
+        &dossier_fingerprint,
+        &recovery_job_fingerprint,
+        &build.executor_build_fingerprint,
+    )?;
+    let decision_bench_fingerprint = decision
+        .bench_evidence_fingerprint
+        .as_deref()
+        .ok_or_else(|| "Accepted decision is missing bench-evidence fingerprint".to_string())?;
+    if !decision_bench_fingerprint.eq_ignore_ascii_case(&bench.receipt_fingerprint) {
+        return Err("Decision and bench-evidence fingerprints do not match".to_string());
+    }
+
+    let readiness = if let Some(path) = input
+        .readinessCertificatePath
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let review = bootforge_recovery_review_readiness_certificate(
+            path.to_string(),
+            Some(recovery_job_fingerprint.clone()),
+        )?;
+        if !review.safe_to_review {
+            return Err(format!(
+                "Readiness certificate is not safe to bundle: {}",
+                review.blockers.join("; ")
+            ));
+        }
+        Some(serde_json::json!({
+            "path": path,
+            "fileSha256": sha256_file(std::path::Path::new(path))?,
+            "certificateFingerprint": review.certificate_fingerprint,
+            "readinessStatus": review.readiness_status,
+        }))
+    } else {
+        None
+    };
+
+    let source_files = serde_json::json!({
+        "qualificationDossier": {
+            "path": input.dossierPath,
+            "fileSha256": sha256_file(std::path::Path::new(&input.dossierPath))?,
+            "dossierFingerprint": dossier_fingerprint,
+        },
+        "benchEvidence": {
+            "path": input.benchEvidencePath,
+            "fileSha256": sha256_file(std::path::Path::new(&input.benchEvidencePath))?,
+            "receiptFingerprint": bench.receipt_fingerprint,
+        },
+        "humanDecision": {
+            "path": input.decisionPath,
+            "fileSha256": sha256_file(std::path::Path::new(&input.decisionPath))?,
+            "receiptFingerprint": decision.receipt_fingerprint,
+            "decision": decision.decision,
+        },
+        "readinessCertificate": readiness,
+    });
+
+    let generated_unix_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+
+    let material = serde_json::json!({
+        "schema": "com.bobbyblanco.bobfwtools.qualification-audit-bundle.v1",
+        "grantsExecutionAuthority": false,
+        "executionPerformed": false,
+        "reviewer": reviewer,
+        "deviceSerial": serial,
+        "recoveryJobFingerprint": recovery_job_fingerprint,
+        "executorBuildFingerprint": build.executor_build_fingerprint,
+        "sourceFiles": source_files,
+        "generatedUnixSeconds": generated_unix_seconds,
+    });
+    let material_bytes = serde_json::to_vec(&material)
+        .map_err(|e| format!("Could not serialize qualification audit bundle material: {e}"))?;
+    let bundle_fingerprint = format!("{:x}", Sha256::digest(&material_bytes));
+    let bundle = serde_json::json!({
+        "bundleFingerprint": bundle_fingerprint,
+        "bundleMaterial": material,
+    });
+
+    std::fs::write(
+        &destination,
+        serde_json::to_vec_pretty(&bundle)
+            .map_err(|e| format!("Could not serialize qualification audit bundle: {e}"))?,
+    )
+    .map_err(|e| format!("Could not write qualification audit bundle: {e}"))?;
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "export-qualification-audit-bundle",
+        "elevated",
+        "verified-no-authority",
+        Some(serial.to_string()),
+        "Qualification audit bundle exported; bundle grants no execution authority.",
+        vec![
+            format!("reviewer:{}", reviewer),
+            format!("bundle-fingerprint:{}", bundle_fingerprint),
+            format!("recovery-job-fingerprint:{}", recovery_job_fingerprint),
+            format!("executor-build-fingerprint:{}", build.executor_build_fingerprint),
+        ],
+    );
+
+    Ok(destination.display().to_string())
+}
+
 #[cfg(all(test, feature = "qualified-flash"))]
 mod qualification_decision_tests {
     use super::*;
@@ -4530,6 +4703,8 @@ bootforgeusb_transport_scan,
             bootforge_qualification_bench_evidence_export,
             #[cfg(feature = "qualified-flash")]
             bootforge_qualification_decision_export,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_qualification_audit_bundle_export,
             #[cfg(feature = "qualified-flash")]
             bootforge_issue_qualification_trial_grant,
             #[cfg(feature = "qualified-flash")]
