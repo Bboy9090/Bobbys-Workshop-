@@ -1249,7 +1249,7 @@ export default function App() {
                         : 'CERTIFICATE BLOCKED'}
                     </div>
                     <div className="mt-1 text-[11px] text-slate-400">
-                      Fingerprint {recoveryCertificateReview.fingerprintValid ? 'verified' : 'failed'} · job binding {recoveryCertificateReview.jobMatchesExpected ? 'matched' : 'mismatch'}
+                      Fingerprint {recoveryCertificateReview.fingerprintValid ? 'verified' : 'failed'} · job binding {recoveryCertificateReview.jobMatchesExpected ? 'matched' : 'mismatch'} · gate matrix {recoveryCertificateReview.semanticConsistencyValid ? 'consistent' : 'inconsistent'}
                     </div>
                     {!!recoveryCertificateReview.blockers.length && (
                       <div className="mt-2 space-y-1 text-[11px]">

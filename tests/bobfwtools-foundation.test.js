@@ -330,6 +330,8 @@ describe('recovery readiness certificate', () => {
     expect(main).toContain('"readinessStatus": readiness_status');
     expect(main).toContain('certificateFingerprint');
     expect(main).toContain('fingerprint verification failed');
+    expect(main).toContain('gate matrix is internally inconsistent');
+    expect(bridge).toContain('semanticConsistencyValid');
     expect(bridge).toContain('exportRecoveryReadinessCertificate');
     expect(bridge).toContain('reviewRecoveryReadinessCertificate');
     expect(app).toContain('Export readiness certificate');
