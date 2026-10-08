@@ -951,6 +951,7 @@ struct RecoveryReadinessCertificateReview {
     job_fingerprint_valid: bool,
     job_matches_expected: bool,
     readiness_status_valid: bool,
+    semantic_consistency_valid: bool,
     grants_execution_authority_claimed: bool,
     execution_performed_claimed: bool,
     safe_to_review: bool,
@@ -1024,6 +1025,54 @@ fn bootforge_recovery_review_readiness_certificate(
         readiness_status.as_deref(),
         Some("blocked" | "review-ready" | "execution-ready")
     );
+
+    let gates = material.get("qualificationGates");
+    let gate = |key: &str| -> Option<bool> {
+        gates
+            .and_then(|value| value.get(key))
+            .and_then(|value| value.as_bool())
+    };
+    let gate_values = (
+        gate("artifactsHashed"),
+        gate("payloadsHashed"),
+        gate("payloadIntegrityPassed"),
+        gate("partitionMapNormalized"),
+        gate("prerequisitesMet"),
+        gate("hardwareIdentityRevalidated"),
+        gate("executorPhysicallyQualified"),
+        gate("executionReady"),
+    );
+    let semantic_consistency_valid = match gate_values {
+        (
+            Some(artifacts_hashed),
+            Some(payloads_hashed),
+            Some(payload_integrity_passed),
+            Some(partition_map_normalized),
+            Some(prerequisites_met),
+            Some(hardware_identity_revalidated),
+            Some(executor_physically_qualified),
+            Some(execution_ready),
+        ) => {
+            let review_ready = artifacts_hashed
+                && payloads_hashed
+                && payload_integrity_passed
+                && partition_map_normalized
+                && prerequisites_met
+                && hardware_identity_revalidated;
+            let expected_status = if execution_ready {
+                "execution-ready"
+            } else if review_ready {
+                "review-ready"
+            } else {
+                "blocked"
+            };
+            let execution_gate_consistent =
+                !execution_ready || (review_ready && executor_physically_qualified);
+            readiness_status.as_deref() == Some(expected_status) && execution_gate_consistent
+        }
+        _ => false,
+    };
+
     let grants_execution_authority_claimed = material
         .get("grantsExecutionAuthority")
         .and_then(|v| v.as_bool())
@@ -1048,6 +1097,12 @@ fn bootforge_recovery_review_readiness_certificate(
     }
     if !readiness_status_valid {
         blockers.push("Readiness certificate status is not recognized".to_string());
+    }
+    if !semantic_consistency_valid {
+        blockers.push(
+            "Readiness certificate gate matrix is internally inconsistent with its claimed status"
+                .to_string(),
+        );
     }
     if grants_execution_authority_claimed {
         blockers.push("Readiness certificate improperly claims execution authority".to_string());
@@ -1079,6 +1134,7 @@ fn bootforge_recovery_review_readiness_certificate(
         job_fingerprint_valid,
         job_matches_expected,
         readiness_status_valid,
+        semantic_consistency_valid,
         grants_execution_authority_claimed,
         execution_performed_claimed,
         safe_to_review,

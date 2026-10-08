@@ -1245,6 +1245,7 @@ export type RecoveryReadinessCertificateReview = {
   jobFingerprintValid: boolean;
   jobMatchesExpected: boolean;
   readinessStatusValid: boolean;
+  semanticConsistencyValid: boolean;
   grantsExecutionAuthorityClaimed: boolean;
   executionPerformedClaimed: boolean;
   safeToReview: boolean;
