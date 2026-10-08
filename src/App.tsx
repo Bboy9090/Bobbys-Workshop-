@@ -4,6 +4,7 @@ import OperatorTimeline from './components/OperatorTimeline';
 import AuditLedger from './components/AuditLedger';
 import RecoverySafetyTools from './components/RecoverySafetyTools';
 import FirehoseDryRun from './components/FirehoseDryRun';
+import QualificationDossier from './components/QualificationDossier';
 import {
   chooseDownloadDestination,
   chooseUploadSource,
@@ -589,6 +590,7 @@ export default function App() {
           <AuditLedger />
           <RecoverySafetyTools />
           <FirehoseDryRun />
+          <QualificationDossier />
 
           <section className="mb-4 rounded-lg border border-cyan-900/70 bg-cyan-950/10 p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">

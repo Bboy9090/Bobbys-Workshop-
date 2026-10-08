@@ -738,6 +738,81 @@ fn bootforge_recovery_export_receipt(
     Ok(destination.display().to_string())
 }
 
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationWorkstationSnapshot {
+    os: String,
+    architecture: String,
+    workspace_root: String,
+    ready_for_diagnostics: bool,
+    ready_for_android_service: bool,
+    blockers: Vec<String>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationProgrammerSnapshot {
+    path: String,
+    sha256: String,
+    bytes: u64,
+    device_family: Option<String>,
+    authorized: bool,
+    authorization_source: Option<String>,
+    enrolled_at_unix_ms: Option<u64>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationDossierInput {
+    device: bootforgeusb::transport::TransportDevice,
+    workstation: QualificationWorkstationSnapshot,
+    authorized_programmers: Vec<QualificationProgrammerSnapshot>,
+    operator_notes: String,
+}
+
+#[tauri::command]
+fn bootforge_qualification_export(
+    input: QualificationDossierInput,
+    destination_path: String,
+) -> Result<String, String> {
+    let destination = std::path::PathBuf::from(&destination_path);
+    if destination.as_os_str().is_empty() {
+        return Err("Qualification dossier destination is required".to_string());
+    }
+    let generated_unix_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+
+    let receipt = serde_json::json!({
+        "schema": "com.bobbyblanco.bobfwtools.designated-device-qualification.v1",
+        "generatedUnixSeconds": generated_unix_seconds,
+        "qualificationStatus": "pending-physical-review",
+        "executorQualified": false,
+        "executionEnabledByThisDossier": false,
+        "device": input.device,
+        "workstation": input.workstation,
+        "authorizedProgrammers": input.authorized_programmers,
+        "operatorNotes": input.operator_notes,
+        "requiredPhysicalChecks": [
+            "Repeat USB enumeration without identity drift",
+            "Confirm expected recovery mode after reconnect",
+            "Confirm bulk endpoint stability across repeated scans",
+            "Confirm OEM/service programmer hash remains enrolled and unchanged",
+            "Confirm firmware/device/layout preflight matches target",
+            "Confirm dry-run partition plan stays within verified bounds",
+            "Confirm backup/rollback evidence exists where required",
+            "Record designated-device bench outcome separately before any executor qualification"
+        ]
+    });
+    let bytes = serde_json::to_vec_pretty(&receipt)
+        .map_err(|e| format!("Could not serialize qualification dossier: {e}"))?;
+    std::fs::write(&destination, bytes)
+        .map_err(|e| format!("Could not write qualification dossier {}: {e}", destination.display()))?;
+    Ok(destination.display().to_string())
+}
+
 #[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config: FlashJobConfig) -> Result<FlashStartResponse, String> {
@@ -1724,6 +1799,7 @@ bootforgeusb_transport_scan,
             bootforge_recovery_prepare,
             bootforge_recovery_revalidate,
             bootforge_recovery_export_receipt,
+            bootforge_qualification_export,
             mtp_status,
             mtp_list_root,
             mtp_download_file,

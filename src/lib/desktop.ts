@@ -640,6 +640,56 @@ export async function buildFirehoseWritePlan(request: FirehoseWriteRequest): Pro
   return invoke<FirehoseWritePlan>('firehose_write_plan', { request });
 }
 
+
+export type TransportEndpointRecord = {
+  configuration: number;
+  interface: number;
+  alternateSetting: number;
+  address: number;
+  direction: string;
+  transferType: string;
+  maxPacketSize: number;
+  interval: number;
+};
+
+export type TransportDevice = {
+  deviceUid: string;
+  vendorId: number;
+  productId: number;
+  busNumber: number;
+  deviceAddress: number;
+  manufacturer?: string | null;
+  productName?: string | null;
+  serialNumber?: string | null;
+  mode: string;
+  endpoints: TransportEndpointRecord[];
+  bulkIn: number[];
+  bulkOut: number[];
+};
+
+export async function scanTransportDevices(): Promise<TransportDevice[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<TransportDevice[]>('bootforgeusb_transport_scan');
+}
+
+export type QualificationDossierInput = {
+  device: TransportDevice;
+  workstation: WorkstationReadiness;
+  authorizedProgrammers: EdlProgrammerRecord[];
+  operatorNotes: string;
+};
+
+export async function exportQualificationDossier(input: QualificationDossierInput): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const destinationPath = await save({
+    title: 'Export designated-device qualification dossier',
+    defaultPath: 'bobfwtools-qualification-dossier.json',
+    filters: [{ name: 'JSON qualification dossier', extensions: ['json'] }],
+  });
+  if (!destinationPath) return null;
+  return invoke<string>('bootforge_qualification_export', { input, destinationPath });
+}
+
 export type RecoveryWorkflow = 'qualcomm-edl' | 'mediatek-download';
 
 export type RecoveryCandidate = {
