@@ -2721,7 +2721,7 @@ struct QualificationAuditBundleReview {
     executor_build_matches_current: bool,
     source_files_match: bool,
     source_semantics_valid: bool,
-    nested_evidence_chain_valid: bool
+    nested_evidence_chain_valid: bool,
     grants_execution_authority_claimed: bool,
     execution_performed_claimed: bool,
     safe_to_review: bool,
@@ -3072,6 +3072,8 @@ fn bootforge_qualification_audit_bundle_review(
         source_blockers.push(
             "Qualification audit bundle source chain is incomplete".to_string(),
         );
+    }
+
     let nested_result = (|| -> Result<(), String> {
         if reviewer.trim().is_empty() || device_serial.trim().is_empty() {
             return Err("Audit bundle reviewer or device serial is missing".to_string());
@@ -3106,8 +3108,8 @@ fn bootforge_qualification_audit_bundle_review(
             .ok_or_else(|| "Audit bundle bench-evidence path is missing".to_string())?;
         let bench = load_and_verify_qualification_bench_evidence(
             bench_path,
-            reviewer,
-            device_serial,
+            &reviewer,
+            &device_serial,
             &dossier_fingerprint,
             expected_job,
             &current_build.executor_build_fingerprint,
@@ -3120,8 +3122,8 @@ fn bootforge_qualification_audit_bundle_review(
             .ok_or_else(|| "Audit bundle decision path is missing".to_string())?;
         let decision = load_and_verify_qualification_decision(
             decision_path,
-            reviewer,
-            device_serial,
+            &reviewer,
+            &device_serial,
             &dossier_fingerprint,
             expected_job,
             &current_build.executor_build_fingerprint,
@@ -3201,7 +3203,7 @@ fn bootforge_qualification_audit_bundle_review(
             format!("bundle-fingerprint-valid:{}", bundle_fingerprint_valid),
             format!("source-files-match:{}", source_files_match),
             format!("source-semantics-valid:{}", source_semantics_valid),
-            format!("nested-evidence-chain-valid:{}", nested_evidence_chain_valid)
+            format!("nested-evidence-chain-valid:{}", nested_evidence_chain_valid),
             format!("job-match:{}", recovery_job_matches_expected),
             format!("executor-build-match:{}", executor_build_matches_current),
         ],
