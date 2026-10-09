@@ -13,10 +13,10 @@ const ADMIN_KEY = 'test-admin-key';
 
 beforeAll(async () => {
   // Set test environment variables
-  process.env.PANDORA_ROOM_PASSWORD = ADMIN_KEY;
+  process.env.ADMIN_API_KEY = ADMIN_KEY;
+process.env.PANDORA_ROOM_PASSWORD = ADMIN_KEY;
   process.env.SECRET_ROOM_PASSCODE = ADMIN_KEY;
   process.env.TRAPDOOR_PASSCODE = ADMIN_KEY;
-  process.env.ADMIN_API_KEY = ADMIN_KEY;
   process.env.SHADOW_LOG_KEY = 'deadbeef'.repeat(8); // 32 bytes for AES-256
   
   // Create test server
@@ -125,7 +125,7 @@ describe('Trapdoor API Tests', () => {
           'x-api-key': ADMIN_KEY,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ workflows })
+        body: JSON.stringify({ commands: workflows, deviceSerial: 'test-device' })
       });
 
       assert.strictEqual(response.status, 400);
@@ -135,17 +135,12 @@ describe('Trapdoor API Tests', () => {
   });
 
   describe('Monitoring', () => {
-    it('should return monitoring statistics', async () => {
+    it('should reject the unsupported monitoring endpoint', async () => {
       const response = await fetch(`${API_BASE}/monitoring/stats`, {
         headers: { 'x-api-key': ADMIN_KEY }
       });
 
-      assert.strictEqual(response.status, 200);
-      const data = await response.json();
-      assert.ok(data.success);
-      assert.ok(data.apiUsage);
-      assert.ok(data.rateLimiting);
-      assert.ok(data.logging);
+      assert.strictEqual(response.status, 404);
     });
   });
 
@@ -160,37 +155,27 @@ describe('Trapdoor API Tests', () => {
       assert.ok(response.status === 200 || response.status === 404);
     });
 
-    it('should allow log cleanup', async () => {
+    it('should reject the unsupported cleanup endpoint', async () => {
       const response = await fetch(`${API_BASE}/logs/cleanup`, {
         method: 'POST',
         headers: { 'x-api-key': ADMIN_KEY }
       });
 
-      assert.strictEqual(response.status, 200);
-      const data = await response.json();
-      assert.ok(data.success);
+      assert.strictEqual(response.status, 404);
     });
   });
 
-  // Rate limiting test - skipped because test server doesn't include rate-limiter middleware
-  // In production, the server/index.js applies rate limiting via rateLimiter middleware
   describe('Throttling', () => {
-    it.skip('should enforce rate limits (requires rate-limiter middleware)', async () => {
-      const requests = [];
-      
-      // Make 35 requests (exceeds 30/min limit)
-      for (let i = 0; i < 35; i++) {
-        requests.push(
-          fetch(`${API_BASE}/workflows`, {
-            headers: { 'x-api-key': ADMIN_KEY }
-          })
-        );
-      }
-
-      const responses = await Promise.all(requests);
-      const throttled = responses.filter(r => r.status === 429);
-      
-      assert.ok(throttled.length > 0, 'Should have throttled requests');
+    it('enforces the actual trapdoor middleware limit', async () => {
+      const { rateLimiter } = await import('../src-tauri/resources/server/middleware/rate-limiter.js');
+      const middleware = rateLimiter('trapdoor');
+      let allowed = 0, status, payload;
+      const response = { status(code) { status = code; return this; }, json(body) { payload = body; } };
+      for (let i = 0; i < 6; i++) middleware({ ip: 'rate-contract-test' }, response, () => allowed++);
+      assert.strictEqual(allowed, 5);
+      assert.strictEqual(status, 429);
+      assert.strictEqual(payload.error.code, 'RATE_LIMIT_EXCEEDED');
+      assert.strictEqual(payload.error.details.limit, 5);
     });
   });
 });

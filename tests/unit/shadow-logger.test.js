@@ -1,36 +1,13 @@
-// Unit tests for Shadow Logger
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import fs from 'fs/promises';
-import path from 'path';
-
-describe('Shadow Logger', () => {
-  const testLogsDir = path.join(process.cwd(), 'tests', 'temp-logs');
-
-  beforeEach(async () => {
-    await fs.mkdir(testLogsDir, { recursive: true });
-  });
-
-  afterEach(async () => {
-    await fs.rm(testLogsDir, { recursive: true, force: true });
-  });
-
-  it('should encrypt and log shadow entries', () => {
-    expect(true).toBe(true);
-  });
-
-  it('should decrypt shadow log entries', () => {
-    expect(true).toBe(true);
-  });
-
-  it('should log public entries without encryption', () => {
-    expect(true).toBe(true);
-  });
-
-  it('should read shadow logs by date', () => {
-    expect(true).toBe(true);
-  });
-
-  it('should enforce retention policy', () => {
-    expect(true).toBe(true);
-  });
-});
+import { it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import Logger from '../../src-tauri/resources/core/lib/shadow-logger.js';
+let dir, logger;
+beforeEach(async () => { dir=await mkdtemp(path.join(os.tmpdir(),'logger-contract-')); logger=new Logger({ logsDir:path.join(dir,'shadow'),publicLogsDir:path.join(dir,'public'),encryptionKey:Buffer.alloc(32,7) }); });
+afterEach(async () => { await rm(dir,{recursive:true,force:true}); });
+it('round trips encrypted text', () => { expect(logger.decrypt(logger.encrypt('private text'))).toBe('private text'); });
+it('uses a fresh nonce', () => { expect(logger.encrypt('same')).not.toBe(logger.encrypt('same')); });
+it('rejects tampered authentication tags', () => { const payload=JSON.parse(logger.encrypt('private')); payload.authTag='00'.repeat(16); expect(() => logger.decrypt(JSON.stringify(payload))).toThrow(); });
+it('writes and reads encrypted entries', async () => { expect((await logger.logShadow({operation:'read-only-contract'})).success).toBe(true); const result=await logger.readShadowLogs(new Date().toISOString().slice(0,10)); expect(result.success).toBe(true); expect(result.entries[0].operation).toBe('read-only-contract'); });
+it('reports actual persisted file counts', async () => { await logger.logPublic({operation:'contract',message:'test'}); const result=await logger.getStats(); expect(result.success).toBe(true); expect(result.stats.publicLogFiles).toBe(1); });

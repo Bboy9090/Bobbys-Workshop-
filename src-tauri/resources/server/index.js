@@ -3837,6 +3837,11 @@ app.use('/api/operations', operationsRouter);
 // Trapdoor API - Secure endpoints for sensitive operations (Bobby's Secret Workshop)
 app.use('/api/trapdoor', requireTrapdoorPasscode, trapdoorRouter);
 
+// Unknown API endpoints use the same JSON envelope as other errors.
+app.use('/api', (req, res) => {
+  res.sendError('NOT_FOUND', 'API endpoint not found', {}, 404);
+});
+
 // Enhanced error middleware with envelope support and detailed logging
 app.use((err, req, res, next) => {
   // Log the full error with correlation ID
