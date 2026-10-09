@@ -26,7 +26,7 @@
 
 ### 3. Graceful Degradation
 
-- **Mock-Safe Fallback**: System works without hardware present
+- **Truthful Unavailability**: Missing hardware/tooling returns unavailable or unsupported; production code never invents device facts
 - **Progressive Enhancement**: Advanced features optional
 - **Offline-First**: Core functionality works without network
 - **Platform-Agnostic UI**: UI adapts to available platform tools
@@ -133,9 +133,10 @@ type ApiEnvelope<T> = {
 ```
 
 **Fallback Behavior:**
-- If BootForge USB CLI not available, return mock data with `cliAvailable: false`
-- Mock data MUST include `platform_hint: "mock"` to indicate simulation
-- UI MUST display mock indicator when `cliAvailable: false`
+- If BootForge USB CLI is not available, return `error.code: "BOOTFORGE_NOT_FOUND"`
+- Return no synthetic device records
+- UI MUST show the exact unavailable reason and remediation path
+- Reports MUST distinguish observed facts from unavailable fields
 
 **Error Codes:**
 - `BOOTFORGE_NOT_FOUND` - BootForge CLI not installed

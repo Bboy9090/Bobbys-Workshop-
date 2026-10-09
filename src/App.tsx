@@ -1,383 +1,1633 @@
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  API_BASE,
-  createCase,
-  getCaseAudit,
-  getDeviceScan,
-  postCaseIntake,
-  postOwnershipVerification,
-  triggerBackupAuth,
-  type ScanDevice,
-} from './lib/api';
+  chooseDownloadDestination,
+  chooseUploadSource,
+  frontendBackendHandshake,
+  diagnosePhone,
+  getAdbBatteryInfo,
+  getAdbDeviceInfo,
+  getAdbLogcatSnapshot,
+  installApkOnDevice,
+  prepareAdb,
+  getMtpStatus,
+  getNativeUsbDevices,
+  getWorkflowCapabilities,
+  isTauriRuntime,
+  saveAdbScreenshot,
+  scanAdbDevices,
+  listMtpDirectory,
+  downloadMtpPath,
+  uploadMtpPath,
+  listAdbUserPackages,
+  runUsbCableDoctor,
+  scanRecoveryCandidates,
+  autodiscoverRecoveryArtifacts,
+  buildRecoveryPlan,
+  prepareRecoveryJob,
+  revalidateRecoveryJob,
+  listWorkflowJobs,
+  retryWorkflowJob,
+  runAdbPackageAction,
+  startWorkflowJob,
+  type AdbDeviceRecord,
+  type FrontendBackendHandshake,
+  type MtpBrowserObject,
+  type MtpStatus,
+  type MtpTransferResult,
+  type UsbDeviceRecord,
+  type DeviceCapabilityMatrix,
+  type PhoneDiagnosticReport,
+  type WorkflowJobRecord,
+  type AdbPackageRecord,
+  type CableDoctorReport,
+  type RecoveryCandidate,
+  type RecoveryPlan,
+  type RecoveryJob,
+  type RecoveryWorkflow,
+} from './lib/desktop';
 
-type LogLine = { ts: string; level: 'info' | 'warn' | 'error'; message: string };
-
-function pushLog(set: Dispatch<SetStateAction<LogLine[]>>, level: LogLine['level'], message: string) {
-  set((prev) => [...prev.slice(-200), { ts: new Date().toISOString(), level, message }]);
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value < 0) return 'Unknown';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let n = value;
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i += 1;
+  }
+  return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-function badgeForDevice(d: ScanDevice): string {
-  const m = (d.mode || '').toLowerCase();
-  if (m.includes('unauthorized')) return 'Fix USB debugging authorization on the device';
-  if (m === 'offline') return 'Device offline — check cable and ADB';
-  if (m === 'bootloader') return 'Bootloader mode — avoid OS-level actions until you confirm intent';
-  return '';
+function hex(value: number): string {
+  return value.toString(16).padStart(4, '0').toUpperCase();
 }
 
 export default function App() {
-  const [devices, setDevices] = useState<ScanDevice[]>([]);
-  const [toolsHint, setToolsHint] = useState<string | null>(null);
-  const [backendOk, setBackendOk] = useState<boolean | null>(null);
-  const [pollEnabled, setPollEnabled] = useState(true);
-  const [selectedUid, setSelectedUid] = useState<string | null>(null);
-  const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
-  const [caseTitle, setCaseTitle] = useState('');
-  const [caseNotes, setCaseNotes] = useState('');
-  const [ownershipChecked, setOwnershipChecked] = useState(false);
-  const [ownershipPhrase, setOwnershipPhrase] = useState('');
-  const [auditSummary, setAuditSummary] = useState<string | null>(null);
-  const [logs, setLogs] = useState<LogLine[]>([
-    { ts: new Date().toISOString(), level: 'info', message: "Bobby's Workshop UI ready. Waiting for backend…" },
-  ]);
+  const [usbDevices, setUsbDevices] = useState<UsbDeviceRecord[]>([]);
+  const [mtp, setMtp] = useState<MtpStatus | null>(null);
+  const [adbDevices, setAdbDevices] = useState<AdbDeviceRecord[]>([]);
+  const [capabilities, setCapabilities] = useState<DeviceCapabilityMatrix | null>(null);
+  const [adbSelectedSerial, setAdbSelectedSerial] = useState<string | null>(null);
+  const [adbOutput, setAdbOutput] = useState<string | null>(null);
+  const [storageIndex, setStorageIndex] = useState(0);
+  const [mtpPath, setMtpPath] = useState<string[]>([]);
+  const [mtpObjects, setMtpObjects] = useState<MtpBrowserObject[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [nativeError, setNativeError] = useState<string | null>(null);
+  const [handshake, setHandshake] = useState<FrontendBackendHandshake | null>(null);
+  const [lastTransfer, setLastTransfer] = useState<MtpTransferResult | null>(null);
+  const [diagnostic, setDiagnostic] = useState<PhoneDiagnosticReport | null>(null);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [workflowJobs, setWorkflowJobs] = useState<WorkflowJobRecord[]>([]);
+  const [adbPackages, setAdbPackages] = useState<AdbPackageRecord[]>([]);
+  const [packageQuery, setPackageQuery] = useState('');
+  const [packageBusy, setPackageBusy] = useState<string | null>(null);
+  const [cableDoctor, setCableDoctor] = useState<CableDoctorReport | null>(null);
+  const [cableDoctorBusy, setCableDoctorBusy] = useState(false);
+  const [recoveryCandidates, setRecoveryCandidates] = useState<RecoveryCandidate[]>([]);
+  const [selectedRecoveryUid, setSelectedRecoveryUid] = useState<string | null>(null);
+  const [recoveryKind, setRecoveryKind] = useState<RecoveryWorkflow>('qualcomm-edl');
+  const [recoveryArtifacts, setRecoveryArtifacts] = useState<string[]>([]);
+  const [recoveryPlan, setRecoveryPlan] = useState<RecoveryPlan | null>(null);
+  const [recoveryJob, setRecoveryJob] = useState<RecoveryJob | null>(null);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const nativeRuntime = useMemo(() => isTauriRuntime(), []);
+  const filteredPackages = useMemo(() => {
+    const q = packageQuery.trim().toLowerCase();
+    return q ? adbPackages.filter((pkg) => pkg.packageName.toLowerCase().includes(q)) : adbPackages;
+  }, [adbPackages, packageQuery]);
 
-  const selected = useMemo(
-    () => devices.find((d) => d.device_uid === selectedUid) ?? null,
-    [devices, selectedUid]
-  );
+  const refreshJobs = useCallback(async () => {
+    if (!nativeRuntime) return;
+    try {
+      setWorkflowJobs(await listWorkflowJobs());
+    } catch {
+      // The job ledger should never make core transport refresh fail.
+    }
+  }, [nativeRuntime]);
 
-  const refreshDevices = useCallback(async () => {
-    const env = await getDeviceScan();
-    if (!env.ok || !env.data) {
-      setBackendOk(false);
-      pushLog(
-        setLogs,
-        'error',
-        env.error?.message || 'Device scan failed — is the workshop API running on port 3001?'
+  const refresh = useCallback(async () => {
+    if (transferBusy) return;
+    setRefreshing(true);
+    setNativeError(null);
+
+    try {
+      const hello = await frontendBackendHandshake();
+      setHandshake(hello);
+      const devices = await getNativeUsbDevices();
+      setUsbDevices(devices);
+
+      try {
+        const recovery = await scanRecoveryCandidates();
+        setRecoveryCandidates(recovery);
+        if (!selectedRecoveryUid && recovery.length) {
+          setSelectedRecoveryUid(recovery[0].deviceUid);
+          setRecoveryKind(recovery[0].workflow);
+        } else if (selectedRecoveryUid && !recovery.some((candidate) => candidate.deviceUid === selectedRecoveryUid)) {
+          setSelectedRecoveryUid(recovery[0]?.deviceUid ?? null);
+          if (recovery[0]) setRecoveryKind(recovery[0].workflow);
+        }
+      } catch {
+        setRecoveryCandidates([]);
+      }
+
+      const adb = await scanAdbDevices();
+      setAdbDevices(adb);
+      if (!adbSelectedSerial && adb.length) {
+        setAdbSelectedSerial(adb[0].serial);
+      } else if (adbSelectedSerial && !adb.some((device) => device.serial === adbSelectedSerial)) {
+        setAdbSelectedSerial(adb[0]?.serial ?? null);
+      }
+
+      const mtpStatus = await getMtpStatus();
+      setMtp(mtpStatus);
+
+      const matrix = await getWorkflowCapabilities();
+      setCapabilities(matrix);
+      await refreshJobs();
+
+      if (mtpStatus?.storages.length) {
+        const safeIndex = Math.min(storageIndex, mtpStatus.storages.length - 1);
+        setStorageIndex(safeIndex);
+        try {
+          setMtpObjects(await listMtpDirectory(safeIndex, mtpPath));
+        } catch {
+          setMtpPath([]);
+          setMtpObjects(await listMtpDirectory(safeIndex, []));
+        }
+      } else {
+        setMtpObjects([]);
+        setMtpPath([]);
+      }
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRefreshing(false);
+    }
+  }, [storageIndex, mtpPath, transferBusy, adbSelectedSerial, selectedRecoveryUid, refreshJobs]);
+
+  const retryJob = async (id: string) => {
+    if (transferBusy) return;
+    setTransferBusy(true);
+    setNativeError(null);
+    try {
+      const job = await retryWorkflowJob(id);
+      setAdbOutput(`Retry job ${job.id}\n${job.summary}\nState: ${job.state}${job.verified ? ' · verified' : ''}`);
+      await refreshJobs();
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  const runDiagnosis = async () => {
+    if (transferBusy || diagnosing) return;
+    setDiagnosing(true);
+    setNativeError(null);
+    try {
+      const report = await diagnosePhone();
+      setDiagnostic(report);
+      if (report.selectedAdbSerial) setAdbSelectedSerial(report.selectedAdbSerial);
+      await refresh();
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDiagnosing(false);
+    }
+  };
+
+  const runCableDoctor = async () => {
+    if (transferBusy || diagnosing || cableDoctorBusy) return;
+    setCableDoctorBusy(true);
+    setNativeError(null);
+    try {
+      setCableDoctor(await runUsbCableDoctor());
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCableDoctorBusy(false);
+    }
+  };
+
+  const openStorage = async (index: number) => {
+    if (transferBusy) return;
+    setStorageIndex(index);
+    setMtpPath([]);
+    setNativeError(null);
+    try {
+      setMtpObjects(await listMtpDirectory(index, []));
+    } catch (error) {
+      setMtpObjects([]);
+      setNativeError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const openMtpFolder = async (path: string[]) => {
+    if (transferBusy) return;
+    setNativeError(null);
+    try {
+      setMtpObjects(await listMtpDirectory(storageIndex, path));
+      setMtpPath(path);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const uploadFile = async () => {
+    if (!mtp || transferBusy) return;
+    const source = await chooseUploadSource();
+    if (!source) return;
+
+    setTransferBusy(true);
+    setNativeError(null);
+    setLastTransfer(null);
+    try {
+      const result = await uploadMtpPath(storageIndex, mtpPath, source);
+      setLastTransfer(result);
+      setMtpObjects(await listMtpDirectory(storageIndex, mtpPath));
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  const downloadFile = async (object: MtpBrowserObject) => {
+    if (object.isFolder || transferBusy) return;
+    const destination = await chooseDownloadDestination(object.filename || 'android-file');
+    if (!destination) return;
+
+    setTransferBusy(true);
+    setNativeError(null);
+    setLastTransfer(null);
+    try {
+      const result = await downloadMtpPath(storageIndex, object.path, destination);
+      setLastTransfer(result);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  const runOneClickAdb = async () => {
+    if (transferBusy) return;
+    setTransferBusy(true);
+    setNativeError(null);
+    try {
+      const devices = await prepareAdb();
+      setAdbDevices(devices);
+      setAdbOutput(devices.length ? `ADB ready: ${devices.length} device(s) detected.` : 'ADB server ready; no device detected.');
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  const runAdbBattery = async () => {
+    if (!adbSelectedSerial || transferBusy) return;
+    setTransferBusy(true);
+    setNativeError(null);
+    try {
+      const result = await getAdbBatteryInfo(adbSelectedSerial);
+      setAdbOutput(`Verified battery info (${result.evidenceSource})\n${result.output}`);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  const runSimpleAdbAction = async (
+    action: 'network' | 'factory-reset-settings' | 'install-apk' | 'reboot-normal' | 'reboot-recovery' | 'reboot-bootloader' | 'reboot-download',
+  ) => {
+    if (!adbSelectedSerial || transferBusy) return;
+    setTransferBusy(true);
+    setNativeError(null);
+    try {
+      if (action === 'install-apk') {
+        const result = await installApkOnDevice(adbSelectedSerial);
+        if (result) {
+          setAdbOutput(`${result.message}\n${result.evidenceSource}\nVerified`);
+        }
+        return;
+      }
+
+      const workflowMap = {
+        network: 'adb-network-settings',
+        'factory-reset-settings': 'adb-factory-reset-settings',
+        'reboot-normal': 'adb-reboot-normal',
+        'reboot-recovery': 'adb-reboot-recovery',
+        'reboot-bootloader': 'adb-reboot-bootloader',
+        'reboot-download': 'adb-reboot-download',
+      } as const;
+      const job = await startWorkflowJob(workflowMap[action], adbSelectedSerial);
+      setAdbOutput(
+        `Job ${job.id}\n${job.summary}\n${job.evidence.join('\n') || 'No evidence returned'}\nState: ${job.state}${job.verified ? ' · verified' : ''}`,
       );
-      setDevices([]);
+      await refreshJobs();
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  const refreshPackages = async () => {
+    if (!adbSelectedSerial || transferBusy) return;
+    setTransferBusy(true);
+    setNativeError(null);
+    try {
+      setAdbPackages(await listAdbUserPackages(adbSelectedSerial));
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+      setAdbPackages([]);
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  const packageAction = async (
+    packageName: string,
+    action: 'enable' | 'disable-user' | 'clear-data' | 'uninstall-user',
+  ) => {
+    if (!adbSelectedSerial || transferBusy || packageBusy) return;
+    if (
+      (action === 'clear-data' || action === 'uninstall-user') &&
+      !window.confirm(
+        action === 'clear-data'
+          ? `Clear all app data for ${packageName}? This cannot be undone.`
+          : `Uninstall ${packageName} for the current Android user?`,
+      )
+    ) {
       return;
     }
-    setBackendOk(true);
-    setDevices(env.data.devices || []);
-    const adb = env.data.tools?.adb;
-    const fb = env.data.tools?.fastboot;
-    if (adb && !adb.installed) {
-      setToolsHint('ADB not found on PATH. Install platform-tools and restart the app.');
-    } else if (fb && !fb.installed) {
-      setToolsHint('Fastboot not found on PATH. Install platform-tools for bootloader workflows.');
-    } else {
-      setToolsHint(null);
+    setPackageBusy(packageName);
+    setNativeError(null);
+    try {
+      const result = await runAdbPackageAction(adbSelectedSerial, packageName, action);
+      setAdbOutput(`${result.message}\n${result.evidenceSource}\nVerified`);
+      setAdbPackages(await listAdbUserPackages(adbSelectedSerial));
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPackageBusy(null);
     }
-    if (!selectedUid && env.data.devices?.length) {
-      setSelectedUid(env.data.devices[0].device_uid);
+  };
+
+  const runAdbDeviceInfo = async () => {
+    if (!adbSelectedSerial || transferBusy) return;
+    setTransferBusy(true);
+    setNativeError(null);
+    setAdbOutput(null);
+    try {
+      const result = await getAdbDeviceInfo(adbSelectedSerial);
+      const lines = Object.entries(result.properties)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join('\n');
+      setAdbOutput(`Verified device info (${result.evidenceSource})\n${lines}`);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTransferBusy(false);
     }
-  }, [selectedUid]);
+  };
+
+  const runAdbLogcat = async () => {
+    if (!adbSelectedSerial || transferBusy) return;
+    setTransferBusy(true);
+    setNativeError(null);
+    setAdbOutput(null);
+    try {
+      const result = await getAdbLogcatSnapshot(adbSelectedSerial, 250);
+      setAdbOutput(`Verified logcat snapshot (${result.evidenceSource})\n${result.output}`);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  const runAdbScreenshot = async () => {
+    if (!adbSelectedSerial || transferBusy) return;
+    setTransferBusy(true);
+    setNativeError(null);
+    try {
+      const result = await saveAdbScreenshot(adbSelectedSerial);
+      if (result) {
+        setAdbOutput(
+          `Verified screenshot saved\n${result.destination}\n${formatBytes(result.bytes)} · ${result.evidenceSource}`,
+        );
+      }
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTransferBusy(false);
+    }
+  };
 
   useEffect(() => {
-    const boot = window.setTimeout(() => {
-      void refreshDevices();
-    }, 0);
-    if (!pollEnabled) {
-      return () => window.clearTimeout(boot);
-    }
+    void refresh();
     const id = window.setInterval(() => {
-      void refreshDevices();
-    }, 2500);
-    return () => {
-      window.clearTimeout(boot);
-      window.clearInterval(id);
-    };
-  }, [pollEnabled, refreshDevices]);
+      if (!transferBusy) void refresh();
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, [refresh, transferBusy]);
 
-  const openCase = async () => {
-    const env = await createCase({
-      title: caseTitle.trim() || undefined,
-      notes: caseNotes.trim() || undefined,
-      userId: 'workshop-station',
-    });
-    if (!env.ok || !env.data?.case) {
-      pushLog(setLogs, 'error', env.error?.message || 'Could not create case');
-      return;
+  const autoDiscoverRecoveryArtifacts = async () => {
+    if (recoveryBusy || !nativeRuntime) return;
+    setRecoveryBusy(true);
+    setNativeError(null);
+    try {
+      const paths = await autodiscoverRecoveryArtifacts(recoveryKind);
+      if (!paths.length) {
+        throw new Error(`No safe ${recoveryKind === 'qualcomm-edl' ? 'Qualcomm EDL' : 'MediaTek Download'} artifacts were found in Downloads, Documents, Desktop, Projects, or repair-artifacts.`);
+      }
+      setRecoveryArtifacts(paths);
+      setRecoveryPlan(null);
+      setRecoveryJob(null);
+      const plan = await buildRecoveryPlan(recoveryKind, paths);
+      setRecoveryPlan(plan);
+      const candidate = recoveryCandidates.find((item) => item.workflow === recoveryKind);
+      if (candidate) {
+        const job = await prepareRecoveryJob(candidate, paths);
+        setSelectedRecoveryUid(candidate.deviceUid);
+        setRecoveryJob(job);
+      }
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveryBusy(false);
     }
-    setActiveCaseId(env.data.case.id);
-    pushLog(setLogs, 'info', `Case opened: ${env.data.case.id}`);
   };
 
-  const runIntake = async () => {
-    if (!activeCaseId || !selected) {
-      pushLog(setLogs, 'warn', 'Select a device and open a case before intake');
-      return;
+  const inspectRecoveryPlan = async () => {
+    if (recoveryBusy || !recoveryArtifacts.length) return;
+    setRecoveryBusy(true);
+    setNativeError(null);
+    try {
+      const plan = await buildRecoveryPlan(recoveryKind, recoveryArtifacts);
+      setRecoveryPlan(plan);
+      setRecoveryJob(null);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveryBusy(false);
     }
-    const env = await postCaseIntake(activeCaseId, {
-      platform: selected.platform_hint,
-      connectionState: selected.mode,
-      deviceInfo: {
-        device_uid: selected.device_uid,
-        display_name: selected.display_name,
-        evidence: selected.evidence,
-        correlation_badge: selected.correlation_badge,
-      },
-    });
-    if (!env.ok) {
-      pushLog(setLogs, 'error', env.error?.message || 'Intake failed');
-      return;
-    }
-    pushLog(setLogs, 'info', 'Read-only intake recorded for active case');
   };
 
-  const runOwnership = async () => {
-    if (!activeCaseId) {
-      pushLog(setLogs, 'warn', 'Open a case first');
+  const prepareSelectedRecoveryJob = async () => {
+    if (recoveryBusy || !recoveryArtifacts.length) return;
+    const candidate = recoveryCandidates.find((item) => item.deviceUid === selectedRecoveryUid);
+    if (!candidate) {
+      setNativeError('Connect a device in Qualcomm EDL or MediaTek Download/Preloader mode before preparing a hardware-bound recovery job.');
       return;
     }
-    const env = await postOwnershipVerification(activeCaseId, {
-      checkboxConfirmed: ownershipChecked,
-      typedPhrase: ownershipPhrase.trim(),
-    });
-    if (!env.ok) {
-      pushLog(setLogs, 'error', env.error?.message || 'Ownership attestation failed');
-      return;
+    setRecoveryBusy(true);
+    setNativeError(null);
+    try {
+      const job = await prepareRecoveryJob(candidate, recoveryArtifacts);
+      setRecoveryKind(candidate.workflow);
+      setRecoveryJob(job);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveryBusy(false);
     }
-    pushLog(setLogs, 'info', 'Ownership / authorization to service attestation recorded');
   };
 
-  const loadAudit = async () => {
-    if (!activeCaseId) return;
-    const env = await getCaseAudit(activeCaseId);
-    if (!env.ok || !env.data) {
-      pushLog(setLogs, 'error', env.error?.message || 'Could not load audit');
-      return;
-    }
-    const stats = env.data.statistics as { totalEvents?: number } | undefined;
-    setAuditSummary(
-      `Events: ${stats?.totalEvents ?? (env.data.events?.length || 0)} (see server audit logs for full chain)`
-    );
-    pushLog(setLogs, 'info', 'Audit summary refreshed');
-  };
 
-  const requestBackupPrompt = async () => {
-    if (!selected?.evidence || (selected.evidence as { source?: string }).source !== 'adb') {
-      pushLog(setLogs, 'warn', 'Select an ADB-connected device (normal Android OS) for backup authorization');
-      return;
+  const revalidateSelectedRecoveryJob = async () => {
+    if (!recoveryJob) return;
+    setRecoveryBusy(true);
+    setNativeError(null);
+    try {
+      const refreshed = await revalidateRecoveryJob(recoveryJob);
+      setRecoveryJob(refreshed);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveryBusy(false);
     }
-    const serial = (selected.evidence as { serial?: string }).serial;
-    if (!serial) {
-      pushLog(setLogs, 'error', 'No serial on selected device');
-      return;
-    }
-    const env = await triggerBackupAuth(serial);
-    if (!env.ok) {
-      pushLog(setLogs, 'error', env.error?.message || 'Backup authorization request failed');
-      return;
-    }
-    pushLog(setLogs, 'info', 'Backup authorization flow triggered — watch the device for prompts');
   };
-
-  const selectedTip = selected ? badgeForDevice(selected) : '';
 
   return (
     <div className="flex h-screen flex-col bg-slate-950 text-slate-200">
-      <header className="flex shrink-0 items-center justify-between border-b border-slate-800 bg-slate-900 px-4 py-3">
+      <header className="flex shrink-0 items-center justify-between border-b border-slate-800 bg-slate-900 px-5 py-3">
         <div>
-          <h1 className="text-lg font-semibold tracking-tight text-white">Bobby&apos;s Workshop</h1>
+          <h1 className="text-lg font-semibold tracking-tight text-white">BobFWTools</h1>
           <p className="text-xs text-slate-500">
-            API: {API_BASE}{' '}
-            {backendOk === null ? '· checking…' : backendOk ? '· connected' : '· offline'}
+            Android connectivity for macOS · native USB + MTP
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2 text-xs text-slate-400">
-            <input
-              type="checkbox"
-              checked={pollEnabled}
-              onChange={(e) => setPollEnabled(e.target.checked)}
-              className="rounded border-slate-600"
-            />
-            Auto-refresh devices
-          </label>
+        <div className="flex items-center gap-3">
+          <span className={`text-xs ${nativeRuntime ? 'text-emerald-400' : 'text-amber-300'}`}>
+            {nativeRuntime ? 'Native desktop core' : 'Browser preview'}
+          </span>
+          <span className={`text-xs ${handshake?.status === 'ready' ? 'text-emerald-300' : 'text-amber-300'}`}>
+            {handshake?.status === 'ready' ? `Handshake · ${handshake.correlation_id}` : 'Handshake pending'}
+          </span>
+          {transferBusy && <span className="text-xs text-cyan-300">Transfer running…</span>}
           <button
             type="button"
-            onClick={() => refreshDevices()}
-            className="rounded bg-orange-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-500"
+            onClick={() => void refresh()}
+            disabled={refreshing || transferBusy}
+            className="rounded bg-orange-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 hover:bg-orange-500"
           >
-            Scan now
+            {refreshing ? 'Scanning…' : 'Scan now'}
           </button>
         </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
         <aside className="w-80 shrink-0 overflow-y-auto border-r border-slate-800 bg-slate-900/80 p-4">
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Device queue</h2>
-          {toolsHint && (
-            <div className="mb-3 rounded border border-amber-800 bg-amber-950/40 p-2 text-xs text-amber-200">
-              {toolsHint}
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Physical USB
+          </h2>
+
+          {usbDevices.length === 0 ? (
+            <div className="rounded border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-500">
+              No USB device observed. Connect the phone directly or through a data-capable USB hub.
             </div>
-          )}
-          {devices.length === 0 ? (
-            <p className="text-sm text-slate-500">No devices detected. Connect USB and enable debugging.</p>
           ) : (
             <ul className="space-y-2">
-              {devices.map((d) => (
-                <li key={d.device_uid}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedUid(d.device_uid)}
-                    className={`w-full rounded border p-3 text-left text-sm transition-colors ${
-                      d.device_uid === selectedUid
-                        ? 'border-orange-500 bg-slate-800'
-                        : 'border-slate-700 bg-slate-900 hover:border-slate-600'
-                    }`}
-                  >
-                    <div className="font-medium text-white">{d.display_name || d.device_uid}</div>
-                    <div className="mt-1 font-mono text-xs text-cyan-400/90">{d.mode}</div>
-                    <div className="mt-0.5 text-xs text-slate-500">{d.platform_hint}</div>
-                  </button>
+              {usbDevices.map((device) => (
+                <li key={device.deviceUid} className="rounded border border-slate-700 bg-slate-950/60 p-3">
+                  <div className="font-medium text-white">
+                    {device.productName || device.manufacturer || 'USB device'}
+                  </div>
+                  <div className="mt-1 text-xs text-cyan-300">{device.platformHint}</div>
+                  <div className="text-xs text-slate-400">{device.mode} · {device.speed}</div>
+                  <div className="mt-2 font-mono text-[11px] text-slate-600">
+                    {hex(device.vendorId)}:{hex(device.productId)}
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-600">{device.evidenceSource}</div>
                 </li>
               ))}
             </ul>
           )}
         </aside>
 
-        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="shrink-0 border-b border-slate-800 bg-slate-900/50 p-4">
-            <h2 className="text-sm font-semibold text-white">Repair case</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Intake and ownership attestation are logged for compliance. Destructive work belongs in guided
-              workflows after attestation.
-            </p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <input
-                type="text"
-                placeholder="Ticket / customer label (optional)"
-                value={caseTitle}
-                onChange={(e) => setCaseTitle(e.target.value)}
-                className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
-              />
-              <input
-                type="text"
-                placeholder="Notes (optional)"
-                value={caseNotes}
-                onChange={(e) => setCaseNotes(e.target.value)}
-                className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
-              />
+        <main className="min-w-0 flex-1 overflow-y-auto p-5">
+          {nativeError && (
+            <div className="mb-4 rounded border border-red-900 bg-red-950/30 p-3 text-sm text-red-200">
+              {nativeError}
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
+          )}
+
+          {(adbDevices.length > 0 || usbDevices.length > 0) && (
+            <section className="mb-4 rounded-lg border border-emerald-900/70 bg-emerald-950/10 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-semibold text-white">1. Choose the detected phone</h2>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Select a phone below. BobFWTools will show only actions supported by its current connection and authorization.
+                  </p>
+                </div>
+                <span className="rounded bg-slate-900 px-2 py-1 text-xs text-slate-400">
+                  {adbDevices.length + usbDevices.length} device signal{adbDevices.length + usbDevices.length === 1 ? '' : 's'} found
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {adbDevices.map((device) => {
+                  const selected = adbSelectedSerial === device.serial;
+                  return (
+                    <button
+                      key={`adb-${device.serial}`}
+                      type="button"
+                      onClick={() => setAdbSelectedSerial(device.serial)}
+                      className={`rounded border p-4 text-left transition ${selected ? 'border-cyan-500 bg-cyan-950/30' : 'border-slate-800 bg-slate-950/60 hover:border-slate-600'}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-white">Android phone</span>
+                        <span className={device.authorized ? 'text-xs text-emerald-300' : 'text-xs text-amber-300'}>
+                          {device.authorized ? 'Authorized' : 'Needs authorization'}
+                        </span>
+                      </div>
+                      <div className="mt-2 font-mono text-xs text-cyan-300">{device.serial}</div>
+                      <div className="mt-1 text-xs text-slate-400">{device.state} · ADB connection</div>
+                      {selected && <div className="mt-3 text-xs font-medium text-cyan-200">Selected — actions below use this phone</div>}
+                    </button>
+                  );
+                })}
+                {usbDevices.map((device) => (
+                  <div key={`usb-${device.deviceUid}`} className="rounded border border-slate-800 bg-slate-950/60 p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-white">{device.productName || device.manufacturer || 'Detected USB phone/device'}</span>
+                      <span className="text-xs text-cyan-300">Detected</span>
+                    </div>
+                    <div className="mt-2 text-xs text-slate-300">{device.platformHint} · {device.mode}</div>
+                    <div className="mt-1 text-xs text-slate-500">This connection is available for matching recovery and firmware workflows.</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {lastTransfer && (
+            <div className="mb-4 rounded border border-emerald-900 bg-emerald-950/30 p-3 text-sm text-emerald-200">
+              Verified {lastTransfer.operation}: {lastTransfer.filename} · {formatBytes(lastTransfer.bytes)}
+              <div className="mt-1 break-all text-xs text-emerald-400/80">
+                {lastTransfer.destination} · {lastTransfer.evidenceSource}
+              </div>
+            </div>
+          )}
+
+          <section className="mb-4 rounded-lg border border-cyan-900/70 bg-cyan-950/10 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-base font-semibold text-white">2. Check this phone and show its safe options</h2>
+                <p className="mt-1 max-w-2xl text-sm text-slate-400">
+                  One scan checks physical USB, MTP, ADB authorization, Fastboot, verified device properties,
+                  battery state, and the workflows BobFWTools can actually run right now.
+                </p>
+              </div>
               <button
                 type="button"
-                onClick={openCase}
-                className="rounded bg-slate-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-600"
+                onClick={() => void runDiagnosis()}
+                disabled={diagnosing || transferBusy || !nativeRuntime}
+                className="rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40 hover:bg-cyan-500"
               >
-                New case
+                {diagnosing ? 'Diagnosing…' : 'Diagnose This Phone'}
               </button>
-              <span className="self-center text-xs text-slate-500">
-                Active: {activeCaseId || 'none'}
+            </div>
+
+            {diagnostic && (
+              <>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <div className="text-[10px] uppercase text-slate-600">USB</div>
+                    <div className="mt-1 text-sm text-white">{diagnostic.usbDevicesSeen} observed</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <div className="text-[10px] uppercase text-slate-600">MTP</div>
+                    <div className="mt-1 text-sm text-white">{diagnostic.mtpConnected ? 'Ready' : 'Unavailable'}</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <div className="text-[10px] uppercase text-slate-600">ADB</div>
+                    <div className="mt-1 text-sm text-white">
+                      {diagnostic.authorizedAdbDevices}/{diagnostic.adbDevicesSeen} authorized
+                    </div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <div className="text-[10px] uppercase text-slate-600">Fastboot</div>
+                    <div className="mt-1 text-sm text-white">{diagnostic.fastbootPresent ? 'Detected' : 'Not detected'}</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <div className="text-[10px] uppercase text-slate-600">Workflows</div>
+                    <div className="mt-1 text-sm text-white">{diagnostic.availableWorkflows.length} ready</div>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded border border-slate-800 bg-slate-950/50 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">USB / Cable Doctor</h3>
+                      <div className="mt-1 text-sm text-slate-300">{diagnostic.connectionSummary}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={cableDoctorBusy || transferBusy || !nativeRuntime}
+                        onClick={() => void runCableDoctor()}
+                        className="rounded border border-cyan-800 px-3 py-1.5 text-xs font-medium text-cyan-300 disabled:opacity-40 hover:bg-cyan-950/50"
+                      >
+                        {cableDoctorBusy ? 'Testing…' : 'Run stability test'}
+                      </button>
+                      <span className={
+                      diagnostic.connectionGrade === 'excellent'
+                        ? 'rounded bg-emerald-950 px-2 py-1 text-xs text-emerald-300'
+                        : diagnostic.connectionGrade === 'usable'
+                          ? 'rounded bg-cyan-950 px-2 py-1 text-xs text-cyan-300'
+                          : diagnostic.connectionGrade === 'limited'
+                            ? 'rounded bg-amber-950 px-2 py-1 text-xs text-amber-300'
+                            : 'rounded bg-red-950 px-2 py-1 text-xs text-red-300'
+                    }>
+                      {diagnostic.connectionGrade}
+                      </span>
+                    </div>
+                  </div>
+
+                  {cableDoctor && (
+                    <div className="mt-3 rounded border border-slate-800 bg-slate-950/70 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-medium text-white">{cableDoctor.summary}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {cableDoctor.androidPresentSamples}/{cableDoctor.samples} Android USB samples present · {cableDoctor.reconnectEvents} identity changes
+                          </div>
+                        </div>
+                        <span className={
+                          cableDoctor.grade === 'healthy'
+                            ? 'rounded bg-emerald-950 px-2 py-1 text-xs text-emerald-300'
+                            : cableDoctor.grade === 'limited'
+                              ? 'rounded bg-amber-950 px-2 py-1 text-xs text-amber-300'
+                              : 'rounded bg-red-950 px-2 py-1 text-xs text-red-300'
+                        }>
+                          {cableDoctor.grade}
+                        </span>
+                      </div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                        <div className="rounded border border-slate-800 p-2 text-xs">
+                          <span className="text-slate-500">Speed</span>
+                          <div className="mt-1 text-white">{cableDoctor.observedSpeeds.join(', ') || 'Unavailable'}</div>
+                        </div>
+                        <div className="rounded border border-slate-800 p-2 text-xs">
+                          <span className="text-slate-500">Mode</span>
+                          <div className="mt-1 text-white">{cableDoctor.observedModes.join(', ') || 'Unavailable'}</div>
+                        </div>
+                        <div className="rounded border border-slate-800 p-2 text-xs">
+                          <span className="text-slate-500">Transports</span>
+                          <div className="mt-1 text-white">ADB {cableDoctor.adbState} · MTP {cableDoctor.mtpConnected ? 'yes' : 'no'} · Fastboot {cableDoctor.fastbootPresent ? 'yes' : 'no'}</div>
+                        </div>
+                      </div>
+                      {cableDoctor.recommendations.length > 0 && (
+                        <div className="mt-3 space-y-1">
+                          {cableDoctor.recommendations.map((item) => (
+                            <div key={item} className="text-xs text-cyan-300">• {item}</div>
+                          ))}
+                        </div>
+                      )}
+                      <details className="mt-3">
+                        <summary className="cursor-pointer text-xs text-slate-400">Cable test evidence</summary>
+                        <div className="mt-2 space-y-1 font-mono text-[10px] text-slate-600">
+                          {cableDoctor.evidence.map((item, index) => (
+                            <div key={`${item.source}-${index}`}>{item.source}: {item.detail}</div>
+                          ))}
+                        </div>
+                      </details>
+                    </div>
+                  )}
+
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {diagnostic.usbConnections.length ? diagnostic.usbConnections.map((usb, index) => (
+                      <div key={`${usb.vendorId}-${usb.productId}-${usb.busNumber}-${usb.deviceAddress}-${index}`} className="rounded border border-slate-800 bg-slate-950/70 p-3">
+                        <div className="text-sm font-medium text-white">{usb.productName || usb.manufacturer || usb.platformHint}</div>
+                        <div className="mt-1 text-xs text-cyan-300">{usb.platformHint} · {usb.mode}</div>
+                        <div className="mt-1 font-mono text-[11px] text-slate-500">
+                          {hex(usb.vendorId)}:{hex(usb.productId)} · {usb.speed} · bus {usb.busNumber} · addr {usb.deviceAddress}
+                        </div>
+                        <div className="mt-1 break-all text-[10px] text-slate-600">
+                          {usb.serialNumber || 'no descriptor serial'} · {usb.evidenceSource}
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="text-sm text-slate-500">No Android-class USB descriptor is visible.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                  <div className="rounded border border-slate-800 bg-slate-950/50 p-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Verified device profile</h3>
+                    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      <span className="text-slate-500">Device</span>
+                      <span className="text-white">{[diagnostic.device.manufacturer, diagnostic.device.model].filter(Boolean).join(' ') || 'Unavailable'}</span>
+                      <span className="text-slate-500">Serial</span>
+                      <span className="break-all font-mono text-xs text-white">{diagnostic.device.serial || 'Unavailable'}</span>
+                      <span className="text-slate-500">Android</span>
+                      <span className="text-white">{diagnostic.device.androidVersion || 'Unavailable'}{diagnostic.device.sdk ? ` · SDK ${diagnostic.device.sdk}` : ''}</span>
+                      <span className="text-slate-500">Security patch</span>
+                      <span className="text-white">{diagnostic.device.securityPatch || 'Unavailable'}</span>
+                      <span className="text-slate-500">Bootloader</span>
+                      <span className="break-all text-white">{diagnostic.device.bootloader || 'Unavailable'}</span>
+                      <span className="text-slate-500">Verified boot</span>
+                      <span className="text-white">{diagnostic.device.verifiedBootState || 'Unavailable'}</span>
+                      <span className="text-slate-500">Battery</span>
+                      <span className="text-white">{diagnostic.device.batterySummary || 'Unavailable'}</span>
+                    </div>
+                  </div>
+
+                  <div className="rounded border border-slate-800 bg-slate-950/50 p-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Findings</h3>
+                    <div className="mt-3 space-y-2">
+                      {diagnostic.findings.length === 0 ? (
+                        <div className="text-sm text-slate-500">No diagnostic findings were produced.</div>
+                      ) : diagnostic.findings.map((finding) => (
+                        <div key={finding.id} className="rounded border border-slate-800 p-3">
+                          <div className={
+                            finding.severity === 'ok'
+                              ? 'text-sm font-medium text-emerald-300'
+                              : finding.severity === 'warning'
+                                ? 'text-sm font-medium text-amber-300'
+                                : 'text-sm font-medium text-red-300'
+                          }>
+                            {finding.title}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-400">{finding.detail}</div>
+                          {finding.recommendation && (
+                            <div className="mt-2 text-xs text-cyan-300">{finding.recommendation}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ready now</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {diagnostic.availableWorkflows.length ? diagnostic.availableWorkflows.map((workflow) => (
+                      <span key={workflow} className="rounded bg-emerald-950 px-2 py-1 text-xs text-emerald-300">
+                        {workflow}
+                      </span>
+                    )) : <span className="text-xs text-slate-500">No executable workflows currently available.</span>}
+                  </div>
+                </div>
+
+                <details className="mt-4 rounded border border-slate-800 bg-slate-950/40 p-3">
+                  <summary className="cursor-pointer text-xs font-medium text-slate-300">Evidence and blocked workflows</summary>
+                  <div className="mt-3 space-y-1 font-mono text-[11px] text-slate-500">
+                    {diagnostic.evidence.map((item, index) => (
+                      <div key={`${item.source}-${index}`}>{item.source}: {item.detail}</div>
+                    ))}
+                    {diagnostic.blockedWorkflows.map((item) => (
+                      <div key={item}>blocked: {item}</div>
+                    ))}
+                  </div>
+                </details>
+              </>
+            )}
+          </section>
+
+          <section className="mb-4 rounded-lg border border-orange-900/60 bg-orange-950/10 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-base font-semibold text-white">3. Choose a safe repair workflow</h2>
+                <p className="mt-1 max-w-3xl text-sm text-slate-400">
+                  Hardware-bound recovery planning for Samsung Download Mode, Qualcomm EDL, and MediaTek Download/Preloader.
+                  Every destructive job is inspected, hashed, mapped, and tied to the exact USB identity before an executor can qualify.
+                </p>
+              </div>
+              <span className="rounded border border-orange-900 bg-orange-950/50 px-2 py-1 text-xs text-orange-300">
+                guarded recovery
               </span>
             </div>
-          </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            {selectedTip && (
-              <div className="mb-4 rounded border border-cyan-900/60 bg-cyan-950/30 p-3 text-sm text-cyan-100">
-                {selectedTip}
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              <div className="rounded border border-slate-800 bg-slate-950/60 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recovery-mode hardware</h3>
+                  <span className="text-xs text-slate-600">{recoveryCandidates.length} detected</span>
+                </div>
+                {recoveryCandidates.length === 0 ? (
+                  <div className="mt-3 text-sm text-slate-500">
+                    No Qualcomm EDL or MediaTek Download/Preloader device is connected. Planning can still inspect artifacts offline.
+                  </div>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    {recoveryCandidates.map((candidate) => (
+                      <button
+                        key={candidate.deviceUid}
+                        type="button"
+                        onClick={() => {
+                          setSelectedRecoveryUid(candidate.deviceUid);
+                          setRecoveryKind(candidate.workflow);
+                          setRecoveryPlan(null);
+                          setRecoveryJob(null);
+                        }}
+                        className={`w-full rounded border p-3 text-left ${
+                          selectedRecoveryUid === candidate.deviceUid
+                            ? 'border-orange-600 bg-orange-950/30'
+                            : 'border-slate-800 bg-slate-950/70 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-white">{candidate.productName || candidate.detectedMode}</span>
+                          <span className="font-mono text-[11px] text-orange-300">{candidate.workflow}</span>
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {candidate.detectedMode} · {hex(candidate.vendorId)}:{hex(candidate.productId)}
+                        </div>
+                        <div className="mt-1 truncate font-mono text-[10px] text-slate-600">{candidate.deviceUid}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded border border-slate-800 bg-slate-950/60 p-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recovery lane</h3>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecoveryKind('qualcomm-edl');
+                      setRecoveryPlan(null);
+                      setRecoveryJob(null);
+                    }}
+                    className={`rounded border px-3 py-2 text-left text-xs ${
+                      recoveryKind === 'qualcomm-edl'
+                        ? 'border-orange-600 bg-orange-950/30 text-orange-200'
+                        : 'border-slate-700 text-slate-300 hover:bg-slate-900'
+                    }`}
+                  >
+                    <div className="font-semibold">Qualcomm EDL</div>
+                    <div className="mt-1 text-[11px] text-slate-500">Authenticated Sahara / Firehose repair</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecoveryKind('mediatek-download');
+                      setRecoveryPlan(null);
+                      setRecoveryJob(null);
+                    }}
+                    className={`rounded border px-3 py-2 text-left text-xs ${
+                      recoveryKind === 'mediatek-download'
+                        ? 'border-orange-600 bg-orange-950/30 text-orange-200'
+                        : 'border-slate-700 text-slate-300 hover:bg-slate-900'
+                    }`}
+                  >
+                    <div className="font-semibold">MediaTek Download</div>
+                    <div className="mt-1 text-[11px] text-slate-500">Preloader / BROM + legitimate DA/auth path</div>
+                  </button>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void autoDiscoverRecoveryArtifacts()}
+                    disabled={recoveryBusy || !nativeRuntime}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    {recoveryBusy ? 'Searching artifacts…' : 'Find artifacts & inspect'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void inspectRecoveryPlan()}
+                    disabled={recoveryBusy || !recoveryArtifacts.length}
+                    className="rounded bg-orange-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-orange-600"
+                  >
+                    {recoveryBusy ? 'Inspecting…' : 'Inspect recovery plan'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void prepareSelectedRecoveryJob()}
+                    disabled={recoveryBusy || !recoveryArtifacts.length || !selectedRecoveryUid}
+                    className="rounded border border-cyan-800 px-3 py-2 text-xs font-medium text-cyan-300 disabled:opacity-40 hover:bg-cyan-950/40"
+                  >
+                    Prepare audited job
+                  </button>
+                </div>
+
+                {recoveryArtifacts.length > 0 && (
+                  <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
+                    <div className="text-[10px] uppercase tracking-wide text-slate-600">Selected artifacts</div>
+                    <div className="mt-2 space-y-1">
+                      {recoveryArtifacts.map((path) => (
+                        <div key={path} className="truncate font-mono text-[11px] text-slate-400" title={path}>
+                          {path.split(/[\\/]/).pop() || path}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {recoveryPlan && (
+              <div className="mt-4 rounded border border-slate-800 bg-slate-950/60 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-slate-600">Plan</div>
+                    <div className="mt-1 font-mono text-sm text-white">{recoveryPlan.protocol}</div>
+                    <div className="mt-1 text-xs text-slate-500">Required mode: {recoveryPlan.modeRequired}</div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <span className={recoveryPlan.prerequisitesMet ? 'rounded bg-emerald-950 px-2 py-1 text-xs text-emerald-300' : 'rounded bg-amber-950 px-2 py-1 text-xs text-amber-300'}>
+                      {recoveryPlan.prerequisitesMet ? 'prerequisites met' : 'prerequisites missing'}
+                    </span>
+                    {recoveryPlan.destructive && (
+                      <span className="rounded bg-red-950 px-2 py-1 text-xs text-red-300">destructive</span>
+                    )}
+                    {recoveryPlan.requiresVendorAuthentication && (
+                      <span className="rounded bg-violet-950 px-2 py-1 text-xs text-violet-300">vendor auth required</span>
+                    )}
+                  </div>
+                </div>
+
+                {recoveryPlan.missingPrerequisites.length > 0 && (
+                  <div className="mt-3 rounded border border-amber-900/60 bg-amber-950/20 p-3 text-xs text-amber-200">
+                    Missing: {recoveryPlan.missingPrerequisites.join(' · ')}
+                  </div>
+                )}
+
+                <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  {recoveryPlan.artifacts.map((artifact) => (
+                    <div key={artifact.path} className="rounded border border-slate-800 bg-slate-950 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-xs text-white">{artifact.role}</span>
+                        <span className={artifact.structurallyValid ? 'text-[10px] text-emerald-400' : 'text-[10px] text-red-400'}>
+                          {artifact.structurallyValid ? 'valid structure' : 'invalid structure'}
+                        </span>
+                      </div>
+                      <div className="mt-1 truncate text-[11px] text-slate-500" title={artifact.path}>
+                        {artifact.path.split(/[\\/]/).pop() || artifact.path}
+                      </div>
+                      <div className="mt-1 text-[10px] text-slate-600">{formatBytes(artifact.size)}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-                <h3 className="text-sm font-semibold text-white">1. Read-only intake</h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  Captures current connection state and identifiers without flashing or unlocking.
-                </p>
-                <button
-                  type="button"
-                  onClick={runIntake}
-                  disabled={!activeCaseId || !selected}
-                  className="mt-4 w-full rounded bg-cyan-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-40 hover:bg-cyan-600"
-                >
-                  Record intake for selected device
-                </button>
-              </section>
+            {recoveryJob && (
+              <div className="mt-4 rounded border border-cyan-900/70 bg-cyan-950/10 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-cyan-700">Audited recovery job</div>
+                    <div className="mt-1 font-mono text-sm text-cyan-200">{recoveryJob.protocol}</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {recoveryJob.operations.length} normalized partition operation(s) · {recoveryJob.artifactDigests.length} hashed artifact(s)
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void revalidateSelectedRecoveryJob()}
+                      disabled={recoveryBusy}
+                      className="rounded border border-cyan-800 px-2.5 py-1 text-xs font-medium text-cyan-300 disabled:opacity-40 hover:bg-cyan-950/40"
+                    >
+                      {recoveryBusy ? 'Revalidating…' : recoveryJob.identityRevalidated ? 'Revalidate hardware again' : 'Revalidate hardware'}
+                    </button>
+                    <span className={recoveryJob.executorQualified ? 'rounded bg-emerald-950 px-2 py-1 text-xs text-emerald-300' : 'rounded bg-amber-950 px-2 py-1 text-xs text-amber-300'}>
+                      {recoveryJob.executorQualified ? 'executor qualified' : 'executor not yet physically qualified'}
+                    </span>
+                  </div>
+                </div>
 
-              <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-                <h3 className="text-sm font-semibold text-white">2. Service authorization</h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  Required before sensitive operations. Typed phrase must match exactly.
-                </p>
-                <label className="mt-3 flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={ownershipChecked}
-                    onChange={(e) => setOwnershipChecked(e.target.checked)}
-                    className="rounded border-slate-600"
-                  />
-                  I own this device or have written permission to service it.
-                </label>
-                <input
-                  type="text"
-                  placeholder='Type: I CONFIRM AUTHORIZED SERVICE'
-                  value={ownershipPhrase}
-                  onChange={(e) => setOwnershipPhrase(e.target.value)}
-                  className="mt-3 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={runOwnership}
-                  disabled={!activeCaseId}
-                  className="mt-3 w-full rounded bg-violet-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-40 hover:bg-violet-600"
-                  >
-                  Record attestation
-                </button>
-              </section>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                  {[
+                    ['Artifacts hashed', recoveryJob.artifactDigests.length > 0],
+                    ['Partition map normalized', recoveryJob.operations.length > 0],
+                    ['Prerequisites met', recoveryJob.prerequisitesMet],
+                    ['Hardware identity revalidated', recoveryJob.identityRevalidated],
+                    ['Executor physically qualified', recoveryJob.executorQualified],
+                  ].map(([label, ok]) => (
+                    <div key={String(label)} className="rounded border border-slate-800 bg-slate-950/70 p-3">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-600">{label}</div>
+                      <div className={ok ? 'mt-1 text-xs font-semibold text-emerald-300' : 'mt-1 text-xs font-semibold text-amber-300'}>
+                        {ok ? 'PASS' : 'BLOCKED'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
 
-              <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-                <h3 className="text-sm font-semibold text-white">3. Safe Android prompts</h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  Triggers ADB backup authorization so the customer can approve on-device (no exploit payloads).
-                </p>
-                <button
-                  type="button"
-                  onClick={requestBackupPrompt}
-                  className="mt-4 w-full rounded border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700"
-                >
-                  Request backup authorization (ADB)
-                </button>
-              </section>
+                <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                  <div className="rounded border border-slate-800 bg-slate-950/70 p-3">
+                    <div className="text-[10px] uppercase tracking-wide text-slate-600">Frozen device identity</div>
+                    <div className="mt-2 font-mono text-[11px] text-slate-300">{recoveryJob.identity.deviceUid}</div>
+                    <div className="mt-1 text-[11px] text-slate-500">
+                      {recoveryJob.identity.mode} · {hex(recoveryJob.identity.vendorId)}:{hex(recoveryJob.identity.productId)}
+                    </div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-950/70 p-3">
+                    <div className="text-[10px] uppercase tracking-wide text-slate-600">Execution blockers</div>
+                    <div className="mt-2 space-y-1 text-xs text-amber-300">
+                      {recoveryJob.blockers.length ? recoveryJob.blockers.map((blocker) => <div key={blocker}>{blocker}</div>) : <div className="text-emerald-300">No blockers.</div>}
+                    </div>
+                  </div>
+                </div>
 
-              <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-                <h3 className="text-sm font-semibold text-white">Audit visibility</h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  Case-scoped events are written under the server audit log directory.
-                </p>
-                <button
-                  type="button"
-                  onClick={loadAudit}
-                  disabled={!activeCaseId}
-                  className="mt-4 w-full rounded bg-slate-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-40 hover:bg-slate-600"
-                >
-                  Refresh audit summary
-                </button>
-                {auditSummary && <p className="mt-3 text-xs text-slate-400">{auditSummary}</p>}
-              </section>
-            </div>
-          </div>
-
-          <div className="h-44 shrink-0 overflow-y-auto border-t border-slate-800 bg-black px-3 py-2 font-mono text-xs">
-            <div className="mb-1 text-[10px] uppercase tracking-wider text-slate-600">Activity</div>
-            {logs.map((l, i) => (
-              <div
-                key={`${l.ts}-${i}`}
-                className={
-                  l.level === 'error'
-                    ? 'text-red-400'
-                    : l.level === 'warn'
-                      ? 'text-amber-300'
-                      : 'text-slate-400'
-                }
-              >
-                <span className="text-slate-600">{l.ts.slice(11, 23)}</span> {l.message}
+                <details className="mt-3 rounded border border-slate-800 bg-slate-950/50 p-3">
+                  <summary className="cursor-pointer text-xs text-slate-300">Artifact hashes and normalized partition operations</summary>
+                  <div className="mt-3 space-y-2">
+                    {recoveryJob.artifactDigests.map((artifact) => (
+                      <div key={artifact.path} className="font-mono text-[10px] text-slate-500">
+                        <div>{artifact.role}: {artifact.sha256}</div>
+                        <div className="truncate" title={artifact.path}>{artifact.path}</div>
+                      </div>
+                    ))}
+                    <div className="mt-3 max-h-48 overflow-auto rounded border border-slate-800">
+                      {recoveryJob.operations.map((operation, index) => (
+                        <div key={`${operation.filename}-${index}`} className="border-b border-slate-800 px-3 py-2 text-[11px] last:border-b-0">
+                          <span className="font-mono text-slate-200">{operation.partitionName || 'unnamed'}</span>
+                          <span className="ml-2 text-slate-500">{operation.filename}</span>
+                          {operation.length != null && <span className="ml-2 text-slate-600">{formatBytes(operation.length)}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </details>
               </div>
-            ))}
-          </div>
+            )}
+
+            <div className="mt-4 rounded border border-slate-800 bg-slate-950/40 p-3 text-xs leading-5 text-slate-500">
+              BobFWTools accepts legitimate vendor recovery paths only. Auth bypasses, BootROM exploits, arbitrary unsigned loaders,
+              FRP/security bypasses, and equivalent lock circumvention are not execution paths in this engine.
+            </div>
+          </section>
+
+          <section className="mb-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-white">ADB App Manager</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Manage third-party packages on the selected authorized device. Package actions are validated and allowlisted.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                onClick={() => void refreshPackages()}
+                className="rounded bg-slate-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+              >
+                Load apps
+              </button>
+            </div>
+
+            {adbPackages.length > 0 && (
+              <>
+                <div className="mt-3">
+                  <input
+                    value={packageQuery}
+                    onChange={(event) => setPackageQuery(event.target.value)}
+                    placeholder="Search package names…"
+                    className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-600"
+                  />
+                </div>
+                <div className="mt-3 max-h-80 overflow-y-auto rounded border border-slate-800">
+                  {filteredPackages.map((pkg) => (
+                    <div key={pkg.packageName} className="flex flex-wrap items-center gap-2 border-b border-slate-800 bg-slate-950/50 px-3 py-2 last:border-b-0">
+                      <div className="min-w-0 flex-1 break-all font-mono text-xs text-slate-200">{pkg.packageName}</div>
+                      <button
+                        type="button"
+                        disabled={!!packageBusy}
+                        onClick={() => void packageAction(pkg.packageName, 'enable')}
+                        className="rounded border border-slate-700 px-2 py-1 text-[11px] text-emerald-300 disabled:opacity-40 hover:bg-slate-800"
+                      >
+                        Enable
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!packageBusy}
+                        onClick={() => void packageAction(pkg.packageName, 'disable-user')}
+                        className="rounded border border-slate-700 px-2 py-1 text-[11px] text-amber-300 disabled:opacity-40 hover:bg-slate-800"
+                      >
+                        Disable
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!packageBusy}
+                        onClick={() => void packageAction(pkg.packageName, 'clear-data')}
+                        className="rounded border border-slate-700 px-2 py-1 text-[11px] text-orange-300 disabled:opacity-40 hover:bg-slate-800"
+                      >
+                        Clear data
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!packageBusy}
+                        onClick={() => void packageAction(pkg.packageName, 'uninstall-user')}
+                        className="rounded border border-red-900 px-2 py-1 text-[11px] text-red-300 disabled:opacity-40 hover:bg-red-950/40"
+                      >
+                        Uninstall user
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 text-xs text-slate-600">
+                  {filteredPackages.length} of {adbPackages.length} user-installed packages shown.
+                </div>
+              </>
+            )}
+          </section>
+
+          <section className="mb-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-white">Recent one-click jobs</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Audited workflow runs with truthful completion state and evidence.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void refreshJobs()}
+                className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+              >
+                Refresh jobs
+              </button>
+            </div>
+            <div className="mt-3 space-y-2">
+              {workflowJobs.length === 0 ? (
+                <div className="rounded border border-slate-800 bg-slate-950/50 p-3 text-sm text-slate-500">
+                  No audited one-click jobs have run in this app session yet.
+                </div>
+              ) : workflowJobs.slice(0, 8).map((job) => (
+                <div key={job.id} className="rounded border border-slate-800 bg-slate-950/50 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="font-mono text-xs text-white">{job.workflowId}</span>
+                      <span className="ml-2 font-mono text-[10px] text-slate-600">{job.id}</span>
+                    </div>
+                    <span className={
+                      job.state === 'completed'
+                        ? 'text-xs text-emerald-300'
+                        : job.state === 'accepted'
+                          ? 'text-xs text-cyan-300'
+                          : job.state === 'failed'
+                            ? 'text-xs text-red-300'
+                            : 'text-xs text-amber-300'
+                    }>
+                      {job.state}{job.verified ? ' · verified' : ''}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-slate-400">{job.summary}</div>
+                  {job.retryOf && (
+                    <div className="mt-1 font-mono text-[10px] text-slate-600">retry of {job.retryOf}</div>
+                  )}
+                  <div className="mt-2 flex items-center gap-2">
+                    {job.state === 'failed' && (
+                      <button
+                        type="button"
+                        disabled={transferBusy}
+                        onClick={() => void retryJob(job.id)}
+                        className="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 disabled:opacity-40 hover:bg-slate-800"
+                      >
+                        Retry
+                      </button>
+                    )}
+                  </div>
+                  {job.evidence.length > 0 && (
+                    <div className="mt-2 break-all font-mono text-[10px] text-slate-600">{job.evidence.join(' · ')}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-base font-semibold text-white">Media Transfer Protocol</h2>
+                <p className="mt-1 max-w-2xl text-sm text-slate-400">
+                  Real Android file access. USB debugging is not required. Unlock the phone and choose File transfer
+                  or Android Auto when Android asks what the USB connection should do.
+                </p>
+              </div>
+              <span className={`rounded px-2 py-1 text-xs font-medium ${
+                mtp ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400'
+              }`}>
+                {mtp ? 'MTP connected' : 'No MTP session'}
+              </span>
+            </div>
+
+            {!mtp ? (
+              <div className="mt-5 rounded border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">
+                BobFWTools sees MTP independently from ADB. If the phone is physically visible at left but no
+                MTP session appears, unlock the phone and switch its USB preference to File transfer.
+              </div>
+            ) : (
+              <>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <div className="text-[11px] uppercase text-slate-600">Manufacturer</div>
+                    <div className="mt-1 text-sm text-white">{mtp.manufacturer || 'Unavailable'}</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <div className="text-[11px] uppercase text-slate-600">Model</div>
+                    <div className="mt-1 text-sm text-white">{mtp.model || 'Unavailable'}</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <div className="text-[11px] uppercase text-slate-600">Family</div>
+                    <div className="mt-1 text-sm text-white">{mtp.deviceFamily}</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <div className="text-[11px] uppercase text-slate-600">Evidence</div>
+                    <div className="mt-1 break-all text-xs text-cyan-300">{mtp.evidenceSource}</div>
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Storage</h3>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {mtp.storages.map((storage, index) => (
+                      <button
+                        type="button"
+                        key={`${storage.description}-${index}`}
+                        onClick={() => void openStorage(index)}
+                        disabled={transferBusy}
+                        className={`rounded border px-3 py-2 text-left text-sm disabled:opacity-50 ${
+                          index === storageIndex
+                            ? 'border-orange-500 bg-orange-950/20'
+                            : 'border-slate-700 bg-slate-950 hover:border-slate-600'
+                        }`}
+                      >
+                        <div className="font-medium text-white">{storage.description || `Storage ${index + 1}`}</div>
+                        <div className="text-xs text-slate-500">{formatBytes(storage.freeSpaceBytes)} free</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-medium text-white">Current Android folder</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
+                        <button
+                          type="button"
+                          disabled={transferBusy}
+                          onClick={() => void openMtpFolder([])}
+                          className="rounded px-1.5 py-0.5 text-cyan-300 hover:bg-slate-800 disabled:opacity-50"
+                        >
+                          root
+                        </button>
+                        {mtpPath.map((segment, index) => (
+                          <span key={`${segment}-${index}`} className="flex items-center gap-1">
+                            <span className="text-slate-600">/</span>
+                            <button
+                              type="button"
+                              disabled={transferBusy}
+                              onClick={() => void openMtpFolder(mtpPath.slice(0, index + 1))}
+                              className="rounded px-1.5 py-0.5 text-cyan-300 hover:bg-slate-800 disabled:opacity-50"
+                            >
+                              {segment}
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void uploadFile()}
+                      disabled={transferBusy}
+                      className="rounded bg-cyan-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 hover:bg-cyan-600"
+                    >
+                      Upload Mac file here
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Folder contents
+                    </h3>
+                    <span className="text-xs text-slate-600">{mtpObjects.length} objects</span>
+                  </div>
+                  <div className="mt-2 overflow-hidden rounded border border-slate-800">
+                    {mtpObjects.length === 0 ? (
+                      <div className="bg-slate-950/60 p-4 text-sm text-slate-500">
+                        This folder is empty or returned no visible objects.
+                      </div>
+                    ) : (
+                      <ul className="divide-y divide-slate-800 bg-slate-950/60">
+                        {mtpObjects.map((object) => (
+                          <li key={object.path.join('/')} className="flex items-center gap-3 px-3 py-2">
+                            <span className="w-12 text-[11px] uppercase text-slate-600">
+                              {object.isFolder ? 'Folder' : 'File'}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-sm text-slate-200">
+                              {object.filename || 'Unnamed object'}
+                            </span>
+                            {!object.isFolder && (
+                              <span className="text-[11px] text-slate-600">{formatBytes(object.sizeBytes)}</span>
+                            )}
+                            {object.isFolder ? (
+                              <button
+                                type="button"
+                                disabled={transferBusy}
+                                onClick={() => void openMtpFolder(object.path)}
+                                className="rounded border border-slate-700 px-2 py-1 text-xs text-cyan-300 disabled:opacity-50 hover:bg-slate-800"
+                              >
+                                Open
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={transferBusy}
+                                onClick={() => void downloadFile(object)}
+                                className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 disabled:opacity-50 hover:bg-slate-800"
+                              >
+                                Download to Mac
+                              </button>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Negotiated MTP capabilities
+                  </h3>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {mtp.capabilities.map((capability) => (
+                      <span key={capability} className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-300">
+                        {capability}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </section>
+
+          <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-white">Live workflow capability matrix</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Every workflow is enabled from current transport evidence, not device-brand assumptions.
+                </p>
+              </div>
+              {capabilities && (
+                <span className="text-xs text-slate-500">
+                  USB {capabilities.usbDevicesSeen} · ADB {capabilities.adbDevicesSeen} · MTP {capabilities.mtpConnected ? 'yes' : 'no'}
+                </span>
+              )}
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {(capabilities?.workflows ?? []).map((workflow) => (
+                <div
+                  key={workflow.id}
+                  className={`rounded border p-3 ${
+                    workflow.enabled
+                      ? 'border-emerald-900 bg-emerald-950/20'
+                      : 'border-slate-800 bg-slate-950/50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-mono text-xs text-white">{workflow.id}</div>
+                    <span className={workflow.enabled ? 'text-xs text-emerald-400' : 'text-xs text-slate-600'}>
+                      {workflow.enabled ? 'enabled' : 'unavailable'}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-slate-400">{workflow.reason}</div>
+                  {workflow.evidence.length > 0 && (
+                    <div className="mt-2 break-all text-[10px] text-slate-600">
+                      {workflow.evidence.join(' · ')}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-white">Authorized ADB workflows</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  These actions run against the selected real ADB device. Unauthorized and offline devices remain
+                  visible but cannot execute workflows.
+                </p>
+              </div>
+              <span className="text-xs text-slate-500">{adbDevices.length} ADB device(s)</span>
+            </div>
+
+            {adbDevices.length === 0 ? (
+              <div className="mt-4 rounded border border-slate-800 bg-slate-950/50 p-3 text-sm text-slate-500">
+                No ADB interface detected. File transfer can still work over MTP without USB debugging.
+              </div>
+            ) : (
+              <>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {adbDevices.map((device) => (
+                    <button
+                      key={device.serial}
+                      type="button"
+                      onClick={() => setAdbSelectedSerial(device.serial)}
+                      className={`rounded border px-3 py-2 text-left text-xs ${
+                        adbSelectedSerial === device.serial
+                          ? 'border-cyan-500 bg-cyan-950/20'
+                          : 'border-slate-700 bg-slate-950'
+                      }`}
+                    >
+                      <div className="font-mono text-slate-200">{device.serial}</div>
+                      <div className={device.authorized ? 'text-emerald-400' : 'text-amber-300'}>
+                        {device.state}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  <button
+                    type="button"
+                    disabled={transferBusy}
+                    onClick={() => void runOneClickAdb()}
+                    className="rounded bg-cyan-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-cyan-600"
+                  >
+                    Prepare ADB
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runAdbBattery()}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Battery info
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runAdbDeviceInfo()}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Read live device info
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      transferBusy ||
+                      !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized
+                    }
+                    onClick={() => void runAdbLogcat()}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Capture logcat
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runAdbScreenshot()}
+                    className="rounded bg-violet-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-violet-600"
+                  >
+                    Save screenshot
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('network')}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Network settings
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('factory-reset-settings')}
+                    className="rounded bg-amber-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-amber-600"
+                  >
+                    Factory reset settings
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('install-apk')}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Install APK
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('reboot-normal')}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Reboot
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('reboot-recovery')}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Reboot recovery
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('reboot-bootloader')}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Reboot bootloader
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('reboot-download')}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Samsung download mode
+                  </button>
+                </div>
+
+                {adbOutput && (
+                  <pre className="mt-4 max-h-72 overflow-auto whitespace-pre-wrap rounded border border-slate-800 bg-black p-3 text-xs text-slate-300">
+                    {adbOutput}
+                  </pre>
+                )}
+              </>
+            )}
+          </section>
+
+          <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
+            <h2 className="text-sm font-semibold text-white">Workflow execution policy</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              BobFWTools only enables a workflow when the required transport is actually present. USB descriptor data
+              comes from the native Rust scanner. File operations execute through a real MTP session. Completed uploads
+              are re-listed for verification; downloads are verified after the Mac file is written. Missing transports
+              remain unavailable instead of returning simulated success.
+            </p>
+          </section>
         </main>
       </div>
     </div>

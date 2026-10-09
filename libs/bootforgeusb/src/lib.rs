@@ -1,104 +1,229 @@
-use pyo3::prelude::*;
+pub mod firmware;
+pub mod model;
+pub mod planner;
+pub mod recovery;
+pub mod recovery_job;
+pub mod transport;
+
+use model::DeviceRecord;
 use rusb::{Context, UsbContext};
-use std::collections::HashMap;
+use thiserror::Error;
 
-#[pyclass]
-pub struct RawUsbController {
-    device_id: String,
+#[derive(Debug, Error)]
+pub enum BootForgeUsbError {
+    #[error("failed to initialize USB context: {0}")]
+    Context(String),
+    #[error("failed to enumerate USB devices: {0}")]
+    Enumeration(String),
 }
 
-#[pymethods]
-impl RawUsbController {
-    #[new]
-    pub fn new(device_id: String) -> Self {
-        RawUsbController { device_id }
-    }
+pub type Result<T> = std::result::Result<T, BootForgeUsbError>;
 
-    /// Real Bulk Write via rusb
-    pub fn bulk_write(&self, data: Vec<u8>) -> PyResult<usize> {
-        // PRODUCTION: This would find the device and use its handler
-        println!("[RUST] [USB] Sending LIVE bytes to {}: {} bytes", self.device_id, data.len());
-        Ok(data.len())
-    }
-
-    /// Real Bulk Read via rusb
-    pub fn bulk_read(&self, length: usize) -> PyResult<Vec<u8>> {
-        println!("[RUST] [USB] Polling RAW hardware at {} for {} bytes", self.device_id, length);
-        Ok(vec![0x00; length]) 
-    }
-
-    /// Control Transfer for Fault Injection (Glitch)
-    pub fn control_transfer(&self, rt: u8, r: u8, v: u16, i: u16, data: Vec<u8>) -> PyResult<bool> {
-        println!("[RUST] [GLITCH] Firing Control Transfer: RT=0x{:02X}, R=0x{:02X}, V={}, I={}, Len={}", rt, r, v, i, data.len());
-        // PRODUCTION: Use rusb device_handle.write_control(rt, r, v, i, &data, timeout)?
-        Ok(true)
+fn platform_hint(vendor_id: u16) -> &'static str {
+    match vendor_id {
+        0x04e8 => "android-samsung",
+        0x0e8d => "android-mediatek",
+        0x18d1 => "android-google",
+        0x22b8 => "android-motorola",
+        0x2717 => "android-xiaomi",
+        0x2a70 => "android-oneplus",
+        0x05ac => "apple",
+        _ => "unknown",
     }
 }
 
-#[pyclass]
-pub struct UsbMonitor {
-    mock_mode: bool,
+fn mode_hint(
+    vendor_id: u16,
+    product_id: u16,
+    class: u8,
+    subclass: u8,
+    protocol: u8,
+) -> &'static str {
+    if vendor_id == 0x04e8 && matches!(product_id, 0x6601 | 0x685d) {
+        return "samsung-download";
+    }
+    if vendor_id == 0x0e8d && matches!(product_id, 0x0003 | 0x2000 | 0x2001) {
+        return "mediatek-preloader";
+    }
+    if class == 0x06 && subclass == 0x01 && protocol == 0x01 {
+        return "ptp";
+    }
+    "usb"
 }
 
-#[pymethods]
-impl UsbMonitor {
-    #[new]
-    pub fn new(mock_mode: bool) -> Self {
-        UsbMonitor { mock_mode }
+fn read_strings<T: UsbContext>(
+    device: &rusb::Device<T>,
+) -> (Option<String>, Option<String>, Option<String>) {
+    let descriptor = match device.device_descriptor() {
+        Ok(d) => d,
+        Err(_) => return (None, None, None),
+    };
+    let handle = match device.open() {
+        Ok(h) => h,
+        Err(_) => return (None, None, None),
+    };
+    let manufacturer = handle
+        .read_manufacturer_string_ascii(&descriptor)
+        .ok()
+        .map(|v| v.trim_matches(char::from(0)).trim().to_string())
+        .filter(|v| !v.is_empty());
+    let product = handle
+        .read_product_string_ascii(&descriptor)
+        .ok()
+        .map(|v| v.trim_matches(char::from(0)).trim().to_string())
+        .filter(|v| !v.is_empty());
+    let serial = handle
+        .read_serial_number_string_ascii(&descriptor)
+        .ok()
+        .map(|v| v.trim_matches(char::from(0)).trim().to_string())
+        .filter(|v| !v.is_empty());
+    (manufacturer, product, serial)
+}
+
+pub fn scan() -> Result<Vec<DeviceRecord>> {
+    let context = Context::new().map_err(|e| BootForgeUsbError::Context(e.to_string()))?;
+    let devices = context
+        .devices()
+        .map_err(|e| BootForgeUsbError::Enumeration(e.to_string()))?;
+
+    let mut records = Vec::new();
+    for device in devices.iter() {
+        let descriptor = match device.device_descriptor() {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        let (manufacturer, product_name, serial_number) = read_strings(&device);
+        let vendor_id = descriptor.vendor_id();
+        let product_id = descriptor.product_id();
+
+        let device_uid = serial_number
+            .as_ref()
+            .map(|serial| format!("usb:{:04x}:{:04x}:{}", vendor_id, product_id, serial))
+            .unwrap_or_else(|| {
+                format!(
+                    "usb:{:04x}:{:04x}:bus{}:addr{}",
+                    vendor_id,
+                    product_id,
+                    device.bus_number(),
+                    device.address()
+                )
+            });
+
+        records.push(DeviceRecord {
+            device_uid,
+            vendor_id,
+            product_id,
+            manufacturer,
+            product_name,
+            serial_number,
+            class: descriptor.class_code(),
+            subclass: descriptor.sub_class_code(),
+            protocol: descriptor.protocol_code(),
+            bus_number: device.bus_number(),
+            device_address: device.address(),
+            speed: format!("{:?}", device.speed()).to_ascii_lowercase(),
+            platform_hint: platform_hint(vendor_id).to_string(),
+            mode: mode_hint(
+                vendor_id,
+                product_id,
+                descriptor.class_code(),
+                descriptor.sub_class_code(),
+                descriptor.protocol_code(),
+            )
+            .to_string(),
+            transport: "usb".to_string(),
+            evidence_source: "rusb-descriptor".to_string(),
+        });
+    }
+    Ok(records)
+}
+
+#[cfg(feature = "python")]
+mod python_api {
+    use super::*;
+    use pyo3::{exceptions::PyRuntimeError, prelude::*};
+    use std::collections::HashMap;
+
+    #[pyclass]
+    pub struct RawUsbController {
+        device_id: String,
     }
 
-    /// PRODUCTION: Polling the actual Windows/Linux USB stack
-    pub fn poll_active_devices(&self) -> PyResult<Vec<HashMap<String, String>>> {
-        let mut devices = Vec::new();
-        
-        if self.mock_mode {
-            // Simulated fallback for cloud builds
-            let mut dev = HashMap::new();
-            dev.insert("name".to_string(), "Mock Qualcomm 9008".to_string());
-            dev.insert("protocol".to_string(), "QDLoader 9008 (EDL)".to_string());
-            dev.insert("serial".to_string(), "05C6:9008".to_string());
-            dev.insert("category".to_string(), "Mobile".to_string());
-            devices.push(dev);
-        } else {
-            // REAL PHYSICAL POLLING
-            let context = Context::new().expect("[RUST] Failed to create USB Context");
-            for device in context.devices().expect("[RUST] Failed to list USB devices").iter() {
-                let device_desc = device.device_descriptor().expect("[RUST] Failed to read descriptor");
-                
-                let mut dev_map = HashMap::new();
-                let vid_pid = format!("{:04X}:{:04X}", device_desc.vendor_id(), device_desc.product_id());
-                
-                // Map VID/PID to known Phoenix Forge targets
-                let name = match vid_pid.as_str() {
-                    "05C6:9008" => "Qualcomm EDL Mode".to_string(),
-                    "0E8D:0003" => "MediaTek Preloader".to_string(),
-                    "05AC:1227" => "Apple DFU Mode".to_string(),
-                    "0955:7321" => "NVIDIA Tegra RCM".to_string(),
-                    _ => format!("USB Device ({})", vid_pid),
-                };
-                
-                let protocol = match vid_pid.as_str() {
-                    "05C6:9008" => "QDLoader 9008".to_string(),
-                    "0E8D:0003" => "VCOM / BROM".to_string(),
-                    "05AC:1227" => "Checkm8 Vector".to_string(),
-                    _ => "Generic USB".to_string(),
-                };
-
-                dev_map.insert("name".to_string(), name);
-                dev_map.insert("protocol".to_string(), protocol);
-                dev_map.insert("serial".to_string(), vid_pid);
-                dev_map.insert("category".to_string(), "Hardware Detected".to_string());
-                devices.push(dev_map);
-            }
+    #[pymethods]
+    impl RawUsbController {
+        #[new]
+        pub fn new(device_id: String) -> Self {
+            Self { device_id }
         }
-        
-        Ok(devices)
-    }
-}
 
-#[pymodule]
-fn bootforge_usb(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_class::<RawUsbController>()?;
-    m.add_class::<UsbMonitor>()?;
-    Ok(())
+        pub fn bulk_write(&self, _data: Vec<u8>) -> PyResult<usize> {
+            Err(PyRuntimeError::new_err(format!(
+                "raw USB write is disabled for {} until endpoint discovery and hardware qualification are implemented",
+                self.device_id
+            )))
+        }
+
+        pub fn bulk_read(&self, _length: usize) -> PyResult<Vec<u8>> {
+            Err(PyRuntimeError::new_err(format!(
+                "raw USB read is disabled for {} until endpoint discovery and hardware qualification are implemented",
+                self.device_id
+            )))
+        }
+
+        pub fn control_transfer(
+            &self,
+            _rt: u8,
+            _r: u8,
+            _v: u16,
+            _i: u16,
+            _data: Vec<u8>,
+        ) -> PyResult<bool> {
+            Err(PyRuntimeError::new_err(format!(
+                "raw USB control transfers are disabled for {} in BobFWTools",
+                self.device_id
+            )))
+        }
+    }
+
+    #[pyclass]
+    pub struct UsbMonitor;
+
+    #[pymethods]
+    impl UsbMonitor {
+        #[new]
+        pub fn new(_mock_mode: bool) -> Self {
+            Self
+        }
+
+        pub fn poll_active_devices(&self) -> PyResult<Vec<HashMap<String, String>>> {
+            let records = scan().map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+            Ok(records
+                .into_iter()
+                .map(|d| {
+                    let mut m = HashMap::new();
+                    m.insert(
+                        "name".into(),
+                        d.product_name.unwrap_or_else(|| {
+                            format!("USB {:04X}:{:04X}", d.vendor_id, d.product_id)
+                        }),
+                    );
+                    m.insert("protocol".into(), d.mode);
+                    m.insert(
+                        "serial".into(),
+                        d.serial_number
+                            .unwrap_or_else(|| format!("{:04X}:{:04X}", d.vendor_id, d.product_id)),
+                    );
+                    m.insert("category".into(), d.platform_hint);
+                    m
+                })
+                .collect())
+        }
+    }
+
+    #[pymodule]
+    fn bootforge_usb(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
+        m.add_class::<RawUsbController>()?;
+        m.add_class::<UsbMonitor>()?;
+        Ok(())
+    }
 }

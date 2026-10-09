@@ -7,7 +7,7 @@
 import express from 'express';
 import { execSync } from 'child_process';
 import { getToolPath } from '../../tools-manager.js';
-import { flashHistory, activeFlashJobs, jobCounter as sharedJobCounter, broadcastFlashProgress, simulateFlashOperation } from './flash-shared.js';
+import { flashHistory, activeFlashJobs, jobCounter as sharedJobCounter, broadcastFlashProgress } from './flash-shared.js';
 
 const router = express.Router();
 
@@ -222,21 +222,12 @@ router.get('/devices/:serial', async (req, res) => {
 router.get('/devices/:serial/partitions', async (req, res) => {
   const { serial } = req.params;
   
-  try {
-    // In a real implementation, this would query the device for partitions
-    // For now, return common partition list
-    const partitions = ['boot', 'system', 'vendor', 'recovery', 'userdata', 
-                       'cache', 'vbmeta', 'dtbo', 'persist'];
-    
-    res.sendEnvelope({
-      success: true,
-      serial,
-      partitions,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    res.sendError('INTERNAL_ERROR', 'Failed to get partitions', { error: error.message }, 500);
-  }
+  return res.sendError(
+    'PARTITION_DISCOVERY_UNAVAILABLE',
+    'Partition discovery is disabled until a real device-backed implementation is wired for this mode.',
+    { serial },
+    501
+  );
 });
 
 /**
@@ -291,42 +282,27 @@ router.post('/validate-image', async (req, res) => {
  * Start a new flash operation
  */
 router.post('/start', async (req, res) => {
-  const config = req.body;
-  
-  if (!config.deviceSerial || !config.flashMethod || !config.partitions || config.partitions.length === 0) {
-    return res.sendError('VALIDATION_ERROR', 'Missing required fields: deviceSerial, flashMethod, partitions', null, 400);
+  const config = req.body ?? {};
+
+  if (!config.deviceSerial || !config.flashMethod || !Array.isArray(config.partitions) || config.partitions.length === 0) {
+    return res.sendError(
+      'VALIDATION_ERROR',
+      'Missing required fields: deviceSerial, flashMethod, partitions',
+      null,
+      400
+    );
   }
-  
-  const jobId = `flash-job-${flashJobCounter++}-${Date.now()}`;
-  
-  const jobStatus = {
-    jobId,
-    status: 'queued',
-    progress: 0,
-    currentStep: 'Initializing',
-    totalSteps: config.partitions.length,
-    completedSteps: 0,
-    bytesWritten: 0,
-    totalBytes: config.partitions.reduce((sum, p) => sum + (p.size || 100000000), 0),
-    speed: 0,
-    timeElapsed: 0,
-    timeRemaining: 0,
-    logs: [`[${new Date().toISOString()}] Flash job ${jobId} created`],
-    startTime: Date.now()
-  };
-  
-  activeFlashJobs.set(jobId, { config, status: jobStatus });
-  
-  simulateFlashOperation(jobId, config);
-  
-  res.sendEnvelope({
-    success: true,
-    jobId,
-    status: 'queued',
-    deviceSerial: config.deviceSerial,
-    startTime: Date.now(),
-    message: 'Flash operation queued'
-  });
+
+  return res.sendError(
+    'FLASH_BACKEND_UNAVAILABLE',
+    'Flashing is disabled in BobFWTools until a real mode-specific executor, preflight, progress source, post-write verification, and rollback policy are wired and qualified on physical hardware.',
+    {
+      deviceSerial: config.deviceSerial,
+      flashMethod: config.flashMethod,
+      requestedPartitions: config.partitions.map((p) => p?.name).filter(Boolean)
+    },
+    501
+  );
 });
 
 /**

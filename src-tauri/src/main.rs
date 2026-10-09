@@ -1,4 +1,4 @@
-// Bobby's Workshop - Tauri Main Entry Point
+// BobFWTools - Tauri Main Entry Point
 // Manages app lifecycle. The legacy Node backend is opt-in.
 
 #![cfg_attr(
@@ -6,26 +6,48 @@
     windows_subsystem = "windows"
 )]
 
-use std::process::{Command, Child, Stdio};
+#[cfg(any(feature = "legacy-backends", feature = "qualified-flash"))]
+use std::process::{Command, Stdio};
+#[cfg(feature = "legacy-backends")]
+use std::process::Child;
 use std::sync::Mutex;
 use tauri::{Manager, AppHandle, Emitter};
+#[cfg(any(feature = "legacy-backends", feature = "qualified-flash"))]
 use std::path::PathBuf;
 use std::env;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+#[cfg(feature = "qualified-flash")]
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[cfg(feature = "legacy-backends")]
 mod python_backend;
+#[cfg(feature = "legacy-backends")]
 mod py_client;
+#[cfg(feature = "legacy-backends")]
 mod fastapi_backend;
+mod mtp_backend;
+mod adb_workflows;
+mod workflow_capabilities;
+mod diagnostics;
+mod workflow_jobs;
+#[cfg(feature = "legacy-backends")]
 use python_backend::{launch_python_backend, shutdown_python_backend};
+#[cfg(feature = "legacy-backends")]
 use py_client::PyWorkerClient;
+#[cfg(feature = "legacy-backends")]
 use fastapi_backend::{launch_fastapi_backend, shutdown_fastapi_backend};
+use mtp_backend::{mtp_status, mtp_list_root, mtp_download_file, mtp_upload_file, mtp_list_directory, mtp_download_path, mtp_upload_path};
+use adb_workflows::{adb_scan, adb_device_info, adb_logcat_snapshot, adb_screenshot, adb_prepare, adb_battery_info, adb_reboot_mode, adb_open_network_settings, adb_open_factory_reset_settings, adb_install_apk, adb_list_user_packages, adb_package_action};
+use workflow_capabilities::workflow_capabilities;
+use diagnostics::{diagnose_phone, usb_cable_doctor};
+use workflow_jobs::{workflow_job_start, workflow_job_list, workflow_job_get, workflow_job_retry};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FlashPartition {
     name: String,
@@ -33,6 +55,7 @@ struct FlashPartition {
     size: u64,
 }
 
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FlashJobConfig {
     deviceSerial: String,
@@ -44,11 +67,13 @@ struct FlashJobConfig {
     wipeUserData: bool,
 }
 
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FlashStartResponse {
     jobId: String,
 }
 
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RealTimeFlashUpdate {
     #[serde(rename = "type")]
@@ -69,6 +94,7 @@ struct DeviceHotplugEvent {
     timestamp: String,
     display_name: String,
     matched_tool_ids: Vec<String>,
+    evidence_source: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,6 +104,7 @@ struct DeviceEventEnvelope {
     event: DeviceHotplugEvent,
 }
 
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FlashHistoryEntry {
     jobId: String,
@@ -93,6 +120,7 @@ struct FlashHistoryEntry {
     averageSpeed: u64,
 }
 
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FlashOperationStatus {
     jobId: String,
@@ -110,6 +138,7 @@ struct FlashOperationStatus {
     startTime: u64,
 }
 
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FlashProgressModel {
     jobId: String,
@@ -131,6 +160,7 @@ struct FlashProgressModel {
     warnings: Vec<String>,
 }
 
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FlashOperationModel {
     id: String,
@@ -142,6 +172,7 @@ struct FlashOperationModel {
     canCancel: bool,
 }
 
+#[cfg(feature = "qualified-flash")]
 #[derive(Debug, Clone)]
 struct FlashJobRuntime {
     status: String,
@@ -158,6 +189,7 @@ struct FlashJobRuntime {
     config: FlashJobConfig,
 }
 
+#[cfg(feature = "qualified-flash")]
 fn to_bootforge_status(raw: &str) -> String {
     match raw {
         "queued" => "preparing",
@@ -171,6 +203,7 @@ fn to_bootforge_status(raw: &str) -> String {
     .to_string()
 }
 
+#[cfg(feature = "qualified-flash")]
 fn job_to_operation(job_id: &str, job: &FlashJobRuntime) -> FlashOperationModel {
     let status = to_bootforge_status(&job.status);
     let stage = job.current_step.clone();
@@ -219,6 +252,7 @@ fn iso_now() -> String {
     format!("{}", now_ms())
 }
 
+#[cfg(feature = "qualified-flash")]
 fn emit_flash_update(app_handle: &AppHandle, job_id: &str, kind: &str, data: serde_json::Value) {
     let payload = RealTimeFlashUpdate {
         kind: kind.to_string(),
@@ -245,6 +279,7 @@ fn emit_device_event(app_handle: &AppHandle, event: DeviceHotplugEvent) {
     }
 }
 
+#[cfg(feature = "legacy-backends")]
 fn run_command_capture_lines(mut cmd: Command) -> Result<Vec<String>, String> {
     // Hide console window on Windows
     #[cfg(target_os = "windows")]
@@ -266,6 +301,7 @@ fn run_command_capture_lines(mut cmd: Command) -> Result<Vec<String>, String> {
         .collect())
 }
 
+#[cfg(feature = "qualified-flash")]
 fn fastboot_exists() -> bool {
     let mut cmd = Command::new("fastboot");
     cmd.arg("--version")
@@ -280,6 +316,7 @@ fn fastboot_exists() -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(feature = "legacy-backends")]
 fn adb_exists() -> bool {
     let mut cmd = Command::new("adb");
     cmd.arg("version")
@@ -294,6 +331,7 @@ fn adb_exists() -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(feature = "legacy-backends")]
 fn adb_list_serials() -> Vec<String> {
     let mut cmd = Command::new("adb");
     cmd.args(["devices"]);
@@ -325,6 +363,7 @@ fn adb_list_serials() -> Vec<String> {
         .collect()
 }
 
+#[cfg(feature = "legacy-backends")]
 fn fastboot_list_serials() -> Vec<String> {
     let mut cmd = Command::new("fastboot");
     cmd.args(["devices"]);
@@ -352,16 +391,24 @@ fn fastboot_list_serials() -> Vec<String> {
 }
 
 struct AppState {
+    #[cfg(feature = "legacy-backends")]
     backend_server: Mutex<Option<Child>>,
+    #[cfg(feature = "qualified-flash")]
     flash_jobs: Mutex<HashMap<String, FlashJobRuntime>>,
+    #[cfg(feature = "qualified-flash")]
     flash_history: Mutex<Vec<FlashHistoryEntry>>,
+    #[cfg(feature = "qualified-flash")]
     job_counter: AtomicU64,
     device_monitor_started: Mutex<bool>,
+    #[cfg(feature = "legacy-backends")]
     py_client: Mutex<Option<PyWorkerClient>>,
+    #[cfg(feature = "legacy-backends")]
     py_backend_port: Mutex<Option<u16>>,
+    #[cfg(feature = "legacy-backends")]
     fastapi_backend: Mutex<Option<Child>>,
 }
 
+#[cfg(feature = "legacy-backends")]
 fn env_var_truthy(name: &str) -> bool {
     match env::var(name) {
         Ok(v) => matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"),
@@ -369,38 +416,44 @@ fn env_var_truthy(name: &str) -> bool {
     }
 }
 
+#[cfg(feature = "legacy-backends")]
 fn should_start_node_backend() -> bool {
-    // ALWAYS AUTO-START backend for complete standalone experience
-    // Backend is required for full functionality
-    // Set BW_DISABLE_NODE_BACKEND=1 to disable (not recommended)
-    !env_var_truthy("BW_DISABLE_NODE_BACKEND")
+    env_var_truthy("BOBFW_ENABLE_LEGACY_NODE_BACKEND")
+}
+
+#[cfg(feature = "legacy-backends")]
+fn should_start_python_backend() -> bool {
+    env_var_truthy("BOBFW_ENABLE_LEGACY_PYTHON_BACKEND")
+}
+
+#[cfg(feature = "legacy-backends")]
+fn should_start_fastapi_backend() -> bool {
+    env_var_truthy("BOBFW_ENABLE_LEGACY_FASTAPI_BACKEND")
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct FrontendBackendHandshake {
+    protocol: String,
+    backend: String,
+    status: String,
+    greeting: String,
+    correlation_id: String,
 }
 
 #[tauri::command]
-fn get_backend_status(state: tauri::State<'_, AppState>) -> Result<String, String> {
-    let is_running = {
-        let backend = state
-            .backend_server
-            .lock()
-            .map_err(|_| "backend_server lock poisoned".to_string())?;
-        backend.is_some()
-    };
-
-    if is_running {
-        return Ok("Backend running on http://localhost:3001".to_string());
+fn frontend_backend_handshake() -> FrontendBackendHandshake {
+    FrontendBackendHandshake {
+        protocol: "bobfwtools-handshake-v1".to_string(),
+        backend: "native-tauri-rust".to_string(),
+        status: "ready".to_string(),
+        greeting: "Hello from BobFWTools backend — frontend connection confirmed.".to_string(),
+        correlation_id: format!("handshake-{}", uuid::Uuid::new_v4()),
     }
+}
 
-    if should_start_node_backend() {
-        Ok(
-            "Backend server is enabled but not running. Ensure Node.js is installed and check app logs for startup errors."
-                .to_string(),
-        )
-    } else {
-        Ok(
-            "Backend server disabled. To enable the Node backend, unset BW_DISABLE_NODE_BACKEND or set it to 0."
-                .to_string(),
-        )
-    }
+#[tauri::command]
+fn get_backend_status() -> String {
+    "BobFWTools native Rust/Tauri core active".to_string()
 }
 
 #[tauri::command]
@@ -413,6 +466,102 @@ fn bootforgeusb_scan() -> Result<Vec<bootforgeusb::model::DeviceRecord>, String>
     bootforgeusb::scan().map_err(|e| format!("USB scan failed: {e}"))
 }
 
+#[tauri::command]
+fn bootforgeusb_transport_scan() -> Result<Vec<bootforgeusb::transport::TransportDevice>, String> {
+    bootforgeusb::transport::scan_transports()
+        .map_err(|e| format!("USB transport scan failed: {e}"))
+}
+
+#[tauri::command]
+fn bootforge_firmware_inspect(paths: Vec<String>) -> Result<Vec<bootforgeusb::firmware::FirmwareArchiveReport>, String> {
+    if paths.is_empty() {
+        return Err("At least one firmware package path is required".to_string());
+    }
+    bootforgeusb::firmware::inspect_many(paths)
+        .map_err(|e| format!("Firmware inspection failed: {e}"))
+}
+
+#[tauri::command]
+fn bootforge_samsung_plan(paths: Vec<String>) -> Result<bootforgeusb::planner::FlashPlan, String> {
+    if paths.is_empty() {
+        return Err("At least one firmware package path is required".to_string());
+    }
+    let reports = bootforgeusb::firmware::inspect_many(paths)
+        .map_err(|e| format!("Firmware inspection failed: {e}"))?;
+    Ok(bootforgeusb::planner::build_samsung_plan(&reports))
+}
+
+#[tauri::command]
+fn bootforge_recovery_scan() -> Result<Vec<bootforgeusb::recovery::RecoveryCandidate>, String> {
+    let devices = bootforgeusb::transport::scan_transports()
+        .map_err(|e| format!("USB transport scan failed: {e}"))?;
+    Ok(bootforgeusb::recovery::scan_recovery_candidates(&devices))
+}
+
+#[tauri::command]
+fn bootforge_recovery_autodiscover(kind: String) -> Result<Vec<String>, String> {
+    let parsed = bootforgeusb::recovery::RecoveryKind::parse(&kind)
+        .map_err(|e| format!("Recovery workflow selection failed: {e}"))?;
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| "Home directory is unavailable for automatic artifact search".to_string())?;
+    let roots = ["Downloads", "Documents", "Desktop", "Projects", "repair-artifacts"]
+        .into_iter()
+        .map(|name| home.join(name))
+        .collect::<Vec<_>>();
+    Ok(bootforgeusb::recovery::discover_recovery_artifacts(parsed, &roots))
+}
+
+#[tauri::command]
+fn bootforge_recovery_plan(kind: String, paths: Vec<String>) -> Result<bootforgeusb::recovery::RecoveryPlan, String> {
+    if paths.is_empty() {
+        return Err("At least one recovery artifact path is required".to_string());
+    }
+    let kind = bootforgeusb::recovery::RecoveryKind::parse(&kind)
+        .map_err(|e| format!("Recovery workflow selection failed: {e}"))?;
+    bootforgeusb::recovery::build_recovery_plan(kind, paths.into_iter().map(std::path::PathBuf::from).collect())
+        .map_err(|e| format!("Recovery planning failed: {e}"))
+}
+
+#[tauri::command]
+fn bootforge_recovery_prepare(
+    candidate: bootforgeusb::recovery::RecoveryCandidate,
+    paths: Vec<String>,
+) -> Result<bootforgeusb::recovery_job::RecoveryJob, String> {
+    if paths.is_empty() {
+        return Err("At least one recovery artifact path is required".to_string());
+    }
+    let plan = bootforgeusb::recovery::build_recovery_plan(
+        candidate.workflow,
+        paths.into_iter().map(std::path::PathBuf::from).collect(),
+    ).map_err(|e| format!("Recovery planning failed: {e}"))?;
+    bootforgeusb::recovery_job::build_job(&candidate, &plan)
+        .map_err(|e| format!("Recovery job preparation failed: {e}"))
+}
+
+#[tauri::command]
+fn bootforge_recovery_revalidate(
+    mut job: bootforgeusb::recovery_job::RecoveryJob,
+) -> Result<bootforgeusb::recovery_job::RecoveryJob, String> {
+    let devices = bootforgeusb::transport::scan_transports()
+        .map_err(|e| format!("USB transport scan failed: {e}"))?;
+    let current = devices
+        .iter()
+        .find(|device| {
+            device.device_uid == job.identity.device_uid
+                && device.vendor_id == job.identity.vendor_id
+                && device.product_id == job.identity.product_id
+                && device.mode == job.identity.mode
+                && device.serial_number == job.identity.serial_number
+        })
+        .ok_or_else(|| "Recovery device identity is no longer present exactly as prepared".to_string())?;
+
+    bootforgeusb::recovery_job::revalidate_job_identity(&mut job, current)
+        .map_err(|e| format!("Recovery identity revalidation failed: {e}"))?;
+    Ok(job)
+}
+
+#[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config: FlashJobConfig) -> Result<FlashStartResponse, String> {
     if config.flashMethod != "fastboot" {
@@ -505,7 +654,7 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
     let id_for_thread = id.clone();
 
     std::thread::spawn(move || {
-        let mut set_job_status = |status: &str, step: &str| {
+        let set_job_status = |status: &str, step: &str| {
             let state = app_for_thread.state::<AppState>();
             if let Ok(mut jobs) = state.flash_jobs.lock() {
                 if let Some(job) = jobs.get_mut(&id_for_thread) {
@@ -524,7 +673,7 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
             );
         };
 
-        let mut push_log = |line: &str| {
+        let push_log = |line: &str| {
             let state = app_for_thread.state::<AppState>();
             if let Ok(mut jobs) = state.flash_jobs.lock() {
                 if let Some(job) = jobs.get_mut(&id_for_thread) {
@@ -543,7 +692,7 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
             );
         };
 
-        let mut complete_step = |completed: u64, total: u64| {
+        let complete_step = |completed: u64, total: u64| {
             let pct = if total == 0 { 0 } else { ((completed * 100) / total).min(100) };
             let state = app_for_thread.state::<AppState>();
             if let Ok(mut jobs) = state.flash_jobs.lock() {
@@ -726,10 +875,10 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
         );
 
         // Ensure no closures keep borrowing `state` before we lock other mutexes.
-        drop(set_job_status);
-        drop(push_log);
-        drop(complete_step);
-        drop(cancel_requested);
+        let _ = set_job_status;
+        let _ = push_log;
+        let _ = complete_step;
+        let _ = cancel_requested;
 
         // Save a lightweight history entry for flash-api consumers
         let end = now_ms();
@@ -764,6 +913,7 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
     Ok(FlashStartResponse { jobId: id })
 }
 
+#[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_cancel(state: tauri::State<'_, AppState>, jobId: String) -> Result<(), String> {
     let mut jobs = state.flash_jobs.lock().map_err(|_| "flash_jobs mutex poisoned".to_string())?;
@@ -774,6 +924,7 @@ fn flash_cancel(state: tauri::State<'_, AppState>, jobId: String) -> Result<(), 
     Ok(())
 }
 
+#[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn bootforge_flash_history(state: tauri::State<'_, AppState>, limit: Option<usize>) -> Result<Vec<FlashOperationModel>, String> {
     let jobs = state.flash_jobs.lock().map_err(|_| "flash_jobs mutex poisoned".to_string())?;
@@ -789,6 +940,7 @@ fn bootforge_flash_history(state: tauri::State<'_, AppState>, limit: Option<usiz
     Ok(items.into_iter().take(lim).map(|t| t.2).collect())
 }
 
+#[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn bootforge_flash_active(state: tauri::State<'_, AppState>) -> Result<Vec<FlashOperationModel>, String> {
     let jobs = state.flash_jobs.lock().map_err(|_| "flash_jobs mutex poisoned".to_string())?;
@@ -801,6 +953,7 @@ fn bootforge_flash_active(state: tauri::State<'_, AppState>) -> Result<Vec<Flash
     Ok(out)
 }
 
+#[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_status(state: tauri::State<'_, AppState>, jobId: String) -> Result<FlashOperationStatus, String> {
     let jobs = state.flash_jobs.lock().map_err(|_| "flash_jobs mutex poisoned".to_string())?;
@@ -823,6 +976,7 @@ fn flash_status(state: tauri::State<'_, AppState>, jobId: String) -> Result<Flas
     })
 }
 
+#[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_history(state: tauri::State<'_, AppState>, limit: Option<usize>) -> Result<Vec<FlashHistoryEntry>, String> {
     let hist = state.flash_history.lock().map_err(|_| "flash_history mutex poisoned".to_string())?;
@@ -830,6 +984,7 @@ fn flash_history(state: tauri::State<'_, AppState>, limit: Option<usize>) -> Res
     Ok(hist.iter().take(lim).cloned().collect())
 }
 
+#[cfg(feature = "qualified-flash")]
 #[tauri::command]
 fn flash_active(state: tauri::State<'_, AppState>) -> Result<Vec<FlashOperationStatus>, String> {
     let jobs = state.flash_jobs.lock().map_err(|_| "flash_jobs mutex poisoned".to_string())?;
@@ -874,57 +1029,65 @@ fn start_device_monitor_once(app_handle: &AppHandle, state: tauri::State<'_, App
 
     let app = app_handle.clone();
     std::thread::spawn(move || {
-        let mut seen: HashSet<String> = HashSet::new();
+        let mut seen: HashMap<String, bootforgeusb::model::DeviceRecord> = HashMap::new();
+
         loop {
-            // Prefer BootForgeUSB scan (includes libusb enumeration + tool confirmers).
-            let mut current: HashSet<String> = HashSet::new();
-            let scan = bootforgeusb::scan().ok();
-            if let Some(devs) = scan {
-                for d in devs {
-                    current.insert(d.device_uid.clone());
-                }
-            } else {
-                // Fall back to tool lists.
-                for s in adb_list_serials() {
-                    current.insert(format!("adb:{}", s));
-                }
-                for s in fastboot_list_serials() {
-                    current.insert(format!("fastboot:{}", s));
+            let mut current: HashMap<String, bootforgeusb::model::DeviceRecord> = HashMap::new();
+
+            if let Ok(devices) = bootforgeusb::scan() {
+                for device in devices {
+                    current.insert(device.device_uid.clone(), device);
                 }
             }
 
-            // Connected
-            for uid in current.difference(&seen) {
-                emit_device_event(
-                    &app,
-                    DeviceHotplugEvent {
-                        event_type: "connected".to_string(),
-                        device_uid: uid.to_string(),
-                        platform_hint: if uid.contains("ios") { "ios".to_string() } else if uid.contains("android") || uid.starts_with("adb:") || uid.starts_with("fastboot:") { "android".to_string() } else { "unknown".to_string() },
-                        mode: if uid.contains("fastboot") { "fastboot".to_string() } else { "normal".to_string() },
-                        confidence: 0.85,
-                        timestamp: iso_now(),
-                        display_name: uid.to_string(),
-                        matched_tool_ids: vec![],
-                    },
-                );
+            for (uid, device) in current.iter() {
+                if !seen.contains_key(uid) {
+                    let display_name = device
+                        .product_name
+                        .clone()
+                        .or_else(|| device.manufacturer.clone())
+                        .unwrap_or_else(|| format!("USB {:04X}:{:04X}", device.vendor_id, device.product_id));
+
+                    emit_device_event(
+                        &app,
+                        DeviceHotplugEvent {
+                            event_type: "connected".to_string(),
+                            device_uid: uid.clone(),
+                            platform_hint: device.platform_hint.clone(),
+                            mode: device.mode.clone(),
+                            confidence: 1.0,
+                            timestamp: iso_now(),
+                            display_name,
+                            matched_tool_ids: vec![],
+                            evidence_source: device.evidence_source.clone(),
+                        },
+                    );
+                }
             }
 
-            // Disconnected
-            for uid in seen.difference(&current) {
-                emit_device_event(
-                    &app,
-                    DeviceHotplugEvent {
-                        event_type: "disconnected".to_string(),
-                        device_uid: uid.to_string(),
-                        platform_hint: if uid.contains("ios") { "ios".to_string() } else if uid.contains("android") || uid.starts_with("adb:") || uid.starts_with("fastboot:") { "android".to_string() } else { "unknown".to_string() },
-                        mode: if uid.contains("fastboot") { "fastboot".to_string() } else { "normal".to_string() },
-                        confidence: 0.85,
-                        timestamp: iso_now(),
-                        display_name: uid.to_string(),
-                        matched_tool_ids: vec![],
-                    },
-                );
+            for (uid, device) in seen.iter() {
+                if !current.contains_key(uid) {
+                    let display_name = device
+                        .product_name
+                        .clone()
+                        .or_else(|| device.manufacturer.clone())
+                        .unwrap_or_else(|| format!("USB {:04X}:{:04X}", device.vendor_id, device.product_id));
+
+                    emit_device_event(
+                        &app,
+                        DeviceHotplugEvent {
+                            event_type: "disconnected".to_string(),
+                            device_uid: uid.clone(),
+                            platform_hint: device.platform_hint.clone(),
+                            mode: device.mode.clone(),
+                            confidence: 1.0,
+                            timestamp: iso_now(),
+                            display_name,
+                            matched_tool_ids: vec![],
+                            evidence_source: device.evidence_source.clone(),
+                        },
+                    );
+                }
             }
 
             seen = current;
@@ -933,39 +1096,41 @@ fn start_device_monitor_once(app_handle: &AppHandle, state: tauri::State<'_, App
     });
 }
 
+#[cfg(feature = "legacy-backends")]
 fn get_log_directory() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
-        // Windows: %LOCALAPPDATA%\BobbysWorkshop\logs
+        // Windows: %LOCALAPPDATA%\BobFWTools\logs
         dirs::data_local_dir()
             .unwrap_or_else(|| PathBuf::from("C:\\Users\\Public"))
-            .join("BobbysWorkshop")
+            .join("BobFWTools")
             .join("logs")
     }
     #[cfg(target_os = "macos")]
     {
-        // macOS: ~/Library/Logs/BobbysWorkshop
+        // macOS: ~/Library/Logs/BobFWTools
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
             .join("Library")
             .join("Logs")
-            .join("BobbysWorkshop")
+            .join("BobFWTools")
     }
     #[cfg(target_os = "linux")]
     {
-        // Linux: ~/.local/share/bobbys-workshop/logs
+        // Linux: ~/.local/share/bobfwtools/logs
         dirs::data_local_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
-            .join("bobbys-workshop")
+            .join("bobfwtools")
             .join("logs")
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
         // Fallback
-        PathBuf::from("/tmp").join("bobbys-workshop").join("logs")
+        PathBuf::from("/tmp").join("bobfwtools").join("logs")
     }
 }
 
+#[cfg(feature = "legacy-backends")]
 fn find_node_executable(app_handle: &AppHandle) -> Option<PathBuf> {
     // First, try to find bundled Node.js in resources
     // In Tauri v2, use app_handle.path().resource_dir()
@@ -1053,6 +1218,7 @@ fn find_node_executable(app_handle: &AppHandle) -> Option<PathBuf> {
     None
 }
 
+#[cfg(feature = "legacy-backends")]
 fn start_backend_server(app_handle: &AppHandle) -> Result<Child, std::io::Error> {
     println!("[Tauri] Starting backend API server...");
     
@@ -1214,6 +1380,7 @@ fn start_backend_server(app_handle: &AppHandle) -> Result<Child, std::io::Error>
     Ok(child)
 }
 
+#[cfg(feature = "legacy-backends")]
 fn stop_backend_server(app_handle: &AppHandle) {
     // Take the child process out of shared state while holding the lock,
     // then drop the lock before kill/wait.
@@ -1237,17 +1404,25 @@ fn stop_backend_server(app_handle: &AppHandle) {
 fn main() {
     // Initialize app state
     let app_state = AppState {
+        #[cfg(feature = "legacy-backends")]
         backend_server: Mutex::new(None),
+        #[cfg(feature = "qualified-flash")]
         flash_jobs: Mutex::new(HashMap::new()),
+        #[cfg(feature = "qualified-flash")]
         flash_history: Mutex::new(vec![]),
+        #[cfg(feature = "qualified-flash")]
         job_counter: AtomicU64::new(0),
         device_monitor_started: Mutex::new(false),
+        #[cfg(feature = "legacy-backends")]
         py_client: Mutex::new(None),
+        #[cfg(feature = "legacy-backends")]
         py_backend_port: Mutex::new(None),
+        #[cfg(feature = "legacy-backends")]
         fastapi_backend: Mutex::new(None),
     };
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
         .setup(|app| {
             let state = app.state::<AppState>();
@@ -1256,108 +1431,114 @@ fn main() {
             // Start in-process device monitor (Tauri events)
             start_device_monitor_once(&handle, state.clone());
 
-            // Launch Python backend service (legacy)
-            if let Ok(resource_dir) = handle.path().resource_dir() {
-                match launch_python_backend(&resource_dir) {
-                    Ok(port) => {
-                        println!("[Tauri] Python backend launched on port {}", port);
-                        
-                        // Create Python client and verify health
-                        let client = PyWorkerClient::new(port);
-                        let state_for_client = state.clone();
-                        
-                        // Spawn async task to check health
-                        tokio::spawn(async move {
-                            // Wait a moment for Python to start
-                            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-                            
-                            match client.health().await {
-                                Ok(health) => {
-                                    println!("[Tauri] Python backend healthy: {} (uptime: {}ms)", 
-                                        health.version, health.uptime_ms);
-                                    
-                                    // Store client and port in state
-                                    if let Ok(mut py_client_guard) = state_for_client.py_client.lock() {
-                                        *py_client_guard = Some(client);
+            #[cfg(feature = "legacy-backends")]
+            {
+                if should_start_python_backend() {
+                    if let Ok(resource_dir) = handle.path().resource_dir() {
+                        match launch_python_backend(&resource_dir) {
+                            Ok(port) => {
+                                println!("[Tauri] Legacy Python backend launched on port {}", port);
+                                let client = PyWorkerClient::new(port);
+                                let handle_for_client = handle.clone();
+                                tokio::spawn(async move {
+                                    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                                    if client.health().await.is_ok() {
+                                        let state_for_client = handle_for_client.state::<AppState>();
+                                        if let Ok(mut guard) = state_for_client.py_client.lock() {
+                                            *guard = Some(client);
+                                        }
+                                        if let Ok(mut guard) = state_for_client.py_backend_port.lock() {
+                                            *guard = Some(port);
+                                        }
                                     }
-                                    if let Ok(mut port_guard) = state_for_client.py_backend_port.lock() {
-                                        *port_guard = Some(port);
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("[Tauri] Python backend health check failed: {}", e);
-                                    eprintln!("[Tauri] Python backend may not be fully ready");
-                                }
+                                });
                             }
-                        });
-                    }
-                    Err(e) => {
-                        eprintln!("[Tauri] Failed to launch Python backend: {}", e);
-                        eprintln!("[Tauri] Python backend is optional - continuing without it");
+                            Err(e) => eprintln!("[Tauri] Legacy Python backend launch failed: {}", e),
+                        }
                     }
                 }
-            }
-            
-            // Launch FastAPI backend (Secret Rooms)
-            match launch_fastapi_backend(&handle) {
-                Ok(child) => {
-                    println!("[Tauri] FastAPI backend started successfully");
-                    // Store in state if needed
+
+                if should_start_fastapi_backend() {
+                    match launch_fastapi_backend(&handle) {
+                        Ok(child) => {
+                            if let Ok(mut guard) = state.fastapi_backend.lock() {
+                                *guard = Some(child);
+                            }
+                        }
+                        Err(e) => eprintln!("[Tauri] Legacy FastAPI backend launch failed: {}", e),
+                    }
                 }
-                Err(e) => {
-                    eprintln!("[Tauri] Failed to start FastAPI backend: {}", e);
-                    eprintln!("[Tauri] FastAPI backend is optional - continuing without it");
+
+                if should_start_node_backend() {
+                    match start_backend_server(&handle) {
+                        Ok(child) => {
+                            if let Ok(mut guard) = state.backend_server.lock() {
+                                *guard = Some(child);
+                            }
+                        }
+                        Err(e) => eprintln!("[Tauri] Legacy Node backend launch failed: {}", e),
+                    }
                 }
             }
 
-            // Start legacy Node backend only when explicitly enabled.
-            if should_start_node_backend() {
-                match start_backend_server(&handle) {
-                    Ok(child) => {
-                        if let Ok(mut guard) = state.backend_server.lock() {
-                            *guard = Some(child);
-                        }
-                        println!("[Tauri] Backend server started successfully");
-                    }
-                    Err(e) => {
-                        eprintln!("[Tauri] Failed to start backend server: {}", e);
-                        eprintln!("[Tauri] Node backend is required for full functionality");
-                        eprintln!("[Tauri] Ensure Node.js is installed from https://nodejs.org/");
-                        eprintln!("[Tauri] Or set BW_DISABLE_NODE_BACKEND=1 to use in-process backend only");
-                    }
-                }
-            } else {
-                println!("[Tauri] Node backend disabled by BW_DISABLE_NODE_BACKEND environment variable");
-            }
             
             Ok(())
         })
-        .on_window_event(|window, event| {
+        .on_window_event(|_window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
-                // Clean shutdown: stop backends when the app is actually closing.
-                stop_backend_server(&window.app_handle());
-                shutdown_python_backend();
-                
-                // Shutdown FastAPI backend
-                let state = window.app_handle().state::<AppState>();
-                let fastapi_child = {
-                    let mut guard = state.fastapi_backend.lock().unwrap();
-                    guard.take()
-                };
-                shutdown_fastapi_backend(fastapi_child);
+                #[cfg(feature = "legacy-backends")]
+                {
+                    stop_backend_server(&_window.app_handle());
+                    shutdown_python_backend();
+
+                    let state = _window.app_handle().state::<AppState>();
+                    let fastapi_child = {
+                        let mut guard = state.fastapi_backend.lock().unwrap_or_else(|p| p.into_inner());
+                        guard.take()
+                    };
+                    shutdown_fastapi_backend(fastapi_child);
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
+            frontend_backend_handshake,
             get_backend_status,
             get_app_version,
             bootforgeusb_scan,
-            flash_start,
-            flash_cancel,
-            flash_status,
-            flash_history,
-            flash_active,
-            bootforge_flash_history,
-            bootforge_flash_active,
+            bootforgeusb_transport_scan,
+            bootforge_firmware_inspect,
+            bootforge_samsung_plan,
+            bootforge_recovery_scan,
+            bootforge_recovery_autodiscover,
+            bootforge_recovery_plan,
+            bootforge_recovery_prepare,
+            bootforge_recovery_revalidate,
+            mtp_status,
+            mtp_list_root,
+            mtp_download_file,
+            mtp_upload_file,
+            mtp_list_directory,
+            mtp_download_path,
+            mtp_upload_path,
+            adb_scan,
+            adb_device_info,
+            adb_logcat_snapshot,
+            adb_screenshot,
+            adb_prepare,
+            adb_battery_info,
+            adb_reboot_mode,
+            adb_open_network_settings,
+            adb_open_factory_reset_settings,
+            adb_install_apk,
+            adb_list_user_packages,
+            adb_package_action,
+            workflow_capabilities,
+            diagnose_phone,
+            usb_cable_doctor,
+            workflow_job_start,
+            workflow_job_list,
+            workflow_job_get,
+            workflow_job_retry,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

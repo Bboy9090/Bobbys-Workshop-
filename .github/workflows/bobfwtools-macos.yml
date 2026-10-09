@@ -1,0 +1,84 @@
+name: BobFWTools macOS Core
+
+on:
+  pull_request:
+    branches: [ "main-tool-kit" ]
+  push:
+    branches: [ "feat/bobfwtools-macos-foundation" ]
+
+permissions:
+  contents: read
+
+jobs:
+  macos-core:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Validate macOS entitlements
+        run: plutil -lint src-tauri/entitlements.mac.plist
+
+      - name: Production reality gate
+        run: npm run verify:reality
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Run BobFWTools production contract tests
+        run: npm test
+
+      - name: Validate workflow definitions
+        run: npm run test:workflows
+
+      - name: Audit root npm dependency tree
+        run: npm audit --audit-level=moderate
+
+      - name: Check BootForge USB
+        run: cargo check --manifest-path libs/bootforgeusb/Cargo.toml
+
+      - name: Check BobFWTools Tauri core
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Run BootForge USB tests
+        run: cargo test --manifest-path libs/bootforgeusb/Cargo.toml
+
+      - name: Build universal BobFWTools.app
+        run: npm run tauri:build:macos:ci
+
+      - name: Verify universal app bundle
+        run: bash scripts/verify-bobfwtools-macos-app.sh
+
+      - name: Inspect unsigned CI artifact
+        run: |
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
+          find "$APP" -maxdepth 3 -type f -print
+          SIGNATURE_DETAILS="$(codesign -dv --verbose=4 "$APP" 2>&1 || true)"
+          if printf '%s\n' "$SIGNATURE_DETAILS" | grep -q '^Authority='; then
+            echo "CI app unexpectedly carries an identity-backed signature; inspect release-signing policy."
+            exit 1
+          fi
+          if printf '%s\n' "$SIGNATURE_DETAILS" | grep -q '^Signature=adhoc'; then
+            echo "Ad-hoc CI signature confirmed. Signing/notarization remains a separate release gate."
+          else
+            echo "Unsigned CI artifact confirmed. Signing/notarization remains a separate release gate."
+          fi
+
+      - name: Upload BobFWTools app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BobFWTools-universal-macOS-unsigned
+          path: src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
+          if-no-files-found: error

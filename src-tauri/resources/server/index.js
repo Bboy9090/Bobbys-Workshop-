@@ -365,334 +365,74 @@ const analyticsClients = new Set();
 wss.on('connection', (ws) => {
   console.log('WebSocket client connected (device-events)');
   clients.add(ws);
-
-  const interval = DEMO_MODE
-    ? setInterval(() => {
-        if (ws.readyState === ws.OPEN) {
-          const isConnect = Math.random() > 0.5;
-          const platforms = ['android', 'ios', 'unknown'];
-          const platform = platforms[Math.floor(Math.random() * platforms.length)];
-          const deviceId = `device-${Math.random().toString(36).substr(2, 9)}`;
-
-          const correlationId = `ws-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          ws.send(JSON.stringify({
-            type: isConnect ? 'connected' : 'disconnected',
-            device_uid: deviceId,
-            platform_hint: platform,
-            mode: isConnect ? 'Normal OS (Confirmed)' : 'Disconnected',
-            confidence: 0.85 + Math.random() * 0.15,
-            timestamp: Date.now(),
-            serverTs: new Date().toISOString(),
-            apiVersion: 'v1',
-            correlationId,
-            display_name: `${platform.charAt(0).toUpperCase() + platform.slice(1)} Device`,
-            matched_tool_ids: Math.random() > 0.5 ? [deviceId] : [],
-            correlation_badge: Math.random() > 0.5 ? 'CORRELATED' : 'LIKELY'
-          }));
-        }
-      }, 8000)
-    : null;
-
-  if (DEMO_MODE) {
-    ws.send(
-      JSON.stringify({
-        type: 'connected',
-        device_uid: 'demo-device-001',
-        platform_hint: 'android',
-        mode: 'Normal OS (Confirmed)',
-        confidence: 0.95,
-        timestamp: Date.now(),
-        serverTs: new Date().toISOString(),
-        apiVersion: 'v1',
-        correlationId: `ws-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        display_name: 'Demo Android Device',
-        matched_tool_ids: ['ABC123XYZ'],
-        correlation_badge: 'CORRELATED',
-        correlation_notes: ['Per-device correlation present']
-      })
-    );
-  }
-
-  ws.on('close', () => {
-    console.log('WebSocket client disconnected (device-events)');
-    clients.delete(ws);
-    if (interval) clearInterval(interval);
+  ws.send(JSON.stringify({
+    type: 'ready',
+    source: 'bobfwtools',
+    timestamp: Date.now(),
+    message: 'Device events are emitted only from real enumeration sources.'
+  }));
+  ws.on('message', (data) => {
+    try {
+      const message = JSON.parse(data);
+      if (message.type === 'ping') ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+    } catch (error) {
+      console.error('Failed to parse device-events WebSocket message:', error);
+    }
   });
-
+  ws.on('close', () => clients.delete(ws));
   ws.on('error', (error) => {
     console.error('WebSocket error:', error);
     clients.delete(ws);
-    if (interval) clearInterval(interval);
   });
 });
 
 wssCorrelation.on('connection', (ws) => {
   console.log('WebSocket client connected (correlation tracking)');
   correlationClients.add(ws);
-
-  // Send hello message with version info
   ws.send(JSON.stringify({
-    type: 'hello',
-    apiVersion: 'v1',
-    serverTs: new Date().toISOString(),
-    correlationId: `ws-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    type: 'ready',
+    devices: [],
+    source: 'bobfwtools',
+    timestamp: Date.now(),
+    message: 'Correlation updates require observed USB/platform-tool evidence.'
   }));
-
-  const interval = DEMO_MODE
-    ? setInterval(() => {
-        if (ws.readyState === ws.OPEN) {
-          const eventType = Math.random();
-          const platforms = ['android', 'ios'];
-          const platform = platforms[Math.floor(Math.random() * platforms.length)];
-          const deviceId = `device-${Math.random().toString(36).substr(2, 9)}`;
-          const confidence = 0.75 + Math.random() * 0.25;
-          const hasMatchedIds = Math.random() > 0.4;
-
-          const badges = ['CORRELATED', 'CORRELATED (WEAK)', 'SYSTEM-CONFIRMED', 'LIKELY', 'UNCONFIRMED'];
-          let badge;
-          let matchedIds = [];
-          let notes = [];
-
-          if (hasMatchedIds && confidence >= 0.90) {
-            badge = 'CORRELATED';
-            matchedIds = [deviceId, `${platform}-${deviceId}`];
-            notes = ['Per-device correlation present (matched tool ID(s)).'];
-          } else if (hasMatchedIds) {
-            badge = 'CORRELATED (WEAK)';
-            matchedIds = [deviceId];
-            notes = ['Matched tool ID(s) present, but mode not strongly confirmed.'];
-          } else if (confidence >= 0.90) {
-            badge = 'SYSTEM-CONFIRMED';
-            notes = ['System-level confirmation exists, but not mapped to this specific USB record.'];
-          } else if (confidence >= 0.75) {
-            badge = 'LIKELY';
-            notes = [];
-          } else {
-            badge = 'UNCONFIRMED';
-            notes = [];
-          }
-
-          if (eventType < 0.33) {
-            ws.send(
-              JSON.stringify({
-                type: 'device_connected',
-                deviceId: deviceId,
-                device: {
-                  id: deviceId,
-                  serial: Math.random() > 0.3 ? deviceId.substring(0, 10).toUpperCase() : undefined,
-                  platform: platform,
-                  mode: `confirmed_${platform}_os`,
-                  confidence: confidence,
-                  correlationBadge: badge,
-                  matchedIds: matchedIds,
-                  correlationNotes: notes,
-                  vendorId: platform === 'android' ? 0x18d1 : 0x05ac,
-                  productId: platform === 'android' ? 0x4ee7 : 0x12a8
-                },
-                timestamp: Date.now()
-              })
-            );
-          } else if (eventType < 0.66) {
-            ws.send(
-              JSON.stringify({
-                type: 'correlation_update',
-                deviceId: deviceId,
-                device: {
-                  correlationBadge: badge,
-                  matchedIds: matchedIds,
-                  confidence: confidence,
-                  correlationNotes: notes
-                },
-                timestamp: Date.now()
-              })
-            );
-          } else {
-            ws.send(
-              JSON.stringify({
-                type: 'device_disconnected',
-                deviceId: deviceId,
-                timestamp: Date.now()
-              })
-            );
-          }
-        }
-      }, 5000)
-    : null;
-
-  if (DEMO_MODE) {
-    ws.send(
-      JSON.stringify({
-        type: 'batch_update',
-        devices: [
-          {
-            id: 'demo-android-001',
-            serial: 'ABC123XYZ',
-            platform: 'android',
-            mode: 'confirmed_android_os',
-            confidence: 0.95,
-            correlationBadge: 'CORRELATED',
-            matchedIds: ['ABC123XYZ', 'adb-ABC123XYZ'],
-            correlationNotes: ['Per-device correlation present (matched tool ID(s)).'],
-            vendorId: 0x18d1,
-            productId: 0x4ee7
-          }
-        ],
-        timestamp: Date.now()
-      })
-    );
-  }
-  
   ws.on('message', (data) => {
     try {
       const message = JSON.parse(data);
-      if (message.type === 'ping') {
-        ws.send(JSON.stringify({
-          type: 'pong',
-          timestamp: Date.now(),
-          serverTs: new Date().toISOString(),
-          apiVersion: 'v1',
-          correlationId: message.correlationId || `ws-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-        }));
-      }
+      if (message.type === 'ping') ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
     } catch (error) {
       console.error('Failed to parse correlation WebSocket message:', error);
     }
   });
-
-  ws.on('close', () => {
-    console.log('WebSocket client disconnected (correlation tracking)');
-    correlationClients.delete(ws);
-    if (interval) clearInterval(interval);
-  });
-
+  ws.on('close', () => correlationClients.delete(ws));
   ws.on('error', (error) => {
     console.error('WebSocket error (correlation):', error);
     correlationClients.delete(ws);
-    if (interval) clearInterval(interval);
   });
 });
 
-// Analytics WebSocket for Live Analytics Dashboard
+// Analytics WebSocket. No synthetic metrics are emitted.
 wssAnalytics.on('connection', (ws) => {
   console.log('WebSocket client connected (live analytics)');
   analyticsClients.add(ws);
-
-  // Send hello message with version info
   ws.send(JSON.stringify({
-    type: 'hello',
-    apiVersion: 'v1',
-    serverTs: new Date().toISOString(),
-    correlationId: `ws-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    type: 'ready',
+    source: 'bobfwtools',
+    timestamp: Date.now(),
+    message: 'Live metrics are emitted only when backed by observed device telemetry.'
   }));
-
-  const analyticsInterval = DEMO_MODE
-    ? (() => {
-        const mockDevices = [
-          {
-            deviceId: 'device-001',
-            deviceName: 'Android Test Device',
-            platform: 'android',
-            status: 'online',
-            cpuUsage: 45,
-            memoryUsage: 62,
-            storageUsage: 78,
-            temperature: 42,
-            batteryLevel: 85,
-            networkLatency: 15,
-            workflows: { running: 1, completed: 5, failed: 0 }
-          },
-          {
-            deviceId: 'device-002',
-            deviceName: 'iOS Test Device',
-            platform: 'ios',
-            status: 'online',
-            cpuUsage: 32,
-            memoryUsage: 54,
-            storageUsage: 65,
-            temperature: 38,
-            batteryLevel: 92,
-            networkLatency: 12,
-            workflows: { running: 0, completed: 3, failed: 0 }
-          }
-        ];
-
-        mockDevices.forEach(device => {
-          ws.send(
-            JSON.stringify({
-              type: 'device_metrics',
-              deviceId: device.deviceId,
-              metrics: device
-            })
-          );
-        });
-
-        return setInterval(() => {
-          if (ws.readyState === ws.OPEN) {
-            mockDevices.forEach(device => {
-              const updatedMetrics = {
-                ...device,
-                cpuUsage: Math.max(5, Math.min(95, device.cpuUsage + (Math.random() - 0.5) * 10)),
-                memoryUsage: Math.max(10, Math.min(90, device.memoryUsage + (Math.random() - 0.5) * 5)),
-                temperature: Math.max(30, Math.min(70, device.temperature + (Math.random() - 0.5) * 2)),
-                networkLatency: Math.max(5, Math.min(100, device.networkLatency + (Math.random() - 0.5) * 10))
-              };
-
-              const correlationId = `ws-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-              ws.send(
-                JSON.stringify({
-                  type: 'device_metrics',
-                  deviceId: device.deviceId,
-                  metrics: updatedMetrics,
-                  timestamp: Date.now(),
-                  serverTs: new Date().toISOString(),
-                  apiVersion: 'v1',
-                  correlationId
-                })
-              );
-
-              Object.assign(device, updatedMetrics);
-            });
-
-            if (Math.random() > 0.7) {
-              const device = mockDevices[Math.floor(Math.random() * mockDevices.length)];
-              const correlationId = `ws-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-              ws.send(
-                JSON.stringify({
-                  type: 'workflow_event',
-                  event: {
-                    id: `workflow-${Date.now()}`,
-                    workflowName: ['ADB Diagnostics', 'Battery Health Check', 'Storage Analysis'][
-                      Math.floor(Math.random() * 3)
-                    ],
-                    deviceId: device.deviceId,
-                    status: ['started', 'running', 'completed'][Math.floor(Math.random() * 3)],
-                    progress: Math.floor(Math.random() * 100),
-                    currentStep: ['Initializing', 'Running diagnostics', 'Collecting data', 'Analyzing results'][
-                      Math.floor(Math.random() * 4)
-                    ]
-                  },
-                  timestamp: Date.now(),
-                  serverTs: new Date().toISOString(),
-                  apiVersion: 'v1',
-                  correlationId
-                })
-              );
-            }
-          }
-        }, 2000);
-      })()
-    : null;
-
-  ws.on('close', () => {
-    console.log('WebSocket client disconnected (live analytics)');
-    analyticsClients.delete(ws);
-    if (analyticsInterval) clearInterval(analyticsInterval);
+  ws.on('message', (data) => {
+    try {
+      const message = JSON.parse(data);
+      if (message.type === 'ping') ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+    } catch (error) {
+      console.error('Failed to parse analytics WebSocket message:', error);
+    }
   });
-
+  ws.on('close', () => analyticsClients.delete(ws));
   ws.on('error', (error) => {
     console.error('Analytics WebSocket error:', error);
     analyticsClients.delete(ws);
-    if (analyticsInterval) clearInterval(analyticsInterval);
   });
 });
 
@@ -2413,23 +2153,13 @@ app.get('/api/flash/devices/:serial', async (req, res) => {
 
 app.get('/api/flash/devices/:serial/partitions', async (req, res) => {
   const { serial } = req.params;
-  
-  try {
-    const partitions = ['boot', 'system', 'vendor', 'recovery', 'userdata', 
-                       'cache', 'vbmeta', 'dtbo', 'persist'];
-    
-    res.json({
-      success: true,
-      serial,
-      partitions,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get partitions'
-    });
-  }
+  return res.status(501).json({
+    success: false,
+    error: 'PARTITION_DISCOVERY_UNAVAILABLE',
+    message: 'Partition discovery is disabled until a real device-backed implementation is wired for the current mode.',
+    serial,
+    timestamp: new Date().toISOString()
+  });
 });
 
 app.post('/api/flash/validate-image', async (req, res) => {
@@ -2479,119 +2209,25 @@ app.post('/api/flash/validate-image', async (req, res) => {
 });
 
 app.post('/api/flash/start', async (req, res) => {
-  const config = req.body;
-  
-  if (!config.deviceSerial || !config.flashMethod || !config.partitions || config.partitions.length === 0) {
+  const config = req.body ?? {};
+  if (!config.deviceSerial || !config.flashMethod || !Array.isArray(config.partitions) || config.partitions.length === 0) {
     return res.status(400).json({
       success: false,
-      error: 'Missing required fields: deviceSerial, flashMethod, partitions'
+      error: 'VALIDATION_ERROR',
+      message: 'Missing required fields: deviceSerial, flashMethod, partitions'
     });
   }
-  
-  const jobId = `flash-job-${jobCounter++}-${Date.now()}`;
-  
-  const jobStatus = {
-    jobId,
-    status: 'queued',
-    progress: 0,
-    currentStep: 'Initializing',
-    totalSteps: config.partitions.length,
-    completedSteps: 0,
-    bytesWritten: 0,
-    totalBytes: config.partitions.reduce((sum, p) => sum + (p.size || 100000000), 0),
-    speed: 0,
-    timeElapsed: 0,
-    timeRemaining: 0,
-    logs: [`[${new Date().toISOString()}] Flash job ${jobId} created`],
-    startTime: Date.now()
-  };
-  
-  activeFlashJobs.set(jobId, { config, status: jobStatus });
-  
-  simulateFlashOperation(jobId, config);
-  
-  res.json({
-    success: true,
-    jobId,
-    status: 'queued',
+
+  return res.status(501).json({
+    success: false,
+    error: 'FLASH_BACKEND_UNAVAILABLE',
+    message: 'Flashing is disabled until a real executor, preflight, progress source, verification step, and rollback policy are qualified on physical hardware.',
     deviceSerial: config.deviceSerial,
-    startTime: Date.now(),
-    message: 'Flash operation queued'
+    flashMethod: config.flashMethod,
+    requestedPartitions: config.partitions.map((p) => p?.name).filter(Boolean),
+    timestamp: new Date().toISOString()
   });
 });
-
-// Import shared simulate function
-import { simulateFlashOperation as sharedSimulateFlashOperation } from './routes/v1/flash-shared.js';
-
-function simulateFlashOperation(jobId, config) {
-  const job = activeFlashJobs.get(jobId);
-  if (!job) return;
-  
-  job.status.status = 'running';
-  job.status.logs.push(`[${new Date().toISOString()}] Starting flash operation`);
-  job.status.currentStep = `Flashing ${config.partitions[0].name}`;
-  
-  broadcastFlashProgress(jobId, {
-    type: 'progress',
-    status: job.status
-  });
-  
-  let stepIndex = 0;
-  const stepInterval = setInterval(() => {
-    const job = activeFlashJobs.get(jobId);
-    if (!job) {
-      clearInterval(stepInterval);
-      return;
-    }
-    
-    job.status.progress += 10;
-    job.status.timeElapsed = Math.floor((Date.now() - job.status.startTime) / 1000);
-    job.status.speed = Math.floor(Math.random() * 20 + 10);
-    
-    if (job.status.progress >= 100) {
-      job.status.progress = 100;
-      job.status.status = 'completed';
-      job.status.currentStep = 'Completed';
-      job.status.logs.push(`[${new Date().toISOString()}] Flash operation completed successfully`);
-      
-      flashHistory.unshift({
-        jobId,
-        deviceSerial: config.deviceSerial,
-        deviceBrand: config.deviceBrand,
-        flashMethod: config.flashMethod,
-        partitions: config.partitions.map(p => p.name),
-        status: 'completed',
-        startTime: job.status.startTime,
-        endTime: Date.now(),
-        duration: Math.floor((Date.now() - job.status.startTime) / 1000),
-        bytesWritten: job.status.totalBytes,
-        averageSpeed: Math.floor(Math.random() * 20 + 10)
-      });
-      
-      if (flashHistory.length > 50) {
-        flashHistory = flashHistory.slice(0, 50);
-      }
-      
-      broadcastFlashProgress(jobId, {
-        type: 'completed',
-        status: job.status
-      });
-      
-      clearInterval(stepInterval);
-      setTimeout(() => activeFlashJobs.delete(jobId), 5000);
-    } else if (job.status.progress % 30 === 0 && stepIndex < config.partitions.length - 1) {
-      stepIndex++;
-      job.status.completedSteps = stepIndex;
-      job.status.currentStep = `Flashing ${config.partitions[stepIndex].name}`;
-      job.status.logs.push(`[${new Date().toISOString()}] Flashing partition: ${config.partitions[stepIndex].name}`);
-    }
-    
-    broadcastFlashProgress(jobId, {
-      type: 'progress',
-      status: job.status
-    });
-  }, 1000);
-}
 
 app.post('/api/flash/pause/:jobId', async (req, res) => {
   const { jobId } = req.params;

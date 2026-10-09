@@ -73,21 +73,21 @@ async function getBatteryHealth(deviceSerial) {
 
     return {
       success: true,
-      level: batteryInfo.level || 0,
-      scale: batteryInfo.scale || 100,
-      percentage: batteryInfo.scale > 0 ? Math.round((batteryInfo.level / batteryInfo.scale) * 100) : 0,
-      status: batteryInfo.status || 0,
-      health: batteryInfo.health || 0,
-      plugged: batteryInfo.plugged || 0,
-      voltage: batteryInfo.voltage || 0,
+      level: batteryInfo.level ?? null,
+      scale: batteryInfo.scale ?? null,
+      percentage: Number.isFinite(batteryInfo.level) && Number.isFinite(batteryInfo.scale) && batteryInfo.scale > 0 ? Math.round((batteryInfo.level / batteryInfo.scale) * 100) : null,
+      status: batteryInfo.status ?? null,
+      health: batteryInfo.health ?? null,
+      plugged: batteryInfo.plugged ?? null,
+      voltage: batteryInfo.voltage ?? null,
       temperature: temperature,
       technology: batteryInfo.technology || 'unknown',
-      present: batteryInfo.present !== false,
+      present: batteryInfo.present ?? null,
       healthPercentage: healthPercentage,
       cycles: cycles,
       designCapacity: designCapacity || null,
       fullCapacity: fullCapacity || null,
-      charging: batteryInfo.status === 2 || batteryInfo.plugged > 0
+      charging: Number.isFinite(batteryInfo.status) || Number.isFinite(batteryInfo.plugged) ? (batteryInfo.status === 2 || batteryInfo.plugged > 0) : null
     };
   } catch (error) {
     return {

@@ -98,7 +98,7 @@ router.post('/frp', requireAdmin, async (req, res) => {
     return res.json(result);
   } catch (error) {
     console.error('FRP bypass error:', error);
-    
+
     await shadowLogger.logShadow({
       operation: 'frp_bypass_error',
       deviceSerial: req.body.deviceSerial || 'unknown',
@@ -175,7 +175,7 @@ router.post('/unlock', requireAdmin, async (req, res) => {
     return res.json(result);
   } catch (error) {
     console.error('Bootloader unlock error:', error);
-    
+
     await shadowLogger.logShadow({
       operation: 'bootloader_unlock_error',
       deviceSerial: req.body.deviceSerial || 'unknown',
@@ -344,7 +344,7 @@ router.post('/batch/execute', requireAdmin, async (req, res) => {
     // Execute commands with throttling
     for (let i = 0; i < commands.length; i++) {
       const cmd = commands[i];
-      
+
       try {
         const result = await workflowEngine.executeWorkflow(
           cmd.category,

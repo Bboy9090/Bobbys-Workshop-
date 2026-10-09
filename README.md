@@ -1,292 +1,165 @@
-# BOBBY'S WORKSHOP (Phoenix Forge)
+# BobFWTools
 
-**Rise from the Ashes. Every Device Reborn.**
+BobFWTools is a macOS-first Android connectivity and device-support application focused on the gap between Apple hardware and Android phones, especially Samsung and MediaTek-based devices.
 
-Bobby's Workshop is professional device repair software for mobile repair shops. This repository contains the complete working application - not an umbrella platform, not a collection of tools, but the actual repair software you install and run.
+The product is local-first. Core USB enumeration, MTP browsing, ADB/Fastboot detection, and device evidence are intended to work without a cloud dependency.
 
-[![Node.js CI](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/node.js.yml/badge.svg)](https://github.com/Bboy9090/Bobbys-Workshop-/actions/workflows/node.js.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-5.0.0-blue.svg)](https://github.com/Bboy9090/Bobbys-Workshop-/releases)
+## Current production foundation
 
----
+The active macOS core is:
 
-## What Runs From This Repository
+- **Tauri 2 + Rust** for the desktop application and native commands
+- **BootForge USB** for real USB descriptor enumeration
+- **mtp-rs** for real Media Transfer Protocol sessions
+- **React + TypeScript** for the desktop UI
+- **Android Platform Tools** for ADB/Fastboot workflows where Android explicitly exposes those transports
 
-**Bobby's Workshop** is the complete repair application. When you clone and run this repository, you get:
+The Mac App Store build is sandboxed and requests only the hardware/file entitlements required for USB and user-selected file access.
 
-- ✅ The full desktop application (React UI + backend services)
-- ✅ Device detection and management
-- ✅ Firmware flashing tools integration
-- ✅ Phoenix Core decision engine (embedded)
-- ✅ BootForge USB layer (embedded as a library)
+Legacy Node, Python, FastAPI, demo flash services, and historical repair modules are not part of the default BobFWTools App Store bundle.
 
-**What this is NOT:**
-- ❌ An umbrella platform containing separate projects
-- ❌ A collection of links to other repositories
-- ❌ A meta-repo or documentation hub
+## Product rules
 
-This repository **IS the software**. Everything else (Phoenix Core, BootForge) are either embedded components or separate libraries that we integrate.
+BobFWTools has a strict truth boundary:
 
----
+1. No synthetic production devices.
+2. No random or hard-coded hardware telemetry.
+3. No fake flash or transfer success.
+4. Missing device data stays unavailable or null.
+5. Read-only inspection must never silently modify the phone.
+6. Destructive operations stay disabled until a real executor, preflight, verification path, rollback policy, and physical-device qualification exist.
+7. Test fixtures may simulate hardware only inside test-only code and must never ship as runtime device evidence.
 
-## Features
+The CI production-reality gate enforces these rules against shipping source.
 
-### Device Management
-- **Real-time Detection** - Automatic USB device enumeration and identification
-- **Multi-Device Support** - Android, iOS, and various OEM devices
-- **Batch Operations** - Handle multiple devices simultaneously
-- **Device History** - Track device state and previous repair operations
+## Native USB
 
-### Firmware Flashing
-- **Universal Protocols** - Support for Fastboot, Odin, and custom flashing tools
-- **Firmware Verification** - Integrated firmware search and integrity checks
-- **Progress Monitoring** - Real-time flash progress with detailed status updates
-- **Safety Checks** - Pre-flash validation to prevent device bricking
+BootForge USB enumerates actual host USB devices and records:
 
-### Intelligent Workflows
-- **Decision Engine** - Smart device state analysis and repair routing
-- **Workflow Automation** - Step-by-step guided repair processes
-- **Authority System** - Role-based access for sensitive operations
-- **Audit Trail** - Complete logging of all operations for compliance
+- vendor ID
+- product ID
+- manufacturer string when exposed
+- product string when exposed
+- serial string when exposed
+- device class/subclass/protocol
+- bus/address
+- platform hint
+- connection/mode hint
+- evidence source
 
-### Workshop MVP Features
+Known vendor families include Samsung, MediaTek, Google, Motorola, Xiaomi, OnePlus, and Apple.
 
-The Reforged MVP (v5.0.0) provides the foundational repair dashboard:
+## MTP
 
-- **Device Dashboard** - Real-time device detection with mock-safe fallback
-- **Diagnostic Checklist** - Read-only diagnostic workflows per device platform
-- **Repair Notes** - Per-device/per-session repair note tracking in case management
-- **Export Reports** - Diagnostic report export in JSON and Markdown formats
-- **Safe Mode** - All repair operations use dry-run by default with audit logging
-- **No Destructive Actions** - No bypass flows or destructive operations without explicit confirmation
+BobFWTools uses a real MTP session rather than treating ADB as a substitute for file transfer.
 
-> **Safety First**: All operations require explicit user confirmation and are logged to audit trails. See `app.metadata.json` for the full safety contract.
+The current native MTP surface supports:
 
----
+- device information
+- manufacturer/model/serial evidence
+- storage discovery
+- free-space reporting
+- root object listing
 
-## Screenshots
+The underlying MTP library supports transfer and file-management operations; BobFWTools exposes new write operations only after the read-only transport and failure handling are qualified.
 
-![Phoenix Forge Interface](docs/images/screenshots/main-interface.png)
-*Main device management interface with real-time device detection*
+For ordinary Android file browsing, USB debugging is not required. The phone must be unlocked and placed in **File transfer / Android Auto** USB mode when Android prompts for the connection purpose.
 
-![Flash Progress](docs/images/screenshots/flash-progress.png)
-*Real-time flashing progress with detailed status updates*
+## App Store boundary
 
-> **Note**: Screenshots coming soon. Check the [docs/images/screenshots](docs/images/screenshots) folder for updates.
+The default macOS package:
 
----
+- uses App Sandbox
+- enables USB device access
+- allows user-selected read/write file access
+- excludes legacy Node/Python server payloads
+- builds the native Rust/Tauri core only
 
-## Platform Diagram
+Bundle identifier:
 
-Bobby's Workshop is the complete repair software that integrates all components:
+`com.bobbyblanco.bobfwtools`
 
-```
-┌──────────────────────────────────────────────────┐
-│           BOBBY'S WORKSHOP                       │
-│        (The Complete Repair Software)            │
-│                                                  │
-│  ┌────────────────────────────────────────────┐ │
-│  │     Phoenix Forge UI                       │ │
-│  │  (React 19 + Tailwind CSS v4)              │ │
-│  └──────────────┬─────────────────────────────┘ │
-│                 │                                │
-│                 ▼                                │
-│  ┌────────────────────────────────────────────┐ │
-│  │     Phoenix Core                           │ │
-│  │  (Decision Engine + State Memory)          │ │
-│  │  - Device routing                          │ │
-│  │  - Workflow orchestration                  │ │
-│  │  - Authorization system                    │ │
-│  └──────────────┬─────────────────────────────┘ │
-│                 │                                │
-│                 ▼                                │
-│  ┌────────────────────────────────────────────┐ │
-│  │     Backend Services                       │ │
-│  │  - Node.js/Express API                     │ │
-│  │  - Python/FastAPI (Secret Rooms)           │ │
-│  │  - WebSocket real-time updates             │ │
-│  └──────────────┬─────────────────────────────┘ │
-│                 │                                │
-│                 ▼                                │
-│  ┌────────────────────────────────────────────┐ │
-│  │     BootForge USB (Rust Library)           │ │
-│  │  - Device detection                        │ │
-│  │  - USB communication                       │ │
-│  │  - Platform classification                 │ │
-│  └────────────────────────────────────────────┘ │
-│                                                  │
-└──────────────────────────────────────────────────┘
-                       ↓
-        [External Hardware/Tools]
-         - ADB (Android Debug Bridge)
-         - Fastboot (Android)
-         - libimobiledevice (iOS)
-         - Odin/Heimdall (Samsung)
+## Development
 
-```
+Requirements:
 
-**Component Relationship:**
-
-- **Bobby's Workshop** = The complete repair software (this repository)
-- **Phoenix Core** = Embedded decision engine within Bobby's Workshop
-- **BootForge** = Embedded Rust library for USB device detection
-
-**What You Install:** Bobby's Workshop desktop application
-**What You Run:** The complete repair software with all components integrated
-**External Dependencies:** ADB, Fastboot, and other platform-specific tools (installed separately)
-
----
-
-## Technology Stack
-
-### Frontend
-- **React 19** - Modern React with hooks and concurrent features
-- **TypeScript** - Full type safety throughout
-- **Tailwind CSS v4** - Utility-first styling with custom design tokens
-- **Radix UI** - Accessible component primitives
-- **Framer Motion** - Smooth animations and transitions
-
-### Backend
-- **Node.js / Express** - API server with WebSocket support
-- **Python / FastAPI** - Specialized backend services
-- **Rust** - BootForge USB hardware layer
-
-### Desktop
-- **Tauri (primary)** — Shipping path for installers (MSI/NSIS/DMG/App). Bundles the React UI, Node workshop API (`src-tauri/resources/server`), and Rust sidecar.
-- **Electron (optional)** — Minimal shell in `electron/main.cjs` that loads the Vite `dist/` build. Use when you want a Chromium wrapper without the Tauri toolchain; it does not replace the bundled server/runtime that Tauri packages.
-
----
-
-## Getting Started
-
-### Prerequisites
 - Node.js 20+
-- Python 3.11+
-- Rust 1.75+ (for BootForge USB)
+- Rust stable
+- Apple Command Line Tools / Xcode toolchain on macOS
 
-### Installation
+Install dependencies:
 
 ```bash
-# Clone the repository
-git clone https://github.com/Bboy9090/Bobbys-Workshop-.git
-cd Bobbys-Workshop-
-
-# Install dependencies
 npm install
-
-# Install the full workshop API (required for device scan, cases, flash routes)
-npm run workshop:server:install
-
-# Start development server (Vite + auto-starts workshop API on port 3001)
-npm run dev
 ```
 
-### Production Build
+Run the production-reality gate:
 
 ```bash
-# Web UI build (output in dist/)
-npm run build
-
-# Tauri desktop installer (requires Rust + bundle prep scripts on your OS)
-npm run tauri:build
-
-# Electron wrapper around dist/ (optional)
-npm run electron:build
+npm run verify:reality
 ```
 
-**API server:** The full repair API lives in `src-tauri/resources/server` (port **3001** by default). The older top-level `server/` tree is a slimmer demo; `npm run dev` auto-starts the full API when that folder is present. For Tauri production, the bundle step copies the same server into the app resources.
+Run the complete BobFWTools source qualification:
 
----
+```bash
+npm run bobfw:check
+```
 
-## Design Philosophy
+Run tests:
 
-Phoenix Forge follows these core principles:
+```bash
+npm run bobfw:test
+```
 
-1. **Professional Up Front** - Clean, intuitive interface for daily operations
-2. **Quiet Depth Underneath** - Advanced features accessible when needed
-3. **No Automation Without Intent** - Every action requires explicit confirmation
-4. **Full Traceability** - Complete audit trail of all operations
-5. **Analysis Before Action** - Thorough device assessment before any operation
+Run the desktop app:
 
----
+```bash
+npm run tauri:dev
+```
 
-## Color System
+Build a universal macOS application:
 
-Phoenix Forge uses a carefully crafted color palette:
+```bash
+npm run tauri:build:macos
+```
 
-| Color | Hex | Usage |
-|-------|-----|-------|
-| Phoenix Fire | `#FF4D00` | Primary actions, energy |
-| Phoenix Gold | `#FFD700` | Success, legendary elements |
-| Astral Violet | `#7C3AED` | Secondary accent, cosmic |
-| Cyber Cyan | `#06B6D4` | Info, data flow |
-| Forge Deep | `#0A0A12` | Primary background |
-| Forge Surface | `#14142B` | Cards, elevated surfaces |
+The universal target covers Apple Silicon and Intel.
 
----
+## CI
 
-## Scripts
+`.github/workflows/bobfwtools-macos.yml` qualifies the macOS core on a macOS runner. It checks:
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start Vite development server |
-| `npm run build` | Build for production |
-| `npm run test` | Run test suite |
-| `npm run lint` | Run ESLint |
-| `npm run server:start` | Start backend server |
-| `npm run electron:dev` | Start Electron development |
-| `npm run tauri:dev` | Start Tauri development |
-| `bash scripts/healthcheck.sh` | Verify diagnostics/export/safe-mode functionality |
-| `bash scripts/smoke-test.sh` | Run smoke tests for core MVP features |
+- production-reality rules
+- frontend compilation
+- BootForge USB compilation
+- BobFWTools Rust/Tauri compilation
+- BootForge USB tests
+- macOS entitlements
+- universal `BobFWTools.app` creation
+- absence of legacy server/Python payloads from the produced app bundle
 
----
+The workflow uploads the real `BobFWTools.app` bundle as a CI artifact only after those gates pass.
 
-## Releases
+## Cloud services
 
-### Latest Release: v5.0.0 - Phoenix Rising
+Cloud services are support infrastructure, not a requirement for plugging a phone into a Mac.
 
-**What's New:**
-- Complete UI overhaul with React 19 and Tailwind CSS v4
-- Real-time device detection and monitoring
-- Integrated firmware management system
-- Multi-platform desktop support (Electron + Tauri)
-- Enhanced security with role-based access control
+Planned cloud uses must remain narrowly scoped to things such as signed compatibility catalogs, release metadata, opt-in crash diagnostics, support bundles, enterprise policy, and account/licensing services. Device file browsing and core USB/MTP operation remain local.
 
-**Download:**
-- [Windows Installer](https://github.com/Bboy9090/Bobbys-Workshop-/releases/latest) (Coming Soon)
-- [macOS DMG](https://github.com/Bboy9090/Bobbys-Workshop-/releases/latest) (Coming Soon)
-- [Linux AppImage](https://github.com/Bboy9090/Bobbys-Workshop-/releases/latest) (Coming Soon)
+## Security and ownership
 
-For all releases and changelogs, visit the [Releases page](https://github.com/Bboy9090/Bobbys-Workshop-/releases).
+BobFWTools is for legitimate device management, diagnostics, transfer, backup, and authorized repair workflows.
 
----
+The production core does not include account-lock circumvention, credential bypass, hidden security-control removal, IMEI alteration, or synthetic claims that an operation succeeded.
 
-## Contributing
+## Branch authority
 
-Phoenix Forge follows strict contribution guidelines:
+Current foundation work is developed on:
 
-1. **Audit First** - Understand existing code before changes
-2. **Verify Claims** - Test thoroughly before submitting
-3. **Small PRs** - One focused change per PR
-4. **No Placeholders** - No mocks in production paths
-5. **Document Changes** - Clear commit messages and PR descriptions
+`feat/bobfwtools-macos-foundation`
 
----
+Draft PR:
 
-## License
+`#194 — BobFWTools macOS foundation: real-device production baseline`
 
-MIT License - See [LICENSE](LICENSE) for details.
-
----
-
-## Summary
-
-**Bobby's Workshop** is the complete device repair software, not an umbrella platform.
-
-- This repository = The working repair application
-- Phoenix Core = Embedded decision engine
-- BootForge = Embedded USB library
-
-Clone, build, and run this repository to get the full repair software with all components integrated.
-
-**Bobby's Workshop v5.0.0** - *Rise from the Ashes*
+The PR stays draft until native macOS CI and physical-device qualification justify promotion.

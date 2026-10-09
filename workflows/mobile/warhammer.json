@@ -6,6 +6,8 @@
   "category": "repair",
   "risk_level": "high",
   "requires_authorization": true,
+  "authorization_prompt": "Confirm that you own this Android device or have documented authorization to repair it, and understand that recovery operations may erase data.",
+  "legal_notice": "For authorized repair and recovery only. Do not use this workflow to defeat theft protection, access controls, or another person’s device.",
   "supported_devices": ["android"],
   "estimated_duration": "15-30 minutes",
   "warning": "⚠️ This workflow performs destructive operations. DATA LOSS MAY OCCUR. Ensure device backup exists before proceeding.",
@@ -25,6 +27,7 @@
       "description": "Verify user has authorization to perform advanced repair operations",
       "success_criteria": "User confirms authorization and accepts data loss risk",
       "on_failure": "abort",
+      "prompt_text": "Confirm owner authorization and accept the documented data-loss risk before advanced repair begins.",
       "requires_confirmation": true,
       "confirmation_text": "I understand this may erase all device data and accept responsibility"
     },
@@ -71,6 +74,7 @@
       "id": "enter-recovery-mode",
       "name": "Enter Recovery Mode",
       "type": "command",
+      "action": "mode_specific_dispatch",
       "mode_specific": {
         "android_os": "adb reboot bootloader",
         "recovery": "skip",
@@ -113,6 +117,7 @@
       "description": "User selects appropriate firmware/ROM for device",
       "success_criteria": "Firmware package selected and validated",
       "on_failure": "abort",
+      "prompt_text": "Select a firmware package that exactly matches the verified device identity. Confirm the checksum and backup state before continuing.",
       "validation": {
         "check_device_match": true,
         "verify_file_integrity": true,
@@ -181,6 +186,7 @@
       "description": "Ask user if full data wipe is needed (factory reset)",
       "success_criteria": "User decision recorded",
       "on_failure": "skip",
+      "prompt_text": "Confirm whether you want to erase all user data. Choose No to preserve data and stop before the wipe step.",
       "default": "no"
     },
     {
@@ -203,6 +209,7 @@
       "description": "Ask if bootloader should be re-locked after flashing",
       "success_criteria": "User decision recorded",
       "on_failure": "skip",
+      "prompt_text": "Confirm whether the verified device owner wants the bootloader re-locked. Re-locking custom firmware may brick the device.",
       "default": "no",
       "warning": "Re-locking with custom firmware may brick the device"
     },

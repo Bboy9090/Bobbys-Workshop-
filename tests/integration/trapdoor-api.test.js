@@ -8,6 +8,7 @@ process.env.ADMIN_API_KEY = ADMIN_KEY;
 process.env.PANDORA_ROOM_PASSWORD = ADMIN_KEY;
 process.env.SECRET_ROOM_PASSCODE = ADMIN_KEY;
 process.env.TRAPDOOR_PASSCODE = ADMIN_KEY;
+process.env.ADMIN_API_KEY = ADMIN_KEY;
 
 // Shared arrays to assert side effects
 const shadowEntries = [];
