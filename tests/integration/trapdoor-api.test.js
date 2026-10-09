@@ -4,6 +4,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const ADMIN_KEY = 'test-admin-key';
+process.env.ADMIN_API_KEY = ADMIN_KEY;
 process.env.PANDORA_ROOM_PASSWORD = ADMIN_KEY;
 process.env.SECRET_ROOM_PASSCODE = ADMIN_KEY;
 process.env.TRAPDOOR_PASSCODE = ADMIN_KEY;

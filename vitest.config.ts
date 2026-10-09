@@ -1,7 +1,9 @@
 // Vitest configuration
 import { defineConfig } from 'vitest/config';
+import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
+  resolve: { alias: [{ find: /(?:.*\/core\/lib\/|\.\.\/lib\/)(adb|fastboot|ios|shadow-logger|workflow-validator)\.js$/, replacement: fileURLToPath(new URL('./src-tauri/resources/core/lib/$1.js', import.meta.url)) }] },
   test: {
     globals: true,
     environment: 'node',
