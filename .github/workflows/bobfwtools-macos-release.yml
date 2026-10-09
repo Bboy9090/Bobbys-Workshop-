@@ -77,7 +77,7 @@ jobs:
           CERT_P12="$RUNNER_TEMP/bobfwtools-signing.p12"
           KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
 
-          printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERT_P12"
+          printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | openssl base64 -d -A > "$CERT_P12"
 
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
