@@ -95,19 +95,7 @@ jobs:
         run: npm run tauri:build:macos:ci
 
       - name: Verify universal safe build
-        shell: bash
-        run: |
-          set -euo pipefail
-          APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app"
-          BIN="$APP/Contents/MacOS/bobfwtools"
-
-          bash scripts/verify-bobfwtools-macos-app.sh
-          lipo -verify_arch x86_64 arm64 "$BIN"
-
-          if strings "$BIN" | grep -Fq "bootforge_qualified_fastboot_devices"; then
-            echo "Release build unexpectedly contains the qualified destructive executor."
-            exit 1
-          fi
+        run: bash scripts/verify-bobfwtools-macos-release-preflight.sh
 
       - name: Sign BobFWTools.app
         shell: bash
