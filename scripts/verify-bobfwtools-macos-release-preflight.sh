@@ -30,10 +30,9 @@ if strings "$BIN" | grep -Fq "issue-qualified-flash-grant"; then
   fail "normal release unexpectedly contains qualified-flash grant issuance"
 fi
 
-if [[ -n "$EXPECTED_SOURCE_SHA" ]] && ! strings "$BIN" | grep -Fq "$EXPECTED_SOURCE_SHA"; then
-  fail "release executable is not bound to expected source revision $EXPECTED_SOURCE_SHA"
-fi
-
+# The normal non-qualified application does not claim an embedded source-SHA
+# binding. Source provenance is recorded in the workflow release receipt
+# instead of pretending the executable contains evidence it does not.
 DETAILS="$(codesign -dv --verbose=4 "$APP_PATH" 2>&1 || true)"
 if printf '%s\n' "$DETAILS" | grep -q '^Authority='; then
   fail "pre-sign release bundle unexpectedly has an identity-backed signature"
@@ -43,4 +42,4 @@ echo "BobFWTools signed-release preflight: PASS"
 echo "bundle_id=com.bobbyblanco.bobfwtools"
 echo "architectures=$ARCHS"
 echo "qualified_destructive_feature=false"
-echo "source_revision=${EXPECTED_SOURCE_SHA:-unavailable}"
+echo "workflow_source_revision=${EXPECTED_SOURCE_SHA:-unavailable}"
