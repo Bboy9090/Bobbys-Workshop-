@@ -1011,17 +1011,24 @@ export default function App() {
                 {adbDevices.map((device) => {
                   const selected = adbSelectedSerial === device.serial;
                   return (
-                    <button
+                    <div
                       key={`adb-${device.serial}`}
-                      type="button"
-                      onClick={() => setAdbSelectedSerial(device.serial)}
-                      className={`rounded border p-4 text-left transition ${selected ? 'border-cyan-500 bg-cyan-950/30' : 'border-slate-800 bg-slate-950/60 hover:border-slate-600'}`}
+                      className={`rounded border p-4 text-left transition ${selected ? 'border-cyan-500 bg-cyan-950/30' : 'border-slate-800 bg-slate-950/60'}`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-medium text-white">Android phone</span>
-                        <span className={device.authorized ? 'text-xs text-emerald-300' : 'text-xs text-amber-300'}>
-                          {device.authorized ? 'Authorized' : 'Needs authorization'}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className={device.authorized ? 'text-xs text-emerald-300' : 'text-xs text-amber-300'}>
+                            {device.authorized ? 'Authorized' : 'Needs authorization'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setAdbSelectedSerial(device.serial)}
+                            className={selected ? 'rounded border border-cyan-700 px-2 py-1 text-[10px] font-semibold text-cyan-300' : 'rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-400 hover:bg-slate-800'}
+                          >
+                            {selected ? 'Selected' : 'Select device'}
+                          </button>
+                        </div>
                       </div>
                       <div className="mt-2 font-mono text-xs text-cyan-300">{device.serial}</div>
                       <div className="mt-1 text-xs text-slate-400">{device.state} · ADB connection</div>
@@ -1064,7 +1071,7 @@ export default function App() {
                       <div className="mt-2 text-[10px] leading-4 text-slate-500">
                         Commands are sent only to serial <span className="font-mono">{device.serial}</span>. BobFWTools re-scans after the phone disconnects and changes mode.
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
                 {usbDevices.map((device) => (
