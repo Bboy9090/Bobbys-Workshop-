@@ -207,3 +207,14 @@ describe('Recovery layout storage-domain safety', () => {
     expect(job).toContain('integrity_findings.extend(storage_domain_issues');
   });
 });
+
+
+describe('Recovery integrity remediation UX', () => {
+  it('explains how to resolve rawprogram/scatter integrity failures safely', () => {
+    const app = read('src/App.tsx');
+
+    expect(app).toContain('Layout or payload integrity failed');
+    expect(app).toContain('verify the rawprogram/scatter file belongs to the exact model, board, SKU, storage type, and build');
+    expect(app).toContain('Do not edit partition addresses, storage regions, LUN numbers, or payload sizes merely to make the check pass');
+  });
+});
