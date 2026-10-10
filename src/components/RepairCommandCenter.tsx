@@ -16,6 +16,17 @@ import {
   listEdlProgrammers,
   getWorkstationReadiness,
   initializeWorkstation,
+  getFirmwareChipsetCatalog,
+  lookupFirmwareChipset,
+  scanFirmwareLibrary,
+  chooseFirmwareManifest,
+  inspectFirmwareManifest,
+  compareFirmwareManifest,
+  type DeviceFirmwareIdentity,
+  type FirmwareCompatibilityReport,
+  type FirmwareManifestInspection,
+  type FirmwareChipsetProfile,
+  type FirmwareLibraryReport,
   type WorkstationReadiness,
   type AdbDeviceRecord,
   type CalibrationBackupResult,
@@ -79,6 +90,23 @@ export default function RepairCommandCenter() {
   const [samsungFirmwareReports, setSamsungFirmwareReports] = useState<SamsungFirmwareArchiveReport[]>([]);
   const [samsungFlashPlan, setSamsungFlashPlan] = useState<SamsungFlashPlan | null>(null);
   const [samsungFirmwareBusy, setSamsungFirmwareBusy] = useState(false);
+  const [firmwareCatalog, setFirmwareCatalog] = useState<FirmwareChipsetProfile[]>([]);
+  const [firmwareQuery, setFirmwareQuery] = useState('');
+  const [firmwareMatches, setFirmwareMatches] = useState<FirmwareChipsetProfile[]>([]);
+  const [firmwareReport, setFirmwareReport] = useState<FirmwareLibraryReport | null>(null);
+  const [firmwareBusy, setFirmwareBusy] = useState(false);
+  const [manifestInspection, setManifestInspection] = useState<FirmwareManifestInspection | null>(null);
+  const [manifestCompatibility, setManifestCompatibility] = useState<FirmwareCompatibilityReport | null>(null);
+  const [manifestBusy, setManifestBusy] = useState(false);
+  const [manifestDevice, setManifestDevice] = useState<DeviceFirmwareIdentity>({
+    vendor: null,
+    chipset: null,
+    oem: null,
+    model: null,
+    variant: null,
+    region: null,
+    bootloaderRevision: null,
+  });
 
   const targets = useMemo(() => {
     const adbTargets = adbDevices.map((device) => ({
@@ -192,7 +220,7 @@ export default function RepairCommandCenter() {
     let cancelled = false;
     const load = async () => {
       try {
-        const [policies, partitions, edl, adb, transport, programmers, readiness] = await Promise.all([
+        const [policies, partitions, edl, adb, transport, programmers, readiness, chipsets] = await Promise.all([
           getWorkflowPolicyCatalog(),
           getCalibrationPartitionAllowlist(),
           getEdl9008Devices(),
@@ -200,6 +228,7 @@ export default function RepairCommandCenter() {
           scanTransportDevices(),
           listEdlProgrammers(),
           getWorkstationReadiness(),
+          getFirmwareChipsetCatalog(),
         ]);
         if (cancelled) return;
         setCatalog(policies);
@@ -209,6 +238,7 @@ export default function RepairCommandCenter() {
         setAdbDevices(adb);
         setTransportDevices(transport);
         setEdlProgrammers(programmers);
+        setFirmwareCatalog(chipsets);
         const availableTargetKeys = [
           ...adb.map((device) => `adb:${device.serial}`),
           ...transport
@@ -288,6 +318,70 @@ export default function RepairCommandCenter() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSamsungFirmwareBusy(false);
+    }
+  };
+
+  const verifyFirmwareManifest = async () => {
+    if (manifestBusy) return;
+    const path = await chooseFirmwareManifest();
+    if (!path) return;
+    setManifestBusy(true);
+    setManifestCompatibility(null);
+    setError(null);
+    try {
+      const inspection = await inspectFirmwareManifest(path);
+      setManifestInspection(inspection);
+    } catch (err) {
+      setManifestInspection(null);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setManifestBusy(false);
+    }
+  };
+
+  const compareManifestToTarget = async () => {
+    if (manifestBusy || !manifestInspection) return;
+    setManifestBusy(true);
+    setError(null);
+    try {
+      setManifestCompatibility(await compareFirmwareManifest(
+        manifestInspection.manifestPath,
+        manifestDevice,
+      ));
+    } catch (err) {
+      setManifestCompatibility(null);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setManifestBusy(false);
+    }
+  };
+
+  const runFirmwareLookup = async () => {
+    const query = firmwareQuery.trim();
+    if (!query) {
+      setFirmwareMatches([]);
+      return;
+    }
+    setFirmwareBusy(true);
+    setError(null);
+    try {
+      setFirmwareMatches(await lookupFirmwareChipset(query));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setFirmwareBusy(false);
+    }
+  };
+
+  const rescanFirmwareLibrary = async () => {
+    setFirmwareBusy(true);
+    setError(null);
+    try {
+      setFirmwareReport(await scanFirmwareLibrary());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setFirmwareBusy(false);
     }
   };
 
@@ -465,6 +559,289 @@ export default function RepairCommandCenter() {
               </div>
             )}
           </>
+        )}
+      </div>
+
+      <div className="mt-5 rounded-lg border border-violet-900/60 bg-violet-950/10 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-violet-400">Qualcomm + MediaTek firmware intelligence</div>
+            <div className="mt-1 text-sm font-medium text-white">Chipset-aware local firmware library</div>
+            <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-400">
+              BobFWTools catalogs chipset families and hashes local service packages. A chipset match is advisory only:
+              exact model/variant, secure-boot state, storage layout, OEM signing and authorized loader/DA evidence still gate every plan.
+            </p>
+          </div>
+          <div className="rounded border border-slate-800 bg-black/20 px-3 py-2 text-right">
+            <div className="text-[10px] uppercase tracking-wide text-slate-600">Catalog coverage</div>
+            <div className="mt-1 text-sm font-semibold text-violet-200">{firmwareCatalog.length} chipset families</div>
+          </div>
+        </div>
+
+        <div className="mt-3 grid gap-2 lg:grid-cols-[1fr_auto_auto]">
+          <input
+            value={firmwareQuery}
+            onChange={(event) => setFirmwareQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void runFirmwareLookup();
+            }}
+            placeholder="Search SM8550, MSM8998, MT6989, Dimensity 9300…"
+            className="rounded border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-violet-700"
+          />
+          <button
+            type="button"
+            disabled={firmwareBusy || !firmwareQuery.trim()}
+            onClick={() => void runFirmwareLookup()}
+            className="rounded border border-violet-800 bg-violet-950/30 px-3 py-2 text-xs font-semibold text-violet-200 disabled:opacity-40 hover:bg-violet-950/50"
+          >
+            Match chipset
+          </button>
+          <button
+            type="button"
+            disabled={firmwareBusy}
+            onClick={() => void rescanFirmwareLibrary()}
+            className="rounded bg-violet-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 hover:bg-violet-600"
+          >
+            {firmwareBusy ? 'Working…' : 'Scan managed firmware'}
+          </button>
+        </div>
+
+        {!!firmwareMatches.length && (
+          <div className="mt-3 grid gap-2 lg:grid-cols-2">
+            {firmwareMatches.slice(0, 6).map((profile) => (
+              <div key={profile.vendor + ':' + profile.family} className="rounded border border-slate-800 bg-slate-950/70 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-slate-600">{profile.vendor}</div>
+                    <div className="font-mono text-sm text-white">{profile.family}</div>
+                  </div>
+                  <span className="rounded bg-violet-950 px-2 py-1 text-[10px] text-violet-300">
+                    {profile.commonStorage.join(' / ')}
+                  </span>
+                </div>
+                <div className="mt-2 text-[11px] text-slate-400">
+                  {profile.marketedAs.join(' · ') || 'platform family'}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {profile.serviceModes.map((mode) => (
+                    <span key={mode} className="rounded border border-slate-800 px-1.5 py-0.5 text-[9px] text-slate-500">{mode}</span>
+                  ))}
+                </div>
+                <div className="mt-2 text-[10px] leading-4 text-amber-300/80">{profile.securityNote}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <details className="mt-4 rounded border border-slate-800 bg-black/20 p-3">
+          <summary className="cursor-pointer text-xs font-semibold text-slate-200">
+            Exact model / variant manifest verification
+          </summary>
+          <div className="mt-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="max-w-3xl text-[11px] leading-5 text-slate-500">
+                Verify <span className="font-mono text-slate-300">bobfwtools-firmware.json</span> metadata and every declared SHA-256 before comparing a package to an exact device identity.
+              </div>
+              <button
+                type="button"
+                disabled={manifestBusy}
+                onClick={() => void verifyFirmwareManifest()}
+                className="rounded border border-cyan-800 bg-cyan-950/20 px-3 py-2 text-xs font-semibold text-cyan-200 disabled:opacity-40 hover:bg-cyan-950/40"
+              >
+                {manifestBusy ? 'Verifying…' : 'Verify package manifest'}
+              </button>
+            </div>
+
+            {manifestInspection && (
+              <div className="mt-3 rounded border border-slate-800 bg-slate-950/60 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-slate-600">Package identity</div>
+                    <div className="mt-1 text-sm font-semibold text-white">
+                      {manifestInspection.manifest.oem} · {manifestInspection.manifest.models.join(', ')}
+                    </div>
+                    <div className="mt-1 text-[10px] text-slate-500">
+                      {manifestInspection.manifest.vendor} · {manifestInspection.manifest.chipset} · build {manifestInspection.manifest.buildId}
+                    </div>
+                  </div>
+                  <span className={manifestInspection.packageVerified
+                    ? 'rounded bg-emerald-950 px-2 py-1 text-[10px] font-semibold text-emerald-300'
+                    : 'rounded bg-red-950 px-2 py-1 text-[10px] font-semibold text-red-300'}>
+                    {manifestInspection.packageVerified ? 'metadata + hashes verified' : 'package verification failed'}
+                  </span>
+                </div>
+
+                <div className="mt-2 break-all font-mono text-[9px] text-slate-600">{manifestInspection.manifestPath}</div>
+                <div className="mt-2 text-[10px] text-slate-500">
+                  Source: {manifestInspection.manifest.sourceKind} · {manifestInspection.manifest.sourceReference}
+                </div>
+
+                {!!manifestInspection.validationErrors.length && (
+                  <div className="mt-2 space-y-1 text-[10px] text-red-300">
+                    {manifestInspection.validationErrors.map((value) => <div key={value}>{value}</div>)}
+                  </div>
+                )}
+
+                <div className="mt-3 grid gap-1">
+                  {manifestInspection.artifacts.slice(0, 10).map((artifact) => (
+                    <div key={artifact.path} className="flex items-center justify-between gap-3 rounded border border-slate-900 bg-black/20 px-2 py-1.5">
+                      <span className="truncate font-mono text-[9px] text-slate-400" title={artifact.path}>{artifact.path}</span>
+                      <span className={artifact.hashMatch ? 'text-[9px] text-emerald-300' : 'text-[9px] text-red-300'}>
+                        {artifact.hashMatch ? 'SHA-256 match' : artifact.exists ? 'hash/size mismatch' : 'missing'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 border-t border-slate-800 pt-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-500">Compare exact target identity</div>
+                  <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                    {([
+                      ['vendor', 'Vendor'],
+                      ['oem', 'OEM'],
+                      ['model', 'Exact model'],
+                      ['chipset', 'Chipset / SoC'],
+                      ['variant', 'Variant / SKU'],
+                      ['region', 'Region / carrier'],
+                      ['bootloaderRevision', 'Bootloader revision'],
+                    ] as const).map(([field, label]) => (
+                      <input
+                        key={field}
+                        value={manifestDevice[field] || ''}
+                        onChange={(event) => setManifestDevice((current) => ({ ...current, [field]: event.target.value || null }))}
+                        placeholder={label}
+                        className="rounded border border-slate-800 bg-black/30 px-2.5 py-2 text-[11px] text-white outline-none focus:border-cyan-800"
+                      />
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={manifestBusy || !manifestInspection.packageVerified}
+                    onClick={() => void compareManifestToTarget()}
+                    className="mt-2 rounded bg-cyan-800 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 hover:bg-cyan-700"
+                  >
+                    Compare package to exact target
+                  </button>
+
+                  {manifestCompatibility && (
+                    <div className={manifestCompatibility.candidateCompatible
+                      ? 'mt-3 rounded border border-emerald-900/60 bg-emerald-950/10 p-3'
+                      : 'mt-3 rounded border border-red-900/60 bg-red-950/10 p-3'}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className={manifestCompatibility.candidateCompatible ? 'text-xs font-semibold text-emerald-300' : 'text-xs font-semibold text-red-300'}>
+                          {manifestCompatibility.candidateCompatible ? 'Exact identity candidate match' : 'Package / target mismatch'}
+                        </span>
+                        <span className="rounded bg-slate-950 px-2 py-1 text-[9px] text-amber-300">
+                          execution authorization: NO
+                        </span>
+                      </div>
+                      {!!manifestCompatibility.matchedFields.length && (
+                        <div className="mt-2 text-[10px] text-slate-500">Matched: {manifestCompatibility.matchedFields.join(', ')}</div>
+                      )}
+                      {!!manifestCompatibility.blockers.length && (
+                        <div className="mt-2 space-y-1 text-[10px] text-red-300">
+                          {manifestCompatibility.blockers.map((value) => <div key={value}>{value}</div>)}
+                        </div>
+                      )}
+                      {!!manifestCompatibility.warnings.length && (
+                        <div className="mt-2 space-y-1 text-[10px] text-amber-300">
+                          {manifestCompatibility.warnings.map((value) => <div key={value}>{value}</div>)}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </details>
+
+        {firmwareReport && (
+          <div className="mt-4 rounded border border-slate-800 bg-black/20 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-xs font-semibold text-slate-200">Managed firmware inventory</div>
+                <div className="mt-1 break-all font-mono text-[10px] text-slate-600">{firmwareReport.root}</div>
+              </div>
+              <div className="flex flex-wrap gap-2 text-[10px]">
+                <span className="rounded bg-slate-900 px-2 py-1 text-slate-300">{firmwareReport.entries.length} files</span>
+                <span className="rounded bg-blue-950 px-2 py-1 text-blue-300">{firmwareReport.vendorCounts.qualcomm || 0} Qualcomm</span>
+                <span className="rounded bg-purple-950 px-2 py-1 text-purple-300">{firmwareReport.vendorCounts.mediatek || 0} MediaTek</span>
+                <span className={firmwareReport.blockedCount ? 'rounded bg-red-950 px-2 py-1 text-red-300' : 'rounded bg-emerald-950 px-2 py-1 text-emerald-300'}>
+                  {firmwareReport.blockedCount} blocked
+                </span>
+              </div>
+            </div>
+
+            {!!firmwareReport.bundles.length && (
+              <div className="mt-3">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Package-set readiness</div>
+                <div className="mt-2 grid gap-2 xl:grid-cols-2">
+                  {firmwareReport.bundles.slice(0, 8).map((bundle) => (
+                    <div key={bundle.directory} className={bundle.blocked
+                      ? 'rounded border border-red-900/60 bg-red-950/10 p-3'
+                      : bundle.planningReady
+                        ? 'rounded border border-emerald-900/60 bg-emerald-950/10 p-3'
+                        : 'rounded border border-amber-900/50 bg-amber-950/10 p-3'}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate font-mono text-[11px] text-slate-200" title={bundle.directory}>{bundle.directory}</span>
+                        <span className={bundle.blocked
+                          ? 'shrink-0 text-[9px] font-semibold uppercase text-red-300'
+                          : bundle.planningReady
+                            ? 'shrink-0 text-[9px] font-semibold uppercase text-emerald-300'
+                            : 'shrink-0 text-[9px] font-semibold uppercase text-amber-300'}>
+                          {bundle.blocked ? 'blocked' : bundle.planningReady ? 'planning set complete' : 'incomplete'}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[10px] text-slate-500">
+                        {bundle.vendorHint} · {bundle.files} files · {(bundle.bytes / (1024 * 1024)).toFixed(1)} MB
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {bundle.artifactKinds.map((kind) => (
+                          <span key={kind} className="rounded border border-slate-800 px-1.5 py-0.5 text-[9px] text-slate-500">{kind}</span>
+                        ))}
+                      </div>
+                      {!!bundle.missingRequired.length && (
+                        <div className="mt-2 text-[10px] text-amber-300">
+                          Missing required: {bundle.missingRequired.join(', ')}
+                        </div>
+                      )}
+                      {!!bundle.chipsetMatches.length && (
+                        <div className="mt-2 text-[9px] text-violet-300">{bundle.chipsetMatches.slice(0, 4).join(' · ')}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-3 grid gap-2 xl:grid-cols-2">
+              {firmwareReport.entries.slice(0, 12).map((entry) => (
+                <div key={entry.path} className={entry.blocked
+                  ? 'rounded border border-red-900/60 bg-red-950/10 p-3'
+                  : 'rounded border border-slate-800 bg-slate-950/60 p-3'}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-mono text-[11px] text-slate-200" title={entry.relativePath}>{entry.relativePath}</span>
+                    <span className="shrink-0 text-[9px] uppercase tracking-wide text-slate-500">{entry.artifactKind}</span>
+                  </div>
+                  <div className="mt-1 break-all font-mono text-[9px] text-slate-600">sha256 {entry.sha256}</div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    <span className="rounded bg-slate-900 px-1.5 py-0.5 text-[9px] text-slate-400">{entry.vendorHint}</span>
+                    {entry.chipsetMatches.slice(0, 3).map((match) => (
+                      <span key={match} className="rounded bg-violet-950 px-1.5 py-0.5 text-[9px] text-violet-300">{match}</span>
+                    ))}
+                    {entry.blocked && <span className="rounded bg-red-950 px-1.5 py-0.5 text-[9px] text-red-300">quarantine / do not plan</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {firmwareReport.entries.length > 12 && (
+              <div className="mt-2 text-[10px] text-slate-600">
+                Showing 12 of {firmwareReport.entries.length}. Full inventory remains available to the backend planner.
+              </div>
+            )}
+          </div>
         )}
       </div>
 

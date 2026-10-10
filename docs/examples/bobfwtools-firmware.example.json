@@ -1,0 +1,21 @@
+{
+  "schema": "bobfwtools-firmware-v1",
+  "vendor": "qualcomm",
+  "chipset": "SM8550",
+  "oem": "EXAMPLE_ONLY",
+  "models": ["EXAMPLE-MODEL"],
+  "variants": ["global"],
+  "regions": ["US"],
+  "buildId": "EXAMPLE_BUILD_DO_NOT_FLASH",
+  "bootloaderRevision": "EXAMPLE",
+  "sourceKind": "official-oem",
+  "sourceReference": "EXAMPLE ONLY — replace with real OEM/service provenance",
+  "artifacts": [
+    {
+      "path": "rawprogram0.xml",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "role": "rawprogram",
+      "bytes": null
+    }
+  ]
+}
