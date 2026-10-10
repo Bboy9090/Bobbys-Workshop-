@@ -13,6 +13,7 @@ on:
       - 'tests/firmware-preflight.test.ts'
       - 'tests/oem-source-discovery.test.ts'
       - '.github/workflows/firmware-contract.yml'
+      - 'scripts/firmware-sources.mjs'
   workflow_dispatch:
 
 permissions:
@@ -35,3 +36,9 @@ jobs:
         run: npx --no-install vitest run tests/firmware-inventory-contract.test.ts tests/firmware-preflight.test.ts tests/oem-source-discovery.test.ts
       - name: Type check firmware modules
         run: npx --no-install tsc --noEmit --skipLibCheck --strict --target es2020 --module esnext --moduleResolution bundler src/lib/firmware-inventory-contract.ts src/lib/firmware-preflight.ts src/lib/oem-source-discovery.ts
+      - name: Exercise actual firmware source lookup CLI
+        run: |
+          node scripts/firmware-sources.mjs --manufacturer Google --model "Pixel 8" --json > /tmp/pixel-sources.json
+          node -e 'const f=require("/tmp/pixel-sources.json"); if(f.sources.length !== 2 || f.executable || f.firmwarePackagesVerified !== 0) process.exit(1)'
+          node scripts/firmware-sources.mjs --manufacturer Samsung --model SM-S911U --json > /tmp/unsupported.json
+          node -e 'const f=require("/tmp/unsupported.json"); if(f.sources.length !== 0) process.exit(1)'
