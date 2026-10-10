@@ -13,11 +13,14 @@ describe('Qualcomm + MediaTek firmware library contract', () => {
       'SM8550',
       'SM8650',
       'SM8750',
+      'SDM845',
       'MT6768',
+      'MT6769',
       'MT6789',
       'MT6895',
       'MT6989',
       'MT6991',
+      'MT6993',
     ]) {
       expect(catalog).toContain(token);
     }
@@ -52,6 +55,15 @@ describe('Qualcomm + MediaTek firmware library contract', () => {
     expect(library).toContain('&["scatter-manifest", "download-agent"]');
     expect(library).toContain('planning_ready');
     expect(library).toContain('missing_required');
+    expect(library).toContain('multiple {vendor_hint} chipset families');
+    expect(library).toContain('&& !chipset_conflict');
+  });
+
+  it('detects duplicate firmware content by SHA-256', () => {
+    const library = read('src-tauri/src/firmware_library.rs');
+
+    expect(library).toContain('Duplicate firmware content detected');
+    expect(library).toContain('Keep one authoritative copy per package');
   });
 
   it('exposes firmware catalog and scan commands through Tauri', () => {
