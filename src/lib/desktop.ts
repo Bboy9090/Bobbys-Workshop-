@@ -1318,6 +1318,14 @@ export type FirmwareBundleSummary = {
   blocked: boolean;
   planningReady: boolean;
   missingRequired: string[];
+  provenancePresent: boolean;
+  provenanceValid: boolean;
+  exactIdentityPresent: boolean;
+  model?: string | null;
+  board?: string | null;
+  sku?: string | null;
+  sourceCategory?: string | null;
+  sourceReference?: string | null;
   warnings: string[];
 };
 
