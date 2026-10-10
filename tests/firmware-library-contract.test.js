@@ -136,5 +136,11 @@ describe('Qualcomm + MediaTek firmware library contract', () => {
     expect(dossier).toContain('Qualification walkthrough');
     expect(dossier).toContain('Stop here. Do not substitute another phone');
     expect(dossier).toContain('Do not edit the blocked dossier to make it pass');
+
+    const qualified = read('src/components/QualifiedFlashConsole.tsx');
+    expect(qualified).toContain('Qualification wizard');
+    expect(qualified).toContain('YOU ARE HERE');
+    expect(qualified).toContain('Stage 6');
+    expect(qualified).toContain('Do not skip ahead, reuse stale evidence, or change targets to make the workflow pass');
   });
 });
