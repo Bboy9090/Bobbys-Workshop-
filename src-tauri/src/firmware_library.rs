@@ -14,14 +14,14 @@ const MAX_SCAN_DEPTH: usize = 8;
 const PROVENANCE_MANIFEST_NAME: &str = "bobfwtools-firmware-manifest.json";
 const PROVENANCE_SCHEMA: &str = "com.bobbyblanco.bobfwtools.firmware-provenance.v1";
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct FirmwareProvenanceArtifact {
     relative_path: String,
     sha256: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct FirmwareProvenanceManifest {
     schema: String,
@@ -52,6 +52,32 @@ struct ProvenanceAssessment {
     source_category: Option<String>,
     source_reference: Option<String>,
     warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirmwareProvenanceWriteInput {
+    pub directory: String,
+    pub vendor: String,
+    pub chipset_family: String,
+    pub oem: String,
+    pub model: String,
+    pub board: String,
+    pub sku: String,
+    pub region: Option<String>,
+    pub carrier: Option<String>,
+    pub build_version: String,
+    pub bootloader_revision: Option<String>,
+    pub storage: Option<String>,
+    pub source_category: String,
+    pub source_reference: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirmwareProvenanceWriteResult {
+    pub path: String,
+    pub artifacts_bound: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -646,6 +672,134 @@ fn summarize_bundles(root: &Path, entries: &[FirmwareLibraryEntry]) -> Vec<Firmw
             .then_with(|| a.directory.cmp(&b.directory))
     });
     bundles
+}
+
+#[tauri::command]
+pub fn firmware_provenance_write(input: FirmwareProvenanceWriteInput) -> Result<FirmwareProvenanceWriteResult, String> {
+    let directory = input.directory.trim().replace('\\', "/");
+    if directory.is_empty()
+        || directory.starts_with('/')
+        || directory.split('/').any(|part| part == ".." || part.is_empty())
+    {
+        return Err("firmware package directory must be a safe managed-library relative path".into());
+    }
+
+    let vendor = input.vendor.trim().to_ascii_lowercase();
+    if !matches!(vendor.as_str(), "qualcomm" | "mediatek") {
+        return Err("vendor must be qualcomm or mediatek".into());
+    }
+    let source_category = input.source_category.trim().to_ascii_lowercase();
+    if !matches!(source_category.as_str(), "official-oem" | "authorized-service") {
+        return Err("sourceCategory must be official-oem or authorized-service".into());
+    }
+    for (label, value) in [
+        ("chipsetFamily", input.chipset_family.trim()),
+        ("oem", input.oem.trim()),
+        ("model", input.model.trim()),
+        ("board", input.board.trim()),
+        ("sku", input.sku.trim()),
+        ("buildVersion", input.build_version.trim()),
+        ("sourceReference", input.source_reference.trim()),
+    ] {
+        if value.is_empty() {
+            return Err(format!("{label} is required to create an exact package provenance manifest"));
+        }
+    }
+
+    let root = firmware_root();
+    let package_dir = root.join(&directory);
+    let root_canonical = fs::canonicalize(&root)
+        .map_err(|e| format!("firmware library is unavailable: {e}"))?;
+    let package_canonical = fs::canonicalize(&package_dir)
+        .map_err(|e| format!("firmware package directory does not exist: {e}"))?;
+    if !package_canonical.starts_with(&root_canonical) || !package_canonical.is_dir() {
+        return Err("firmware package directory must remain inside the managed firmware library".into());
+    }
+
+    let mut artifacts = Vec::new();
+    let mut observed_vendors = BTreeSet::new();
+    let mut observed_chipsets = BTreeSet::new();
+    for item in fs::read_dir(&package_canonical)
+        .map_err(|e| format!("failed reading firmware package directory: {e}"))?
+    {
+        let item = item.map_err(|e| format!("failed reading firmware package entry: {e}"))?;
+        let file_type = item
+            .file_type()
+            .map_err(|e| format!("failed reading firmware package file type: {e}"))?;
+        if file_type.is_symlink() || !file_type.is_file() {
+            continue;
+        }
+        let path = item.path();
+        if path.file_name().and_then(|value| value.to_str()) == Some(PROVENANCE_MANIFEST_NAME) {
+            continue;
+        }
+        let entry = inspect_entry(&root_canonical, &path)?;
+        if entry.blocked {
+            return Err(format!(
+                "blocked firmware artifact '{}' cannot be included in provenance",
+                entry.name
+            ));
+        }
+        if entry.artifact_kind == "other" {
+            continue;
+        }
+        if entry.vendor_hint != "unknown" {
+            observed_vendors.insert(entry.vendor_hint.clone());
+        }
+        observed_chipsets.extend(entry.chipset_matches.iter().cloned());
+        artifacts.push(FirmwareProvenanceArtifact {
+            relative_path: entry.name,
+            sha256: entry.sha256,
+        });
+    }
+
+    if artifacts.is_empty() {
+        return Err("no planning-relevant firmware artifacts were found in this package directory".into());
+    }
+    if !observed_vendors.is_empty() && !observed_vendors.contains(&vendor) {
+        return Err(format!(
+            "declared vendor {} conflicts with observed package vendor evidence ({})",
+            vendor,
+            observed_vendors.into_iter().collect::<Vec<_>>().join(", ")
+        ));
+    }
+    let expected_chipset = format!("{}:{}", vendor, input.chipset_family.trim());
+    if !observed_chipsets.is_empty() && !observed_chipsets.contains(&expected_chipset) {
+        return Err(format!(
+            "declared chipset {} conflicts with observed package chipset evidence ({})",
+            expected_chipset,
+            observed_chipsets.into_iter().collect::<Vec<_>>().join(", ")
+        ));
+    }
+
+    artifacts.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    let manifest = FirmwareProvenanceManifest {
+        schema: PROVENANCE_SCHEMA.into(),
+        vendor,
+        chipset_family: input.chipset_family.trim().to_string(),
+        oem: input.oem.trim().to_string(),
+        model: input.model.trim().to_string(),
+        board: input.board.trim().to_string(),
+        sku: input.sku.trim().to_string(),
+        region: input.region.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()),
+        carrier: input.carrier.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()),
+        build_version: input.build_version.trim().to_string(),
+        bootloader_revision: input.bootloader_revision.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()),
+        storage: input.storage.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()),
+        source_category,
+        source_reference: input.source_reference.trim().to_string(),
+        artifacts,
+    };
+    let bytes = serde_json::to_vec_pretty(&manifest)
+        .map_err(|e| format!("failed serializing provenance manifest: {e}"))?;
+    let manifest_path = package_canonical.join(PROVENANCE_MANIFEST_NAME);
+    fs::write(&manifest_path, bytes)
+        .map_err(|e| format!("failed writing provenance manifest: {e}"))?;
+
+    Ok(FirmwareProvenanceWriteResult {
+        path: manifest_path.display().to_string(),
+        artifacts_bound: manifest.artifacts.len(),
+    })
 }
 
 #[tauri::command]
