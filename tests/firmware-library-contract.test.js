@@ -92,6 +92,27 @@ describe('Qualcomm + MediaTek firmware library contract', () => {
     expect(workstation).toContain('"firmware-quarantine"');
   });
 
+  it('ships context-aware hand-holding walkthroughs for service workflows', () => {
+    const guide = read('src/components/WorkflowWalkthrough.tsx');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    for (const workflow of [
+      'Android ADB walkthrough',
+      'Qualcomm EDL 9008 walkthrough',
+      'MediaTek BootROM walkthrough',
+      'MediaTek Preloader walkthrough',
+      'Samsung Download Mode walkthrough',
+    ]) {
+      expect(guide).toContain(workflow);
+    }
+
+    expect(guide).toContain('Do this:');
+    expect(guide).toContain('You should see:');
+    expect(guide).toContain('Stop here if:');
+    expect(guide).toContain('completed checklist never overrides');
+    expect(ui).toContain('<WorkflowWalkthrough kind={walkthroughKind} />');
+  });
+
   it('surfaces chipset intelligence and package-set readiness in the Command Center', () => {
     const ui = read('src/components/RepairCommandCenter.tsx');
 
