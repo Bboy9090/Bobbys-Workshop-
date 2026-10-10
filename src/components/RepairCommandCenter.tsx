@@ -597,6 +597,48 @@ export default function RepairCommandCenter() {
               </div>
             </div>
 
+            {!!firmwareReport.bundles.length && (
+              <div className="mt-3">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Package-set readiness</div>
+                <div className="mt-2 grid gap-2 xl:grid-cols-2">
+                  {firmwareReport.bundles.slice(0, 8).map((bundle) => (
+                    <div key={bundle.directory} className={bundle.blocked
+                      ? 'rounded border border-red-900/60 bg-red-950/10 p-3'
+                      : bundle.planningReady
+                        ? 'rounded border border-emerald-900/60 bg-emerald-950/10 p-3'
+                        : 'rounded border border-amber-900/50 bg-amber-950/10 p-3'}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate font-mono text-[11px] text-slate-200" title={bundle.directory}>{bundle.directory}</span>
+                        <span className={bundle.blocked
+                          ? 'shrink-0 text-[9px] font-semibold uppercase text-red-300'
+                          : bundle.planningReady
+                            ? 'shrink-0 text-[9px] font-semibold uppercase text-emerald-300'
+                            : 'shrink-0 text-[9px] font-semibold uppercase text-amber-300'}>
+                          {bundle.blocked ? 'blocked' : bundle.planningReady ? 'planning set complete' : 'incomplete'}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[10px] text-slate-500">
+                        {bundle.vendorHint} · {bundle.files} files · {(bundle.bytes / (1024 * 1024)).toFixed(1)} MB
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {bundle.artifactKinds.map((kind) => (
+                          <span key={kind} className="rounded border border-slate-800 px-1.5 py-0.5 text-[9px] text-slate-500">{kind}</span>
+                        ))}
+                      </div>
+                      {!!bundle.missingRequired.length && (
+                        <div className="mt-2 text-[10px] text-amber-300">
+                          Missing required: {bundle.missingRequired.join(', ')}
+                        </div>
+                      )}
+                      {!!bundle.chipsetMatches.length && (
+                        <div className="mt-2 text-[9px] text-violet-300">{bundle.chipsetMatches.slice(0, 4).join(' · ')}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="mt-3 grid gap-2 xl:grid-cols-2">
               {firmwareReport.entries.slice(0, 12).map((entry) => (
                 <div key={entry.path} className={entry.blocked
