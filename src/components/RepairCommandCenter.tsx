@@ -19,6 +19,12 @@ import {
   getFirmwareChipsetCatalog,
   lookupFirmwareChipset,
   scanFirmwareLibrary,
+  chooseFirmwareManifest,
+  inspectFirmwareManifest,
+  compareFirmwareManifest,
+  type DeviceFirmwareIdentity,
+  type FirmwareCompatibilityReport,
+  type FirmwareManifestInspection,
   type FirmwareChipsetProfile,
   type FirmwareLibraryReport,
   type WorkstationReadiness,
@@ -89,6 +95,18 @@ export default function RepairCommandCenter() {
   const [firmwareMatches, setFirmwareMatches] = useState<FirmwareChipsetProfile[]>([]);
   const [firmwareReport, setFirmwareReport] = useState<FirmwareLibraryReport | null>(null);
   const [firmwareBusy, setFirmwareBusy] = useState(false);
+  const [manifestInspection, setManifestInspection] = useState<FirmwareManifestInspection | null>(null);
+  const [manifestCompatibility, setManifestCompatibility] = useState<FirmwareCompatibilityReport | null>(null);
+  const [manifestBusy, setManifestBusy] = useState(false);
+  const [manifestDevice, setManifestDevice] = useState<DeviceFirmwareIdentity>({
+    vendor: null,
+    chipset: null,
+    oem: null,
+    model: null,
+    variant: null,
+    region: null,
+    bootloaderRevision: null,
+  });
 
   const targets = useMemo(() => {
     const adbTargets = adbDevices.map((device) => ({
@@ -300,6 +318,41 @@ export default function RepairCommandCenter() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSamsungFirmwareBusy(false);
+    }
+  };
+
+  const verifyFirmwareManifest = async () => {
+    if (manifestBusy) return;
+    const path = await chooseFirmwareManifest();
+    if (!path) return;
+    setManifestBusy(true);
+    setManifestCompatibility(null);
+    setError(null);
+    try {
+      const inspection = await inspectFirmwareManifest(path);
+      setManifestInspection(inspection);
+    } catch (err) {
+      setManifestInspection(null);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setManifestBusy(false);
+    }
+  };
+
+  const compareManifestToTarget = async () => {
+    if (manifestBusy || !manifestInspection) return;
+    setManifestBusy(true);
+    setError(null);
+    try {
+      setManifestCompatibility(await compareFirmwareManifest(
+        manifestInspection.manifestPath,
+        manifestDevice,
+      ));
+    } catch (err) {
+      setManifestCompatibility(null);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setManifestBusy(false);
     }
   };
 
