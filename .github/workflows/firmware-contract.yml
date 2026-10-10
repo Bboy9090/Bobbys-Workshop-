@@ -16,6 +16,9 @@ on:
       - 'tests/oem-catalog-probe.test.ts'
       - '.github/workflows/firmware-contract.yml'
       - 'scripts/firmware-sources.mjs'
+      - 'scripts/verify-firmware-file.mjs'
+      - 'scripts/lib/verify-firmware-file.mjs'
+      - 'tests/firmware-file-verification.test.ts'
   workflow_dispatch:
 
 permissions:
@@ -35,7 +38,7 @@ jobs:
       - name: Install locked dependencies
         run: npm ci --ignore-scripts
       - name: Execute real firmware-contract unit tests
-        run: npx --no-install vitest run tests/firmware-inventory-contract.test.ts tests/firmware-preflight.test.ts tests/oem-source-discovery.test.ts tests/oem-catalog-probe.test.ts
+        run: npx --no-install vitest run tests/firmware-inventory-contract.test.ts tests/firmware-preflight.test.ts tests/oem-source-discovery.test.ts tests/oem-catalog-probe.test.ts tests/firmware-file-verification.test.ts
       - name: Type check firmware modules
         run: npx --no-install tsc --noEmit --skipLibCheck --strict --target es2020 --module esnext --moduleResolution bundler --allowImportingTsExtensions src/lib/firmware-inventory-contract.ts src/lib/firmware-preflight.ts src/lib/oem-source-discovery.ts src/lib/oem-catalog-probe.ts
       - name: Exercise actual firmware source lookup CLI
