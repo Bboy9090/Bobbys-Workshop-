@@ -148,7 +148,7 @@ describe('Qualcomm + MediaTek firmware library contract', () => {
     expect(provenance).toContain('Package provenance builder');
     expect(provenance).toContain('Create exact provenance manifest');
     expect(provenance).toContain('Stop if you cannot prove the exact model/board/SKU');
-    expect(provenance).toContain('do not edit hashes');
+    expect(provenance).toContain('Do not edit hashes');
 
     const dossier = read('src/components/QualificationDossier.tsx');
     expect(dossier).toContain('Qualification walkthrough');
