@@ -242,3 +242,24 @@ describe('Per-device mode controls', () => {
     expect(modeControl).toContain('Download Mode is not a generic Fastboot transition');
   });
 });
+
+
+describe('Mode transition verification receipts', () => {
+  it('separates accepted commands from verified re-enumeration', () => {
+    const app = read('src/App.tsx');
+    const modeControl = read('src-tauri/src/mode_control.rs');
+    const desktop = read('src/lib/desktop.ts');
+
+    expect(modeControl).toContain('mode_transition_verify');
+    expect(modeControl).toContain('identity_confidence');
+    expect(modeControl).toContain('mode-observed-identity-unverified');
+    expect(modeControl).toContain('Original serial has not reappeared in fastboot yet');
+    expect(modeControl).toContain('Samsung Download Mode was observed');
+
+    expect(desktop).toContain('verifyModeTransition');
+    expect(app).toContain('verifyTransitionLater');
+    expect(app).toContain('MODE VERIFIED');
+    expect(app).toContain('MODE NOT YET VERIFIED');
+    expect(app).toContain('identity:');
+  });
+});
