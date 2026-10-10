@@ -48,13 +48,17 @@ describe('Qualcomm + MediaTek firmware library contract', () => {
     expect(library).toContain('eligible_for_planning: !blocked');
   });
 
-  it('requires complete Qualcomm and MediaTek service metadata before bundle readiness', () => {
+  it('requires complete service metadata plus exact provenance before bundle readiness', () => {
     const library = read('src-tauri/src/firmware_library.rs');
 
     expect(library).toContain('&["firehose-programmer", "rawprogram-manifest"]');
     expect(library).toContain('&["scatter-manifest", "download-agent"]');
-    expect(library).toContain('planning_ready');
-    expect(library).toContain('missing_required');
+    expect(library).toContain('bobfwtools-firmware-manifest.json');
+    expect(library).toContain('com.bobbyblanco.bobfwtools.firmware-provenance.v1');
+    expect(library).toContain('official-oem');
+    expect(library).toContain('authorized-service');
+    expect(library).toContain('provenance.exact_identity_present');
+    expect(library).toContain('Provenance hash mismatch');
     expect(library).toContain('multiple {vendor_hint} chipset families');
     expect(library).toContain('&& !chipset_conflict');
   });
@@ -123,6 +127,9 @@ describe('Qualcomm + MediaTek firmware library contract', () => {
     expect(ui).toContain('How to use this section');
     expect(ui).toContain('What is blocking this package');
     expect(ui).toContain('Next step: return to the official/service package source');
+    expect(ui).toContain('model/board/SKU');
+    expect(ui).toContain('Same-chipset firmware is not enough');
+    expect(ui).toContain('provenance');
     expect(ui).toContain('Workstation setup walkthrough');
     expect(ui).toContain('Setup is blocked');
     expect(ui).toContain('You should see: this card changes to driver ready');
@@ -142,5 +149,18 @@ describe('Qualcomm + MediaTek firmware library contract', () => {
     expect(qualified).toContain('YOU ARE HERE');
     expect(qualified).toContain('Production authority');
     expect(qualified).toContain('Do not skip ahead, reuse stale evidence, or change targets to make the workflow pass');
+  });
+});
+
+
+describe('Firmware provenance documentation contract', () => {
+  it('documents the operator manifest workflow and fail-closed rules', () => {
+    const docs = read('docs/FIRMWARE_LIBRARY.md');
+
+    expect(docs).toContain('## Exact package provenance manifest');
+    expect(docs).toContain('bobfwtools-firmware-manifest.json');
+    expect(docs).toContain('model/board/SKU bound');
+    expect(docs).toContain('Do not edit a digest merely to make the package pass');
+    expect(docs).toContain('does **not** authorize a write');
   });
 });
