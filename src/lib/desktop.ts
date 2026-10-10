@@ -85,6 +85,23 @@ export async function fastbootRebootMode(
   return invoke<FastbootModeActionResult>('fastboot_reboot_mode', { serial, mode });
 }
 
+export type ModeTransitionVerification = {
+  serial: string;
+  requestedMode: string;
+  observedMode?: string | null;
+  verified: boolean;
+  identityConfidence: string;
+  evidence: string[];
+  blockers: string[];
+};
+
+export async function verifyModeTransition(
+  serial: string,
+  requestedMode: 'normal' | 'recovery' | 'bootloader' | 'download',
+): Promise<ModeTransitionVerification> {
+  return invoke<ModeTransitionVerification>('mode_transition_verify', { serial, requestedMode });
+}
+
 export async function getMtpStatus(): Promise<MtpStatus | null> {
   if (!isTauriRuntime()) return null;
   try {
