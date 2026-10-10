@@ -1639,6 +1639,17 @@ export default function App() {
                     <div className="mt-2 space-y-1 text-xs text-amber-300">
                       {recoveryJob.blockers.length ? recoveryJob.blockers.map((blocker) => <div key={blocker}>{blocker}</div>) : <div className="text-emerald-300">No blockers.</div>}
                     </div>
+                    {recoveryJob.integrityFindings.length > 0 && (
+                      <div className="mt-3 rounded border border-rose-900/50 bg-rose-950/20 p-2 text-[11px] leading-5 text-rose-200">
+                        <div className="font-semibold">Layout or payload integrity failed</div>
+                        <div className="mt-1 space-y-1">
+                          {recoveryJob.integrityFindings.map((finding) => <div key={finding}>{finding}</div>)}
+                        </div>
+                        <div className="mt-2 text-rose-200/80">
+                          Next step: stop this job, return to the authoritative package, and verify the rawprogram/scatter file belongs to the exact model, board, SKU, storage type, and build. Re-import and regenerate provenance if the package changes. Do not edit partition addresses, storage regions, LUN numbers, or payload sizes merely to make the check pass.
+                        </div>
+                      </div>
+                    )}
                     {!!recoveryJob.highRiskPartitions.length && (
                       <div className="mt-3 text-[11px] text-amber-200">
                         High-risk partitions: <span className="font-mono">{recoveryJob.highRiskPartitions.join(', ')}</span>
