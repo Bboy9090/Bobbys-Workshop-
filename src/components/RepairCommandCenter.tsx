@@ -672,6 +672,30 @@ export default function RepairCommandCenter() {
                       <div className="mt-1 text-[10px] text-slate-500">
                         {bundle.vendorHint} · {bundle.files} files · {(bundle.bytes / (1024 * 1024)).toFixed(1)} MB
                       </div>
+                      <div className="mt-2 grid gap-1 sm:grid-cols-3">
+                        <div className={bundle.provenancePresent ? 'rounded bg-slate-900 px-2 py-1 text-[9px] text-slate-300' : 'rounded bg-amber-950 px-2 py-1 text-[9px] text-amber-300'}>
+                          provenance {bundle.provenancePresent ? 'present' : 'missing'}
+                        </div>
+                        <div className={bundle.provenanceValid ? 'rounded bg-emerald-950 px-2 py-1 text-[9px] text-emerald-300' : 'rounded bg-amber-950 px-2 py-1 text-[9px] text-amber-300'}>
+                          hashes {bundle.provenanceValid ? 'verified' : 'unverified'}
+                        </div>
+                        <div className={bundle.exactIdentityPresent ? 'rounded bg-emerald-950 px-2 py-1 text-[9px] text-emerald-300' : 'rounded bg-amber-950 px-2 py-1 text-[9px] text-amber-300'}>
+                          model/board/SKU {bundle.exactIdentityPresent ? 'bound' : 'missing'}
+                        </div>
+                      </div>
+                      {bundle.exactIdentityPresent && (
+                        <div className="mt-2 rounded border border-slate-800 bg-black/20 p-2 text-[10px] leading-4 text-slate-400">
+                          <div><span className="text-slate-500">model:</span> {bundle.model || '—'}</div>
+                          <div><span className="text-slate-500">board:</span> {bundle.board || '—'}</div>
+                          <div><span className="text-slate-500">SKU:</span> {bundle.sku || '—'}</div>
+                          <div><span className="text-slate-500">source:</span> {bundle.sourceCategory || '—'}{bundle.sourceReference ? ' · ' + bundle.sourceReference : ''}</div>
+                        </div>
+                      )}
+                      {!bundle.provenancePresent && (
+                        <div className="mt-2 rounded border border-amber-900/50 bg-amber-950/20 p-2 text-[10px] leading-4 text-amber-200">
+                          Next step: add <span className="font-mono">bobfwtools-firmware-manifest.json</span> to this package directory with the exact model, board, SKU, source, chipset family, build, and SHA-256 list. Same-chipset firmware is not enough.
+                        </div>
+                      )}
                       <div className="mt-2 flex flex-wrap gap-1">
                         {bundle.artifactKinds.map((kind) => (
                           <span key={kind} className="rounded border border-slate-800 px-1.5 py-0.5 text-[9px] text-slate-500">{kind}</span>
