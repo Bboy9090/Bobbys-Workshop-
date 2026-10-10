@@ -123,5 +123,8 @@ describe('Qualcomm + MediaTek firmware library contract', () => {
     expect(ui).toContain('How to use this section');
     expect(ui).toContain('What is blocking this package');
     expect(ui).toContain('Next step: return to the official/service package source');
+    expect(ui).toContain('Workstation setup walkthrough');
+    expect(ui).toContain('Setup is blocked');
+    expect(ui).toContain('You should see: this card changes to driver ready');
   });
 });
