@@ -120,5 +120,8 @@ describe('Qualcomm + MediaTek firmware library contract', () => {
     expect(ui).toContain('Package-set readiness');
     expect(ui).toContain('Scan managed firmware');
     expect(ui).toContain('quarantine / do not plan');
+    expect(ui).toContain('How to use this section');
+    expect(ui).toContain('What is blocking this package');
+    expect(ui).toContain('Next step: return to the official/service package source');
   });
 });
