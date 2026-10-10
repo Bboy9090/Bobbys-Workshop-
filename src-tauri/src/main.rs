@@ -5260,6 +5260,7 @@ fn main() {
             firmware_chipset_catalog,
             firmware_chipset_lookup,
             firmware_library_scan,
+            firmware_provenance_write,
             hardware_service_profile_validate,
 bootforgeusb_transport_scan,
             bootforge_firmware_inspect,
