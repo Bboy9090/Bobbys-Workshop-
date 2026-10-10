@@ -37,7 +37,7 @@ jobs:
       - name: Execute real firmware-contract unit tests
         run: npx --no-install vitest run tests/firmware-inventory-contract.test.ts tests/firmware-preflight.test.ts tests/oem-source-discovery.test.ts tests/oem-catalog-probe.test.ts
       - name: Type check firmware modules
-        run: npx --no-install tsc --noEmit --skipLibCheck --strict --target es2020 --module esnext --moduleResolution bundler src/lib/firmware-inventory-contract.ts src/lib/firmware-preflight.ts src/lib/oem-source-discovery.ts src/lib/oem-catalog-probe.ts
+        run: npx --no-install tsc --noEmit --skipLibCheck --strict --target es2020 --module esnext --moduleResolution bundler --allowImportingTsExtensions src/lib/firmware-inventory-contract.ts src/lib/firmware-preflight.ts src/lib/oem-source-discovery.ts src/lib/oem-catalog-probe.ts
       - name: Exercise actual firmware source lookup CLI
         run: |
           node scripts/firmware-sources.mjs --manufacturer Google --model "Pixel 8" --json > /tmp/pixel-sources.json
