@@ -79,6 +79,7 @@ describe('Qualcomm + MediaTek firmware library contract', () => {
       'firmware_chipset_lookup',
       'firmware_library_scan',
       'firmware_provenance_write',
+      'firmware_bundle_planning_artifacts',
     ]) {
       expect(main).toContain(command);
     }
@@ -87,6 +88,7 @@ describe('Qualcomm + MediaTek firmware library contract', () => {
     expect(desktop).toContain('lookupFirmwareChipset');
     expect(desktop).toContain('scanFirmwareLibrary');
     expect(desktop).toContain('writeFirmwareProvenance');
+    expect(desktop).toContain('getVerifiedFirmwareBundleArtifacts');
   });
 
   it('initializes vendor-specific managed firmware folders', () => {
@@ -171,5 +173,24 @@ describe('Firmware provenance documentation contract', () => {
     expect(docs).toContain('model/board/SKU bound');
     expect(docs).toContain('Do not edit a digest merely to make the package pass');
     expect(docs).toContain('does **not** authorize a write');
+  });
+});
+
+
+describe('Verified firmware recovery handoff', () => {
+  it('revalidates planning readiness before handing a bundle to recovery planning', () => {
+    const library = read('src-tauri/src/firmware_library.rs');
+    const app = read('src/App.tsx');
+
+    expect(library).toContain('firmware_bundle_planning_artifacts');
+    expect(library).toContain('if !bundle.planning_ready');
+    expect(library).toContain('entry.eligible_for_planning');
+    expect(library).toContain('selected firmware bundle is not planning-ready');
+
+    expect(app).toContain('Verified firmware handoff');
+    expect(app).toContain('Use verified package');
+    expect(app).toContain('getVerifiedFirmwareBundleArtifacts');
+    expect(app).toContain('bundle.vendorHint !== expectedVendor');
+    expect(app).toContain('The backend rescans this package before handoff');
   });
 });
