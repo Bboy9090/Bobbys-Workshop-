@@ -193,8 +193,12 @@ mod tests {
 
     #[test]
     fn verified_manifest_hashes_declared_artifacts() {
-        let dir = tempfile::tempdir().unwrap();
-        let artifact_path = dir.path().join("rawprogram0.xml");
+        let dir = std::env::temp_dir().join(format!(
+            "bobfwtools-firmware-manifest-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let artifact_path = dir.join("rawprogram0.xml");
         fs::write(&artifact_path, b"<data/>").unwrap();
         let (_, sha256) = hash_file(&artifact_path).unwrap();
 
@@ -218,11 +222,12 @@ mod tests {
             }],
         };
 
-        let manifest_path = dir.path().join("bobfwtools-firmware.json");
+        let manifest_path = dir.join("bobfwtools-firmware.json");
         fs::write(&manifest_path, serde_json::to_vec_pretty(&manifest).unwrap()).unwrap();
 
         let inspection = inspect_manifest(&manifest_path).unwrap();
         assert!(inspection.package_verified);
         assert!(inspection.all_hashes_match);
+        let _ = fs::remove_dir_all(&dir);
     }
 }
