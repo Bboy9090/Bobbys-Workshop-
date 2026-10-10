@@ -1308,12 +1308,26 @@ export type FirmwareLibraryEntry = {
   warnings: string[];
 };
 
+export type FirmwareBundleSummary = {
+  directory: string;
+  vendorHint: string;
+  chipsetMatches: string[];
+  artifactKinds: string[];
+  files: number;
+  bytes: number;
+  blocked: boolean;
+  planningReady: boolean;
+  missingRequired: string[];
+  warnings: string[];
+};
+
 export type FirmwareLibraryReport = {
   root: string;
   entries: FirmwareLibraryEntry[];
   vendorCounts: Record<string, number>;
   artifactCounts: Record<string, number>;
   blockedCount: number;
+  bundles: FirmwareBundleSummary[];
   warnings: string[];
 };
 
