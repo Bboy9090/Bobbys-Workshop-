@@ -23,6 +23,8 @@ import {
   isTauriRuntime,
   saveAdbScreenshot,
   scanAdbDevices,
+  getFastbootModeDevices,
+  fastbootRebootMode,
   listMtpDirectory,
   downloadMtpPath,
   uploadMtpPath,
@@ -82,6 +84,8 @@ export default function App() {
   const [usbDevices, setUsbDevices] = useState<UsbDeviceRecord[]>([]);
   const [mtp, setMtp] = useState<MtpStatus | null>(null);
   const [adbDevices, setAdbDevices] = useState<AdbDeviceRecord[]>([]);
+  const [fastbootModeDevices, setFastbootModeDevices] = useState<string[]>([]);
+  const [modeActionBusy, setModeActionBusy] = useState<string | null>(null);
   const [capabilities, setCapabilities] = useState<DeviceCapabilityMatrix | null>(null);
   const [adbSelectedSerial, setAdbSelectedSerial] = useState<string | null>(null);
   const [adbOutput, setAdbOutput] = useState<string | null>(null);
@@ -305,6 +309,11 @@ export default function App() {
 
       const adb = await scanAdbDevices();
       setAdbDevices(adb);
+      try {
+        setFastbootModeDevices(await getFastbootModeDevices());
+      } catch {
+        setFastbootModeDevices([]);
+      }
       if (!adbSelectedSerial && adb.length) {
         setAdbSelectedSerial(adb[0].serial);
       } else if (adbSelectedSerial && !adb.some((device) => device.serial === adbSelectedSerial)) {
@@ -509,6 +518,59 @@ export default function App() {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
       setTransferBusy(false);
+    }
+  };
+
+  const refreshAfterModeTransition = () => {
+    window.setTimeout(() => void refresh(), 1800);
+    window.setTimeout(() => void refresh(), 4500);
+  };
+
+  const runAdbModeForSerial = async (
+    serial: string,
+    action: 'reboot-normal' | 'reboot-recovery' | 'reboot-bootloader' | 'reboot-download',
+  ) => {
+    if (transferBusy || modeActionBusy) return;
+    setModeActionBusy(serial + ':' + action);
+    setNativeError(null);
+    try {
+      const workflowMap = {
+        'reboot-normal': 'adb-reboot-normal',
+        'reboot-recovery': 'adb-reboot-recovery',
+        'reboot-bootloader': 'adb-reboot-bootloader',
+        'reboot-download': 'adb-reboot-download',
+      } as const;
+      const job = await startWorkflowJob(workflowMap[action], serial);
+      setAdbSelectedSerial(serial);
+      setAdbOutput(
+        `Mode command for ${serial}\n${job.summary}\nState: ${job.state}${job.verified ? ' · verified' : ' · awaiting re-detection'}`,
+      );
+      await refreshJobs();
+      refreshAfterModeTransition();
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setModeActionBusy(null);
+    }
+  };
+
+  const runFastbootModeForSerial = async (
+    serial: string,
+    mode: 'normal' | 'bootloader' | 'recovery',
+  ) => {
+    if (transferBusy || modeActionBusy) return;
+    setModeActionBusy(serial + ':fastboot-' + mode);
+    setNativeError(null);
+    try {
+      const result = await fastbootRebootMode(serial, mode);
+      setAdbOutput(
+        `Fastboot mode command for ${serial}\n${result.message}\nRequested: ${result.requestedMode}\nStatus: accepted · awaiting re-detection`,
+      );
+      refreshAfterModeTransition();
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setModeActionBusy(null);
     }
   };
 
@@ -964,6 +1026,44 @@ export default function App() {
                       <div className="mt-2 font-mono text-xs text-cyan-300">{device.serial}</div>
                       <div className="mt-1 text-xs text-slate-400">{device.state} · ADB connection</div>
                       {selected && <div className="mt-3 text-xs font-medium text-cyan-200">Selected — actions below use this phone</div>}
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          disabled={!device.authorized || !!modeActionBusy}
+                          onClick={(event) => { event.stopPropagation(); void runAdbModeForSerial(device.serial, 'reboot-normal'); }}
+                          className="rounded border border-slate-700 px-2 py-1.5 text-[10px] text-slate-200 disabled:opacity-40 hover:bg-slate-800"
+                        >
+                          Normal
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!device.authorized || !!modeActionBusy}
+                          onClick={(event) => { event.stopPropagation(); void runAdbModeForSerial(device.serial, 'reboot-recovery'); }}
+                          className="rounded border border-violet-800 px-2 py-1.5 text-[10px] text-violet-300 disabled:opacity-40 hover:bg-violet-950/40"
+                        >
+                          Recovery
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!device.authorized || !!modeActionBusy}
+                          onClick={(event) => { event.stopPropagation(); void runAdbModeForSerial(device.serial, 'reboot-bootloader'); }}
+                          className="rounded border border-cyan-800 px-2 py-1.5 text-[10px] text-cyan-300 disabled:opacity-40 hover:bg-cyan-950/40"
+                        >
+                          Bootloader
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!device.authorized || !!modeActionBusy}
+                          onClick={(event) => { event.stopPropagation(); void runAdbModeForSerial(device.serial, 'reboot-download'); }}
+                          className="rounded border border-amber-800 px-2 py-1.5 text-[10px] text-amber-300 disabled:opacity-40 hover:bg-amber-950/40"
+                          title="OEM/device-specific. Common on Samsung; unsupported devices will fail truthfully."
+                        >
+                          Download
+                        </button>
+                      </div>
+                      <div className="mt-2 text-[10px] leading-4 text-slate-500">
+                        Commands are sent only to serial <span className="font-mono">{device.serial}</span>. BobFWTools re-scans after the phone disconnects and changes mode.
+                      </div>
                     </button>
                   );
                 })}
@@ -975,6 +1075,55 @@ export default function App() {
                     </div>
                     <div className="mt-2 text-xs text-slate-300">{device.platformHint} · {device.mode}</div>
                     <div className="mt-1 text-xs text-slate-500">This connection is available for matching recovery and firmware workflows.</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {fastbootModeDevices.length > 0 && (
+            <section className="mb-4 rounded-lg border border-cyan-900/60 bg-cyan-950/10 p-5">
+              <div>
+                <h2 className="text-base font-semibold text-white">Fastboot mode controls</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Each button is bound to the exact Fastboot serial shown on its card. These are reboot/mode commands only; they do not grant flash authority.
+                </p>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {fastbootModeDevices.map((serial) => (
+                  <div key={serial} className="rounded border border-slate-800 bg-slate-950/60 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-cyan-400">Fastboot target</div>
+                    <div className="mt-1 break-all font-mono text-xs text-white">{serial}</div>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        disabled={!!modeActionBusy}
+                        onClick={() => void runFastbootModeForSerial(serial, 'normal')}
+                        className="rounded border border-slate-700 px-2 py-1.5 text-[10px] text-slate-200 disabled:opacity-40 hover:bg-slate-800"
+                      >
+                        Normal
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!modeActionBusy}
+                        onClick={() => void runFastbootModeForSerial(serial, 'recovery')}
+                        className="rounded border border-violet-800 px-2 py-1.5 text-[10px] text-violet-300 disabled:opacity-40 hover:bg-violet-950/40"
+                        title="Supported only by bootloaders that implement fastboot reboot recovery."
+                      >
+                        Recovery
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!modeActionBusy}
+                        onClick={() => void runFastbootModeForSerial(serial, 'bootloader')}
+                        className="rounded border border-cyan-800 px-2 py-1.5 text-[10px] text-cyan-300 disabled:opacity-40 hover:bg-cyan-950/40"
+                      >
+                        Bootloader
+                      </button>
+                    </div>
+                    <div className="mt-2 text-[10px] leading-4 text-slate-500">
+                      Download Mode is not exposed here because it is not a generic Fastboot transition.
+                    </div>
                   </div>
                 ))}
               </div>
