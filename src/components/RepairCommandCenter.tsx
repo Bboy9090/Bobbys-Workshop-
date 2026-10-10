@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import WorkflowWalkthrough, { type GuidedWorkflowKind } from './WorkflowWalkthrough';
+import FirmwareProvenanceBuilder from './FirmwareProvenanceBuilder';
 import {
   getCalibrationPartitionAllowlist,
   getEdl9008Devices,
@@ -604,6 +605,15 @@ export default function RepairCommandCenter() {
             {firmwareBusy ? 'Working…' : 'Scan managed firmware'}
           </button>
         </div>
+
+        {firmwareReport && (
+          <FirmwareProvenanceBuilder
+            bundles={firmwareReport.bundles}
+            onWritten={async () => {
+              setFirmwareReport(await scanFirmwareLibrary());
+            }}
+          />
+        )}
 
         {!!firmwareMatches.length && (
           <div className="mt-3 grid gap-2 lg:grid-cols-2">
