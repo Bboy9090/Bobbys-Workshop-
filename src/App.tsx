@@ -33,6 +33,8 @@ import {
   autodiscoverRecoveryArtifacts,
   buildRecoveryPlan,
   prepareRecoveryJob,
+  scanFirmwareLibrary,
+  getVerifiedFirmwareBundleArtifacts,
   revalidateRecoveryJob,
   exportRecoveryEvidence,
   exportRecoveryReadinessCertificate,
@@ -57,6 +59,7 @@ import {
   type RecoveryJob,
   type RecoveryWorkflow,
   type RecoveryReadinessCertificateReview,
+  type FirmwareBundleSummary,
 } from './lib/desktop';
 
 function formatBytes(value: number): string {
@@ -109,6 +112,8 @@ export default function App() {
   const [recoveryEvidencePath, setRecoveryEvidencePath] = useState<string | null>(null);
   const [recoveryCertificatePath, setRecoveryCertificatePath] = useState<string | null>(null);
   const [recoveryCertificateReview, setRecoveryCertificateReview] = useState<RecoveryReadinessCertificateReview | null>(null);
+  const [verifiedFirmwareBundles, setVerifiedFirmwareBundles] = useState<FirmwareBundleSummary[]>([]);
+  const [selectedVerifiedBundle, setSelectedVerifiedBundle] = useState('');
   const nativeRuntime = useMemo(() => isTauriRuntime(), []);
   const filteredPackages = useMemo(() => {
     const q = packageQuery.trim().toLowerCase();
@@ -311,6 +316,19 @@ export default function App() {
 
       const matrix = await getWorkflowCapabilities();
       setCapabilities(matrix);
+      try {
+        const firmware = await scanFirmwareLibrary();
+        const readyBundles = firmware?.bundles.filter((bundle) => bundle.planningReady) ?? [];
+        setVerifiedFirmwareBundles(readyBundles);
+        setSelectedVerifiedBundle((current) =>
+          current && readyBundles.some((bundle) => bundle.directory === current)
+            ? current
+            : readyBundles[0]?.directory ?? '',
+        );
+      } catch {
+        setVerifiedFirmwareBundles([]);
+        setSelectedVerifiedBundle('');
+      }
       await refreshJobs();
 
       if (mtpStatus?.storages.length) {
@@ -699,6 +717,48 @@ export default function App() {
       setRecoveryCertificateReview(null);
       const plan = await buildRecoveryPlan(effectiveWorkflow, paths);
       setRecoveryPlan(plan);
+      if (selectedRecoveryCandidate) {
+        const job = await prepareRecoveryJob(selectedRecoveryCandidate, paths);
+        setRecoveryJob(job);
+      }
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveryBusy(false);
+    }
+  };
+
+  const useVerifiedFirmwareBundle = async () => {
+    if (recoveryBusy || !selectedVerifiedBundle) return;
+    setRecoveryBusy(true);
+    setNativeError(null);
+    setRecoveryEvidencePath(null);
+    setRecoveryCertificatePath(null);
+    setRecoveryCertificateReview(null);
+    try {
+      const bundle = verifiedFirmwareBundles.find((item) => item.directory === selectedVerifiedBundle);
+      if (!bundle || !bundle.planningReady) {
+        throw new Error('The selected firmware bundle is no longer verified for planning. Rescan the firmware library and resolve its blockers first.');
+      }
+
+      const expectedVendor = (selectedRecoveryCandidate?.workflow ?? recoveryKind) === 'qualcomm-edl'
+        ? 'qualcomm'
+        : 'mediatek';
+      if (bundle.vendorHint !== expectedVendor) {
+        throw new Error(
+          `The selected verified bundle is ${bundle.vendorHint}, but the active recovery lane requires ${expectedVendor}. Choose a package for the detected hardware lane.`,
+        );
+      }
+
+      const paths = await getVerifiedFirmwareBundleArtifacts(bundle.directory);
+      if (!paths.length) {
+        throw new Error('The verified bundle no longer exposes planning artifacts. Rescan the managed firmware library.');
+      }
+      const effectiveWorkflow = selectedRecoveryCandidate?.workflow ?? recoveryKind;
+      const plan = await buildRecoveryPlan(effectiveWorkflow, paths);
+      setRecoveryArtifacts(paths);
+      setRecoveryPlan(plan);
+      setRecoveryJob(null);
       if (selectedRecoveryCandidate) {
         const job = await prepareRecoveryJob(selectedRecoveryCandidate, paths);
         setRecoveryJob(job);
@@ -1335,6 +1395,45 @@ export default function App() {
                     </div>
                   </>
                 )}
+
+                <div className="mt-4 rounded border border-emerald-900/50 bg-emerald-950/10 p-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400">Verified firmware handoff</div>
+                  <div className="mt-1 text-xs leading-5 text-slate-400">
+                    Use a package that already passed provenance, exact model/board/SKU binding, chipset consistency, completeness, and SHA-256 verification.
+                  </div>
+                  <div className="mt-3 grid gap-2 lg:grid-cols-[1fr_auto]">
+                    <select
+                      value={selectedVerifiedBundle}
+                      onChange={(event) => setSelectedVerifiedBundle(event.target.value)}
+                      className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white"
+                    >
+                      <option value="">No verified package selected</option>
+                      {verifiedFirmwareBundles
+                        .filter((bundle) => {
+                          const expectedVendor = (selectedRecoveryCandidate?.workflow ?? recoveryKind) === 'qualcomm-edl'
+                            ? 'qualcomm'
+                            : 'mediatek';
+                          return bundle.vendorHint === expectedVendor;
+                        })
+                        .map((bundle) => (
+                          <option key={bundle.directory} value={bundle.directory}>
+                            {bundle.model || 'unknown model'} · {bundle.board || 'unknown board'} · {bundle.sku || 'unknown SKU'} · {bundle.directory}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => void useVerifiedFirmwareBundle()}
+                      disabled={recoveryBusy || !selectedVerifiedBundle}
+                      className="rounded bg-emerald-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 hover:bg-emerald-600"
+                    >
+                      {recoveryBusy ? 'Verifying package…' : 'Use verified package'}
+                    </button>
+                  </div>
+                  <div className="mt-2 text-[11px] leading-5 text-emerald-200/80">
+                    The backend rescans this package before handoff. If provenance, hashes, package contents, or readiness changed, planning stops instead of using stale UI state.
+                  </div>
+                </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button
