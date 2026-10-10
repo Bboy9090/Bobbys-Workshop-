@@ -36,6 +36,7 @@ mod workflow_jobs;
 mod workstation;
 mod calibration_backup_exec;
 mod edl_programmer_vault;
+mod firmware_library;
 #[cfg(feature = "legacy-backends")]
 use python_backend::{launch_python_backend, shutdown_python_backend};
 #[cfg(feature = "legacy-backends")]
@@ -51,6 +52,7 @@ use workflow_jobs::{workflow_job_start, workflow_job_list, workflow_job_get, wor
 use workstation::{workstation_readiness, workstation_initialize};
 use calibration_backup_exec::{backup_calibration_partition, inspect_calibration_backup};
 use edl_programmer_vault::{edl_inspect_programmer, edl_enroll_programmer, edl_list_programmers};
+use firmware_library::{firmware_chipset_catalog, firmware_chipset_lookup, firmware_library_scan};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -5255,6 +5257,9 @@ fn main() {
             edl_inspect_programmer,
             edl_enroll_programmer,
             edl_list_programmers,
+            firmware_chipset_catalog,
+            firmware_chipset_lookup,
+            firmware_library_scan,
             hardware_service_profile_validate,
 bootforgeusb_transport_scan,
             bootforge_firmware_inspect,
