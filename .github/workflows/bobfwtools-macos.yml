@@ -2,9 +2,9 @@ name: BobFWTools macOS Core
 
 on:
   pull_request:
-    branches: [ "main-tool-kit", "feat/bobfwtools-macos-foundation" ]
+    branches: [ "main-tool-kit", "feat/bobfwtools-macos-foundation", "feat/bobfwtools-calibration-edl-safety" ]
   push:
-    branches: [ "feat/bobfwtools-macos-foundation" ]
+    branches: [ "feat/bobfwtools-macos-foundation", "feat/bobfwtools-calibration-edl-safety" ]
 
 permissions:
   contents: read
