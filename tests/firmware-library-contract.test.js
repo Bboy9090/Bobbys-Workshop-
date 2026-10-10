@@ -194,3 +194,16 @@ describe('Verified firmware recovery handoff', () => {
     expect(app).toContain('The backend rescans this package before handoff');
   });
 });
+
+
+describe('Recovery layout storage-domain safety', () => {
+  it('fails closed on ambiguous Qualcomm LUNs and mixed MediaTek storage families', () => {
+    const job = read('libs/bootforgeusb/src/recovery_job.rs');
+
+    expect(job).toContain('storage_domain_integrity_issues');
+    expect(job).toContain('physical_partition_number');
+    expect(job).toContain('mixes eMMC and UFS storage families');
+    expect(job).toContain('unrecognized storage region');
+    expect(job).toContain('integrity_findings.extend(storage_domain_issues');
+  });
+});
