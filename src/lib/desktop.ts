@@ -1349,6 +1349,34 @@ export async function lookupFirmwareChipset(query: string): Promise<FirmwareChip
   return invoke<FirmwareChipsetProfile[]>('firmware_chipset_lookup', { query });
 }
 
+export type FirmwareProvenanceWriteInput = {
+  directory: string;
+  vendor: 'qualcomm' | 'mediatek' | string;
+  chipsetFamily: string;
+  oem: string;
+  model: string;
+  board: string;
+  sku: string;
+  region?: string | null;
+  carrier?: string | null;
+  buildVersion: string;
+  bootloaderRevision?: string | null;
+  storage?: string | null;
+  sourceCategory: 'official-oem' | 'authorized-service' | string;
+  sourceReference: string;
+};
+
+export type FirmwareProvenanceWriteResult = {
+  path: string;
+  artifactsBound: number;
+};
+
+export async function writeFirmwareProvenance(
+  input: FirmwareProvenanceWriteInput,
+): Promise<FirmwareProvenanceWriteResult> {
+  return invoke<FirmwareProvenanceWriteResult>('firmware_provenance_write', { input });
+}
+
 export async function scanFirmwareLibrary(): Promise<FirmwareLibraryReport | null> {
   if (!isTauriRuntime()) return null;
   return invoke<FirmwareLibraryReport>('firmware_library_scan');
