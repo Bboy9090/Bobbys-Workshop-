@@ -1377,6 +1377,11 @@ export async function writeFirmwareProvenance(
   return invoke<FirmwareProvenanceWriteResult>('firmware_provenance_write', { input });
 }
 
+export async function getVerifiedFirmwareBundleArtifacts(directory: string): Promise<string[]> {
+  if (!isTauriRuntime() || !directory.trim()) return [];
+  return invoke<string[]>('firmware_bundle_planning_artifacts', { directory });
+}
+
 export async function scanFirmwareLibrary(): Promise<FirmwareLibraryReport | null> {
   if (!isTauriRuntime()) return null;
   return invoke<FirmwareLibraryReport>('firmware_library_scan');
