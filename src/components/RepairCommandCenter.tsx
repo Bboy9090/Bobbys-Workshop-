@@ -538,6 +538,14 @@ export default function RepairCommandCenter() {
               BobFWTools catalogs chipset families and hashes local service packages. A chipset match is advisory only:
               exact model/variant, secure-boot state, storage layout, OEM signing and authorized loader/DA evidence still gate every plan.
             </p>
+            <div className="mt-3 rounded border border-violet-900/50 bg-violet-950/20 p-3 text-[11px] leading-5 text-violet-100">
+              <div className="font-semibold">How to use this section</div>
+              <div className="mt-1 text-violet-200/80">
+                1. Enter the chipset or marketing name you already know. 2. Use the result only to narrow candidates.
+                3. Put the exact OEM/service package in the managed firmware workspace. 4. Scan it here.
+                5. Open the package card and resolve every missing, conflicting, or blocked item before recovery planning.
+              </div>
+            </div>
           </div>
           <div className="rounded border border-slate-800 bg-black/20 px-3 py-2 text-right">
             <div className="text-[10px] uppercase tracking-wide text-slate-600">Catalog coverage</div>
@@ -646,8 +654,21 @@ export default function RepairCommandCenter() {
                         ))}
                       </div>
                       {!!bundle.missingRequired.length && (
-                        <div className="mt-2 text-[10px] text-amber-300">
-                          Missing required: {bundle.missingRequired.join(', ')}
+                        <div className="mt-2 rounded border border-amber-900/50 bg-amber-950/20 p-2 text-[10px] leading-4 text-amber-200">
+                          <div className="font-semibold">What is blocking this package</div>
+                          <div className="mt-1">Missing required: {bundle.missingRequired.join(', ')}</div>
+                          <div className="mt-1 text-amber-200/80">
+                            Next step: return to the official/service package source and obtain the missing package component. Do not substitute a file from another model or chipset.
+                          </div>
+                        </div>
+                      )}
+                      {!!bundle.warnings.length && (
+                        <div className="mt-2 space-y-1">
+                          {bundle.warnings.slice(0, 4).map((warning) => (
+                            <div key={warning} className="rounded border border-slate-800 bg-black/20 px-2 py-1.5 text-[10px] leading-4 text-slate-400">
+                              {warning}
+                            </div>
+                          ))}
                         </div>
                       )}
                       {!!bundle.chipsetMatches.length && (
@@ -676,6 +697,17 @@ export default function RepairCommandCenter() {
                     ))}
                     {entry.blocked && <span className="rounded bg-red-950 px-1.5 py-0.5 text-[9px] text-red-300">quarantine / do not plan</span>}
                   </div>
+                  {!!entry.warnings.length && (
+                    <div className="mt-2 space-y-1">
+                      {entry.warnings.slice(0, 3).map((warning) => (
+                        <div key={warning} className={entry.blocked
+                          ? 'rounded border border-red-900/40 bg-red-950/10 px-2 py-1.5 text-[10px] leading-4 text-red-200/80'
+                          : 'rounded border border-slate-800 bg-black/20 px-2 py-1.5 text-[10px] leading-4 text-slate-500'}>
+                          {warning}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
