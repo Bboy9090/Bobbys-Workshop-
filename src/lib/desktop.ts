@@ -1345,3 +1345,88 @@ export async function scanFirmwareLibrary(): Promise<FirmwareLibraryReport | nul
   if (!isTauriRuntime()) return null;
   return invoke<FirmwareLibraryReport>('firmware_library_scan');
 }
+
+
+export type FirmwareManifestArtifact = {
+  path: string;
+  sha256: string;
+  role: string;
+  bytes: number | null;
+};
+
+export type FirmwareManifest = {
+  schema: string;
+  vendor: string;
+  chipset: string;
+  oem: string;
+  models: string[];
+  variants: string[];
+  regions: string[];
+  buildId: string;
+  bootloaderRevision: string | null;
+  sourceKind: string;
+  sourceReference: string;
+  artifacts: FirmwareManifestArtifact[];
+};
+
+export type ManifestArtifactVerification = {
+  path: string;
+  exists: boolean;
+  expectedSha256: string;
+  actualSha256: string | null;
+  bytes: number | null;
+  hashMatch: boolean;
+};
+
+export type FirmwareManifestInspection = {
+  manifestPath: string;
+  manifest: FirmwareManifest;
+  validationErrors: string[];
+  artifacts: ManifestArtifactVerification[];
+  allArtifactsPresent: boolean;
+  allHashesMatch: boolean;
+  metadataValid: boolean;
+  packageVerified: boolean;
+};
+
+export type DeviceFirmwareIdentity = {
+  vendor: string | null;
+  chipset: string | null;
+  oem: string | null;
+  model: string | null;
+  variant: string | null;
+  region: string | null;
+  bootloaderRevision: string | null;
+};
+
+export type FirmwareCompatibilityReport = {
+  manifestValid: boolean;
+  identityComplete: boolean;
+  candidateCompatible: boolean;
+  executionAuthorized: boolean;
+  matchedFields: string[];
+  blockers: string[];
+  warnings: string[];
+};
+
+export async function chooseFirmwareManifest(): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: 'Choose bobfwtools-firmware.json',
+    filters: [{ name: 'BobFWTools firmware manifest', extensions: ['json'] }],
+  });
+  return typeof selected === 'string' ? selected : null;
+}
+
+export async function inspectFirmwareManifest(path: string): Promise<FirmwareManifestInspection> {
+  return invoke<FirmwareManifestInspection>('firmware_manifest_inspect', { path });
+}
+
+export async function compareFirmwareManifest(
+  path: string,
+  device: DeviceFirmwareIdentity,
+): Promise<FirmwareCompatibilityReport> {
+  return invoke<FirmwareCompatibilityReport>('firmware_manifest_compare', { path, device });
+}
