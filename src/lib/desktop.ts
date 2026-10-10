@@ -1279,3 +1279,55 @@ export async function reviewRecoveryReadinessCertificate(
     },
   );
 }
+
+
+export type FirmwareChipsetProfile = {
+  vendor: 'qualcomm' | 'mediatek' | string;
+  family: string;
+  marketedAs: string[];
+  aliases: string[];
+  serviceModes: string[];
+  loaderKinds: string[];
+  commonStorage: string[];
+  packageMarkers: string[];
+  securityNote: string;
+};
+
+export type FirmwareLibraryEntry = {
+  path: string;
+  relativePath: string;
+  name: string;
+  bytes: number;
+  sha256: string;
+  modifiedUnixMs: number | null;
+  vendorHint: string;
+  artifactKind: string;
+  chipsetMatches: string[];
+  blocked: boolean;
+  eligibleForPlanning: boolean;
+  warnings: string[];
+};
+
+export type FirmwareLibraryReport = {
+  root: string;
+  entries: FirmwareLibraryEntry[];
+  vendorCounts: Record<string, number>;
+  artifactCounts: Record<string, number>;
+  blockedCount: number;
+  warnings: string[];
+};
+
+export async function getFirmwareChipsetCatalog(): Promise<FirmwareChipsetProfile[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<FirmwareChipsetProfile[]>('firmware_chipset_catalog');
+}
+
+export async function lookupFirmwareChipset(query: string): Promise<FirmwareChipsetProfile[]> {
+  if (!isTauriRuntime() || !query.trim()) return [];
+  return invoke<FirmwareChipsetProfile[]>('firmware_chipset_lookup', { query });
+}
+
+export async function scanFirmwareLibrary(): Promise<FirmwareLibraryReport | null> {
+  if (!isTauriRuntime()) return null;
+  return invoke<FirmwareLibraryReport>('firmware_library_scan');
+}
