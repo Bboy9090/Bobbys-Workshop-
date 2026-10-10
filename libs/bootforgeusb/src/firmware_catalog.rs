@@ -87,6 +87,7 @@ pub fn chipset_catalog() -> Vec<ChipsetProfile> {
         q("MSM8992 / MSM8994", &["Snapdragon 808/810"], &["msm8992", "msm8994", "8992", "8994"], &["emmc"]),
         q("MSM8996", &["Snapdragon 820/821"], &["msm8996", "8996"], &["emmc", "ufs"]),
         q("MSM8998", &["Snapdragon 835"], &["msm8998", "8998"], &["ufs"]),
+        q("SDM845", &["Snapdragon 845"], &["sdm845", "snapdragon 845"], &["ufs"]),
         // Qualcomm SDM era.
         q("SDM4xx", &["Snapdragon 429/439/450/460"], &["sdm429", "sdm439", "sdm450", "sm4250"], &["emmc", "ufs"]),
         q("SDM6xx", &["Snapdragon 630/632/636/660/662/665/670/675/678"], &["sdm630", "sdm632", "sdm636", "sdm660", "sm6115", "sm6125", "sm6150", "sdm670"], &["emmc", "ufs"]),
@@ -124,12 +125,16 @@ pub fn chipset_catalog() -> Vec<ChipsetProfile> {
         m("MT6757", &["Helio P20/P25"], &["mt6757", "helio p20", "helio p25"], &["emmc"]),
         m("MT6761 / MT6762", &["Helio A22/P22"], &["mt6761", "mt6762", "helio a22", "helio p22"], &["emmc"]),
         m("MT6763 / MT6765", &["Helio P23/P35"], &["mt6763", "mt6765", "helio p23", "helio p35"], &["emmc"]),
-        m("MT6768", &["Helio G70/G80/G85/P65"], &["mt6768", "helio g70", "helio g80", "helio g85", "helio p65"], &["emmc", "ufs"]),
+        m("MT6768", &["Helio P65"], &["mt6768", "helio p65"], &["emmc", "ufs"]),
+        m("MT6769", &["Helio G70/G80/G81/G85/G88"], &["mt6769", "helio g70", "helio g80", "helio g81", "helio g85", "helio g88"], &["emmc", "ufs"]),
         m("MT6771", &["Helio P60/P70"], &["mt6771", "helio p60", "helio p70"], &["emmc", "ufs"]),
         m("MT6779", &["Helio P90/G90/G90T"], &["mt6779", "helio p90", "helio g90", "helio g90t"], &["ufs"]),
         m("MT6781", &["Helio G96"], &["mt6781", "helio g96"], &["ufs"]),
         m("MT6785", &["Helio G90T/G95"], &["mt6785", "helio g95"], &["ufs"]),
         m("MT6789", &["Helio G99"], &["mt6789", "helio g99"], &["ufs"]),
+        m("MT6795", &["Helio X10"], &["mt6795", "mt6795m", "mt6795t", "helio x10"], &["emmc"]),
+        m("MT6797", &["Helio X20/X23/X25/X27"], &["mt6797", "mt6797d", "mt6797t", "mt6797x", "helio x20", "helio x23", "helio x25", "helio x27"], &["emmc"]),
+        m("MT6799", &["Helio X30"], &["mt6799", "helio x30"], &["emmc", "ufs"]),
 
         // MediaTek Dimensity.
         m("MT6833", &["Dimensity 700/720/800U/810"], &["mt6833", "dimensity 700", "dimensity 720", "dimensity 800u", "dimensity 810"], &["ufs"]),
@@ -149,6 +154,14 @@ pub fn chipset_catalog() -> Vec<ChipsetProfile> {
         m("MT6985", &["Dimensity 9200/9200+"], &["mt6985", "dimensity 9200"], &["ufs"]),
         m("MT6989", &["Dimensity 9300/9300+"], &["mt6989", "dimensity 9300"], &["ufs"]),
         m("MT6991", &["Dimensity 9400 family"], &["mt6991", "dimensity 9400"], &["ufs"]),
+
+        // Current MediaTek identifiers observed in vendor security/support matrices.
+        // Marketing-name aliases stay intentionally empty when the exact retail mapping is not independently proven.
+        m("MT6855", &[], &["mt6855"], &["ufs"]),
+        m("MT6858", &[], &["mt6858"], &["ufs"]),
+        m("MT6879", &[], &["mt6879"], &["ufs"]),
+        m("MT6899", &[], &["mt6899"], &["ufs"]),
+        m("MT6993", &[], &["mt6993"], &["ufs"]),
 
         // MediaTek tablet / Chromebook families commonly encountered in service.
         m("MT8183", &["Kompanio 500 class"], &["mt8183", "kompanio 500"], &["emmc", "ufs"]),
@@ -208,6 +221,18 @@ mod tests {
         let matches = match_chipsets("device_sm8550_global");
         assert_eq!(matches.first().map(|p| p.family.as_str()), Some("SM8550"));
         assert_eq!(matches.first().map(|p| p.vendor.as_str()), Some("qualcomm"));
+    }
+
+    #[test]
+    fn resolves_verified_legacy_and_current_aliases() {
+        let q = match_chipsets("service_sdm845_package");
+        assert_eq!(q.first().map(|p| p.family.as_str()), Some("SDM845"));
+
+        let g = match_chipsets("Helio G85 stock");
+        assert_eq!(g.first().map(|p| p.family.as_str()), Some("MT6769"));
+
+        let current = match_chipsets("MT6993 OEM package");
+        assert_eq!(current.first().map(|p| p.family.as_str()), Some("MT6993"));
     }
 
     #[test]
