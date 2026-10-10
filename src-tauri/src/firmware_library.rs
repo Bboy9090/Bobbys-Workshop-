@@ -335,7 +335,22 @@ fn summarize_bundles(entries: &[FirmwareLibraryEntry]) -> Vec<FirmwareBundleSumm
                 .map(|kind| (*kind).to_string())
                 .collect::<Vec<_>>();
 
+            let vendor_chipsets = acc
+                .chipsets
+                .iter()
+                .filter(|chipset| chipset.starts_with(&format!("{vendor_hint}:")))
+                .cloned()
+                .collect::<BTreeSet<_>>();
+            let chipset_conflict = matches!(vendor_hint.as_str(), "qualcomm" | "mediatek")
+                && vendor_chipsets.len() > 1;
+
             let mut warnings = Vec::new();
+            if chipset_conflict {
+                warnings.push(format!(
+                    "Package directory resolves to multiple {vendor_hint} chipset families ({}) and is excluded from planning until the package identity is unambiguous.",
+                    vendor_chipsets.into_iter().collect::<Vec<_>>().join(", ")
+                ));
+            }
             if vendor_hint == "qualcomm" && !acc.kinds.contains("patch-manifest") {
                 warnings.push("No Qualcomm patch manifest found; some stock packages legitimately omit it, so verify OEM package structure.".into());
             }
@@ -361,6 +376,7 @@ fn summarize_bundles(entries: &[FirmwareLibraryEntry]) -> Vec<FirmwareBundleSumm
                 bytes: acc.bytes,
                 blocked: acc.blocked,
                 planning_ready: !acc.blocked
+                    && !chipset_conflict
                     && matches!(vendor_hint.as_str(), "qualcomm" | "mediatek")
                     && missing_required.is_empty(),
                 missing_required,
@@ -425,6 +441,22 @@ pub fn firmware_library_scan() -> Result<FirmwareLibraryReport, String> {
         *artifact_counts.entry(entry.artifact_kind.clone()).or_insert(0) += 1;
     }
     let blocked_count = entries.iter().filter(|entry| entry.blocked).count();
+
+    let mut hashes: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for entry in &entries {
+        hashes
+            .entry(entry.sha256.clone())
+            .or_default()
+            .push(entry.relative_path.clone());
+    }
+    for (sha256, paths) in hashes.into_iter().filter(|(_, paths)| paths.len() > 1) {
+        warnings.push(format!(
+            "Duplicate firmware content detected (sha256 {}): {}. Keep one authoritative copy per package to reduce operator ambiguity.",
+            sha256,
+            paths.join(", ")
+        ));
+    }
+
     let bundles = summarize_bundles(&entries);
 
     Ok(FirmwareLibraryReport {
@@ -497,6 +529,48 @@ mod tests {
         assert_eq!(bundles.len(), 1);
         assert!(bundles[0].planning_ready);
         assert!(bundles[0].missing_required.is_empty());
+    }
+
+    #[test]
+    fn conflicting_chipset_evidence_blocks_bundle_readiness() {
+        let entries = vec![
+            FirmwareLibraryEntry {
+                path: "/tmp/q/prog.elf".into(),
+                relative_path: "qualcomm/mixed/prog.elf".into(),
+                name: "prog.elf".into(),
+                bytes: 1,
+                sha256: "a".repeat(64),
+                modified_unix_ms: None,
+                vendor_hint: "qualcomm".into(),
+                artifact_kind: "firehose-programmer".into(),
+                chipset_matches: vec!["qualcomm:SM8550".into()],
+                blocked: false,
+                eligible_for_planning: true,
+                warnings: vec![],
+            },
+            FirmwareLibraryEntry {
+                path: "/tmp/q/rawprogram0.xml".into(),
+                relative_path: "qualcomm/mixed/rawprogram0.xml".into(),
+                name: "rawprogram0.xml".into(),
+                bytes: 1,
+                sha256: "b".repeat(64),
+                modified_unix_ms: None,
+                vendor_hint: "qualcomm".into(),
+                artifact_kind: "rawprogram-manifest".into(),
+                chipset_matches: vec!["qualcomm:SM8650".into()],
+                blocked: false,
+                eligible_for_planning: true,
+                warnings: vec![],
+            },
+        ];
+
+        let bundles = summarize_bundles(&entries);
+        assert_eq!(bundles.len(), 1);
+        assert!(!bundles[0].planning_ready);
+        assert!(bundles[0]
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("multiple qualcomm chipset families")));
     }
 
     #[test]
