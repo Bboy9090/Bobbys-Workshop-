@@ -734,8 +734,98 @@ mod tests {
 
         let bundles = summarize_bundles(Path::new("/tmp"), &entries);
         assert_eq!(bundles.len(), 1);
-        assert!(bundles[0].planning_ready);
+        assert!(!bundles[0].planning_ready);
         assert!(bundles[0].missing_required.is_empty());
+        assert!(!bundles[0].provenance_present);
+    }
+
+    #[test]
+    fn exact_provenance_and_hash_binding_unlocks_planning_readiness() {
+        let root = std::env::temp_dir().join(format!(
+            "bobfwtools-provenance-test-{}",
+            std::process::id()
+        ));
+        let directory = root.join("qualcomm/SM8550/model");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(
+            directory.join(PROVENANCE_MANIFEST_NAME),
+            r#"{
+              "schema":"com.bobbyblanco.bobfwtools.firmware-provenance.v1",
+              "vendor":"qualcomm",
+              "chipsetFamily":"SM8550",
+              "oem":"ExampleOEM",
+              "model":"MODEL-1",
+              "board":"BOARD-1",
+              "sku":"SKU-1",
+              "region":"US",
+              "carrier":"unlocked",
+              "buildVersion":"BUILD-1",
+              "bootloaderRevision":"1",
+              "storage":"ufs",
+              "sourceCategory":"official-oem",
+              "sourceReference":"OEM support package",
+              "artifacts":[
+                {"relativePath":"prog_ufs_firehose_sm8550.elf","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+                {"relativePath":"rawprogram0.xml","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+              ]
+            }"#,
+        )
+        .unwrap();
+
+        let entries = vec![
+            FirmwareLibraryEntry {
+                path: directory.join("prog_ufs_firehose_sm8550.elf").display().to_string(),
+                relative_path: "qualcomm/SM8550/model/prog_ufs_firehose_sm8550.elf".into(),
+                name: "prog_ufs_firehose_sm8550.elf".into(),
+                bytes: 1,
+                sha256: "a".repeat(64),
+                modified_unix_ms: None,
+                vendor_hint: "qualcomm".into(),
+                artifact_kind: "firehose-programmer".into(),
+                chipset_matches: vec!["qualcomm:SM8550".into()],
+                blocked: false,
+                eligible_for_planning: true,
+                warnings: vec![],
+            },
+            FirmwareLibraryEntry {
+                path: directory.join("rawprogram0.xml").display().to_string(),
+                relative_path: "qualcomm/SM8550/model/rawprogram0.xml".into(),
+                name: "rawprogram0.xml".into(),
+                bytes: 1,
+                sha256: "b".repeat(64),
+                modified_unix_ms: None,
+                vendor_hint: "qualcomm".into(),
+                artifact_kind: "rawprogram-manifest".into(),
+                chipset_matches: vec!["qualcomm:SM8550".into()],
+                blocked: false,
+                eligible_for_planning: true,
+                warnings: vec![],
+            },
+            FirmwareLibraryEntry {
+                path: directory.join(PROVENANCE_MANIFEST_NAME).display().to_string(),
+                relative_path: format!("qualcomm/SM8550/model/{PROVENANCE_MANIFEST_NAME}"),
+                name: PROVENANCE_MANIFEST_NAME.into(),
+                bytes: 1,
+                sha256: "c".repeat(64),
+                modified_unix_ms: None,
+                vendor_hint: "unknown".into(),
+                artifact_kind: "provenance-manifest".into(),
+                chipset_matches: vec![],
+                blocked: false,
+                eligible_for_planning: true,
+                warnings: vec![],
+            },
+        ];
+
+        let bundles = summarize_bundles(&root, &entries);
+        assert_eq!(bundles.len(), 1);
+        assert!(bundles[0].planning_ready);
+        assert!(bundles[0].provenance_valid);
+        assert!(bundles[0].exact_identity_present);
+        assert_eq!(bundles[0].model.as_deref(), Some("MODEL-1"));
+        assert_eq!(bundles[0].board.as_deref(), Some("BOARD-1"));
+        assert_eq!(bundles[0].sku.as_deref(), Some("SKU-1"));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
