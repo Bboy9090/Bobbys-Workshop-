@@ -126,5 +126,15 @@ describe('Qualcomm + MediaTek firmware library contract', () => {
     expect(ui).toContain('Workstation setup walkthrough');
     expect(ui).toContain('Setup is blocked');
     expect(ui).toContain('You should see: this card changes to driver ready');
+
+    const safety = read('src/components/RecoverySafetyTools.tsx');
+    expect(safety).toContain('Backup walkthrough');
+    expect(safety).toContain('Programmer enrollment walkthrough');
+    expect(safety).toContain('Choosing a different unverified programmer is not a valid workaround');
+
+    const dossier = read('src/components/QualificationDossier.tsx');
+    expect(dossier).toContain('Qualification walkthrough');
+    expect(dossier).toContain('Stop here. Do not substitute another phone');
+    expect(dossier).toContain('Do not edit the blocked dossier to make it pass');
   });
 });
