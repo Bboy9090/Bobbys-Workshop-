@@ -438,6 +438,54 @@ fn assess_provenance(root: &Path, directory: &str, entries: &[FirmwareLibraryEnt
         ));
     }
 
+    let manifest_vendor = manifest.vendor.trim().to_ascii_lowercase();
+    let observed_vendors = entries
+        .iter()
+        .filter(|entry| {
+            let parent = Path::new(&entry.relative_path)
+                .parent()
+                .map(|path| path.display().to_string())
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| ".".into());
+            parent == directory && entry.vendor_hint != "unknown"
+        })
+        .map(|entry| entry.vendor_hint.clone())
+        .collect::<BTreeSet<_>>();
+    if !observed_vendors.is_empty() && !observed_vendors.contains(&manifest_vendor) {
+        assessment.warnings.push(format!(
+            "Provenance vendor {} does not match observed package vendor evidence ({}).",
+            manifest_vendor,
+            observed_vendors.into_iter().collect::<Vec<_>>().join(", ")
+        ));
+    }
+
+    let declared_paths = manifest
+        .artifacts
+        .iter()
+        .map(|artifact| artifact.relative_path.trim().replace('\\', "/"))
+        .collect::<BTreeSet<_>>();
+    for entry in entries.iter().filter(|entry| {
+        let parent = Path::new(&entry.relative_path)
+            .parent()
+            .map(|path| path.display().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| ".".into());
+        parent == directory
+            && entry.artifact_kind != "provenance-manifest"
+            && entry.artifact_kind != "other"
+    }) {
+        let file_name = Path::new(&entry.relative_path)
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("");
+        if !declared_paths.contains(file_name) {
+            assessment.warnings.push(format!(
+                "Planning-relevant artifact '{}' is not hash-bound by the provenance manifest.",
+                file_name
+            ));
+        }
+    }
+
     for artifact in &manifest.artifacts {
         let relative = artifact.relative_path.trim().replace('\\', "/");
         if relative.is_empty() || relative.starts_with('/') || relative.split('/').any(|part| part == "..") {
