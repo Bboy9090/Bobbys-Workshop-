@@ -633,6 +633,129 @@ export default function RepairCommandCenter() {
           </div>
         )}
 
+        <details className="mt-4 rounded border border-slate-800 bg-black/20 p-3">
+          <summary className="cursor-pointer text-xs font-semibold text-slate-200">
+            Exact model / variant manifest verification
+          </summary>
+          <div className="mt-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="max-w-3xl text-[11px] leading-5 text-slate-500">
+                Verify <span className="font-mono text-slate-300">bobfwtools-firmware.json</span> metadata and every declared SHA-256 before comparing a package to an exact device identity.
+              </div>
+              <button
+                type="button"
+                disabled={manifestBusy}
+                onClick={() => void verifyFirmwareManifest()}
+                className="rounded border border-cyan-800 bg-cyan-950/20 px-3 py-2 text-xs font-semibold text-cyan-200 disabled:opacity-40 hover:bg-cyan-950/40"
+              >
+                {manifestBusy ? 'Verifying…' : 'Verify package manifest'}
+              </button>
+            </div>
+
+            {manifestInspection && (
+              <div className="mt-3 rounded border border-slate-800 bg-slate-950/60 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-slate-600">Package identity</div>
+                    <div className="mt-1 text-sm font-semibold text-white">
+                      {manifestInspection.manifest.oem} · {manifestInspection.manifest.models.join(', ')}
+                    </div>
+                    <div className="mt-1 text-[10px] text-slate-500">
+                      {manifestInspection.manifest.vendor} · {manifestInspection.manifest.chipset} · build {manifestInspection.manifest.buildId}
+                    </div>
+                  </div>
+                  <span className={manifestInspection.packageVerified
+                    ? 'rounded bg-emerald-950 px-2 py-1 text-[10px] font-semibold text-emerald-300'
+                    : 'rounded bg-red-950 px-2 py-1 text-[10px] font-semibold text-red-300'}>
+                    {manifestInspection.packageVerified ? 'metadata + hashes verified' : 'package verification failed'}
+                  </span>
+                </div>
+
+                <div className="mt-2 break-all font-mono text-[9px] text-slate-600">{manifestInspection.manifestPath}</div>
+                <div className="mt-2 text-[10px] text-slate-500">
+                  Source: {manifestInspection.manifest.sourceKind} · {manifestInspection.manifest.sourceReference}
+                </div>
+
+                {!!manifestInspection.validationErrors.length && (
+                  <div className="mt-2 space-y-1 text-[10px] text-red-300">
+                    {manifestInspection.validationErrors.map((value) => <div key={value}>{value}</div>)}
+                  </div>
+                )}
+
+                <div className="mt-3 grid gap-1">
+                  {manifestInspection.artifacts.slice(0, 10).map((artifact) => (
+                    <div key={artifact.path} className="flex items-center justify-between gap-3 rounded border border-slate-900 bg-black/20 px-2 py-1.5">
+                      <span className="truncate font-mono text-[9px] text-slate-400" title={artifact.path}>{artifact.path}</span>
+                      <span className={artifact.hashMatch ? 'text-[9px] text-emerald-300' : 'text-[9px] text-red-300'}>
+                        {artifact.hashMatch ? 'SHA-256 match' : artifact.exists ? 'hash/size mismatch' : 'missing'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 border-t border-slate-800 pt-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-500">Compare exact target identity</div>
+                  <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                    {([
+                      ['vendor', 'Vendor'],
+                      ['oem', 'OEM'],
+                      ['model', 'Exact model'],
+                      ['chipset', 'Chipset / SoC'],
+                      ['variant', 'Variant / SKU'],
+                      ['region', 'Region / carrier'],
+                      ['bootloaderRevision', 'Bootloader revision'],
+                    ] as const).map(([field, label]) => (
+                      <input
+                        key={field}
+                        value={manifestDevice[field] || ''}
+                        onChange={(event) => setManifestDevice((current) => ({ ...current, [field]: event.target.value || null }))}
+                        placeholder={label}
+                        className="rounded border border-slate-800 bg-black/30 px-2.5 py-2 text-[11px] text-white outline-none focus:border-cyan-800"
+                      />
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={manifestBusy || !manifestInspection.packageVerified}
+                    onClick={() => void compareManifestToTarget()}
+                    className="mt-2 rounded bg-cyan-800 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 hover:bg-cyan-700"
+                  >
+                    Compare package to exact target
+                  </button>
+
+                  {manifestCompatibility && (
+                    <div className={manifestCompatibility.candidateCompatible
+                      ? 'mt-3 rounded border border-emerald-900/60 bg-emerald-950/10 p-3'
+                      : 'mt-3 rounded border border-red-900/60 bg-red-950/10 p-3'}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className={manifestCompatibility.candidateCompatible ? 'text-xs font-semibold text-emerald-300' : 'text-xs font-semibold text-red-300'}>
+                          {manifestCompatibility.candidateCompatible ? 'Exact identity candidate match' : 'Package / target mismatch'}
+                        </span>
+                        <span className="rounded bg-slate-950 px-2 py-1 text-[9px] text-amber-300">
+                          execution authorization: NO
+                        </span>
+                      </div>
+                      {!!manifestCompatibility.matchedFields.length && (
+                        <div className="mt-2 text-[10px] text-slate-500">Matched: {manifestCompatibility.matchedFields.join(', ')}</div>
+                      )}
+                      {!!manifestCompatibility.blockers.length && (
+                        <div className="mt-2 space-y-1 text-[10px] text-red-300">
+                          {manifestCompatibility.blockers.map((value) => <div key={value}>{value}</div>)}
+                        </div>
+                      )}
+                      {!!manifestCompatibility.warnings.length && (
+                        <div className="mt-2 space-y-1 text-[10px] text-amber-300">
+                          {manifestCompatibility.warnings.map((value) => <div key={value}>{value}</div>)}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </details>
+
         {firmwareReport && (
           <div className="mt-4 rounded border border-slate-800 bg-black/20 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
