@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import WorkflowWalkthrough, { type GuidedWorkflowKind } from './WorkflowWalkthrough';
 import {
   getCalibrationPartitionAllowlist,
   getEdl9008Devices,
@@ -110,6 +111,23 @@ export default function RepairCommandCenter() {
     () => targets.find((target) => target.key === selectedTargetKey) || null,
     [targets, selectedTargetKey],
   );
+
+  const walkthroughKind = useMemo<GuidedWorkflowKind>(() => {
+    switch (selectedTarget?.kind) {
+      case 'adb':
+        return 'adb';
+      case 'qualcomm-edl':
+        return 'qualcomm-edl';
+      case 'mediatek-brom':
+        return 'mediatek-brom';
+      case 'mediatek-preloader':
+        return 'mediatek-preloader';
+      case 'samsung-download':
+        return 'samsung-download';
+      default:
+        return 'general';
+    }
+  }, [selectedTarget]);
 
   const selectedAdbDevice = useMemo(() => {
     if (selectedTarget?.kind !== 'adb') return null;
@@ -390,6 +408,8 @@ export default function RepairCommandCenter() {
           Command Center backend error: {error}
         </div>
       )}
+
+      <WorkflowWalkthrough kind={walkthroughKind} />
 
       <div className="mt-4 rounded-lg border border-cyan-900/60 bg-cyan-950/10 p-4">
         <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
