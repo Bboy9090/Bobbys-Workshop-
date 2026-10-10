@@ -78,6 +78,7 @@ describe('Qualcomm + MediaTek firmware library contract', () => {
       'firmware_chipset_catalog',
       'firmware_chipset_lookup',
       'firmware_library_scan',
+      'firmware_provenance_write',
     ]) {
       expect(main).toContain(command);
     }
@@ -85,6 +86,7 @@ describe('Qualcomm + MediaTek firmware library contract', () => {
     expect(desktop).toContain('getFirmwareChipsetCatalog');
     expect(desktop).toContain('lookupFirmwareChipset');
     expect(desktop).toContain('scanFirmwareLibrary');
+    expect(desktop).toContain('writeFirmwareProvenance');
   });
 
   it('initializes vendor-specific managed firmware folders', () => {
@@ -130,6 +132,7 @@ describe('Qualcomm + MediaTek firmware library contract', () => {
     expect(ui).toContain('model/board/SKU');
     expect(ui).toContain('Same-chipset firmware is not enough');
     expect(ui).toContain('provenance');
+    expect(ui).toContain('FirmwareProvenanceBuilder');
     expect(ui).toContain('Workstation setup walkthrough');
     expect(ui).toContain('Setup is blocked');
     expect(ui).toContain('You should see: this card changes to driver ready');
@@ -138,6 +141,12 @@ describe('Qualcomm + MediaTek firmware library contract', () => {
     expect(safety).toContain('Backup walkthrough');
     expect(safety).toContain('Programmer enrollment walkthrough');
     expect(safety).toContain('Choosing a different unverified programmer is not a valid workaround');
+
+    const provenance = read('src/components/FirmwareProvenanceBuilder.tsx');
+    expect(provenance).toContain('Package provenance builder');
+    expect(provenance).toContain('Create exact provenance manifest');
+    expect(provenance).toContain('Stop if you cannot prove the exact model/board/SKU');
+    expect(provenance).toContain('do not edit hashes');
 
     const dossier = read('src/components/QualificationDossier.tsx');
     expect(dossier).toContain('Qualification walkthrough');
