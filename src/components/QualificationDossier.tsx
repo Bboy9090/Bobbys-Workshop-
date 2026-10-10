@@ -174,6 +174,14 @@ export default function QualificationDossier({
             Captures live USB identity, endpoint evidence, workstation readiness, authorized programmer records, and the exact prepared recovery-job fingerprint.
             Exporting this dossier never enables a writer and never marks an executor physically qualified.
           </p>
+          <div className="mt-3 rounded border border-amber-900/50 bg-amber-950/20 p-3 text-[11px] leading-5 text-amber-100">
+            <div className="font-semibold">Qualification walkthrough</div>
+            <div className="mt-1 text-amber-200/80">
+              1. Select the exact recovery-mode device. 2. Resolve every workstation blocker. 3. Confirm the authorized service programmer where required.
+              4. Bind the prepared recovery-job fingerprint. 5. Confirm the live device matches the frozen recovery identity.
+              6. Capture three stable USB observations. 7. Export the dossier. 8. Review the saved dossier before any physical qualification stage.
+            </div>
+          </div>
         </div>
         <span className="rounded border border-amber-900 bg-amber-950/40 px-2 py-1 text-xs text-amber-300">
           qualification pending
@@ -232,8 +240,14 @@ export default function QualificationDossier({
             </div>
           </div>
           {workstation?.blockers.length ? (
-            <div className="mt-3 space-y-1 text-[11px] text-amber-300">
-              {workstation.blockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
+            <div className="mt-3 rounded border border-amber-900/50 bg-amber-950/20 p-3 text-[11px] text-amber-300">
+              <div className="font-semibold">Bench readiness blocked</div>
+              <div className="mt-1 space-y-1">
+                {workstation.blockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
+              </div>
+              <div className="mt-2 leading-5 text-amber-200/80">
+                Next step: return to Workstation readiness, resolve the listed host requirement, reconnect the same target if needed, then refresh this evidence.
+              </div>
             </div>
           ) : null}
         </div>
@@ -261,20 +275,35 @@ export default function QualificationDossier({
         {recoveryJobFingerprint ? (
           <div className="mt-1 break-all font-mono text-[10px] text-cyan-300">{recoveryJobFingerprint}</div>
         ) : (
-          <div className="mt-1 text-xs text-amber-300">No prepared recovery job is bound. Export is evidence-only and cannot be qualification-binding ready.</div>
+          <div className="mt-1 rounded border border-amber-900/40 bg-amber-950/20 p-2 text-xs text-amber-300">
+            <div>No prepared recovery job is bound. Export is evidence-only and cannot be qualification-binding ready.</div>
+            <div className="mt-1 text-[11px] leading-5 text-amber-200/80">
+              Next step: build and prepare the recovery plan first, then return here with its exact frozen job fingerprint.
+            </div>
+          </div>
         )}
       </div>
       <div className="mt-3 rounded border border-slate-800 bg-slate-950/60 p-3">
         <div className="text-[10px] uppercase tracking-wide text-slate-600">Live device identity binding</div>
         {!preparedRecoveryIdentity ? (
-          <div className="mt-1 text-xs text-amber-300">No frozen recovery identity is available yet.</div>
+          <div className="mt-1 rounded border border-amber-900/40 bg-amber-950/20 p-2 text-xs text-amber-300">
+            <div>No frozen recovery identity is available yet.</div>
+            <div className="mt-1 text-[11px] leading-5 text-amber-200/80">
+              Next step: prepare the recovery job so BobFWTools can freeze the exact device identity before qualification evidence is captured.
+            </div>
+          </div>
         ) : !selected ? (
-          <div className="mt-1 text-xs text-amber-300">No live recovery-mode device is selected.</div>
+          <div className="mt-1 text-xs text-amber-300">No live recovery-mode device is selected. Select the same physical device used to prepare the recovery job.</div>
         ) : (
           <>
             <div className={selectedMatchesPreparedIdentity ? 'mt-1 text-xs font-semibold text-emerald-300' : 'mt-1 text-xs font-semibold text-rose-300'}>
               {selectedMatchesPreparedIdentity ? 'MATCH' : 'MISMATCH — qualification binding blocked'}
             </div>
+            {!selectedMatchesPreparedIdentity && (
+              <div className="mt-2 rounded border border-rose-900/50 bg-rose-950/20 p-2 text-[11px] leading-5 text-rose-200">
+                Stop here. Do not substitute another phone or continue with this dossier. Reconnect the exact prepared device and verify its identity first.
+              </div>
+            )}
             <div className="mt-1 break-all font-mono text-[10px] text-slate-500">
               prepared: {preparedRecoveryIdentity.deviceUid}
             </div>
@@ -306,6 +335,11 @@ export default function QualificationDossier({
         <div className="mt-2 text-[10px] leading-4 text-slate-500">
           Read-only USB enumeration only. Qualification binding requires exact device identity and stable non-empty bulk IN/OUT endpoints across all three samples.
         </div>
+        {!transportObservationLooksStable && transportObservation && (
+          <div className="mt-2 rounded border border-amber-900/40 bg-amber-950/20 p-2 text-[11px] leading-5 text-amber-200">
+            Stability evidence is incomplete or changed. Keep the same cable/port/device, stabilize the connection, and capture the three-scan observation again.
+          </div>
+        )}
       </div>
 
       <label className="mt-3 block text-xs text-slate-500">
@@ -359,8 +393,14 @@ export default function QualificationDossier({
             <div>executor build: {review.executorBuildMatchesCurrent ? 'MATCH' : 'MISMATCH'}</div>
           </div>
           {!!review.blockers.length && (
-            <div className="mt-2 space-y-1 text-[11px] text-rose-300">
-              {review.blockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
+            <div className="mt-2 rounded border border-rose-900/50 bg-rose-950/20 p-2 text-[11px] text-rose-300">
+              <div className="font-semibold">What must be fixed before review can pass</div>
+              <div className="mt-1 space-y-1">
+                {review.blockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
+              </div>
+              <div className="mt-2 leading-5 text-rose-200/80">
+                Fix the underlying evidence, export a new dossier, and review that new file. Do not edit the blocked dossier to make it pass.
+              </div>
             </div>
           )}
           <div className="mt-2 text-[10px] text-slate-600">
@@ -375,7 +415,13 @@ export default function QualificationDossier({
         </div>
       )}
       {error && (
-        <div className="mt-3 rounded border border-red-900/60 bg-red-950/20 p-3 text-xs text-red-300">{error}</div>
+        <div className="mt-3 rounded border border-red-900/60 bg-red-950/20 p-3 text-xs text-red-300">
+          <div className="font-semibold">Qualification step blocked</div>
+          <div className="mt-1">{error}</div>
+          <div className="mt-2 text-[11px] leading-5 text-red-200/80">
+            Resolve the failed prerequisite and repeat this stage. Do not bypass identity, transport, build, or evidence checks.
+          </div>
+        </div>
       )}
     </section>
   );
