@@ -64,6 +64,27 @@ export async function getNativeUsbDevices(): Promise<UsbDeviceRecord[]> {
   return invoke<UsbDeviceRecord[]>('bootforgeusb_scan');
 }
 
+export type FastbootModeActionResult = {
+  serial: string;
+  requestedMode: string;
+  accepted: boolean;
+  verified: boolean;
+  message: string;
+  evidenceSource: string;
+};
+
+export async function getFastbootModeDevices(): Promise<string[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<string[]>('fastboot_mode_devices');
+}
+
+export async function fastbootRebootMode(
+  serial: string,
+  mode: 'normal' | 'bootloader' | 'recovery',
+): Promise<FastbootModeActionResult> {
+  return invoke<FastbootModeActionResult>('fastboot_reboot_mode', { serial, mode });
+}
+
 export async function getMtpStatus(): Promise<MtpStatus | null> {
   if (!isTauriRuntime()) return null;
   try {
