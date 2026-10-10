@@ -218,3 +218,27 @@ describe('Recovery integrity remediation UX', () => {
     expect(app).toContain('Do not edit partition addresses, storage regions, LUN numbers, or payload sizes merely to make the check pass');
   });
 });
+
+
+describe('Per-device mode controls', () => {
+  it('binds ADB and Fastboot transitions to exact device serials', () => {
+    const app = read('src/App.tsx');
+    const modeControl = read('src-tauri/src/mode_control.rs');
+    const jobs = read('src-tauri/src/workflow_jobs.rs');
+
+    expect(app).toContain('runAdbModeForSerial(device.serial');
+    expect(app).toContain('runFastbootModeForSerial(serial');
+    expect(app).toContain('BobFWTools re-scans after the phone disconnects and changes mode');
+    expect(app).toContain('Download Mode is not exposed here because it is not a generic Fastboot transition');
+
+    expect(jobs).toContain('adb-reboot-normal');
+    expect(jobs).toContain('adb-reboot-recovery');
+    expect(jobs).toContain('adb-reboot-bootloader');
+    expect(jobs).toContain('adb-reboot-download');
+
+    expect(modeControl).toContain('require_exact_fastboot_target');
+    expect(modeControl).toContain('fastboot_mode_devices');
+    expect(modeControl).toContain('fastboot_reboot_mode');
+    expect(modeControl).toContain('Download Mode is not a generic Fastboot transition');
+  });
+});
