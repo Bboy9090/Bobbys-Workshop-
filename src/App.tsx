@@ -25,6 +25,7 @@ import {
   scanAdbDevices,
   getFastbootModeDevices,
   fastbootRebootMode,
+  verifyModeTransition,
   listMtpDirectory,
   downloadMtpPath,
   uploadMtpPath,
@@ -62,6 +63,7 @@ import {
   type RecoveryWorkflow,
   type RecoveryReadinessCertificateReview,
   type FirmwareBundleSummary,
+  type ModeTransitionVerification,
 } from './lib/desktop';
 
 function formatBytes(value: number): string {
@@ -86,6 +88,7 @@ export default function App() {
   const [adbDevices, setAdbDevices] = useState<AdbDeviceRecord[]>([]);
   const [fastbootModeDevices, setFastbootModeDevices] = useState<string[]>([]);
   const [modeActionBusy, setModeActionBusy] = useState<string | null>(null);
+  const [modeTransitionReceipts, setModeTransitionReceipts] = useState<Record<string, ModeTransitionVerification>>({});
   const [capabilities, setCapabilities] = useState<DeviceCapabilityMatrix | null>(null);
   const [adbSelectedSerial, setAdbSelectedSerial] = useState<string | null>(null);
   const [adbOutput, setAdbOutput] = useState<string | null>(null);
@@ -521,9 +524,24 @@ export default function App() {
     }
   };
 
-  const refreshAfterModeTransition = () => {
-    window.setTimeout(() => void refresh(), 1800);
-    window.setTimeout(() => void refresh(), 4500);
+  const verifyTransitionLater = (
+    serial: string,
+    requestedMode: 'normal' | 'recovery' | 'bootloader' | 'download',
+  ) => {
+    const verifyAt = (delay: number) => {
+      window.setTimeout(async () => {
+        try {
+          const receipt = await verifyModeTransition(serial, requestedMode);
+          setModeTransitionReceipts((current) => ({ ...current, [serial]: receipt }));
+          await refresh();
+        } catch {
+          // Re-enumeration can temporarily make every transport disappear. Later verification attempts remain authoritative.
+        }
+      }, delay);
+    };
+    verifyAt(1800);
+    verifyAt(4500);
+    verifyAt(8000);
   };
 
   const runAdbModeForSerial = async (
@@ -546,7 +564,7 @@ export default function App() {
         `Mode command for ${serial}\n${job.summary}\nState: ${job.state}${job.verified ? ' · verified' : ' · awaiting re-detection'}`,
       );
       await refreshJobs();
-      refreshAfterModeTransition();
+      verifyTransitionLater(serial, action.replace('reboot-', '') as 'normal' | 'recovery' | 'bootloader' | 'download');
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -566,7 +584,7 @@ export default function App() {
       setAdbOutput(
         `Fastboot mode command for ${serial}\n${result.message}\nRequested: ${result.requestedMode}\nStatus: accepted · awaiting re-detection`,
       );
-      refreshAfterModeTransition();
+      verifyTransitionLater(serial, mode);
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -1071,6 +1089,24 @@ export default function App() {
                       <div className="mt-2 text-[10px] leading-4 text-slate-500">
                         Commands are sent only to serial <span className="font-mono">{device.serial}</span>. BobFWTools re-scans after the phone disconnects and changes mode.
                       </div>
+                      {modeTransitionReceipts[device.serial] && (
+                        <div className={modeTransitionReceipts[device.serial].verified
+                          ? 'mt-2 rounded border border-emerald-900/60 bg-emerald-950/20 p-2 text-[10px] text-emerald-300'
+                          : 'mt-2 rounded border border-amber-900/60 bg-amber-950/20 p-2 text-[10px] text-amber-300'}>
+                          <div className="font-semibold">
+                            {modeTransitionReceipts[device.serial].verified ? 'MODE VERIFIED' : 'MODE NOT YET VERIFIED'}
+                          </div>
+                          <div className="mt-1">
+                            requested {modeTransitionReceipts[device.serial].requestedMode} · observed {modeTransitionReceipts[device.serial].observedMode || 'not yet observed'}
+                          </div>
+                          <div className="mt-1 text-slate-500">
+                            identity: {modeTransitionReceipts[device.serial].identityConfidence}
+                          </div>
+                          {modeTransitionReceipts[device.serial].blockers.map((blocker) => (
+                            <div key={blocker} className="mt-1">{blocker}</div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1131,6 +1167,24 @@ export default function App() {
                     <div className="mt-2 text-[10px] leading-4 text-slate-500">
                       Download Mode is not exposed here because it is not a generic Fastboot transition.
                     </div>
+                    {modeTransitionReceipts[serial] && (
+                      <div className={modeTransitionReceipts[serial].verified
+                        ? 'mt-2 rounded border border-emerald-900/60 bg-emerald-950/20 p-2 text-[10px] text-emerald-300'
+                        : 'mt-2 rounded border border-amber-900/60 bg-amber-950/20 p-2 text-[10px] text-amber-300'}>
+                        <div className="font-semibold">
+                          {modeTransitionReceipts[serial].verified ? 'MODE VERIFIED' : 'MODE NOT YET VERIFIED'}
+                        </div>
+                        <div className="mt-1">
+                          requested {modeTransitionReceipts[serial].requestedMode} · observed {modeTransitionReceipts[serial].observedMode || 'not yet observed'}
+                        </div>
+                        <div className="mt-1 text-slate-500">
+                          identity: {modeTransitionReceipts[serial].identityConfidence}
+                        </div>
+                        {modeTransitionReceipts[serial].blockers.map((blocker) => (
+                          <div key={blocker} className="mt-1">{blocker}</div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
