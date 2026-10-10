@@ -127,6 +127,36 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
     allChecksPass,
   );
 
+  const qualificationStage = useMemo(() => {
+    if (!build?.qualifiedFlashCompiled) return 0;
+    if (!review?.safeToReview || !deviceSerial || !partitions.length || !preChecksPass) return 1;
+    if (!benchEvidencePath) return 2;
+    if (!decisionPath) return 3;
+    if (!auditBundleReview?.safeToReview) return 4;
+    if (!grant || grantExpired) return 5;
+    return 6;
+  }, [
+    auditBundleReview?.safeToReview,
+    benchEvidencePath,
+    build?.qualifiedFlashCompiled,
+    decisionPath,
+    deviceSerial,
+    grant,
+    grantExpired,
+    partitions.length,
+    preChecksPass,
+    review?.safeToReview,
+  ]);
+
+  const stageItems = [
+    ['1', 'Preflight', 'Exact target, dossier, image hashes, and physical pre-checks'],
+    ['2', 'Bench trial', 'One-shot non-critical write under trial authority'],
+    ['3', 'Bench evidence', 'Freeze post-write verification into a hash-bound receipt'],
+    ['4', 'Human decision', 'Independent reviewer accepts or rejects the evidence'],
+    ['5', 'Audit bundle', 'Re-verify the complete evidence chain and fingerprints'],
+    ['6', 'Production authority', 'Issue a short-lived grant only after every gate passes'],
+  ] as const;
+
   const refreshTargets = async () => {
     setBusy(true);
     setError(null);
@@ -387,6 +417,46 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
         </span>
       </div>
 
+      <div className="mt-4 rounded border border-rose-900/50 bg-black/20 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-400">Qualification wizard</div>
+            <div className="mt-1 text-xs text-slate-400">
+              Follow the stages in order. A later stage never substitutes for a failed earlier gate.
+            </div>
+          </div>
+          <div className="text-xs font-semibold text-rose-200">
+            {qualificationStage === 0 ? 'Ordinary build — writer unavailable' : `Stage ${Math.min(qualificationStage, 6)} of 6`}
+          </div>
+        </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {stageItems.map(([number, title, detail], index) => {
+            const stageNumber = index + 1;
+            const complete = qualificationStage > stageNumber;
+            const current = qualificationStage === stageNumber;
+            return (
+              <div key={number} className={
+                complete
+                  ? 'rounded border border-emerald-900/60 bg-emerald-950/20 p-3'
+                  : current
+                    ? 'rounded border border-amber-800 bg-amber-950/20 p-3'
+                    : 'rounded border border-slate-800 bg-slate-950/50 p-3'
+              }>
+                <div className="flex items-center justify-between gap-2">
+                  <div className={complete ? 'text-[10px] font-semibold text-emerald-300' : current ? 'text-[10px] font-semibold text-amber-300' : 'text-[10px] font-semibold text-slate-500'}>
+                    {number}. {title}
+                  </div>
+                  <span className={complete ? 'text-[9px] text-emerald-400' : current ? 'text-[9px] text-amber-300' : 'text-[9px] text-slate-600'}>
+                    {complete ? 'COMPLETE' : current ? 'YOU ARE HERE' : 'LOCKED'}
+                  </span>
+                </div>
+                <div className="mt-1 text-[10px] leading-4 text-slate-500">{detail}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {!build?.qualifiedFlashCompiled ? (
         <div className="mt-4 rounded border border-slate-800 bg-black/20 p-4 text-xs text-slate-500">
           The ordinary BobFWTools build intentionally has no destructive command surface. Hosted CI still compiles and tests
@@ -406,7 +476,14 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
                 <option value="">Select exact fastboot serial</option>
                 {fastbootDevices.map((serial) => <option key={serial} value={serial}>{serial}</option>)}
               </select>
-              {!fastbootDevices.length && <div className="mt-2 text-xs text-amber-300">No fastboot target is currently connected.</div>}
+              {!fastbootDevices.length && (
+                <div className="mt-2 rounded border border-amber-900/50 bg-amber-950/20 p-2 text-xs text-amber-300">
+                  <div>No fastboot target is currently connected.</div>
+                  <div className="mt-1 text-[11px] leading-5 text-amber-200/80">
+                    Next step: connect the exact designated bench device in the expected fastboot mode, then press Refresh. Do not select a different phone just to advance the wizard.
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="rounded border border-slate-800 bg-slate-950/60 p-4">
@@ -417,7 +494,15 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
               {review && <div className={review.safeToReview ? 'mt-2 text-xs font-semibold text-emerald-300' : 'mt-2 text-xs font-semibold text-rose-300'}>
                 {review.safeToReview ? 'VERIFIED FOR PHYSICAL REVIEW' : 'BLOCKED'}
               </div>}
-              {!!review?.blockers.length && <div className="mt-2 space-y-1 text-[11px] text-rose-300">{review.blockers.map((b) => <div key={b}>{b}</div>)}</div>}
+              {!!review?.blockers.length && (
+                <div className="mt-2 rounded border border-rose-900/50 bg-rose-950/20 p-2 text-[11px] text-rose-300">
+                  <div className="font-semibold">Dossier blockers</div>
+                  <div className="mt-1 space-y-1">{review.blockers.map((b) => <div key={b}>{b}</div>)}</div>
+                  <div className="mt-2 leading-5 text-rose-200/80">
+                    Fix and re-export the upstream dossier. Do not continue with a blocked or edited evidence file.
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -568,8 +653,15 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
           </div>
 
           <div className="mt-3 rounded border border-amber-900/60 bg-amber-950/20 p-3 text-[11px] leading-5 text-amber-200">
-            Stage 1 bench trial requires the first seven checks, exactly one non-critical partition, and no wipe/reboot.
-            Stage 2 production authority additionally requires all checks plus an accepted hash-bound decision receipt.
+            <div className="font-semibold">What the wizard expects next</div>
+            <div className="mt-1">
+              Stage 1 requires a verified dossier, exact target, exactly one non-critical partition, the first seven physical checks,
+              reviewer identity, and the exact BENCH QUALIFY confirmation. After the one-shot bench write, record independent post-write verification,
+              export bench evidence, record the human decision, build and review the audit bundle, then issue production authority.
+            </div>
+            <div className="mt-2 text-amber-200/80">
+              A green stage means evidence for that stage exists; it does not mean later destructive authority has been granted.
+            </div>
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -589,7 +681,15 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
         </>
       )}
 
-      {error && <div className="mt-3 rounded border border-red-900 bg-red-950/20 p-3 text-xs text-red-300">{error}</div>}
+      {error && (
+        <div className="mt-3 rounded border border-red-900 bg-red-950/20 p-3 text-xs text-red-300">
+          <div className="font-semibold">Current wizard stage blocked</div>
+          <div className="mt-1">{error}</div>
+          <div className="mt-2 text-[11px] leading-5 text-red-200/80">
+            Resolve the failed prerequisite and repeat this stage. Do not skip ahead, reuse stale evidence, or change targets to make the workflow pass.
+          </div>
+        </div>
+      )}
     </section>
   );
 }
