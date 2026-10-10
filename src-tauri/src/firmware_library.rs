@@ -803,6 +803,55 @@ pub fn firmware_provenance_write(input: FirmwareProvenanceWriteInput) -> Result<
 }
 
 #[tauri::command]
+pub fn firmware_bundle_planning_artifacts(directory: String) -> Result<Vec<String>, String> {
+    let requested = directory.trim().replace('\\', "/");
+    if requested.is_empty()
+        || requested.starts_with('/')
+        || requested.split('/').any(|part| part == ".." || part.is_empty())
+    {
+        return Err("firmware bundle directory must be a safe managed-library relative path".into());
+    }
+
+    let report = firmware_library_scan()?;
+    let bundle = report
+        .bundles
+        .iter()
+        .find(|bundle| bundle.directory.replace('\\', "/") == requested)
+        .ok_or_else(|| "selected firmware bundle is no longer present in the managed library".to_string())?;
+
+    if !bundle.planning_ready {
+        return Err(format!(
+            "selected firmware bundle is not planning-ready; resolve provenance, identity, hash, chipset, and package-completeness warnings first: {}",
+            bundle.warnings.join(" | ")
+        ));
+    }
+
+    let mut paths = report
+        .entries
+        .iter()
+        .filter(|entry| {
+            let parent = Path::new(&entry.relative_path)
+                .parent()
+                .map(|path| path.display().to_string().replace('\\', "/"))
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| ".".into());
+            parent == requested
+                && entry.eligible_for_planning
+                && entry.artifact_kind != "provenance-manifest"
+                && entry.artifact_kind != "other"
+        })
+        .map(|entry| entry.path.clone())
+        .collect::<Vec<_>>();
+
+    paths.sort();
+    paths.dedup();
+    if paths.is_empty() {
+        return Err("planning-ready bundle contains no eligible planning artifacts".into());
+    }
+    Ok(paths)
+}
+
+#[tauri::command]
 pub fn firmware_chipset_catalog() -> Vec<ChipsetProfile> {
     chipset_catalog()
 }
