@@ -133,3 +133,85 @@ Actual destructive writes remain independently locked behind:
 7. post-write verification
 
 No catalog entry bypasses those gates.
+
+
+## Exact package provenance manifest
+
+Every package directory that can become planning-ready must contain:
+
+```text
+bobfwtools-firmware-manifest.json
+```
+
+The manifest is deliberately local metadata. It does not grant flash authority. It binds a package to the identity and source evidence the operator actually verified.
+
+Required planning fields:
+
+- schema: `com.bobbyblanco.bobfwtools.firmware-provenance.v1`
+- vendor: `qualcomm` or `mediatek`
+- chipsetFamily: exact catalog family, such as `SM8550` or `MT6989`
+- oem
+- exact model
+- board
+- SKU
+- buildVersion
+- sourceCategory: `official-oem` or `authorized-service`
+- sourceReference: enough information to identify where the package came from
+- artifacts: relative file paths plus SHA-256 digests
+
+Strongly recommended when known:
+
+- region
+- carrier
+- bootloaderRevision
+- storage
+
+Example:
+
+```json
+{
+  "schema": "com.bobbyblanco.bobfwtools.firmware-provenance.v1",
+  "vendor": "qualcomm",
+  "chipsetFamily": "SM8550",
+  "oem": "ExampleOEM",
+  "model": "EXAMPLE-MODEL",
+  "board": "EXAMPLE-BOARD",
+  "sku": "EXAMPLE-SKU",
+  "region": "US",
+  "carrier": "unlocked",
+  "buildVersion": "EXAMPLE-BUILD",
+  "bootloaderRevision": "1",
+  "storage": "ufs",
+  "sourceCategory": "official-oem",
+  "sourceReference": "OEM support package identifier or service record",
+  "artifacts": [
+    {
+      "relativePath": "prog_ufs_firehose_sm8550.elf",
+      "sha256": "<64 lowercase or uppercase hex characters>"
+    },
+    {
+      "relativePath": "rawprogram0.xml",
+      "sha256": "<64 lowercase or uppercase hex characters>"
+    }
+  ]
+}
+```
+
+### Operator walkthrough
+
+1. Obtain the firmware from the OEM or an authorized service source.
+2. Confirm the exact commercial model, board ID, SKU/variant, chipset family, and build.
+3. Put one package in one package directory. Do not mix variants or chipsets.
+4. Hash the files you intend BobFWTools to recognize and record those digests in the manifest.
+5. Save the manifest in that same package directory.
+6. Run **Scan managed firmware**.
+7. Confirm the package card shows:
+   - provenance present
+   - hashes verified
+   - model/board/SKU bound
+8. Resolve every warning before recovery planning.
+9. If any file changes after the manifest was created, re-import from the authoritative source and regenerate the manifest. Do not edit a digest merely to make the package pass.
+
+Planning readiness fails closed if the manifest is absent, malformed, from an unsupported source category, has missing exact identity fields, disagrees with chipset evidence, references files outside the package directory, references missing files, or contains a SHA-256 mismatch.
+
+A valid provenance manifest still does **not** authorize a write. Device identity, rollback/layout checks, service-loader authorization, backups, qualification evidence, and explicit execution authority remain separate gates.
