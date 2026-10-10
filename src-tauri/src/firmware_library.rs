@@ -1063,7 +1063,7 @@ mod tests {
             },
         ];
 
-        let bundles = summarize_bundles(&entries);
+        let bundles = summarize_bundles(Path::new("/tmp"), &entries);
         assert_eq!(bundles.len(), 1);
         assert!(!bundles[0].planning_ready);
         assert!(bundles[0]
