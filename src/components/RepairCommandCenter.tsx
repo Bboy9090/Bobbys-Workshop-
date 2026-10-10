@@ -489,6 +489,14 @@ export default function RepairCommandCenter() {
               ))}
             </div>
 
+            <div className="mt-3 rounded border border-cyan-900/40 bg-cyan-950/10 p-3 text-[11px] leading-5 text-cyan-100">
+              <div className="font-semibold">Workstation setup walkthrough</div>
+              <div className="mt-1 text-cyan-200/80">
+                1. Resolve required tools first. 2. Resolve applicable USB drivers second. 3. Re-run Initialize workspace.
+                4. Confirm the exact device appears in the expected mode. 5. Only then move into firmware or recovery planning.
+              </div>
+            </div>
+
             <div className="mt-3 grid gap-2 md:grid-cols-2">
               {workstation.drivers.map((driver) => (
                 <div key={driver.id} className="rounded border border-slate-800 bg-slate-950/70 p-3">
@@ -513,6 +521,17 @@ export default function RepairCommandCenter() {
                     </span>
                   </div>
                   <div className="mt-1 text-[10px] text-slate-600">{driver.detail}</div>
+                  {driver.applicable && !driver.detected && (
+                    <div className="mt-2 rounded border border-amber-900/50 bg-amber-950/20 px-2 py-1.5 text-[10px] leading-4 text-amber-200">
+                      <div className="font-semibold">Next step</div>
+                      <div className="mt-0.5">
+                        Install the OEM or chipset-vendor driver intended for this service mode, reconnect the phone, then run Initialize workspace again.
+                      </div>
+                      <div className="mt-1 text-amber-200/75">
+                        You should see: this card changes to driver ready and the target appears under Detected target.
+                      </div>
+                    </div>
+                  )}
                   {driver.adminRequiredForInstall && (
                     <div className="mt-1 text-[10px] text-orange-300">Administrator approval required to install.</div>
                   )}
@@ -522,7 +541,12 @@ export default function RepairCommandCenter() {
 
             {workstation.blockers.length > 0 && (
               <div className="mt-3 rounded border border-amber-900/70 bg-amber-950/20 p-3 text-xs text-amber-200">
-                {workstation.blockers.join(' · ')}
+                <div className="font-semibold">Setup is blocked</div>
+                <div className="mt-1">{workstation.blockers.join(' · ')}</div>
+                <div className="mt-2 text-[11px] leading-5 text-amber-200/80">
+                  Fix the listed host requirement, reconnect the target if needed, and press Initialize workspace again.
+                  Do not move into firmware planning until the blocker disappears.
+                </div>
               </div>
             )}
           </>
