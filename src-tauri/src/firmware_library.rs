@@ -1,6 +1,6 @@
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::fs::File;
 use std::io::Read;
@@ -31,12 +31,28 @@ pub struct FirmwareLibraryEntry {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct FirmwareBundleSummary {
+    pub directory: String,
+    pub vendor_hint: String,
+    pub chipset_matches: Vec<String>,
+    pub artifact_kinds: Vec<String>,
+    pub files: usize,
+    pub bytes: u64,
+    pub blocked: bool,
+    pub planning_ready: bool,
+    pub missing_required: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FirmwareLibraryReport {
     pub root: String,
     pub entries: Vec<FirmwareLibraryEntry>,
     pub vendor_counts: BTreeMap<String, usize>,
     pub artifact_counts: BTreeMap<String, usize>,
     pub blocked_count: usize,
+    pub bundles: Vec<FirmwareBundleSummary>,
     pub warnings: Vec<String>,
 }
 
@@ -265,6 +281,102 @@ fn inspect_entry(root: &Path, path: &Path) -> Result<FirmwareLibraryEntry, Strin
     })
 }
 
+fn summarize_bundles(entries: &[FirmwareLibraryEntry]) -> Vec<FirmwareBundleSummary> {
+    #[derive(Default)]
+    struct Acc {
+        vendors: BTreeSet<String>,
+        chipsets: BTreeSet<String>,
+        kinds: BTreeSet<String>,
+        files: usize,
+        bytes: u64,
+        blocked: bool,
+    }
+
+    let mut grouped: BTreeMap<String, Acc> = BTreeMap::new();
+
+    for entry in entries {
+        let directory = Path::new(&entry.relative_path)
+            .parent()
+            .map(|path| path.display().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| ".".to_string());
+
+        let acc = grouped.entry(directory).or_default();
+        if entry.vendor_hint != "unknown" {
+            acc.vendors.insert(entry.vendor_hint.clone());
+        }
+        acc.chipsets.extend(entry.chipset_matches.iter().cloned());
+        acc.kinds.insert(entry.artifact_kind.clone());
+        acc.files += 1;
+        acc.bytes = acc.bytes.saturating_add(entry.bytes);
+        acc.blocked |= entry.blocked;
+    }
+
+    let mut bundles = grouped
+        .into_iter()
+        .map(|(directory, acc)| {
+            let vendor_hint = if acc.vendors.len() == 1 {
+                acc.vendors.iter().next().cloned().unwrap_or_else(|| "unknown".into())
+            } else if acc.vendors.is_empty() {
+                "unknown".into()
+            } else {
+                "mixed".into()
+            };
+
+            let required: &[&str] = match vendor_hint.as_str() {
+                "qualcomm" => &["firehose-programmer", "rawprogram-manifest"],
+                "mediatek" => &["scatter-manifest", "download-agent"],
+                _ => &[],
+            };
+
+            let missing_required = required
+                .iter()
+                .filter(|kind| !acc.kinds.contains(**kind))
+                .map(|kind| (*kind).to_string())
+                .collect::<Vec<_>>();
+
+            let mut warnings = Vec::new();
+            if vendor_hint == "qualcomm" && !acc.kinds.contains("patch-manifest") {
+                warnings.push("No Qualcomm patch manifest found; some stock packages legitimately omit it, so verify OEM package structure.".into());
+            }
+            if vendor_hint == "mediatek" && !acc.kinds.contains("preloader") {
+                warnings.push("No MediaTek preloader found. That can be valid for preservation-first service, but exact stock package completeness is not proven.".into());
+            }
+            if vendor_hint == "mediatek" && !acc.kinds.contains("authentication") {
+                warnings.push("No MediaTek auth artifact found. Some devices do not require one; secure devices may require OEM authentication.".into());
+            }
+            if acc.blocked {
+                warnings.push("Bundle contains blocked bypass/exploit-marked artifacts and is excluded from planning.".into());
+            }
+            if vendor_hint == "mixed" {
+                warnings.push("Directory mixes Qualcomm and MediaTek artifacts; split it into vendor/model-specific folders before planning.".into());
+            }
+
+            FirmwareBundleSummary {
+                directory,
+                vendor_hint: vendor_hint.clone(),
+                chipset_matches: acc.chipsets.into_iter().take(8).collect(),
+                artifact_kinds: acc.kinds.into_iter().collect(),
+                files: acc.files,
+                bytes: acc.bytes,
+                blocked: acc.blocked,
+                planning_ready: !acc.blocked
+                    && matches!(vendor_hint.as_str(), "qualcomm" | "mediatek")
+                    && missing_required.is_empty(),
+                missing_required,
+                warnings,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    bundles.sort_by(|a, b| {
+        b.planning_ready
+            .cmp(&a.planning_ready)
+            .then_with(|| a.directory.cmp(&b.directory))
+    });
+    bundles
+}
+
 #[tauri::command]
 pub fn firmware_chipset_catalog() -> Vec<ChipsetProfile> {
     chipset_catalog()
@@ -313,6 +425,7 @@ pub fn firmware_library_scan() -> Result<FirmwareLibraryReport, String> {
         *artifact_counts.entry(entry.artifact_kind.clone()).or_insert(0) += 1;
     }
     let blocked_count = entries.iter().filter(|entry| entry.blocked).count();
+    let bundles = summarize_bundles(&entries);
 
     Ok(FirmwareLibraryReport {
         root: root.display().to_string(),
@@ -320,6 +433,7 @@ pub fn firmware_library_scan() -> Result<FirmwareLibraryReport, String> {
         vendor_counts,
         artifact_counts,
         blocked_count,
+        bundles,
         warnings,
     })
 }
@@ -344,6 +458,45 @@ mod tests {
         let (vendor, kind) = classify(Path::new("MTK_AllInOne_DA.bin"));
         assert_eq!(vendor, "mediatek");
         assert_eq!(kind, "download-agent");
+    }
+
+    #[test]
+    fn qualcomm_bundle_requires_programmer_and_rawprogram() {
+        let entries = vec![
+            FirmwareLibraryEntry {
+                path: "/tmp/q/prog.elf".into(),
+                relative_path: "qualcomm/SM8550/model/prog.elf".into(),
+                name: "prog.elf".into(),
+                bytes: 1,
+                sha256: "a".repeat(64),
+                modified_unix_ms: None,
+                vendor_hint: "qualcomm".into(),
+                artifact_kind: "firehose-programmer".into(),
+                chipset_matches: vec!["qualcomm:SM8550".into()],
+                blocked: false,
+                eligible_for_planning: true,
+                warnings: vec![],
+            },
+            FirmwareLibraryEntry {
+                path: "/tmp/q/rawprogram0.xml".into(),
+                relative_path: "qualcomm/SM8550/model/rawprogram0.xml".into(),
+                name: "rawprogram0.xml".into(),
+                bytes: 1,
+                sha256: "b".repeat(64),
+                modified_unix_ms: None,
+                vendor_hint: "qualcomm".into(),
+                artifact_kind: "rawprogram-manifest".into(),
+                chipset_matches: vec!["qualcomm:SM8550".into()],
+                blocked: false,
+                eligible_for_planning: true,
+                warnings: vec![],
+            },
+        ];
+
+        let bundles = summarize_bundles(&entries);
+        assert_eq!(bundles.len(), 1);
+        assert!(bundles[0].planning_ready);
+        assert!(bundles[0].missing_required.is_empty());
     }
 
     #[test]
