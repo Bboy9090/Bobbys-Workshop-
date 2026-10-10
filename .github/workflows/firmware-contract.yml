@@ -8,8 +8,10 @@ on:
     paths:
       - 'src/lib/firmware-inventory-contract.ts'
       - 'src/lib/firmware-preflight.ts'
+      - 'src/lib/oem-source-discovery.ts'
       - 'tests/firmware-inventory-contract.test.ts'
       - 'tests/firmware-preflight.test.ts'
+      - 'tests/oem-source-discovery.test.ts'
       - '.github/workflows/firmware-contract.yml'
   workflow_dispatch:
 
@@ -30,6 +32,6 @@ jobs:
       - name: Install locked dependencies
         run: npm ci --ignore-scripts
       - name: Execute real firmware-contract unit tests
-        run: npx --no-install vitest run tests/firmware-inventory-contract.test.ts tests/firmware-preflight.test.ts
+        run: npx --no-install vitest run tests/firmware-inventory-contract.test.ts tests/firmware-preflight.test.ts tests/oem-source-discovery.test.ts
       - name: Type check firmware modules
-        run: npx --no-install tsc --noEmit --skipLibCheck --strict --target es2020 --module esnext --moduleResolution bundler src/lib/firmware-inventory-contract.ts src/lib/firmware-preflight.ts
+        run: npx --no-install tsc --noEmit --skipLibCheck --strict --target es2020 --module esnext --moduleResolution bundler src/lib/firmware-inventory-contract.ts src/lib/firmware-preflight.ts src/lib/oem-source-discovery.ts
