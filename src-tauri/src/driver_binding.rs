@@ -23,12 +23,70 @@ pub struct DriverBindingRecord {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DriverInfInspection {
+    pub instance_id: String,
+    pub inf_path: String,
+    pub device_hardware_ids: Vec<String>,
+    pub inf_hardware_ids: Vec<String>,
+    pub matched_hardware_ids: Vec<String>,
+    pub compatible: bool,
+    pub expected_family: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriverRelatchResult {
+    pub instance_id: String,
+    pub inf_path: String,
+    pub staged: bool,
+    pub released: bool,
+    pub rescanned: bool,
+    pub verified_claim: bool,
+    pub observed_service: Option<String>,
+    pub observed_inf: Option<String>,
+    pub detail: String,
+    pub evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DriverReleaseResult {
     pub instance_id: String,
     pub released: bool,
     pub rescanned: bool,
     pub detail: String,
     pub evidence: Vec<String>,
+}
+
+fn normalize_hardware_id(value: &str) -> String {
+    value.trim().trim_matches('"').to_ascii_uppercase()
+}
+
+fn extract_inf_hardware_ids(text: &str) -> Vec<String> {
+    let mut ids = Vec::new();
+    for raw in text.lines() {
+        let line = raw.trim();
+        if line.starts_with(';') || line.is_empty() {
+            continue;
+        }
+        for token in line.split(|ch: char| ch == ',' || ch.is_whitespace()) {
+            let clean = token.trim().trim_matches('"').trim();
+            let upper = clean.to_ascii_uppercase();
+            if upper.starts_with("USB\\VID_") || upper.starts_with("USB\\Class_".to_ascii_uppercase().as_str()) {
+                ids.push(normalize_hardware_id(clean));
+            }
+        }
+    }
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+fn hardware_id_matches(device_id: &str, inf_id: &str) -> bool {
+    let device = normalize_hardware_id(device_id);
+    let inf = normalize_hardware_id(inf_id);
+    device == inf || device.starts_with(&(inf.clone() + "&"))
 }
 
 fn parse_vid_pid(values: &[String]) -> (Option<u16>, Option<u16>) {
@@ -213,6 +271,134 @@ fn pnputil(args: &[&str], action: &str) -> Result<String, String> {
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
+pub fn driver_binding_inspect_inf(instance_id: String, inf_path: String) -> Result<DriverInfInspection, String> {
+    let instance_id = instance_id.trim().to_string();
+    let inf_path = inf_path.trim().to_string();
+    if instance_id.is_empty() || !instance_id.to_ascii_uppercase().starts_with("USB") {
+        return Err("INF inspection requires an exact present USB device instance ID.".to_string());
+    }
+    let path = std::path::PathBuf::from(&inf_path);
+    if !path.is_file() || path.extension().and_then(|v| v.to_str()).map(|v| !v.eq_ignore_ascii_case("inf")).unwrap_or(true) {
+        return Err("Select a readable Windows .inf driver package file.".to_string());
+    }
+
+    let current = driver_binding_scan()?;
+    let record = current
+        .iter()
+        .find(|item| item.instance_id.eq_ignore_ascii_case(&instance_id))
+        .ok_or_else(|| "Exact Windows USB instance is no longer present; refresh before inspecting a driver.".to_string())?;
+
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read selected INF {}: {e}", path.display()))?;
+    let inf_hardware_ids = extract_inf_hardware_ids(&text);
+    if inf_hardware_ids.is_empty() {
+        return Err("Selected INF does not expose USB hardware IDs that BobFWTools can verify.".to_string());
+    }
+
+    let mut matched = Vec::new();
+    for device_id in &record.hardware_ids {
+        for inf_id in &inf_hardware_ids {
+            if hardware_id_matches(device_id, inf_id) {
+                matched.push(format!("{} <= {}", normalize_hardware_id(device_id), normalize_hardware_id(inf_id)));
+            }
+        }
+    }
+    matched.sort();
+    matched.dedup();
+    let compatible = !matched.is_empty();
+
+    Ok(DriverInfInspection {
+        instance_id,
+        inf_path: path.display().to_string(),
+        device_hardware_ids: record.hardware_ids.clone(),
+        inf_hardware_ids,
+        matched_hardware_ids: matched.clone(),
+        compatible,
+        expected_family: record.expected_family.clone(),
+        detail: if compatible {
+            format!(
+                "The selected INF advertises at least one hardware ID compatible with this exact present device. {} verified match(es).",
+                matched.len()
+            )
+        } else {
+            "The selected INF does not advertise a compatible hardware ID for this exact device. Relatch is blocked.".to_string()
+        },
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn driver_binding_inspect_inf(_instance_id: String, _inf_path: String) -> Result<DriverInfInspection, String> {
+    Err("INF inspection is Windows-only.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn driver_binding_stage_and_relatch(
+    instance_id: String,
+    inf_path: String,
+) -> Result<DriverRelatchResult, String> {
+    let inspection = driver_binding_inspect_inf(instance_id.clone(), inf_path.clone())?;
+    if !inspection.compatible {
+        return Err("Driver relatch blocked: selected INF hardware IDs do not match the exact device.".to_string());
+    }
+
+    let before = driver_binding_scan()?;
+    let original = before
+        .iter()
+        .find(|item| item.instance_id.eq_ignore_ascii_case(&instance_id))
+        .cloned()
+        .ok_or_else(|| "Exact Windows USB instance disappeared before relatch.".to_string())?;
+
+    let staged = pnputil(&["/add-driver", &inspection.inf_path], "pnputil /add-driver")?;
+    let remove = pnputil(&["/remove-device", &original.instance_id], "pnputil /remove-device")?;
+    let scan = pnputil(&["/scan-devices"], "pnputil /scan-devices")?;
+
+    std::thread::sleep(std::time::Duration::from_millis(1200));
+    let after = driver_binding_scan().unwrap_or_default();
+    let rebound = after.iter().find(|candidate| {
+        candidate.hardware_ids.iter().any(|candidate_id| {
+            original.hardware_ids.iter().any(|original_id| {
+                let a = normalize_hardware_id(candidate_id);
+                let b = normalize_hardware_id(original_id);
+                a == b
+            })
+        })
+    });
+
+    let verified_claim = rebound
+        .map(|record| record.binding_state == "matched")
+        .unwrap_or(false);
+
+    Ok(DriverRelatchResult {
+        instance_id,
+        inf_path: inspection.inf_path,
+        staged: true,
+        released: true,
+        rescanned: true,
+        verified_claim,
+        observed_service: rebound.and_then(|record| record.service.clone()),
+        observed_inf: rebound.and_then(|record| record.driver_inf.clone()),
+        detail: if verified_claim {
+            "Compatible INF was staged, the exact device node was released, Windows re-enumerated it, and BobFWTools observed a compatible driver-family claim afterward.".to_string()
+        } else {
+            "Compatible INF was staged and the exact device node was re-enumerated, but BobFWTools has not yet verified that the expected driver family claimed it. Refresh driver claims before continuing.".to_string()
+        },
+        evidence: vec![staged, remove, scan],
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn driver_binding_stage_and_relatch(
+    _instance_id: String,
+    _inf_path: String,
+) -> Result<DriverRelatchResult, String> {
+    Err("Driver staging and relatch is Windows-only.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
 pub fn driver_binding_release_and_rescan(instance_id: String) -> Result<DriverReleaseResult, String> {
     let instance_id = instance_id.trim().to_string();
     if instance_id.is_empty() || !instance_id.to_ascii_uppercase().starts_with("USB") {
@@ -258,5 +444,27 @@ mod tests {
     fn parses_usb_hardware_ids() {
         let ids = vec!["USB\\VID_05C6&PID_9008".to_string()];
         assert_eq!(parse_vid_pid(&ids), (Some(0x05c6), Some(0x9008)));
+    }
+
+    #[test]
+    fn inf_matching_accepts_more_specific_device_id() {
+        assert!(hardware_id_matches(
+            "USB\\VID_0E8D&PID_2000&REV_0100",
+            "USB\\VID_0E8D&PID_2000"
+        ));
+        assert!(!hardware_id_matches(
+            "USB\\VID_05C6&PID_9008",
+            "USB\\VID_0E8D&PID_2000"
+        ));
+    }
+
+    #[test]
+    fn inf_parser_extracts_usb_ids() {
+        let sample = r#"Device=Install,USB\\VID_05C6&PID_9008
+; ignored
+Other=Install,USB\\VID_0E8D&PID_2000"#;
+        let ids = extract_inf_hardware_ids(sample);
+        assert!(ids.contains(&"USB\\VID_05C6&PID_9008".to_string()));
+        assert!(ids.contains(&"USB\\VID_0E8D&PID_2000".to_string()));
     }
 }
