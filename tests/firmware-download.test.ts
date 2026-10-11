@@ -132,3 +132,18 @@ describe('restricted OEM package URL policy',()=>{
   } finally {await rm(root,{recursive:true,force:true});}
  });
 });
+
+describe('platform temporary directory compatibility',()=>{
+ it('accepts a normal system temp directory but not user-created aliases',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'bobfw-platform-'));
+  try{
+   const destination=join(dir,'verified.zip');
+   const result=await downloadVerifiedFirmware({
+     url:'https://dl.google.com/verified.zip',destination,expectedSha256:SHA,
+     fetcher:async()=>mockResponse(),
+   });
+   expect(result.checksumMatched).toBe(true);
+   expect((await readFile(destination)).equals(DATA)).toBe(true);
+  } finally {await rm(dir,{recursive:true,force:true});}
+ });
+});
