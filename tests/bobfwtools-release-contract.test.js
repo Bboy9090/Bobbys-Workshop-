@@ -24,6 +24,8 @@ describe('BobFWTools macOS signed release contract', () => {
 
     expect(preflight).toContain('qualified destructive executor');
     expect(preflight).toContain('qualified destructive');
+    expect(preflight).toContain('release config must not bundle legacy resources');
+    expect(preflight).toContain('release config must not declare external binaries');
     expect(receipt).toContain('com.bobbyblanco.bobfwtools.release-receipt.v2');
     expect(receipt).toContain('"qualifiedDestructiveWriterIncluded": False');
     expect(receipt).toContain('"submissionId"');
