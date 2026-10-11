@@ -593,6 +593,14 @@ export default function RepairCommandCenter() {
                           <div className="mt-1 text-[10px] text-slate-500">
                             expected {binding.expectedFamily} · service {binding.service || 'unknown'} · INF {binding.driverInf || 'unknown'}
                           </div>
+                          <div className="mt-1 text-[10px] text-slate-500">
+                            interface {binding.interfaceId || 'single-interface'} · siblings {binding.compositeSiblingCount}
+                          </div>
+                          {binding.compositeSiblingCount > 1 && (
+                            <div className="mt-1 rounded border border-violet-900/40 bg-violet-950/20 px-2 py-1 text-[10px] leading-4 text-violet-200">
+                              Composite USB device detected. Release/relatch targets only interface {binding.interfaceId || 'unknown'}; sibling interfaces remain separate claims.
+                            </div>
+                          )}
                           <div className="mt-1 text-[10px] leading-4 text-slate-600">{binding.detail}</div>
                         </div>
                         <button
@@ -625,6 +633,11 @@ export default function RepairCommandCenter() {
                         <div className="mt-1 text-[10px] leading-4 text-slate-600">
                           Choose the OEM/chipset INF you expect for this exact device. BobFWTools will inspect its USB hardware IDs before any staging or relatch is allowed.
                         </div>
+                        {binding.compositeSiblingCount > 1 && (
+                          <div className="mt-1 text-[10px] leading-4 text-violet-300">
+                            Exact interface protection is active: post-relatch verification must match {binding.interfaceId || 'the same MI_xx interface'}, not merely the same VID/PID family.
+                          </div>
+                        )}
                         <div className="mt-2 flex flex-wrap gap-2">
                           <button
                             type="button"
