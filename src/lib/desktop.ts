@@ -1138,6 +1138,7 @@ export type QualifiedFlashGrant = {
   issuedAtUnixSeconds: number;
   expiresAtUnixSeconds: number;
   dossierFingerprint: string;
+  auditBundleFingerprint?: string | null;
   grantMac: string;
 };
 
