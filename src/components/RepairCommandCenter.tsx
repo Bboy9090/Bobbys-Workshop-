@@ -936,6 +936,9 @@ export default function RepairCommandCenter() {
                                   <span className="text-[10px] text-slate-500">score {candidate.compatibilityScore}</span>
                                 </div>
                                 <div className="mt-1 text-[10px] leading-4 text-slate-600">{candidate.detail}</div>
+                                <div className="mt-1 text-[10px] text-slate-500">
+                                  provider {candidate.provider || 'unavailable'} · version {candidate.driverVersion || 'unavailable'} · catalog {candidate.catalogFile || 'unavailable'}
+                                </div>
                                 {candidate.matchedHardwareIds.map((match) => (
                                   <div key={match} className="mt-1 break-all font-mono text-[9px] text-slate-500">{match}</div>
                                 ))}
