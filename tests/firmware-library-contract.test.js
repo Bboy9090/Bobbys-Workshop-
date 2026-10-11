@@ -498,3 +498,17 @@ describe('Driver snapshot and rollback planning', () => {
     expect(ui).toContain('ROLLBACK BLOCKED');
   });
 });
+
+
+describe('Automatic pre-relatch driver snapshot', () => {
+  it('blocks relatch when rollback evidence cannot be captured', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('Relatch blocked because pre-change driver snapshot could not be captured');
+    expect(backend).toContain('snapshot_path: Some(snapshot.path.clone())');
+    expect(desktop).toContain('snapshotPath?: string | null');
+    expect(ui).toContain('pre-relatch snapshot');
+  });
+});
