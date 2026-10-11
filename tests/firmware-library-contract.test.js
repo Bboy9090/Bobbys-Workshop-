@@ -482,7 +482,7 @@ describe('Driver snapshot and rollback planning', () => {
     const ui = read('src/components/RepairCommandCenter.tsx');
 
     expect(backend).toContain('driver_binding_snapshot');
-    expect(backend).toContain('com.bobbyblanco.bobfwtools.driver-binding-snapshot.v1');
+    expect(backend).toContain('com.bobbyblanco.bobfwtools.driver-binding-snapshot.v2');
     expect(backend).toContain('driver-snapshots');
     expect(backend).toContain('driver_binding_rollback_plan');
     expect(backend).toContain('Rollback snapshots must come from BobFWTools managed driver-snapshots storage');
