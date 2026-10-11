@@ -639,6 +639,30 @@ export type DriverReleaseResult = {
   evidence: string[];
 };
 
+export type DriverCleanupRecommendation = {
+  instanceId: string;
+  infName: string;
+  disposition: string;
+  reason: string;
+  currentClaim: boolean;
+  exactInterfaceMatch: boolean;
+  compatibilityScore: number;
+  matchedHardwareIds: string[];
+};
+
+export type DriverCleanupReport = {
+  instanceId: string;
+  protectedCurrentInf?: string | null;
+  recommendations: DriverCleanupRecommendation[];
+  safeToConsiderCleanup: boolean;
+  summary: string;
+  blockers: string[];
+};
+
+export async function getDriverCleanupReport(instanceId: string): Promise<DriverCleanupReport> {
+  return invoke<DriverCleanupReport>('driver_binding_cleanup_report', { instanceId });
+}
+
 export type DriverClaimSample = {
   sample: number;
   present: boolean;
