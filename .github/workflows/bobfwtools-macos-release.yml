@@ -18,12 +18,13 @@ jobs:
   signed-notarized-release:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Use Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "24.x"
+          package-manager-cache: false
 
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -130,7 +131,7 @@ jobs:
             bobfwtools-release-receipt.json
 
       - name: Upload notarized release artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: BobFWTools-macOS-notarized-${{ steps.release_label.outputs.safe }}
           path: |
