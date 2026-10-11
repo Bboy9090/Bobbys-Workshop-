@@ -2,12 +2,15 @@ name: BobFWTools macOS Core
 
 on:
   pull_request:
-    branches: [ "main-tool-kit" ]
+    branches: [ "main-tool-kit", "feat/bobfwtools-macos-foundation", "feat/bobfwtools-calibration-edl-safety" ]
   push:
-    branches: [ "feat/bobfwtools-macos-foundation" ]
+    branches: [ "feat/bobfwtools-macos-foundation", "feat/bobfwtools-calibration-edl-safety" ]
 
 permissions:
   contents: read
+
+env:
+  BOBFWTOOLS_SOURCE_REVISION: ${{ github.sha }}
 
 jobs:
   macos-core:
@@ -34,6 +37,9 @@ jobs:
       - name: Production reality gate
         run: npm run verify:reality
 
+      - name: Typecheck frontend
+        run: npm run typecheck
+
       - name: Build frontend
         run: npm run build
 
@@ -51,6 +57,12 @@ jobs:
 
       - name: Check BobFWTools Tauri core
         run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Check qualified destructive writer build
+        run: cargo check --manifest-path src-tauri/Cargo.toml --features qualified-flash
+
+      - name: Test qualified destructive writer gates
+        run: cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --features qualified-flash
 
       - name: Run BootForge USB tests
         run: cargo test --manifest-path libs/bootforgeusb/Cargo.toml
@@ -80,5 +92,27 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: BobFWTools-universal-macOS-unsigned
+          path: src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
+          if-no-files-found: error
+
+      - name: Build qualified universal BobFWTools.app
+        run: npm run tauri:build:macos:qualified:ci
+
+      - name: Verify qualified universal app bundle
+        run: |
+          bash scripts/verify-bobfwtools-macos-app.sh
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
+          BIN="$APP/Contents/MacOS/bobfwtools"
+          file "$BIN"
+          lipo -info "$BIN"
+          shasum -a 256 "$BIN"
+          strings "$BIN" | grep -F "$GITHUB_SHA"
+          strings "$BIN" | grep -F "Qualified destructive writes require post-write target verification"
+          strings "$BIN" | grep -F "bootforge_qualified_fastboot_devices"
+
+      - name: Upload qualified BobFWTools app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BobFWTools-universal-macOS-qualified-unsigned
           path: src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
           if-no-files-found: error

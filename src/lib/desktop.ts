@@ -292,6 +292,7 @@ export type DiagnosticFinding = {
 };
 
 export type UsbConnectionSummary = {
+  deviceUid: string;
   vendorId: number;
   productId: number;
   manufacturer: string | null;
@@ -430,8 +431,660 @@ export type CableDoctorReport = {
   evidence: DiagnosticEvidence[];
 };
 
-export async function runUsbCableDoctor(): Promise<CableDoctorReport> {
-  return invoke<CableDoctorReport>('usb_cable_doctor');
+export async function runUsbCableDoctor(targetDeviceUid?: string | null): Promise<CableDoctorReport> {
+  return invoke<CableDoctorReport>('usb_cable_doctor', {
+    targetDeviceUid: targetDeviceUid?.trim() || null,
+  });
+}
+
+
+export type WorkflowRiskLevel = 'read-only' | 'low' | 'elevated' | 'destructive' | 'restricted';
+
+export type WorkflowPolicy = {
+  id: string;
+  category: string;
+  platform: string;
+  risk: WorkflowRiskLevel;
+  authorizationRequired: boolean;
+  deviceIdentityVerification: boolean;
+  dryRunSupported: boolean;
+  backupOrRollbackRequired: boolean;
+  auditLoggingRequired: boolean;
+  explicitConfirmationRequired: boolean;
+  physicallyQualified: boolean;
+  activeInBobfwtools: boolean;
+  notes: string;
+};
+
+export async function getWorkflowPolicyCatalog(): Promise<WorkflowPolicy[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<WorkflowPolicy[]>('workflow_policy_catalog');
+}
+
+export async function getCalibrationPartitionAllowlist(): Promise<string[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<string[]>('calibration_partition_allowlist');
+}
+
+export async function getEdl9008Devices(): Promise<UsbDeviceRecord[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<UsbDeviceRecord[]>('edl_9008_devices');
+}
+
+
+export type CalibrationBackupResult = {
+  deviceUid: string;
+  adbSerial: string;
+  partition: string;
+  resolvedBlockPath: string;
+  backupPath: string;
+  manifestPath: string;
+  expectedBytes: number;
+  actualBytes: number;
+  sha256: string;
+  verified: boolean;
+  accessMode: string;
+};
+
+export async function chooseCalibrationBackupDirectory(): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: true,
+    title: 'Choose calibration backup folder',
+  });
+  return typeof selected === 'string' ? selected : null;
+}
+
+export async function backupCalibrationPartition(
+  adbSerial: string,
+  partition: string,
+  destinationDir: string,
+): Promise<CalibrationBackupResult> {
+  return invoke<CalibrationBackupResult>('backup_calibration_partition', {
+    adbSerial,
+    partition,
+    destinationDir,
+  });
+}
+
+
+export type EdlProgrammerRecord = {
+  path: string;
+  sha256: string;
+  bytes: number;
+  deviceFamily?: string | null;
+  authorized: boolean;
+  authorizationSource?: string | null;
+  enrolledAtUnixMs?: number | null;
+};
+
+export async function chooseEdlProgrammer(): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: 'Choose OEM/service Firehose programmer',
+    filters: [{ name: 'EDL programmer', extensions: ['elf', 'mbn'] }],
+  });
+  return typeof selected === 'string' ? selected : null;
+}
+
+export async function inspectEdlProgrammer(
+  path: string,
+  deviceFamily?: string | null,
+): Promise<EdlProgrammerRecord> {
+  return invoke<EdlProgrammerRecord>('edl_inspect_programmer', {
+    path,
+    deviceFamily: deviceFamily ?? null,
+  });
+}
+
+export async function enrollEdlProgrammer(
+  record: EdlProgrammerRecord,
+  authorizationSource: string,
+  confirmation: string,
+): Promise<EdlProgrammerRecord> {
+  return invoke<EdlProgrammerRecord>('edl_enroll_programmer', {
+    record,
+    authorizationSource,
+    confirmation,
+  });
+}
+
+export async function listEdlProgrammers(): Promise<EdlProgrammerRecord[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<EdlProgrammerRecord[]>('edl_list_programmers');
+}
+
+
+export type WorkstationToolReadiness = {
+  id: string;
+  present: boolean;
+  requiredForCoreAndroidService: boolean;
+  detail: string;
+};
+
+export type WorkstationDriverReadiness = {
+  id: string;
+  applicable: boolean;
+  evidenceAvailable: boolean;
+  detected: boolean;
+  detail: string;
+  adminRequiredForInstall: boolean;
+};
+
+export type WorkspacePathReadiness = {
+  id: string;
+  path: string;
+  exists: boolean;
+};
+
+export type WorkstationReadiness = {
+  os: string;
+  architecture: string;
+  workspaceRoot: string;
+  workspacePaths: WorkspacePathReadiness[];
+  tools: WorkstationToolReadiness[];
+  drivers: WorkstationDriverReadiness[];
+  driverStoreProbeAvailable: boolean;
+  readyForDiagnostics: boolean;
+  readyForAndroidService: boolean;
+  blockers: string[];
+};
+
+export async function getWorkstationReadiness(): Promise<WorkstationReadiness> {
+  return invoke<WorkstationReadiness>('workstation_readiness');
+}
+
+export async function initializeWorkstation(): Promise<WorkstationReadiness> {
+  return invoke<WorkstationReadiness>('workstation_initialize');
+}
+
+
+export type AuditEvent = {
+  timestampMs: number;
+  category: string;
+  action: string;
+  risk: string;
+  status: string;
+  deviceUid?: string | null;
+  detail: string;
+  evidence: string[];
+};
+
+export async function getRecentAuditEvents(limit = 100): Promise<AuditEvent[]> {
+  return invoke<AuditEvent[]>('audit_recent', { limit });
+}
+
+export async function getAuditLogPath(): Promise<string> {
+  return invoke<string>('audit_log_path');
+}
+
+
+export type FirehoseWriteRequest = {
+  imageBytes: number;
+  startSector: number;
+  physicalPartition: number;
+  sectorSize: number;
+  chunkSize: number;
+  partitionStartSector?: number | null;
+  partitionSectorCount?: number | null;
+};
+
+export type FirehoseChunk = {
+  index: number;
+  fileOffset: number;
+  bytes: number;
+};
+
+export type FirehoseWritePlan = {
+  allowed: boolean;
+  reasons: string[];
+  warnings: string[];
+  startSector: number;
+  physicalPartition: number;
+  sectorSize: number;
+  imageBytes: number;
+  numPartitionSectors: number;
+  paddedBytes: number;
+  endSectorExclusive: number;
+  chunkSize: number;
+  chunks: FirehoseChunk[];
+  dryRunOnly: boolean;
+  executorQualified: boolean;
+};
+
+export async function buildFirehoseWritePlan(request: FirehoseWriteRequest): Promise<FirehoseWritePlan> {
+  return invoke<FirehoseWritePlan>('firehose_write_plan', { request });
+}
+
+
+export type TransportEndpointRecord = {
+  configuration: number;
+  interface: number;
+  alternateSetting: number;
+  address: number;
+  direction: string;
+  transferType: string;
+  maxPacketSize: number;
+  interval: number;
+};
+
+export type TransportDevice = {
+  deviceUid: string;
+  vendorId: number;
+  productId: number;
+  busNumber: number;
+  deviceAddress: number;
+  manufacturer?: string | null;
+  productName?: string | null;
+  serialNumber?: string | null;
+  mode: string;
+  endpoints: TransportEndpointRecord[];
+  bulkIn: number[];
+  bulkOut: number[];
+};
+
+export async function scanTransportDevices(): Promise<TransportDevice[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<TransportDevice[]>('bootforgeusb_transport_scan');
+}
+
+export type SamsungFirmwareEntry = {
+  path: string;
+  size: number;
+  kind: string;
+  candidatePartition?: string | null;
+};
+
+export type SamsungFirmwareArchiveReport = {
+  path: string;
+  role: string;
+  fileSize: number;
+  md5Verified?: boolean | null;
+  embeddedMd5?: string | null;
+  calculatedMd5?: string | null;
+  containsPit: boolean;
+  containsUserdata: boolean;
+  containsMetadata: boolean;
+  downloadList: string[];
+  entries: SamsungFirmwareEntry[];
+  warnings: string[];
+};
+
+export type SamsungFlashPlan = {
+  protocol: string;
+  modeRequired: string;
+  executionEnabled: boolean;
+  destructive: boolean;
+  requiresExplicitApproval: boolean;
+  preservesUserdataByDesign: boolean;
+  roles: string[];
+  packagePaths: string[];
+  plannedPayloads: string[];
+  safetyChecks: string[];
+  warnings: string[];
+};
+
+export async function chooseSamsungFirmwarePackages(): Promise<string[]> {
+  if (!isTauriRuntime()) return [];
+  const selected = await open({
+    multiple: true,
+    directory: false,
+    title: 'Choose Samsung stock firmware packages',
+    filters: [{ name: 'Samsung firmware packages', extensions: ['md5', 'tar'] }],
+  });
+  if (!selected) return [];
+  return Array.isArray(selected) ? selected : [selected];
+}
+
+export async function inspectSamsungFirmwarePackages(
+  paths: string[],
+): Promise<SamsungFirmwareArchiveReport[]> {
+  if (!isTauriRuntime() || !paths.length) return [];
+  return invoke<SamsungFirmwareArchiveReport[]>('bootforge_firmware_inspect', { paths });
+}
+
+export async function buildSamsungFirmwarePlan(paths: string[]): Promise<SamsungFlashPlan> {
+  return invoke<SamsungFlashPlan>('bootforge_samsung_plan', { paths });
+}
+
+export type QualificationBuildIdentity = {
+  packageVersion: string;
+  sourceRevision: string;
+  sourceRevisionAvailable: boolean;
+  buildProfile: string;
+  qualifiedFlashCompiled: boolean;
+  executorBuildFingerprint: string;
+};
+
+export async function getQualificationBuildIdentity(): Promise<QualificationBuildIdentity | null> {
+  if (!isTauriRuntime()) return null;
+  return invoke<QualificationBuildIdentity>('bootforge_qualification_build_identity');
+}
+
+export type QualificationDossierReview = {
+  path: string;
+  schemaValid: boolean;
+  dossierFingerprintValid: boolean;
+  recoveryJobFingerprintValid: boolean;
+  recoveryJobMatchesExpected: boolean;
+  executorBuildMatchesCurrent: boolean;
+  bindingReadyClaimed: boolean;
+  qualificationStatusPending: boolean;
+  executorQualifiedClaimed: boolean;
+  executionEnabledClaimed: boolean;
+  safeToReview: boolean;
+  blockers: string[];
+  dossierFingerprint?: string | null;
+  recoveryJobFingerprint?: string | null;
+  executorBuildFingerprint?: string | null;
+};
+
+export async function reviewQualificationDossier(
+  expectedRecoveryJobFingerprint?: string | null,
+): Promise<QualificationDossierReview | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: 'Review BobFWTools qualification dossier',
+    filters: [{ name: 'JSON qualification dossier', extensions: ['json'] }],
+  });
+  if (!selected || Array.isArray(selected)) return null;
+  return invoke<QualificationDossierReview>('bootforge_qualification_review', {
+    path: selected,
+    expectedRecoveryJobFingerprint: expectedRecoveryJobFingerprint?.trim() || null,
+  });
+}
+
+
+export type QualifiedFlashPartition = {
+  name: string;
+  imagePath: string;
+  size: number;
+  expectedSha256: string;
+};
+
+export type QualifiedFlashPhysicalChecks = {
+  repeatedEnumerationStable: boolean;
+  expectedModeConfirmed: boolean;
+  endpointStabilityConfirmed: boolean;
+  programmerHashVerified: boolean;
+  preflightMatched: boolean;
+  partitionBoundsVerified: boolean;
+  backupEvidencePresent: boolean;
+  destructiveBenchWritePassed: boolean;
+  postWriteVerificationPassed: boolean;
+};
+
+export type QualifiedFlashPartitionGrant = {
+  name: string;
+  imageSha256: string;
+};
+
+export type QualifiedFlashGrant = {
+  schema: string;
+  qualificationStatus: string;
+  executorQualified: boolean;
+  deviceSerial: string;
+  executorBuildFingerprint: string;
+  recoveryJobFingerprint: string;
+  approvedPartitions: QualifiedFlashPartitionGrant[];
+  wipeUserDataAllowed: boolean;
+  autoRebootAllowed: boolean;
+  issuedAtUnixSeconds: number;
+  expiresAtUnixSeconds: number;
+  dossierFingerprint: string;
+  grantMac: string;
+};
+
+export type QualifiedFlashApprovalInput = {
+  dossierPath: string;
+  benchEvidencePath?: string | null;
+  reviewDecisionPath?: string | null;
+  expectedRecoveryJobFingerprint: string;
+  deviceSerial: string;
+  partitions: QualifiedFlashPartition[];
+  wipeUserDataAllowed: boolean;
+  autoRebootAllowed: boolean;
+  reviewer: string;
+  reviewerNotes: string;
+  confirmation: string;
+  expiresInMinutes: number;
+  physicalChecks: QualifiedFlashPhysicalChecks;
+};
+
+export type QualificationBenchEvidenceInput = {
+  dossierPath: string;
+  expectedRecoveryJobFingerprint: string;
+  deviceSerial: string;
+  reviewer: string;
+  reviewerNotes: string;
+  partitions: QualifiedFlashPartition[];
+  physicalChecks: QualifiedFlashPhysicalChecks;
+};
+
+export async function exportQualificationBenchEvidence(
+  input: QualificationBenchEvidenceInput,
+): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const destinationPath = await save({
+    title: 'Export physical bench qualification evidence',
+    defaultPath: 'bobfwtools-qualification-bench-evidence.json',
+    filters: [{ name: 'JSON bench evidence', extensions: ['json'] }],
+  });
+  if (!destinationPath) return null;
+  return invoke<string>('bootforge_qualification_bench_evidence_export', {
+    input,
+    destinationPath,
+  });
+}
+
+export type QualificationDecisionInput = {
+  dossierPath: string;
+  benchEvidencePath?: string | null;
+  expectedRecoveryJobFingerprint: string;
+  deviceSerial: string;
+  reviewer: string;
+  reviewerNotes: string;
+  decision: 'accept-evidence' | 'reject-evidence';
+  physicalChecks: QualifiedFlashPhysicalChecks;
+};
+
+export async function exportQualificationDecision(
+  input: QualificationDecisionInput,
+): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const destinationPath = await save({
+    title: 'Export qualification review decision',
+    defaultPath: 'bobfwtools-qualification-decision.json',
+    filters: [{ name: 'JSON qualification decision', extensions: ['json'] }],
+  });
+  if (!destinationPath) return null;
+  return invoke<string>('bootforge_qualification_decision_export', {
+    input,
+    destinationPath,
+  });
+}
+
+export type QualificationAuditBundleInput = {
+  dossierPath: string;
+  benchEvidencePath: string;
+  decisionPath: string;
+  readinessCertificatePath?: string | null;
+  expectedRecoveryJobFingerprint: string;
+  deviceSerial: string;
+  reviewer: string;
+};
+
+export type QualificationAuditBundleReview = {
+  path: string;
+  schemaValid: boolean;
+  bundleFingerprintValid: boolean;
+  recoveryJobMatchesExpected: boolean;
+  executorBuildMatchesCurrent: boolean;
+  sourceFilesMatch: boolean;
+  sourceSemanticsValid: boolean;
+  nestedEvidenceChainValid: boolean;
+  grantsExecutionAuthorityClaimed: boolean;
+  executionPerformedClaimed: boolean;
+  safeToReview: boolean;
+  blockers: string[];
+  bundleFingerprint?: string | null;
+  recoveryJobFingerprint?: string | null;
+  executorBuildFingerprint?: string | null;
+};
+
+export async function reviewQualificationAuditBundle(
+  expectedRecoveryJobFingerprint?: string | null,
+): Promise<QualificationAuditBundleReview | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: 'Review qualification audit bundle',
+    filters: [{ name: 'JSON qualification audit bundle', extensions: ['json'] }],
+  });
+  if (!selected || Array.isArray(selected)) return null;
+  return invoke<QualificationAuditBundleReview>(
+    'bootforge_qualification_audit_bundle_review',
+    {
+      path: selected,
+      expectedRecoveryJobFingerprint: expectedRecoveryJobFingerprint?.trim() || null,
+    },
+  );
+}
+
+export async function exportQualificationAuditBundle(
+  input: QualificationAuditBundleInput,
+): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+
+  const readinessCertificatePath = await open({
+    multiple: false,
+    directory: false,
+    title: 'Optional: choose recovery readiness certificate',
+    filters: [{ name: 'JSON readiness certificate', extensions: ['json'] }],
+  });
+  const normalizedReadiness =
+    readinessCertificatePath && !Array.isArray(readinessCertificatePath)
+      ? readinessCertificatePath
+      : null;
+
+  const destinationPath = await save({
+    title: 'Export qualification audit bundle',
+    defaultPath: 'bobfwtools-qualification-audit-bundle.json',
+    filters: [{ name: 'JSON qualification audit bundle', extensions: ['json'] }],
+  });
+  if (!destinationPath) return null;
+
+  return invoke<string>('bootforge_qualification_audit_bundle_export', {
+    input: {
+      ...input,
+      readinessCertificatePath: normalizedReadiness,
+    },
+    destinationPath,
+  });
+}
+
+export type QualifiedFlashStartResponse = {
+  jobId: string;
+  status: string;
+};
+
+export async function getQualifiedFastbootDevices(): Promise<string[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<string[]>('bootforge_qualified_fastboot_devices');
+}
+
+export async function chooseAndInspectQualifiedFlashImage(
+  name: string,
+): Promise<QualifiedFlashPartition | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: 'Choose image for ' + name,
+  });
+  if (!selected || Array.isArray(selected)) return null;
+  return invoke<QualifiedFlashPartition>('bootforge_qualified_flash_inspect_image', {
+    name,
+    path: selected,
+  });
+}
+
+export async function issueQualificationTrialGrant(
+  input: QualifiedFlashApprovalInput,
+): Promise<QualifiedFlashGrant> {
+  return invoke<QualifiedFlashGrant>('bootforge_issue_qualification_trial_grant', { input });
+}
+
+export async function issueQualifiedFlashGrant(
+  input: QualifiedFlashApprovalInput,
+): Promise<QualifiedFlashGrant> {
+  return invoke<QualifiedFlashGrant>('bootforge_issue_qualified_flash_grant', { input });
+}
+
+export async function startQualifiedFastbootFlash(
+  deviceSerial: string,
+  partitions: QualifiedFlashPartition[],
+  qualificationGrant: QualifiedFlashGrant,
+  options?: { wipeUserData?: boolean; autoReboot?: boolean },
+): Promise<QualifiedFlashStartResponse> {
+  return invoke<QualifiedFlashStartResponse>('flash_start', {
+    config: {
+      deviceSerial,
+      deviceBrand: 'Qualified bench target',
+      flashMethod: 'fastboot',
+      partitions,
+      verifyAfterFlash: true,
+      autoReboot: Boolean(options?.autoReboot),
+      wipeUserData: Boolean(options?.wipeUserData),
+      qualificationGrant,
+    },
+  });
+}
+
+export type QualificationRecoveryIdentity = {
+  deviceUid: string;
+  vendorId: number;
+  productId: number;
+  mode: string;
+  serialNumber?: string | null;
+};
+
+export type QualificationTransportObservationSample = {
+  observedUnixMs: number;
+  device: TransportDevice;
+};
+
+export type QualificationTransportObservation = {
+  expectedDeviceUid: string;
+  attemptedSamples: number;
+  samples: QualificationTransportObservationSample[];
+};
+
+export type QualificationDossierInput = {
+  device: TransportDevice;
+  workstation: WorkstationReadiness;
+  authorizedProgrammers: EdlProgrammerRecord[];
+  recoveryJobFingerprint: string;
+  preparedRecoveryIdentity?: QualificationRecoveryIdentity | null;
+  transportObservation?: QualificationTransportObservation | null;
+  operatorNotes: string;
+};
+
+export async function exportQualificationDossier(input: QualificationDossierInput): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const destinationPath = await save({
+    title: 'Export designated-device qualification dossier',
+    defaultPath: 'bobfwtools-qualification-dossier.json',
+    filters: [{ name: 'JSON qualification dossier', extensions: ['json'] }],
+  });
+  if (!destinationPath) return null;
+  return invoke<string>('bootforge_qualification_export', { input, destinationPath });
 }
 
 export type RecoveryWorkflow = 'qualcomm-edl' | 'mediatek-download';
@@ -481,6 +1134,7 @@ export type RecoveryPartitionOperation = {
   filename: string;
   start?: number | null;
   length?: number | null;
+  sourceOffset?: number | null;
   physicalPartition?: number | null;
   region?: string | null;
   operation: string;
@@ -489,6 +1143,7 @@ export type RecoveryPartitionOperation = {
 export type RecoveryJob = {
   workflow: RecoveryWorkflow;
   protocol: string;
+  jobFingerprint: string;
   identity: {
     deviceUid: string;
     vendorId: number;
@@ -499,7 +1154,11 @@ export type RecoveryJob = {
     deviceAddress?: number | null;
   };
   artifactDigests: RecoveryArtifactDigest[];
+  payloadDigests: RecoveryArtifactDigest[];
   operations: RecoveryPartitionOperation[];
+  integrityChecksPassed: boolean;
+  integrityFindings: string[];
+  highRiskPartitions: string[];
   destructive: boolean;
   requiresExplicitApproval: boolean;
   prerequisitesMet: boolean;
@@ -546,4 +1205,77 @@ export async function prepareRecoveryJob(
 
 export async function revalidateRecoveryJob(job: RecoveryJob): Promise<RecoveryJob> {
   return invoke<RecoveryJob>('bootforge_recovery_revalidate', { job });
+}
+
+export async function exportRecoveryEvidence(
+  job: RecoveryJob,
+  plan: RecoveryPlan | null,
+): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const destinationPath = await save({
+    title: 'Export BobFWTools recovery evidence receipt',
+    defaultPath: 'bobfwtools-recovery-evidence.json',
+    filters: [{ name: 'JSON evidence receipt', extensions: ['json'] }],
+  });
+  if (!destinationPath) return null;
+  return invoke<string>('bootforge_recovery_export_receipt', {
+    job,
+    plan,
+    destinationPath,
+  });
+}
+
+export async function exportRecoveryReadinessCertificate(
+  job: RecoveryJob,
+  plan: RecoveryPlan | null,
+): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const destinationPath = await save({
+    title: 'Export BobFWTools recovery readiness certificate',
+    defaultPath: 'bobfwtools-recovery-readiness-certificate.json',
+    filters: [{ name: 'JSON readiness certificate', extensions: ['json'] }],
+  });
+  if (!destinationPath) return null;
+  return invoke<string>('bootforge_recovery_export_readiness_certificate', {
+    job,
+    plan,
+    destinationPath,
+  });
+}
+
+export type RecoveryReadinessCertificateReview = {
+  path: string;
+  schemaValid: boolean;
+  fingerprintValid: boolean;
+  jobFingerprintValid: boolean;
+  jobMatchesExpected: boolean;
+  readinessStatusValid: boolean;
+  semanticConsistencyValid: boolean;
+  grantsExecutionAuthorityClaimed: boolean;
+  executionPerformedClaimed: boolean;
+  safeToReview: boolean;
+  blockers: string[];
+  certificateFingerprint?: string | null;
+  jobFingerprint?: string | null;
+  readinessStatus?: string | null;
+};
+
+export async function reviewRecoveryReadinessCertificate(
+  expectedJobFingerprint?: string | null,
+): Promise<RecoveryReadinessCertificateReview | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: 'Review BobFWTools recovery readiness certificate',
+    filters: [{ name: 'JSON readiness certificate', extensions: ['json'] }],
+  });
+  if (!selected || Array.isArray(selected)) return null;
+  return invoke<RecoveryReadinessCertificateReview>(
+    'bootforge_recovery_review_readiness_certificate',
+    {
+      path: selected,
+      expectedJobFingerprint: expectedJobFingerprint?.trim() || null,
+    },
+  );
 }

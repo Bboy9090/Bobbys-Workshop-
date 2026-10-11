@@ -221,15 +221,291 @@ describe('nested MTP browser', () => {
 });
 
 
-describe('production command surface excludes destructive flash', () => {
-  it('does not register unqualified flash commands in the default Tauri handler', () => {
+describe('advanced recovery selected-device binding', () => {
+  it('locks live recovery planning to the selected hardware identity and clears stale state', () => {
+    const app = read('src/App.tsx');
+
+    expect(app).toContain('selectedRecoveryCandidate');
+    expect(app).toContain('selectedRecoveryCandidate?.workflow ?? recoveryKind');
+    expect(app).toContain('prepareRecoveryJob(selectedRecoveryCandidate, paths)');
+    expect(app).not.toContain('recoveryCandidates.find((item) => item.workflow === recoveryKind)');
+    expect(app).toContain('Lane locked to detected hardware');
+    expect(app).toContain('Manual lane selection is available only for offline artifact inspection');
+    expect(app).toContain('setRecoveryArtifacts([])');
+    expect(app).toContain('setRecoveryEvidencePath(null)');
+    expect(app).toContain('setRecoveryCertificatePath(null)');
+    expect(app).toContain('setRecoveryCertificateReview(null)');
+  });
+});
+
+
+describe('device-specific command center', () => {
+  it('filters primary workflows to the selected detected target', () => {
+    const commandCenter = read('src/components/RepairCommandCenter.tsx');
+
+    expect(commandCenter).toContain('Detected target');
+    expect(commandCenter).toContain('Applicable workflows');
+    expect(commandCenter).toContain('scanTransportDevices');
+    expect(commandCenter).toContain('applicableWorkflowIds');
+    expect(commandCenter).toContain("case 'qualcomm-edl'");
+    expect(commandCenter).toContain("case 'mediatek-brom'");
+    expect(commandCenter).toContain("case 'samsung-download'");
+    expect(commandCenter).toContain("case 'adb'");
+    expect(commandCenter).toContain('Advanced/manual tools');
+    expect(commandCenter).toContain('workflowLiveStatus');
+    expect(commandCenter).toContain('PLANNING READY');
+    expect(commandCenter).toContain('AUTHORIZE DEVICE');
+    expect(commandCenter).toContain('READY TO VERIFY');
+    expect(commandCenter).toContain('selectedAdbDevice.serial');
+    expect(commandCenter).toContain("selectedTarget?.kind === 'qualcomm-edl'");
+    expect(commandCenter).toContain("selectedTarget?.kind === 'samsung-download'");
+    expect(commandCenter).toContain('Samsung stock firmware inspector');
+    expect(commandCenter).toContain('MODEL MATCH NOT CERTIFIED');
+    expect(commandCenter).toContain('Choose & inspect stock packages');
+    expect(commandCenter).toContain("selectedTarget?.kind === 'adb'");
+
+    const bridge = read('src/lib/desktop.ts');
+    const planner = read('libs/bootforgeusb/src/planner.rs');
+    expect(bridge).toContain('chooseSamsungFirmwarePackages');
+    expect(bridge).toContain('inspectSamsungFirmwarePackages');
+    expect(bridge).toContain('buildSamsungFirmwarePlan');
+    expect(planner).toContain('does not certify exact device-model compatibility');
+    expect(planner).toContain('exact connected device model');
+  });
+});
+
+
+describe('best next action routing', () => {
+  it('routes selected devices to the safest relevant lane without auto-running destructive work', () => {
+    const app = read('src/App.tsx');
+    const commandCenter = read('src/components/RepairCommandCenter.tsx');
+
+    expect(app).toContain('Best next action');
+    expect(app).toContain('Open matching recovery lane');
+    expect(app).toContain('Open Samsung firmware tools');
+    expect(app).toContain('Open Fastboot service lane');
+    expect(app).toContain('Test this device connection');
+    expect(app).toContain("document.getElementById('safe-repair-workflows')");
+    expect(app).toContain("document.getElementById('repair-command-center')");
+    expect(app).toContain('await runCableDoctor()');
+    expect(app).toContain('autoPrepareRecoveryForCandidate');
+    expect(app).toContain('const paths = await autodiscoverRecoveryArtifacts(candidate.workflow)');
+    expect(app).toContain('const plan = await buildRecoveryPlan(candidate.workflow, paths)');
+    expect(app).toContain('const job = await prepareRecoveryJob(candidate, paths)');
+    expect(commandCenter).toContain('id="repair-command-center"');
+    expect(app).toContain('id="safe-repair-workflows"');
+  });
+});
+
+
+describe('selected-device workflow filtering', () => {
+  it('requires target-specific serial or mode evidence instead of global transport readiness', () => {
+    const app = read('src/App.tsx');
+
+    expect(app).toContain('selectedDeviceActions');
+    expect(app).toContain('adbDevices.some((device) => device.serial === serial && device.authorized)');
+    expect(app).toContain('mtp.serialNumber === serial');
+    expect(app).toContain('Selected-device workflows');
+    expect(app).toContain('NOT PROVEN');
+    expect(app).toContain('Samsung firmware inspection');
+    expect(app).toContain('EDL recovery planning');
+    expect(app).toContain('MediaTek recovery planning');
+    expect(app).toContain('Fastboot diagnostics');
+    expect(app).toContain('cannot safely bind an ADB transport');
+  });
+});
+
+
+describe('device mode play-by-play guidance', () => {
+  it('shows required state, entry steps, success cues, and recovery guidance for detected modes', () => {
+    const guide = read('src/components/DeviceModeGuide.tsx');
+    const app = read('src/App.tsx');
+
+    expect(guide).toContain('Samsung Download Mode');
+    expect(guide).toContain('Qualcomm EDL 9008');
+    expect(guide).toContain('MediaTek Preloader / Download Mode');
+    expect(guide).toContain('Fastboot / Bootloader Mode');
+    expect(guide).toContain('Normal Android USB / ADB / MTP');
+    expect(guide).toContain('Required state:');
+    expect(guide).toContain('What success looks like');
+    expect(guide).toContain('If it does not work');
+    expect(guide).toContain('Do not blindly short board test points');
+    expect(guide).toContain('Do not use SLA/DAA bypasses or BootROM exploits');
+    expect(app).toContain('<DeviceModeGuide');
+  });
+});
+
+
+describe('device-scoped cable doctor', () => {
+  it('can target one detected Android USB UID instead of repeatedly sampling the whole fleet', () => {
+    const diagnostics = read('src-tauri/src/diagnostics.rs');
+    const bridge = read('src/lib/desktop.ts');
+    const app = read('src/App.tsx');
+
+    expect(diagnostics).toContain('target_device_uid: Option<String>');
+    expect(diagnostics).toContain('.map(|target| d.device_uid == target)');
+    expect(bridge).toContain('runUsbCableDoctor(targetDeviceUid?: string | null)');
+    expect(app).toContain('selectedDiagnosticUid');
+    expect(app).toContain('Test this device');
+    expect(app).toContain('Cable target');
+  });
+});
+
+
+describe('workstation driver evidence', () => {
+  it('distinguishes missing drivers from an unavailable Windows driver-store probe', () => {
+    const workstation = read('src-tauri/src/workstation.rs');
+    const bridge = read('src/lib/desktop.ts');
+    const commandCenter = read('src/components/RepairCommandCenter.tsx');
+
+    expect(workstation).toContain('driver_store_probe_available');
+    expect(workstation).toContain('evidence_available');
+    expect(workstation).toContain('Windows driver-store probe unavailable');
+    expect(bridge).toContain('driverStoreProbeAvailable');
+    expect(bridge).toContain('evidenceAvailable');
+    expect(commandCenter).toContain('probe unavailable');
+    expect(commandCenter).toContain('driver missing');
+
     const main = read('src-tauri/src/main.rs');
+    expect(main).toContain('QualificationToolSnapshot');
+    expect(main).toContain('QualificationDriverSnapshot');
+    expect(main).toContain('qualification_workstation_evidence_ready');
+    expect(main).toContain('workstationEvidenceReady');
+    expect(main).toContain('Windows driver-store probe evidence is unavailable');
+  });
+});
+
+
+describe('qualification transport stability evidence', () => {
+  it('requires repeated read-only identity and bulk endpoint observations', () => {
+    const main = read('src-tauri/src/main.rs');
+    const bridge = read('src/lib/desktop.ts');
+    const dossier = read('src/components/QualificationDossier.tsx');
+
+    expect(main).toContain('QualificationTransportObservation');
+    expect(main).toContain('qualification_transport_observation_findings');
+    expect(main).toContain('At least three successful transport samples are required');
+    expect(main).toContain('different bulk endpoints from the baseline');
+    expect(main).toContain('transportObservationReady');
+    expect(bridge).toContain('QualificationTransportObservation');
+    expect(dossier).toContain('Capture 3-scan stability evidence');
+    expect(dossier).toContain('Read-only USB enumeration only');
+  });
+});
+
+
+describe('recovery readiness certificate', () => {
+  it('exports a fingerprinted authority-free readiness snapshot through the GUI', () => {
+    const main = read('src-tauri/src/main.rs');
+    const bridge = read('src/lib/desktop.ts');
+    const app = read('src/App.tsx');
+
+    expect(main).toContain('bootforge_recovery_export_readiness_certificate');
+    expect(main).toContain('bootforge_recovery_review_readiness_certificate');
+    expect(main).toContain('recovery-readiness-certificate.v1');
+    expect(main).toContain('"grantsExecutionAuthority": false');
+    expect(main).toContain('"readinessStatus": readiness_status');
+    expect(main).toContain('certificateFingerprint');
+    expect(main).toContain('fingerprint verification failed');
+    expect(main).toContain('gate matrix is internally inconsistent');
+    expect(bridge).toContain('semanticConsistencyValid');
+    expect(bridge).toContain('exportRecoveryReadinessCertificate');
+    expect(bridge).toContain('reviewRecoveryReadinessCertificate');
+    expect(app).toContain('Export readiness certificate');
+    expect(app).toContain('Review readiness certificate');
+    expect(app).toContain('does not grant destructive execution authority');
+    expect(app).toContain('VERIFIED EVIDENCE');
+  });
+});
+
+
+describe('physical qualification evidence binding', () => {
+  it('requires an authority-free hash-bound bench evidence receipt before accepted Stage 2 decisions', () => {
+    const main = read('src-tauri/src/main.rs');
+    const bridge = read('src/lib/desktop.ts');
+    const consoleUi = read('src/components/QualifiedFlashConsole.tsx');
+
+    expect(main).toContain('QualificationBenchEvidenceReceipt');
+    expect(main).toContain('qualification-bench-evidence.v1');
+    expect(main).toContain('bootforge_qualification_bench_evidence_export');
+    expect(main).toContain('grants_authority: false');
+    expect(main).toContain('execution_enabled: false');
+    expect(main).toContain('Accepted qualification evidence requires a bench-evidence receipt');
+    expect(main).toContain('bench_evidence_fingerprint');
+    expect(main).toContain('image hash changed since inspection');
+    expect(main).toContain('Production-qualified grant requires the verified bench-evidence receipt');
+    expect(main).toContain('Qualification decision is bound to a different bench-evidence receipt');
+    expect(main).toContain('Production grant partition inputs do not exactly match the verified bench-evidence receipt');
+    expect(bridge).toContain('exportQualificationBenchEvidence');
+    expect(consoleUi).toContain('Export hash-bound bench evidence');
+    expect(consoleUi).toContain('benchEvidencePath');
+  });
+});
+
+
+describe('qualification audit bundle', () => {
+  it('exports one authority-free fingerprinted manifest across the verified evidence chain', () => {
+    const main = read('src-tauri/src/main.rs');
+    const bridge = read('src/lib/desktop.ts');
+    const consoleUi = read('src/components/QualifiedFlashConsole.tsx');
+
+    expect(main).toContain('QualificationAuditBundleInput');
+    expect(main).toContain('qualification-audit-bundle.v1');
+    expect(main).toContain('"grantsExecutionAuthority": false');
+    expect(main).toContain('"executionPerformed": false');
+    expect(main).toContain('Decision and bench-evidence fingerprints do not match');
+    expect(main).toContain('bundleFingerprint');
+    expect(main).toContain('export-qualification-audit-bundle');
+    expect(main).toContain('bootforge_qualification_audit_bundle_review');
+    expect(main).toContain('Audit bundle source file hash changed');
+    expect(main).toContain('Nested evidence chain verification failed');
+    expect(main).toContain('Nested decision does not reference the bundled bench-evidence receipt');
+    expect(main).toContain('Qualification audit bundle was produced by a different executor build');
+    expect(main).toContain('source_semantics_valid');
+    expect(main).toContain('Audit bundle decision is not bound to the verified bench evidence');
+    expect(main).toContain('Qualification audit bundle source semantics did not revalidate');
+    expect(bridge).toContain('sourceSemanticsValid');
+    expect(bridge).toContain('exportQualificationAuditBundle');
+    expect(bridge).toContain('reviewQualificationAuditBundle');
+    expect(consoleUi).toContain('Export qualification audit bundle');
+    expect(consoleUi).toContain('Review qualification audit bundle');
+    expect(consoleUi).toContain('AUDIT BUNDLE VERIFIED');
+    expect(consoleUi).toContain('auditBundlePath');
+  });
+});
+
+
+describe('production command surface excludes unqualified destructive flash', () => {
+  it('feature-gates destructive flash commands and keeps qualified-flash out of default features', () => {
+    const main = read('src-tauri/src/main.rs');
+    const cargo = read('src-tauri/Cargo.toml');
     const start = main.indexOf('invoke_handler(tauri::generate_handler![');
     const end = main.indexOf('])', start);
     const handler = main.slice(start, end);
-    expect(handler).not.toContain('flash_start');
-    expect(handler).not.toContain('flash_cancel');
-    expect(handler).not.toContain('flash_status');
-    expect(handler).not.toContain('flash_history');
+
+    for (const command of [
+      'bootforge_qualification_bench_evidence_export',
+      'bootforge_qualification_decision_export',
+      'bootforge_qualification_audit_bundle_export',
+      'bootforge_qualification_audit_bundle_review',
+      'bootforge_issue_qualification_trial_grant',
+      'bootforge_issue_qualified_flash_grant',
+      'flash_start',
+      'flash_cancel',
+      'flash_status',
+      'flash_history',
+      'flash_active',
+      'bootforge_flash_history',
+      'bootforge_flash_active',
+    ]) {
+      const gated = new RegExp(
+        '#\\[cfg\\(feature = "qualified-flash"\\)\\]\\s+' + command + ','
+      );
+      expect(handler).toMatch(gated);
+    }
+
+    const defaultFeatures = cargo.match(/^default\s*=\s*\[(.*?)\]/m)?.[1] || '';
+    expect(defaultFeatures).not.toContain('qualified-flash');
+    expect(cargo).toContain('qualified-flash = []');
   });
 });
