@@ -432,3 +432,24 @@ describe('Guided driver conflict resolution plan', () => {
     expect(ui).toContain('Do this');
   });
 });
+
+
+describe('Windows driver claim stability test', () => {
+  it('detects exact-interface driver churn without mutating the driver store', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('driver_binding_stability_test');
+    expect(backend).toContain('claim_changes');
+    expect(backend).toContain('disappearance_events');
+    expect(backend).toContain('claim-stability-test');
+    expect(backend).toContain('Do not start firmware writes while the exact interface claim is unstable');
+
+    expect(desktop).toContain('runDriverClaimStabilityTest');
+    expect(ui).toContain('Driver Claim Stability Test');
+    expect(ui).toContain('Run claim stability test');
+    expect(ui).toContain('CLAIM CHURN DETECTED');
+    expect(ui).toContain('CLAIM STABLE');
+  });
+});
