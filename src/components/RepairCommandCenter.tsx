@@ -1045,6 +1045,43 @@ export default function RepairCommandCenter() {
                             Multiple compatible driver packages are installed for this interface. That can contribute to driver-claim churn. BobFWTools does not delete or force a package automatically; use exact hardware-ID evidence and the verified relatch workflow below.
                           </div>
                         )}
+
+                        <button
+                          type="button"
+                          disabled={
+                            !!driverBindingBusy ||
+                            (driverElevation?.required === true && !driverElevation.elevated) ||
+                            (driverCandidates[binding.instanceId]?.filter((candidate) => candidate.exactInterfaceMatch).length || 0) !== 1
+                          }
+                          onClick={() => {
+                            const exactCandidates = (driverCandidates[binding.instanceId] || []).filter((candidate) => candidate.exactInterfaceMatch);
+                            if (exactCandidates.length !== 1) return;
+                            const candidate = exactCandidates[0];
+                            setDriverBindingBusy(binding.instanceId);
+                            setError(null);
+                            void (async () => {
+                              const inspection = await inspectDriverInf(binding.instanceId, candidate.infPath);
+                              if (!inspection.compatible) {
+                                throw new Error('Automatic verified relatch stopped because the installed exact-interface INF no longer matches the live device hardware IDs.');
+                              }
+                              setDriverInfInspections((current) => ({ ...current, [binding.instanceId]: inspection }));
+                              const result = await stageAndRelatchDriver(binding.instanceId, inspection.infPath);
+                              setDriverRelatchResults((current) => ({ ...current, [binding.instanceId]: result }));
+                              setDriverBindings(await scanDriverBindings());
+                              setDriverCandidates((current) => {
+                                const next = { ...current };
+                                delete next[binding.instanceId];
+                                return next;
+                              });
+                            })()
+                              .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                              .finally(() => setDriverBindingBusy(null));
+                          }}
+                          className="mt-2 rounded border border-emerald-800 bg-emerald-950/20 px-2 py-1.5 text-[10px] font-semibold text-emerald-300 disabled:opacity-30 hover:bg-emerald-950/40"
+                          title="Enabled only when exactly one installed INF matches the exact USB interface. The backend re-verifies hardware IDs, captures rollback evidence, relatches the exact device, and checks post-relatch stability."
+                        >
+                          Auto-fix unique verified driver claim
+                        </button>
                       </div>
 
                       <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
