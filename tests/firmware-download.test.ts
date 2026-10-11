@@ -69,3 +69,26 @@ describe('download failure and concurrency gates',()=>{
     } finally {await rm(dir,{recursive:true,force:true});}
   });
 });
+
+describe('HTTP wire-byte integrity policy',()=>{
+ it('rejects encoded transfers before writing any file',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'bobfw-encoding-'));
+  try{
+   const destination=join(dir,'firmware.zip');
+   await expect(downloadVerifiedFirmware({url:'https://dl.google.com/test.zip',destination,
+    expectedSha256:SHA,fetcher:async()=>({status:200,headers:new Headers({'content-encoding':'gzip'}),
+    body:new ReadableStream({start(c){c.enqueue(DATA);c.close();}})})})).rejects.toThrow('Compressed HTTP transfer');
+   expect(await readdir(dir)).toEqual([]);
+  } finally {await rm(dir,{recursive:true,force:true});}
+ });
+ it('rejects bytes exceeding declared length and deletes the partial',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'bobfw-excess-'));
+  try{
+   await expect(downloadVerifiedFirmware({url:'https://dl.google.com/test.zip',
+    destination:join(dir,'firmware.zip'),expectedSha256:SHA,
+    fetcher:async()=>({status:200,headers:new Headers({'content-length':'2'}),
+      body:new ReadableStream({start(c){c.enqueue(DATA);c.close();}})})})).rejects.toThrow('exceeded declared');
+   expect(await readdir(dir)).toEqual([]);
+  } finally {await rm(dir,{recursive:true,force:true});}
+ });
+});
