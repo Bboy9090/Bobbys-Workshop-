@@ -1134,6 +1134,7 @@ export type QualifiedFlashApprovalInput = {
   dossierPath: string;
   benchEvidencePath?: string | null;
   reviewDecisionPath?: string | null;
+  auditBundlePath?: string | null;
   expectedRecoveryJobFingerprint: string;
   deviceSerial: string;
   partitions: QualifiedFlashPartition[];
