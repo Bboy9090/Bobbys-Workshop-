@@ -1333,7 +1333,10 @@ export default function App() {
             recoveryJobFingerprint={recoveryJob?.jobFingerprint ?? null}
             preparedRecoveryIdentity={recoveryJob?.identity ?? null}
           />
-          <QualifiedFlashConsole recoveryJobFingerprint={recoveryJob?.jobFingerprint ?? null} />
+          <QualifiedFlashConsole
+            recoveryJobFingerprint={recoveryJob?.jobFingerprint ?? null}
+            readinessCertificatePath={recoveryCertificateReview?.safeToReview ? recoveryCertificatePath : null}
+          />
 
           <section className="mb-4 rounded-lg border border-cyan-900/70 bg-cyan-950/10 p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
