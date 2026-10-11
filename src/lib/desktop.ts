@@ -624,6 +624,9 @@ export type DriverBindingRecord = {
   vendorId?: number | null;
   productId?: number | null;
   expectedFamily: string;
+  physicalDeviceKey: string;
+  interfaceId?: string | null;
+  compositeSiblingCount: number;
   bindingState: string;
   detail: string;
 };
