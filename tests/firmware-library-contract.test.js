@@ -802,6 +802,7 @@ describe('Qualification dossier semantic review and evidence-derived flash check
     expect(backend).toContain('programmerEvidenceReady');
     expect(backend).toContain('.device_family');
     expect(backend).toContain('declared device family');
+    expect(read('src-tauri/src/edl_programmer_vault.rs')).toContain('authorized EDL programmer enrollment requires a declared device family');
     expect(backend).toContain('Dossier qualification-binding claim is inconsistent');
 
     expect(desktop).toContain('bindingSemanticsValid');
