@@ -824,5 +824,7 @@ describe('Qualification dossier semantic review and evidence-derived flash check
     expect(desktop).toContain('auditBundleFingerprint?: string | null');
     expect(consoleUi).toContain('/^[a-f0-9]{64}$/i.test(grant.auditBundleFingerprint)');
     expect(consoleUi).toContain('Audit bundle binding:');
+    expect(consoleUi).toContain('review?.dossierFingerprint');
+    expect(consoleUi).toContain('readinessCertificatePath,');
   });
 });
