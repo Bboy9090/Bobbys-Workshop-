@@ -38,6 +38,7 @@ mod calibration_backup_exec;
 mod edl_programmer_vault;
 mod firmware_library;
 mod mode_control;
+mod driver_binding;
 #[cfg(feature = "legacy-backends")]
 use python_backend::{launch_python_backend, shutdown_python_backend};
 #[cfg(feature = "legacy-backends")]
@@ -55,6 +56,7 @@ use calibration_backup_exec::{backup_calibration_partition, inspect_calibration_
 use edl_programmer_vault::{edl_inspect_programmer, edl_enroll_programmer, edl_list_programmers};
 use firmware_library::{firmware_bundle_planning_artifacts, firmware_chipset_catalog, firmware_chipset_lookup, firmware_library_scan, firmware_provenance_write};
 use mode_control::{fastboot_mode_devices, fastboot_reboot_mode, mode_transition_verify};
+use driver_binding::{driver_binding_scan, driver_binding_release_and_rescan};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -5266,6 +5268,8 @@ fn main() {
             fastboot_mode_devices,
             fastboot_reboot_mode,
             mode_transition_verify,
+            driver_binding_scan,
+            driver_binding_release_and_rescan,
             firmware_provenance_write,
             hardware_service_profile_validate,
 bootforgeusb_transport_scan,
