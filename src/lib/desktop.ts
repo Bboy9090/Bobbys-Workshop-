@@ -650,6 +650,7 @@ export type DriverBindingSnapshot = {
   service?: string | null;
   driverInf?: string | null;
   bindingState: string;
+  fingerprint: string;
 };
 
 export type DriverSnapshotResult = {
@@ -662,6 +663,7 @@ export type DriverRollbackPlan = {
   exactDevicePresent: boolean;
   hardwareIdentityMatches: boolean;
   priorInfAvailable: boolean;
+  snapshotFingerprintValid: boolean;
   rollbackReady: boolean;
   priorInf?: string | null;
   currentInf?: string | null;
