@@ -22,6 +22,7 @@ on:
       - 'tests/firmware-download.test.ts'
       - 'scripts/lib/download-verified-firmware.mjs'
       - 'scripts/download-verified-firmware.mjs'
+      - 'scripts/probe-official-catalogs.mjs'
   workflow_dispatch:
 
 permissions:
@@ -57,3 +58,17 @@ jobs:
             exit 1
           fi
           test ! -e /tmp/should-not-exist
+      - name: Check live Google source reachability (informational, not a package proof)
+        id: oem_probe
+        continue-on-error: true
+        run: |
+          node scripts/probe-official-catalogs.mjs --manufacturer Google --model "Pixel 8" --json > "$RUNNER_TEMP/oem-catalog-reachability.json"
+          cat "$RUNNER_TEMP/oem-catalog-reachability.json"
+      - name: Publish actual catalog reachability evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oem-catalog-reachability
+          path: ${{ runner.temp }}/oem-catalog-reachability.json
+          if-no-files-found: warn
+          retention-days: 14
