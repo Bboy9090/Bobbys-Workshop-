@@ -1076,6 +1076,9 @@ export default function RepairCommandCenter() {
                               {driverRelatchResults[binding.instanceId].verifiedClaim ? 'DRIVER CLAIM VERIFIED' : 'RELATCH COMPLETED — CLAIM NOT YET VERIFIED'}
                             </div>
                             <div className="mt-1">{driverRelatchResults[binding.instanceId].detail}</div>
+                            <div className="mt-1 text-slate-500">
+                              stability {driverRelatchResults[binding.instanceId].stabilityVerified ? 'verified' : 'not verified'} · {driverRelatchResults[binding.instanceId].stabilitySummary}
+                            </div>
                             {driverRelatchResults[binding.instanceId].snapshotPath && (
                               <div className="mt-1 break-all font-mono text-[9px] text-sky-300">
                                 pre-relatch snapshot {driverRelatchResults[binding.instanceId].snapshotPath}
