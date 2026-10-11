@@ -1170,16 +1170,51 @@ export default function App() {
                     </div>
                   );
                 })}
-                {usbDevices.map((device) => (
-                  <div key={`usb-${device.deviceUid}`} className="rounded border border-slate-800 bg-slate-950/60 p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-white">{device.productName || device.manufacturer || 'Detected USB phone/device'}</span>
-                      <span className="text-xs text-cyan-300">Detected</span>
+                {usbDevices.map((device) => {
+                  const serviceOnlyMode = ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download'].includes(device.mode);
+                  return (
+                    <div key={`usb-${device.deviceUid}`} className="rounded border border-slate-800 bg-slate-950/60 p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-white">{device.productName || device.manufacturer || 'Detected USB phone/device'}</span>
+                        <span className="text-xs text-cyan-300">Detected</span>
+                      </div>
+                      <div className="mt-2 text-xs text-slate-300">{device.platformHint} · {device.mode}</div>
+                      <div className="mt-1 text-xs text-slate-500">This connection is available for matching recovery and firmware workflows.</div>
+
+                      {serviceOnlyMode && (
+                        <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
+                          <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Mode transition matrix</div>
+                          {device.mode === 'qualcomm-edl' && (
+                            <>
+                              <div className="mt-2 text-[11px] text-amber-300">Normal/reboot signal: not exposed until an authorized Firehose session proves a supported reset command for this exact target.</div>
+                              <div className="mt-1 text-[10px] text-slate-500">Do not send guessed Sahara/Firehose reset packets. Use the OEM-supported physical exit procedure, then re-scan.</div>
+                            </>
+                          )}
+                          {(device.mode === 'mediatek-brom' || device.mode === 'mediatek-preloader') && (
+                            <>
+                              <div className="mt-2 text-[11px] text-amber-300">Normal/reboot signal: no generic BROM/Preloader exit command is exposed.</div>
+                              <div className="mt-1 text-[10px] text-slate-500">A software reset requires a legitimate compatible Download Agent session; otherwise use the OEM-supported physical exit procedure.</div>
+                            </>
+                          )}
+                          {device.mode === 'samsung-download' && (
+                            <>
+                              <div className="mt-2 text-[11px] text-amber-300">Normal/reboot signal: no generic unauthenticated Download Mode exit command is exposed in this transport layer.</div>
+                              <div className="mt-1 text-[10px] text-slate-500">Use the device's OEM-supported key/power exit procedure or a supported authorized service session, then re-scan.</div>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            disabled={refreshing || transferBusy || !!modeActionBusy}
+                            onClick={() => void refresh()}
+                            className="mt-3 rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300 disabled:opacity-40 hover:bg-slate-800"
+                          >
+                            Re-scan this mode
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <div className="mt-2 text-xs text-slate-300">{device.platformHint} · {device.mode}</div>
-                    <div className="mt-1 text-xs text-slate-500">This connection is available for matching recovery and firmware workflows.</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           )}
