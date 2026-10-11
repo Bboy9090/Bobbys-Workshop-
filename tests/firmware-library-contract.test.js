@@ -687,3 +687,14 @@ describe('Qualified flash trial versus production authority', () => {
     expect(backend).toContain('let is_trial = grant.qualificationStatus == "qualification-trial" && !grant.executorQualified');
   });
 });
+
+
+describe('Firmware workspace initializer recursion guard', () => {
+  it('creates the managed firmware root from firmware_root instead of calling itself', () => {
+    const backend = read('src-tauri/src/firmware_library.rs');
+
+    expect(backend).toContain('fn ensure_firmware_root()');
+    expect(backend).toContain('let root = firmware_root();');
+    expect(backend).not.toContain('let root = ensure_firmware_root()?;\n    Ok(root)');
+  });
+});
