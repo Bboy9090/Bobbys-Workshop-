@@ -708,6 +708,7 @@ describe('Verified firmware package fingerprint', () => {
     const backend = read('src-tauri/src/firmware_library.rs');
     const desktop = read('src/lib/desktop.ts');
     const app = read('src/App.tsx');
+    const consoleUi = read('src/components/QualifiedFlashConsole.tsx');
 
     expect(backend).toContain('fn bundle_package_fingerprint');
     expect(backend).toContain('bobfwtools-firmware-bundle-v1');
