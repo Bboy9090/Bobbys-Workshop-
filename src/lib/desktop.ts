@@ -627,6 +627,8 @@ export type DriverBindingRecord = {
   physicalDeviceKey: string;
   interfaceId?: string | null;
   compositeSiblingCount: number;
+  claimHardwareIdVerified: boolean;
+  claimMatchScope: string;
   bindingState: string;
   detail: string;
 };
