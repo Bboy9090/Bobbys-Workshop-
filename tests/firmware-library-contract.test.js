@@ -331,3 +331,29 @@ describe('Windows driver claim control center', () => {
     expect(ui).toContain('Forced INF binding remains blocked until hardware-ID compatibility is proven');
   });
 });
+
+
+describe('Verified INF relatch workflow', () => {
+  it('requires exact hardware-ID compatibility before staging a driver package', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('driver_binding_inspect_inf');
+    expect(backend).toContain('matched_hardware_ids');
+    expect(backend).toContain('Driver relatch blocked: selected INF hardware IDs do not match the exact device');
+    expect(backend).toContain('pnputil /add-driver');
+    expect(backend).toContain('driver_binding_stage_and_relatch');
+    expect(backend).toContain('verified_claim');
+
+    expect(desktop).toContain('chooseDriverInf');
+    expect(desktop).toContain('inspectDriverInf');
+    expect(desktop).toContain('stageAndRelatchDriver');
+
+    expect(ui).toContain('Inspect compatible INF');
+    expect(ui).toContain('Stage + relatch exact device');
+    expect(ui).toContain('HARDWARE-ID MATCH VERIFIED');
+    expect(ui).toContain('INF MISMATCH — RELATCH BLOCKED');
+    expect(ui).toContain('DRIVER CLAIM VERIFIED');
+  });
+});
