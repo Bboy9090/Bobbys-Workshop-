@@ -6,7 +6,7 @@ import { Readable, Transform } from 'node:stream';
 import { basename, dirname, join, resolve, parse, sep } from 'node:path';
 
 const HEX = /^[a-f0-9]{64}$/i;
-const ALLOWED_HOSTS = new Set(['dl.google.com', 'developers.google.com']);
+const ALLOWED_HOSTS = new Set(['dl.google.com']);
 const MAX_BYTES = 12 * 1024 ** 3;
 
 async function assertNoSymlinkParents(dir) {
@@ -23,9 +23,12 @@ async function assertNoSymlinkParents(dir) {
 
 /** Download bytes from a tightly restricted OEM host, verify them, then atomically publish. */
 export async function downloadVerifiedFirmware({url, destination, expectedSha256, fetcher = fetch, onProgress}) {
+  if (typeof url !== 'string') throw Error('Firmware URL must be a string');
   const address = new URL(url);
   if (address.protocol !== 'https:' || !ALLOWED_HOSTS.has(address.hostname) ||
-      address.username || address.password || address.port || !HEX.test(expectedSha256 ?? ''))
+      address.username || address.password || address.port || address.search || address.hash ||
+      !address.pathname.endsWith('.zip') || /%(?:2f|5c|00)/i.test(address.pathname) ||
+      !HEX.test(expectedSha256 ?? ''))
     throw Error('Official allowlisted HTTPS URL and trusted SHA-256 are required');
   if (!destination || basename(destination) !== destination.split('/').at(-1) ||
       !basename(destination) || basename(destination) === '.' || basename(destination) === '..')
