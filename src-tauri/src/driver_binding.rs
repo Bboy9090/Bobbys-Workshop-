@@ -171,6 +171,8 @@ pub struct DriverRelatchResult {
     pub released: bool,
     pub rescanned: bool,
     pub verified_claim: bool,
+    pub stability_verified: bool,
+    pub stability_summary: String,
     pub observed_service: Option<String>,
     pub observed_inf: Option<String>,
     pub detail: String,
@@ -1337,13 +1339,25 @@ pub fn driver_binding_stage_and_relatch(
         })
     };
 
-    let verified_claim = rebound
+    let claim_matched_once = rebound
         .map(|record| record.binding_state == "matched")
         .unwrap_or(false);
+
+    let (stability_verified, stability_summary) = if let Some(record) = rebound {
+        match driver_binding_stability_test(record.instance_id.clone()) {
+            Ok(report) => (report.stable, report.summary),
+            Err(error) => (false, format!("Post-relatch claim stability test failed: {error}")),
+        }
+    } else {
+        (false, "Post-relatch exact interface was not observed for stability verification.".to_string())
+    };
+    let verified_claim = claim_matched_once && stability_verified;
 
     let observed_service = rebound.and_then(|record| record.service.clone());
     let observed_inf = rebound.and_then(|record| record.driver_inf.clone());
     let mut evidence = vec![staged, remove, scan];
+    evidence.push(format!("claim-matched-once:{claim_matched_once}"));
+    evidence.push(format!("stability-verified:{stability_verified}"));
     evidence.push(format!("verified-claim:{verified_claim}"));
     evidence.push(format!("observed-service:{}", observed_service.as_deref().unwrap_or("<unavailable>")));
     evidence.push(format!("observed-inf:{}", observed_inf.as_deref().unwrap_or("<unavailable>")));
@@ -1372,10 +1386,12 @@ pub fn driver_binding_stage_and_relatch(
         released: true,
         rescanned: true,
         verified_claim,
+        stability_verified,
+        stability_summary,
         observed_service,
         observed_inf,
         detail: if verified_claim {
-            "Compatible INF was staged, the exact device node was released, Windows re-enumerated it, and BobFWTools observed a compatible driver-family claim afterward.".to_string()
+            "Compatible INF was staged, the exact device node was released, Windows re-enumerated it, and BobFWTools verified a compatible driver-family claim that remained stable across the post-relatch sample window.".to_string()
         } else {
             "Compatible INF was staged and the exact device node was re-enumerated, but BobFWTools has not yet verified that the expected driver family claimed it. Refresh driver claims before continuing.".to_string()
         },
