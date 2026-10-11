@@ -104,6 +104,18 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
     [checks, preChecksPass],
   );
   const grantExpired = grant ? grant.expiresAtUnixSeconds * 1000 <= Date.now() : false;
+  const trialGrantActive = Boolean(
+    grant &&
+    !grantExpired &&
+    grant.qualificationStatus === 'qualification-trial' &&
+    !grant.executorQualified,
+  );
+  const productionGrantActive = Boolean(
+    grant &&
+    !grantExpired &&
+    grant.qualificationStatus === 'approved' &&
+    grant.executorQualified,
+  );
   const readyToTrial = Boolean(
     build?.qualifiedFlashCompiled &&
     review?.safeToReview &&
@@ -129,11 +141,11 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
 
   const qualificationStage = useMemo(() => {
     if (!build?.qualifiedFlashCompiled) return 0;
-    if (!review?.safeToReview || !deviceSerial || !partitions.length || !preChecksPass) return 1;
+    if (!review?.safeToReview || !deviceSerial || partitions.length !== 1 || !preChecksPass) return 1;
     if (!benchEvidencePath) return 2;
     if (!decisionPath) return 3;
     if (!auditBundleReview?.safeToReview) return 4;
-    if (!grant || grantExpired) return 5;
+    if (!productionGrantActive) return 5;
     return 6;
   }, [
     auditBundleReview?.safeToReview,
@@ -141,10 +153,9 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
     build?.qualifiedFlashCompiled,
     decisionPath,
     deviceSerial,
-    grant,
-    grantExpired,
     partitions.length,
     preChecksPass,
+    productionGrantActive,
     review?.safeToReview,
   ]);
 
@@ -377,7 +388,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
   };
 
   const startFlash = async () => {
-    if (!grant || grantExpired) return;
+    if (!grant || grantExpired || (!trialGrantActive && !productionGrantActive)) return;
     setBusy(true);
     setError(null);
     try {
@@ -664,17 +675,64 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
             </div>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => void issueTrialGrant()} disabled={busy || !readyToTrial} className="rounded border border-amber-800 bg-amber-950/30 px-3 py-2 text-xs font-semibold text-amber-200 disabled:opacity-40">
-              Issue one-shot bench trial grant
-            </button>
-            <button type="button" onClick={() => void issueGrant()} disabled={busy || !readyToIssue} className="rounded bg-amber-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
-              Issue production-qualified grant
-            </button>
-            <button type="button" onClick={() => void startFlash()} disabled={busy || !grant || grantExpired} className="rounded bg-rose-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
-              {grant?.qualificationStatus === 'qualification-trial' ? 'START ONE-SHOT BENCH WRITE' : 'START QUALIFIED DESTRUCTIVE FLASH'}
-            </button>
-            {grant && <span className={grantExpired ? 'text-xs text-rose-300' : 'text-xs text-emerald-300'}>{grantExpired ? 'grant expired' : `${grant.qualificationStatus} capability active`}</span>}
+          <div className="mt-3 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => void issueTrialGrant()} disabled={busy || !readyToTrial} className="rounded border border-amber-800 bg-amber-950/30 px-3 py-2 text-xs font-semibold text-amber-200 disabled:opacity-40">
+                Issue one-shot bench trial grant
+              </button>
+              <button type="button" onClick={() => void issueGrant()} disabled={busy || !readyToIssue} className="rounded bg-amber-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
+                Issue production-qualified grant
+              </button>
+              <button
+                type="button"
+                onClick={() => void startFlash()}
+                disabled={busy || (!trialGrantActive && !productionGrantActive)}
+                className="rounded bg-rose-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
+              >
+                {trialGrantActive ? 'START ONE-SHOT BENCH WRITE' : 'START QUALIFIED DESTRUCTIVE FLASH'}
+              </button>
+            </div>
+
+            <div className="grid gap-2 lg:grid-cols-3">
+              <div className="rounded border border-slate-800 bg-black/20 p-2 text-[10px] leading-4 text-slate-500">
+                <span className="font-semibold text-slate-300">Bench grant:</span>{' '}
+                {readyToTrial
+                  ? 'all prerequisites satisfied'
+                  : [
+                      !build?.qualifiedFlashCompiled ? 'qualified writer build required' : '',
+                      !review?.safeToReview ? 'verified dossier required' : '',
+                      !deviceSerial ? 'exact fastboot target required' : '',
+                      partitions.length !== 1 ? 'exactly one trial partition required' : '',
+                      !preChecksPass ? 'first seven physical checks required' : '',
+                      !reviewer.trim() ? 'reviewer identity required' : '',
+                      confirmation !== `BENCH QUALIFY ${deviceSerial}` ? 'exact BENCH QUALIFY confirmation required' : '',
+                    ].filter(Boolean).join(' · ')}
+              </div>
+
+              <div className="rounded border border-slate-800 bg-black/20 p-2 text-[10px] leading-4 text-slate-500">
+                <span className="font-semibold text-slate-300">Production grant:</span>{' '}
+                {readyToIssue
+                  ? 'all prerequisites satisfied'
+                  : [
+                      !benchEvidencePath ? 'bench evidence required' : '',
+                      !decisionPath ? 'accepted human decision required' : '',
+                      !auditBundleReview?.safeToReview ? 'verified audit bundle required' : '',
+                      !allChecksPass ? 'all physical checks including bench/post-write verification required' : '',
+                      confirmation !== `QUALIFY ${deviceSerial}` ? 'exact QUALIFY confirmation required' : '',
+                    ].filter(Boolean).join(' · ')}
+              </div>
+
+              <div className="rounded border border-slate-800 bg-black/20 p-2 text-[10px] leading-4 text-slate-500">
+                <span className="font-semibold text-slate-300">Write authority:</span>{' '}
+                {trialGrantActive
+                  ? 'trial-only — exactly one approved partition; no wipe or automatic reboot'
+                  : productionGrantActive
+                    ? 'production-qualified — short-lived approved authority'
+                    : grantExpired
+                      ? 'grant expired'
+                      : 'no active write authority'}
+              </div>
+            </div>
           </div>
 
           {jobId && <div className="mt-3 rounded border border-emerald-900 bg-emerald-950/20 p-3 text-xs text-emerald-300">Flash job started: <span className="font-mono">{jobId}</span></div>}
