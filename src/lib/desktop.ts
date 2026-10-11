@@ -639,6 +639,22 @@ export type DriverReleaseResult = {
   evidence: string[];
 };
 
+export type InstalledDriverCandidate = {
+  instanceId: string;
+  infName: string;
+  infPath: string;
+  matchedHardwareIds: string[];
+  exactInterfaceMatch: boolean;
+  currentClaim: boolean;
+  compatibilityScore: number;
+  detail: string;
+};
+
+export async function getInstalledDriverCandidates(instanceId: string): Promise<InstalledDriverCandidate[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<InstalledDriverCandidate[]>('driver_binding_candidates', { instanceId });
+}
+
 export type DriverInfInspection = {
   instanceId: string;
   infPath: string;
