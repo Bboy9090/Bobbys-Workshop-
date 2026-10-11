@@ -1089,6 +1089,17 @@ export async function reviewQualificationDossier(
   });
 }
 
+export async function reviewQualificationDossierPath(
+  path: string,
+  expectedRecoveryJobFingerprint?: string | null,
+): Promise<QualificationDossierReview | null> {
+  if (!isTauriRuntime() || !path.trim()) return null;
+  return invoke<QualificationDossierReview>('bootforge_qualification_review', {
+    path: path.trim(),
+    expectedRecoveryJobFingerprint: expectedRecoveryJobFingerprint?.trim() || null,
+  });
+}
+
 
 export type QualifiedFlashPartition = {
   name: string;
@@ -1243,6 +1254,20 @@ export async function reviewQualificationAuditBundle(
     'bootforge_qualification_audit_bundle_review',
     {
       path: selected,
+      expectedRecoveryJobFingerprint: expectedRecoveryJobFingerprint?.trim() || null,
+    },
+  );
+}
+
+export async function reviewQualificationAuditBundlePath(
+  path: string,
+  expectedRecoveryJobFingerprint?: string | null,
+): Promise<QualificationAuditBundleReview | null> {
+  if (!isTauriRuntime() || !path.trim()) return null;
+  return invoke<QualificationAuditBundleReview>(
+    'bootforge_qualification_audit_bundle_review',
+    {
+      path: path.trim(),
       expectedRecoveryJobFingerprint: expectedRecoveryJobFingerprint?.trim() || null,
     },
   );
