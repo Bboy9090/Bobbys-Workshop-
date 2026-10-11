@@ -762,3 +762,18 @@ describe('Automated hardware-flow qualification preflight', () => {
     expect(dossier).toContain('does not substitute for the destructive bench-write and post-write physical checks');
   });
 });
+
+
+describe('Qualcomm qualification programmer evidence', () => {
+  it('requires a valid authorized programmer for Qualcomm EDL binding only', () => {
+    const backend = read('src-tauri/src/main.rs');
+
+    expect(backend).toContain('qualification_programmer_evidence_ready');
+    expect(backend).toContain('device.mode != "qualcomm-edl"');
+    expect(backend).toContain('programmer.authorized');
+    expect(backend).toContain('valid_sha256_hex(&programmer.sha256)');
+    expect(backend).toContain('programmer.bytes > 0');
+    expect(backend).toContain('authorization_source');
+    expect(backend).toContain('Qualcomm EDL qualification requires an authorized programmer record');
+  });
+});
