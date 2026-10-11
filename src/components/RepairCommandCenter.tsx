@@ -704,6 +704,9 @@ export default function RepairCommandCenter() {
                             <div className="mt-1">
                               service {driverSnapshots[binding.instanceId].snapshot.service || 'unavailable'} · INF {driverSnapshots[binding.instanceId].snapshot.driverInf || 'unavailable'}
                             </div>
+                            <div className="mt-1 break-all font-mono text-[9px] text-sky-300">
+                              fingerprint {driverSnapshots[binding.instanceId].snapshot.fingerprint}
+                            </div>
                           </div>
                         )}
 
@@ -716,6 +719,9 @@ export default function RepairCommandCenter() {
                             </div>
                             <div className="mt-1">
                               prior INF {driverRollbackPlans[binding.instanceId].priorInf || 'unavailable'} · current INF {driverRollbackPlans[binding.instanceId].currentInf || 'unavailable'}
+                            </div>
+                            <div className="mt-1">
+                              snapshot fingerprint {driverRollbackPlans[binding.instanceId].snapshotFingerprintValid ? 'verified' : 'invalid'}
                             </div>
                             {driverRollbackPlans[binding.instanceId].blockers.map((item) => (
                               <div key={item} className="mt-1 leading-4">{item}</div>
