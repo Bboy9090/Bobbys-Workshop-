@@ -5171,6 +5171,7 @@ mod qualified_flash_grant_tests {
         let mut config = valid_config();
         config.qualificationGrant.qualificationStatus = "qualification-trial".into();
         config.qualificationGrant.executorQualified = false;
+        config.qualificationGrant.auditBundleFingerprint = None;
         config.qualificationGrant.grantMac =
             qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
         assert!(validate_qualified_flash_config(&config, "test-secret").is_ok());
@@ -5183,6 +5184,7 @@ mod qualified_flash_grant_tests {
         config.partitions[0].name = "bootloader".into();
         config.qualificationGrant.qualificationStatus = "qualification-trial".into();
         config.qualificationGrant.executorQualified = false;
+        config.qualificationGrant.auditBundleFingerprint = None;
         config.qualificationGrant.approvedPartitions[0].name = "bootloader".into();
         config.qualificationGrant.grantMac =
             qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
