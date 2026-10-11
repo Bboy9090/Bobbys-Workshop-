@@ -136,7 +136,7 @@ $items = Get-PnpDevice -PresentOnly | Where-Object {
   $hw=(Get-PnpDeviceProperty -InstanceId $id -KeyName 'DEVPKEY_Device_HardwareIds' -ErrorAction SilentlyContinue).Data
   [pscustomobject]@{
     InstanceId=$id
-    FriendlyName=($_.FriendlyName ?? $_.Name ?? '')
+    FriendlyName=$(if ($_.FriendlyName) { $_.FriendlyName } elseif ($_.Name) { $_.Name } else { '' })
     Status=$_.Status
     ClassName=$_.Class
     Service=$service
