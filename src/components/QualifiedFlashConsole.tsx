@@ -123,7 +123,9 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint, readines
     grant &&
     !grantExpired &&
     grant.qualificationStatus === 'approved' &&
-    grant.executorQualified,
+    grant.executorQualified &&
+    grant.auditBundleFingerprint &&
+    /^[a-f0-9]{64}$/i.test(grant.auditBundleFingerprint),
   );
   const readyToTrial = Boolean(
     build?.qualifiedFlashCompiled &&
@@ -768,6 +770,13 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint, readines
                       confirmation !== `QUALIFY ${deviceSerial}` ? 'exact QUALIFY confirmation required' : '',
                     ].filter(Boolean).join(' · ')}
               </div>
+
+              {grant?.auditBundleFingerprint && (
+                <div className="rounded border border-slate-800 bg-black/20 p-2 text-[10px] leading-4 text-slate-500">
+                  <span className="font-semibold text-slate-300">Audit bundle binding:</span>{' '}
+                  <span className="break-all font-mono">{grant.auditBundleFingerprint}</span>
+                </div>
+              )}
 
               <div className="rounded border border-slate-800 bg-black/20 p-2 text-[10px] leading-4 text-slate-500">
                 <span className="font-semibold text-slate-300">Write authority:</span>{' '}
