@@ -4,6 +4,7 @@ import {
   getQualificationBuildIdentity,
   getWorkstationReadiness,
   reviewQualificationDossier,
+  reviewQualificationDossierPath,
   listEdlProgrammers,
   scanTransportDevices,
   type EdlProgrammerRecord,
@@ -308,7 +309,11 @@ export default function QualificationDossier({
         transportObservation,
         operatorNotes: notes.trim(),
       });
-      if (path) setSavedPath(path);
+      if (path) {
+        setSavedPath(path);
+        const verified = await reviewQualificationDossierPath(path, recoveryJobFingerprint);
+        if (verified) setReview(verified);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
