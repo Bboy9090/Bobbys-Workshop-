@@ -40,6 +40,21 @@ pub struct AdbPackageRecord {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AdbModeCapabilities {
+    pub serial: String,
+    pub manufacturer: String,
+    pub model: String,
+    pub normal: bool,
+    pub recovery: bool,
+    pub bootloader: bool,
+    pub download: bool,
+    pub qualcomm_edl: bool,
+    pub mediatek_brom: bool,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AdbActionResult {
     pub serial: String,
     pub workflow: &'static str,
@@ -270,13 +285,61 @@ pub fn adb_battery_info(serial: String) -> Result<AdbTextResult, String> {
 }
 
 #[tauri::command]
+pub fn adb_mode_capabilities(serial: String) -> Result<AdbModeCapabilities, String> {
+    require_authorized(&serial)?;
+    let manufacturer = get_property(&serial, "ro.product.manufacturer").unwrap_or_default();
+    let brand = get_property(&serial, "ro.product.brand").unwrap_or_default();
+    let model = get_property(&serial, "ro.product.model").unwrap_or_default();
+    let hardware = get_property(&serial, "ro.hardware").unwrap_or_default();
+
+    let identity = format!("{manufacturer} {brand} {model} {hardware}").to_ascii_lowercase();
+    let is_samsung = identity.contains("samsung");
+    let is_qualcomm = identity.contains("qcom") || identity.contains("qualcomm");
+    let is_mediatek = identity.contains("mt") || identity.contains("mediatek");
+
+    let mut notes = vec![
+        "Normal, Recovery, and Bootloader use standard authorized ADB reboot commands.".to_string(),
+    ];
+    if is_samsung {
+        notes.push("Samsung Download Mode is exposed through adb reboot download and must be re-verified after USB re-enumeration.".to_string());
+    } else {
+        notes.push("Download Mode is hidden because BobFWTools has not identified this target as Samsung.".to_string());
+    }
+    if is_qualcomm {
+        notes.push("Qualcomm hardware detected, but generic adb reboot edl is intentionally not exposed because EDL entry is OEM/build dependent.".to_string());
+    }
+    if is_mediatek {
+        notes.push("MediaTek hardware detected, but BROM/preloader entry is intentionally not exposed as a generic ADB command because entry is device-specific and commonly physical.".to_string());
+    }
+
+    Ok(AdbModeCapabilities {
+        serial,
+        manufacturer: if manufacturer.is_empty() { brand } else { manufacturer },
+        model,
+        normal: true,
+        recovery: true,
+        bootloader: true,
+        download: is_samsung,
+        qualcomm_edl: false,
+        mediatek_brom: false,
+        notes,
+    })
+}
+
+#[tauri::command]
 pub fn adb_reboot_mode(serial: String, mode: String) -> Result<AdbActionResult, String> {
     require_authorized(&serial)?;
     let (workflow, args): (&'static str, Vec<&str>) = match mode.as_str() {
         "normal" => ("reboot-normal", vec!["-s", &serial, "reboot"]),
         "recovery" => ("reboot-recovery", vec!["-s", &serial, "reboot", "recovery"]),
         "bootloader" => ("reboot-bootloader", vec!["-s", &serial, "reboot", "bootloader"]),
-        "download" => ("reboot-download", vec!["-s", &serial, "reboot", "download"]),
+        "download" => {
+            let capabilities = adb_mode_capabilities(serial.clone())?;
+            if !capabilities.download {
+                return Err("Download Mode is only exposed after BobFWTools identifies the authorized ADB target as Samsung.".to_string());
+            }
+            ("reboot-download", vec!["-s", &serial, "reboot", "download"])
+        },
         _ => return Err("Unsupported reboot mode".to_string()),
     };
 

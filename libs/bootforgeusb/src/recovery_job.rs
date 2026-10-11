@@ -352,6 +352,66 @@ fn overlapping_operation_pairs(operations: &[PartitionOperation]) -> Vec<String>
 }
 
 
+fn storage_domain_integrity_issues(
+    workflow: RecoveryKind,
+    operations: &[PartitionOperation],
+) -> Vec<String> {
+    let mut issues = Vec::new();
+
+    match workflow {
+        RecoveryKind::QualcommEdl => {
+            for op in operations {
+                if op.physical_partition.is_none() {
+                    let label = op
+                        .partition_name
+                        .as_deref()
+                        .unwrap_or(op.filename.as_str());
+                    issues.push(format!(
+                        "Qualcomm rawprogram operation {label} does not declare physical_partition_number"
+                    ));
+                }
+            }
+        }
+        RecoveryKind::MediatekDownload => {
+            let mut families = std::collections::BTreeSet::new();
+            for op in operations {
+                let label = op
+                    .partition_name
+                    .as_deref()
+                    .unwrap_or(op.filename.as_str());
+                let Some(region) = op.region.as_deref().map(str::trim).filter(|value| !value.is_empty()) else {
+                    issues.push(format!(
+                        "MediaTek scatter operation {label} does not declare a storage region"
+                    ));
+                    continue;
+                };
+                let upper = region.to_ascii_uppercase();
+                if upper.contains("EMMC") {
+                    families.insert("emmc");
+                } else if upper.contains("UFS") {
+                    families.insert("ufs");
+                } else {
+                    families.insert("unknown");
+                }
+            }
+            if families.contains("emmc") && families.contains("ufs") {
+                issues.push(
+                    "MediaTek scatter mixes eMMC and UFS storage families in one recovery layout"
+                        .to_string(),
+                );
+            }
+            if families.contains("unknown") {
+                issues.push(
+                    "MediaTek scatter contains an unrecognized storage region; exact storage compatibility is not proven"
+                        .to_string(),
+                );
+            }
+        }
+    }
+
+    issues
+}
+
 fn range_integrity_issues(operations: &[PartitionOperation]) -> Vec<String> {
     let mut issues = Vec::new();
     for op in operations {
@@ -651,9 +711,11 @@ pub fn build_job(
     let payload_digests = payload_digest_map.into_values().collect::<Vec<_>>();
     let overlap_issues = overlapping_operation_pairs(&operations);
     let range_issues = range_integrity_issues(&operations);
+    let storage_domain_issues = storage_domain_integrity_issues(plan.workflow, &operations);
     let mut integrity_findings = Vec::new();
     integrity_findings.extend(overlap_issues.iter().cloned());
     integrity_findings.extend(range_issues.iter().cloned());
+    integrity_findings.extend(storage_domain_issues.iter().cloned());
     integrity_findings.extend(payload_length_findings.iter().cloned());
     integrity_findings.sort();
     integrity_findings.dedup();
@@ -865,6 +927,66 @@ mod tests {
             payload_length_issues(RecoveryKind::MediatekDownload, &layout, &ops).unwrap();
         assert_eq!(issues.len(), 1);
         assert!(issues[0].contains("payload too large"));
+    }
+
+    #[test]
+    fn qualcomm_rawprogram_requires_explicit_physical_partition_domain() {
+        let ops = vec![PartitionOperation {
+            partition_name: Some("boot".into()),
+            filename: "boot.img".into(),
+            start: Some(0),
+            length: Some(4096),
+            source_offset: Some(0),
+            physical_partition: None,
+            region: None,
+            operation: "program".into(),
+        }];
+        let issues = storage_domain_integrity_issues(RecoveryKind::QualcommEdl, &ops);
+        assert!(issues.iter().any(|issue| issue.contains("physical_partition_number")));
+    }
+
+    #[test]
+    fn mediatek_scatter_rejects_mixed_emmc_and_ufs_domains() {
+        let ops = vec![
+            PartitionOperation {
+                partition_name: Some("boot".into()),
+                filename: "boot.img".into(),
+                start: Some(0),
+                length: Some(4096),
+                source_offset: Some(0),
+                physical_partition: None,
+                region: Some("EMMC_USER".into()),
+                operation: "download".into(),
+            },
+            PartitionOperation {
+                partition_name: Some("vendor".into()),
+                filename: "vendor.img".into(),
+                start: Some(8192),
+                length: Some(4096),
+                source_offset: Some(0),
+                physical_partition: None,
+                region: Some("UFS_LU2".into()),
+                operation: "download".into(),
+            },
+        ];
+        let issues = storage_domain_integrity_issues(RecoveryKind::MediatekDownload, &ops);
+        assert!(issues.iter().any(|issue| issue.contains("mixes eMMC and UFS")));
+    }
+
+    #[test]
+    fn mediatek_scatter_requires_recognized_storage_regions() {
+        let ops = vec![PartitionOperation {
+            partition_name: Some("boot".into()),
+            filename: "boot.img".into(),
+            start: Some(0),
+            length: Some(4096),
+            source_offset: Some(0),
+            physical_partition: None,
+            region: Some("MYSTERY_REGION".into()),
+            operation: "download".into(),
+        }];
+        let issues = storage_domain_integrity_issues(RecoveryKind::MediatekDownload, &ops);
+        assert!(issues.iter().any(|issue| issue.contains("unrecognized storage region")));
     }
 
     #[test]

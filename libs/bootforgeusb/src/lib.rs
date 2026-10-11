@@ -3,6 +3,7 @@ pub mod calibration_backup;
 pub mod edl;
 pub mod firehose_plan;
 pub mod firmware;
+pub mod firmware_catalog;
 pub mod hardware_service;
 pub mod model;
 pub mod planner;
