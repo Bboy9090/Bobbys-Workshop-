@@ -31,6 +31,13 @@ const CHECK_LABELS: Array<[keyof QualifiedFlashPhysicalChecks, string]> = [
   ['postWriteVerificationPassed', 'Post-write verification passed on designated device'],
 ];
 
+const EVIDENCE_DERIVED_CHECKS = new Set<keyof QualifiedFlashPhysicalChecks>([
+  'repeatedEnumerationStable',
+  'expectedModeConfirmed',
+  'endpointStabilityConfirmed',
+  'programmerHashVerified',
+]);
+
 const EMPTY_CHECKS: QualifiedFlashPhysicalChecks = {
   repeatedEnumerationStable: false,
   expectedModeConfirmed: false,
@@ -217,7 +224,16 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
     setGrant(null);
     try {
       const result = await reviewQualificationDossier(recoveryJobFingerprint);
-      if (result) setReview(result);
+      if (result) {
+        setReview(result);
+        setChecks((current) => ({
+          ...current,
+          repeatedEnumerationStable: result.bindingSemanticsValid && result.transportObservationReady,
+          expectedModeConfirmed: result.bindingSemanticsValid && result.liveDeviceIdentityMatch,
+          endpointStabilityConfirmed: result.bindingSemanticsValid && result.transportObservationReady,
+          programmerHashVerified: result.bindingSemanticsValid && result.programmerEvidenceReady,
+        }));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
