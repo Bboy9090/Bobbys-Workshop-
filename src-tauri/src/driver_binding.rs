@@ -179,6 +179,14 @@ pub struct DriverRelatchResult {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DriverElevationStatus {
+    pub required: bool,
+    pub elevated: bool,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DriverReleaseResult {
     pub instance_id: String,
     pub released: bool,
@@ -554,6 +562,52 @@ $items = Get-PnpDevice -PresentOnly | Where-Object {
 #[tauri::command]
 pub fn driver_binding_scan() -> Result<Vec<DriverBindingRecord>, String> {
     Ok(Vec::new())
+}
+
+#[cfg(target_os = "windows")]
+fn is_process_elevated() -> Result<bool, String> {
+    let script = r#"
+$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+"#;
+    let raw = powershell_json(script)?;
+    Ok(raw.trim().eq_ignore_ascii_case("true"))
+}
+
+#[cfg(target_os = "windows")]
+fn require_elevation(action: &str) -> Result<(), String> {
+    if is_process_elevated()? {
+        Ok(())
+    } else {
+        Err(format!(
+            "{action} requires Windows administrator elevation. Restart BobFWTools as Administrator, reconnect the device, and refresh Driver Claim Inspector before retrying."
+        ))
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn driver_binding_elevation_status() -> Result<DriverElevationStatus, String> {
+    let elevated = is_process_elevated()?;
+    Ok(DriverElevationStatus {
+        required: true,
+        elevated,
+        detail: if elevated {
+            "BobFWTools is running with Windows administrator rights required for PnP release/rescan and driver staging.".to_string()
+        } else {
+            "Driver inspection is available, but PnP mutation is blocked until BobFWTools is restarted as Administrator.".to_string()
+        },
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn driver_binding_elevation_status() -> Result<DriverElevationStatus, String> {
+    Ok(DriverElevationStatus {
+        required: false,
+        elevated: true,
+        detail: "Windows administrator elevation is not applicable on this platform.".to_string(),
+    })
 }
 
 #[cfg(target_os = "windows")]
@@ -1231,6 +1285,7 @@ pub fn driver_binding_stage_and_relatch(
     instance_id: String,
     inf_path: String,
 ) -> Result<DriverRelatchResult, String> {
+    require_elevation("Verified driver staging and relatch")?;
     let inspection = driver_binding_inspect_inf(instance_id.clone(), inf_path.clone())?;
     if !inspection.compatible {
         return Err("Driver relatch blocked: selected INF hardware IDs do not match the exact device.".to_string());
@@ -1340,6 +1395,7 @@ pub fn driver_binding_stage_and_relatch(
 #[cfg(target_os = "windows")]
 #[tauri::command]
 pub fn driver_binding_release_and_rescan(instance_id: String) -> Result<DriverReleaseResult, String> {
+    require_elevation("Exact-device release and rescan")?;
     let instance_id = instance_id.trim().to_string();
     if instance_id.is_empty() || !instance_id.to_ascii_uppercase().starts_with("USB") {
         return Err("Driver release requires an exact present USB device instance ID.".to_string());
