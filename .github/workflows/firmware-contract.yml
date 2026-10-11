@@ -150,7 +150,7 @@ jobs:
           grep -q "non-symlink regular file" "$RUNNER_TEMP/symlink-error.txt"
       - name: Exercise read-only archive CLI with actual fixture bytes
         run: |
-          printf 'PK\\003\\004fixture' > "$RUNNER_TEMP/zip-marker.bin"
+          node -e 'require("fs").writeFileSync(process.argv[1],Buffer.from([0x50,0x4b,0x03,0x04,0,0,0,0]))' "$RUNNER_TEMP/zip-marker.bin"
           node scripts/inspect-firmware-archive.mjs --file "$RUNNER_TEMP/zip-marker.bin" > "$RUNNER_TEMP/archive-inspection.json"
           node -e 'const r=require(process.argv[1]); if(r.format!=="zip-local-header" || r.flashAuthorized || r.structuralIntegrityVerified) process.exit(1)' "$RUNNER_TEMP/archive-inspection.json"
           printf 'not-a-zip' > "$RUNNER_TEMP/unknown-marker.bin"
