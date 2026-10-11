@@ -186,6 +186,23 @@ export type AdbDeviceInfo = {
   evidenceSource: string;
 };
 
+export type AdbModeCapabilities = {
+  serial: string;
+  manufacturer: string;
+  model: string;
+  normal: boolean;
+  recovery: boolean;
+  bootloader: boolean;
+  download: boolean;
+  qualcommEdl: boolean;
+  mediatekBrom: boolean;
+  notes: string[];
+};
+
+export async function getAdbModeCapabilities(serial: string): Promise<AdbModeCapabilities> {
+  return invoke<AdbModeCapabilities>('adb_mode_capabilities', { serial });
+}
+
 export type AdbTextResult = {
   serial: string;
   workflow: string;
