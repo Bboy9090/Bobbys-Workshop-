@@ -805,6 +805,9 @@ describe('Qualification dossier semantic review and evidence-derived flash check
     expect(consoleUi).toContain('disabled={automated}');
     expect(consoleUi).toContain("{automated ? 'AUTO' : 'MANUAL'}");
     expect(consoleUi).toContain('cannot be clicked manually');
+    expect(desktop).toContain('reviewQualificationDossierPath');
+    expect(desktop).toContain('reviewQualificationAuditBundlePath');
+    expect(consoleUi).toContain('reviewQualificationAuditBundlePath(path, recoveryJobFingerprint)');
     expect(consoleUi).toContain('auditBundleReview?.safeToReview');
     expect(consoleUi).toContain('auditBundlePath: auditBundleReview?.safeToReview ? auditBundleReview.path : null');
     expect(backend).toContain('Production-qualified grant requires a verified qualification audit bundle');
