@@ -822,5 +822,7 @@ describe('Qualification dossier semantic review and evidence-derived flash check
     expect(backend).toContain('"auditBundleFingerprint": grant.auditBundleFingerprint');
     expect(backend).toContain('Production-qualified grant is missing its audit-bundle fingerprint');
     expect(desktop).toContain('auditBundleFingerprint?: string | null');
+    expect(consoleUi).toContain('/^[a-f0-9]{64}$/i.test(grant.auditBundleFingerprint)');
+    expect(consoleUi).toContain('Audit bundle binding:');
   });
 });
