@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
-import { mkdir, link, rm, lstat } from 'node:fs/promises';
+import { mkdir, link, rm, lstat, realpath } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { Readable, Transform } from 'node:stream';
 import { basename, dirname, join, resolve, parse, sep } from 'node:path';
@@ -9,6 +9,12 @@ const HEX = /^[a-f0-9]{64}$/i;
 const ALLOWED_HOSTS = new Set(['dl.google.com']);
 const MAX_BYTES = 12 * 1024 ** 3;
 
+const DARWIN_SYSTEM_ALIASES = new Map([
+  ['/var', '/private/var'],
+  ['/tmp', '/private/tmp'],
+  ['/etc', '/private/etc'],
+]);
+
 async function assertNoSymlinkParents(dir) {
   const full = resolve(dir);
   const root = parse(full).root;
@@ -16,7 +22,16 @@ async function assertNoSymlinkParents(dir) {
   for (const part of full.slice(root.length).split(sep).filter(Boolean)) {
     current = join(current, part);
     const metadata = await lstat(current);
-    if (metadata.isSymbolicLink() || !metadata.isDirectory())
+    if (metadata.isSymbolicLink()) {
+      const allowedTarget = process.platform === 'darwin'
+        ? DARWIN_SYSTEM_ALIASES.get(current)
+        : undefined;
+      const actualTarget = allowedTarget ? await realpath(current) : undefined;
+      if (!allowedTarget || actualTarget !== allowedTarget)
+        throw Error('Destination parent must be a real directory, not a symlink');
+      continue;
+    }
+    if (!metadata.isDirectory())
       throw Error('Destination parent must be a real directory, not a symlink');
   }
 }
