@@ -23,6 +23,7 @@ import {
   isTauriRuntime,
   saveAdbScreenshot,
   scanAdbDevices,
+  getAdbModeCapabilities,
   getFastbootModeDevices,
   fastbootRebootMode,
   verifyModeTransition,
@@ -64,6 +65,7 @@ import {
   type RecoveryReadinessCertificateReview,
   type FirmwareBundleSummary,
   type ModeTransitionVerification,
+  type AdbModeCapabilities,
 } from './lib/desktop';
 
 function formatBytes(value: number): string {
@@ -89,6 +91,7 @@ export default function App() {
   const [fastbootModeDevices, setFastbootModeDevices] = useState<string[]>([]);
   const [modeActionBusy, setModeActionBusy] = useState<string | null>(null);
   const [modeTransitionReceipts, setModeTransitionReceipts] = useState<Record<string, ModeTransitionVerification>>({});
+  const [adbModeCapabilities, setAdbModeCapabilities] = useState<Record<string, AdbModeCapabilities>>({});
   const [capabilities, setCapabilities] = useState<DeviceCapabilityMatrix | null>(null);
   const [adbSelectedSerial, setAdbSelectedSerial] = useState<string | null>(null);
   const [adbOutput, setAdbOutput] = useState<string | null>(null);
@@ -312,6 +315,20 @@ export default function App() {
 
       const adb = await scanAdbDevices();
       setAdbDevices(adb);
+      const capabilityPairs = await Promise.all(
+        adb
+          .filter((device) => device.authorized)
+          .map(async (device) => {
+            try {
+              return [device.serial, await getAdbModeCapabilities(device.serial)] as const;
+            } catch {
+              return null;
+            }
+          }),
+      );
+      setAdbModeCapabilities(
+        Object.fromEntries(capabilityPairs.filter((item): item is readonly [string, AdbModeCapabilities] => item !== null)),
+      );
       try {
         setFastbootModeDevices(await getFastbootModeDevices());
       } catch {
@@ -1078,7 +1095,7 @@ export default function App() {
                         </button>
                         <button
                           type="button"
-                          disabled={!device.authorized || !!modeActionBusy}
+                          disabled={!device.authorized || !!modeActionBusy || !adbModeCapabilities[device.serial]?.download}
                           onClick={(event) => { event.stopPropagation(); void runAdbModeForSerial(device.serial, 'reboot-download'); }}
                           className="rounded border border-amber-800 px-2 py-1.5 text-[10px] text-amber-300 disabled:opacity-40 hover:bg-amber-950/40"
                           title="OEM/device-specific. Common on Samsung; unsupported devices will fail truthfully."
@@ -1089,6 +1106,26 @@ export default function App() {
                       <div className="mt-2 text-[10px] leading-4 text-slate-500">
                         Commands are sent only to serial <span className="font-mono">{device.serial}</span>. BobFWTools re-scans after the phone disconnects and changes mode.
                       </div>
+                      {adbModeCapabilities[device.serial] && (
+                        <div className="mt-2 rounded border border-slate-800 bg-black/20 p-2 text-[10px] leading-4 text-slate-500">
+                          <div className="font-semibold text-slate-300">
+                            {adbModeCapabilities[device.serial].manufacturer || 'Android'} {adbModeCapabilities[device.serial].model || ''}
+                          </div>
+                          <div className="mt-1">
+                            Automated: Normal · Recovery · Bootloader{adbModeCapabilities[device.serial].download ? ' · Samsung Download' : ''}
+                          </div>
+                          {adbModeCapabilities[device.serial].qualcommEdl === false && adbModeCapabilities[device.serial].notes.some((note) => note.includes('Qualcomm hardware detected')) && (
+                            <div className="mt-1 text-amber-300">
+                              Qualcomm EDL: device/OEM-specific entry required; no generic adb reboot edl button is exposed.
+                            </div>
+                          )}
+                          {adbModeCapabilities[device.serial].mediatekBrom === false && adbModeCapabilities[device.serial].notes.some((note) => note.includes('MediaTek hardware detected')) && (
+                            <div className="mt-1 text-amber-300">
+                              MediaTek BROM/Preloader: device-specific or physical entry required; no fake generic ADB transition is exposed.
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {modeTransitionReceipts[device.serial] && (
                         <div className={modeTransitionReceipts[device.serial].verified
                           ? 'mt-2 rounded border border-emerald-900/60 bg-emerald-950/20 p-2 text-[10px] text-emerald-300'
