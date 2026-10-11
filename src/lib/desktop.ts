@@ -64,6 +64,44 @@ export async function getNativeUsbDevices(): Promise<UsbDeviceRecord[]> {
   return invoke<UsbDeviceRecord[]>('bootforgeusb_scan');
 }
 
+export type FastbootModeActionResult = {
+  serial: string;
+  requestedMode: string;
+  accepted: boolean;
+  verified: boolean;
+  message: string;
+  evidenceSource: string;
+};
+
+export async function getFastbootModeDevices(): Promise<string[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<string[]>('fastboot_mode_devices');
+}
+
+export async function fastbootRebootMode(
+  serial: string,
+  mode: 'normal' | 'bootloader' | 'recovery',
+): Promise<FastbootModeActionResult> {
+  return invoke<FastbootModeActionResult>('fastboot_reboot_mode', { serial, mode });
+}
+
+export type ModeTransitionVerification = {
+  serial: string;
+  requestedMode: string;
+  observedMode?: string | null;
+  verified: boolean;
+  identityConfidence: string;
+  evidence: string[];
+  blockers: string[];
+};
+
+export async function verifyModeTransition(
+  serial: string,
+  requestedMode: 'normal' | 'recovery' | 'bootloader' | 'download',
+): Promise<ModeTransitionVerification> {
+  return invoke<ModeTransitionVerification>('mode_transition_verify', { serial, requestedMode });
+}
+
 export async function getMtpStatus(): Promise<MtpStatus | null> {
   if (!isTauriRuntime()) return null;
   try {
@@ -147,6 +185,23 @@ export type AdbDeviceInfo = {
   verified: boolean;
   evidenceSource: string;
 };
+
+export type AdbModeCapabilities = {
+  serial: string;
+  manufacturer: string;
+  model: string;
+  normal: boolean;
+  recovery: boolean;
+  bootloader: boolean;
+  download: boolean;
+  qualcommEdl: boolean;
+  mediatekBrom: boolean;
+  notes: string[];
+};
+
+export async function getAdbModeCapabilities(serial: string): Promise<AdbModeCapabilities> {
+  return invoke<AdbModeCapabilities>('adb_mode_capabilities', { serial });
+}
 
 export type AdbTextResult = {
   serial: string;
@@ -557,6 +612,214 @@ export async function listEdlProgrammers(): Promise<EdlProgrammerRecord[]> {
   return invoke<EdlProgrammerRecord[]>('edl_list_programmers');
 }
 
+
+export type DriverBindingRecord = {
+  instanceId: string;
+  friendlyName: string;
+  status: string;
+  className: string;
+  service?: string | null;
+  driverInf?: string | null;
+  hardwareIds: string[];
+  vendorId?: number | null;
+  productId?: number | null;
+  expectedFamily: string;
+  physicalDeviceKey: string;
+  interfaceId?: string | null;
+  compositeSiblingCount: number;
+  bindingState: string;
+  detail: string;
+};
+
+export type DriverReleaseResult = {
+  instanceId: string;
+  released: boolean;
+  rescanned: boolean;
+  detail: string;
+  evidence: string[];
+};
+
+export type DriverBindingSnapshot = {
+  schema: string;
+  createdAtMs: number;
+  instanceId: string;
+  physicalDeviceKey: string;
+  interfaceId?: string | null;
+  hardwareIds: string[];
+  expectedFamily: string;
+  service?: string | null;
+  driverInf?: string | null;
+  bindingState: string;
+};
+
+export type DriverSnapshotResult = {
+  path: string;
+  snapshot: DriverBindingSnapshot;
+};
+
+export type DriverRollbackPlan = {
+  snapshotPath: string;
+  exactDevicePresent: boolean;
+  hardwareIdentityMatches: boolean;
+  priorInfAvailable: boolean;
+  rollbackReady: boolean;
+  priorInf?: string | null;
+  currentInf?: string | null;
+  blockers: string[];
+  nextSteps: string[];
+};
+
+export async function createDriverBindingSnapshot(instanceId: string): Promise<DriverSnapshotResult> {
+  return invoke<DriverSnapshotResult>('driver_binding_snapshot', { instanceId });
+}
+
+export async function getDriverRollbackPlan(snapshotPath: string): Promise<DriverRollbackPlan> {
+  return invoke<DriverRollbackPlan>('driver_binding_rollback_plan', { snapshotPath });
+}
+
+export type DriverCleanupRecommendation = {
+  instanceId: string;
+  infName: string;
+  disposition: string;
+  reason: string;
+  currentClaim: boolean;
+  exactInterfaceMatch: boolean;
+  compatibilityScore: number;
+  matchedHardwareIds: string[];
+};
+
+export type DriverCleanupReport = {
+  instanceId: string;
+  protectedCurrentInf?: string | null;
+  recommendations: DriverCleanupRecommendation[];
+  safeToConsiderCleanup: boolean;
+  summary: string;
+  blockers: string[];
+};
+
+export async function getDriverCleanupReport(instanceId: string): Promise<DriverCleanupReport> {
+  return invoke<DriverCleanupReport>('driver_binding_cleanup_report', { instanceId });
+}
+
+export type DriverClaimSample = {
+  sample: number;
+  present: boolean;
+  instanceId?: string | null;
+  service?: string | null;
+  driverInf?: string | null;
+  bindingState?: string | null;
+};
+
+export type DriverClaimStabilityReport = {
+  requestedInstanceId: string;
+  samples: DriverClaimSample[];
+  presentSamples: number;
+  claimChanges: number;
+  disappearanceEvents: number;
+  stable: boolean;
+  summary: string;
+  recommendations: string[];
+};
+
+export async function runDriverClaimStabilityTest(instanceId: string): Promise<DriverClaimStabilityReport> {
+  return invoke<DriverClaimStabilityReport>('driver_binding_stability_test', { instanceId });
+}
+
+export type DriverConflictPlan = {
+  instanceId: string;
+  expectedFamily: string;
+  currentInf?: string | null;
+  currentService?: string | null;
+  bindingState: string;
+  compositeInterface?: string | null;
+  siblingCount: number;
+  candidateCount: number;
+  exactInterfaceCandidateCount: number;
+  conflictLevel: string;
+  recommendedAction: string;
+  nextSteps: string[];
+  blockers: string[];
+  evidence: string[];
+};
+
+export async function getDriverConflictPlan(instanceId: string): Promise<DriverConflictPlan> {
+  return invoke<DriverConflictPlan>('driver_binding_conflict_plan', { instanceId });
+}
+
+export type InstalledDriverCandidate = {
+  instanceId: string;
+  infName: string;
+  infPath: string;
+  matchedHardwareIds: string[];
+  exactInterfaceMatch: boolean;
+  currentClaim: boolean;
+  compatibilityScore: number;
+  detail: string;
+};
+
+export async function getInstalledDriverCandidates(instanceId: string): Promise<InstalledDriverCandidate[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<InstalledDriverCandidate[]>('driver_binding_candidates', { instanceId });
+}
+
+export type DriverInfInspection = {
+  instanceId: string;
+  infPath: string;
+  deviceHardwareIds: string[];
+  infHardwareIds: string[];
+  matchedHardwareIds: string[];
+  compatible: boolean;
+  expectedFamily: string;
+  detail: string;
+};
+
+export type DriverRelatchResult = {
+  instanceId: string;
+  infPath: string;
+  snapshotPath?: string | null;
+  staged: boolean;
+  released: boolean;
+  rescanned: boolean;
+  verifiedClaim: boolean;
+  observedService?: string | null;
+  observedInf?: string | null;
+  detail: string;
+  evidence: string[];
+};
+
+export async function chooseDriverInf(): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: 'Choose Windows USB driver INF',
+    filters: [{ name: 'Windows driver INF', extensions: ['inf'] }],
+  });
+  return typeof selected === 'string' ? selected : null;
+}
+
+export async function inspectDriverInf(
+  instanceId: string,
+  infPath: string,
+): Promise<DriverInfInspection> {
+  return invoke<DriverInfInspection>('driver_binding_inspect_inf', { instanceId, infPath });
+}
+
+export async function stageAndRelatchDriver(
+  instanceId: string,
+  infPath: string,
+): Promise<DriverRelatchResult> {
+  return invoke<DriverRelatchResult>('driver_binding_stage_and_relatch', { instanceId, infPath });
+}
+
+export async function scanDriverBindings(): Promise<DriverBindingRecord[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<DriverBindingRecord[]>('driver_binding_scan');
+}
+
+export async function releaseAndRescanDriverBinding(instanceId: string): Promise<DriverReleaseResult> {
+  return invoke<DriverReleaseResult>('driver_binding_release_and_rescan', { instanceId });
+}
 
 export type WorkstationToolReadiness = {
   id: string;
@@ -1278,4 +1541,111 @@ export async function reviewRecoveryReadinessCertificate(
       expectedJobFingerprint: expectedJobFingerprint?.trim() || null,
     },
   );
+}
+
+
+export type FirmwareChipsetProfile = {
+  vendor: 'qualcomm' | 'mediatek' | string;
+  family: string;
+  marketedAs: string[];
+  aliases: string[];
+  serviceModes: string[];
+  loaderKinds: string[];
+  commonStorage: string[];
+  packageMarkers: string[];
+  securityNote: string;
+};
+
+export type FirmwareLibraryEntry = {
+  path: string;
+  relativePath: string;
+  name: string;
+  bytes: number;
+  sha256: string;
+  modifiedUnixMs: number | null;
+  vendorHint: string;
+  artifactKind: string;
+  chipsetMatches: string[];
+  blocked: boolean;
+  eligibleForPlanning: boolean;
+  warnings: string[];
+};
+
+export type FirmwareBundleSummary = {
+  directory: string;
+  vendorHint: string;
+  chipsetMatches: string[];
+  artifactKinds: string[];
+  files: number;
+  bytes: number;
+  blocked: boolean;
+  planningReady: boolean;
+  missingRequired: string[];
+  provenancePresent: boolean;
+  provenanceValid: boolean;
+  exactIdentityPresent: boolean;
+  model?: string | null;
+  board?: string | null;
+  sku?: string | null;
+  sourceCategory?: string | null;
+  sourceReference?: string | null;
+  warnings: string[];
+};
+
+export type FirmwareLibraryReport = {
+  root: string;
+  entries: FirmwareLibraryEntry[];
+  vendorCounts: Record<string, number>;
+  artifactCounts: Record<string, number>;
+  blockedCount: number;
+  bundles: FirmwareBundleSummary[];
+  warnings: string[];
+};
+
+export async function getFirmwareChipsetCatalog(): Promise<FirmwareChipsetProfile[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<FirmwareChipsetProfile[]>('firmware_chipset_catalog');
+}
+
+export async function lookupFirmwareChipset(query: string): Promise<FirmwareChipsetProfile[]> {
+  if (!isTauriRuntime() || !query.trim()) return [];
+  return invoke<FirmwareChipsetProfile[]>('firmware_chipset_lookup', { query });
+}
+
+export type FirmwareProvenanceWriteInput = {
+  directory: string;
+  vendor: 'qualcomm' | 'mediatek' | string;
+  chipsetFamily: string;
+  oem: string;
+  model: string;
+  board: string;
+  sku: string;
+  region?: string | null;
+  carrier?: string | null;
+  buildVersion: string;
+  bootloaderRevision?: string | null;
+  storage?: string | null;
+  sourceCategory: 'official-oem' | 'authorized-service' | string;
+  sourceReference: string;
+};
+
+export type FirmwareProvenanceWriteResult = {
+  path: string;
+  artifactsBound: number;
+};
+
+export async function writeFirmwareProvenance(
+  input: FirmwareProvenanceWriteInput,
+): Promise<FirmwareProvenanceWriteResult> {
+  return invoke<FirmwareProvenanceWriteResult>('firmware_provenance_write', { input });
+}
+
+export async function getVerifiedFirmwareBundleArtifacts(directory: string): Promise<string[]> {
+  if (!isTauriRuntime() || !directory.trim()) return [];
+  return invoke<string[]>('firmware_bundle_planning_artifacts', { directory });
+}
+
+export async function scanFirmwareLibrary(): Promise<FirmwareLibraryReport | null> {
+  if (!isTauriRuntime()) return null;
+  return invoke<FirmwareLibraryReport>('firmware_library_scan');
 }

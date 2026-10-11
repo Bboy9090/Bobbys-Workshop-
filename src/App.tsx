@@ -23,6 +23,10 @@ import {
   isTauriRuntime,
   saveAdbScreenshot,
   scanAdbDevices,
+  getAdbModeCapabilities,
+  getFastbootModeDevices,
+  fastbootRebootMode,
+  verifyModeTransition,
   listMtpDirectory,
   downloadMtpPath,
   uploadMtpPath,
@@ -33,6 +37,8 @@ import {
   autodiscoverRecoveryArtifacts,
   buildRecoveryPlan,
   prepareRecoveryJob,
+  scanFirmwareLibrary,
+  getVerifiedFirmwareBundleArtifacts,
   revalidateRecoveryJob,
   exportRecoveryEvidence,
   exportRecoveryReadinessCertificate,
@@ -57,6 +63,9 @@ import {
   type RecoveryJob,
   type RecoveryWorkflow,
   type RecoveryReadinessCertificateReview,
+  type FirmwareBundleSummary,
+  type ModeTransitionVerification,
+  type AdbModeCapabilities,
 } from './lib/desktop';
 
 function formatBytes(value: number): string {
@@ -79,6 +88,10 @@ export default function App() {
   const [usbDevices, setUsbDevices] = useState<UsbDeviceRecord[]>([]);
   const [mtp, setMtp] = useState<MtpStatus | null>(null);
   const [adbDevices, setAdbDevices] = useState<AdbDeviceRecord[]>([]);
+  const [fastbootModeDevices, setFastbootModeDevices] = useState<string[]>([]);
+  const [modeActionBusy, setModeActionBusy] = useState<string | null>(null);
+  const [modeTransitionReceipts, setModeTransitionReceipts] = useState<Record<string, ModeTransitionVerification>>({});
+  const [adbModeCapabilities, setAdbModeCapabilities] = useState<Record<string, AdbModeCapabilities>>({});
   const [capabilities, setCapabilities] = useState<DeviceCapabilityMatrix | null>(null);
   const [adbSelectedSerial, setAdbSelectedSerial] = useState<string | null>(null);
   const [adbOutput, setAdbOutput] = useState<string | null>(null);
@@ -109,6 +122,8 @@ export default function App() {
   const [recoveryEvidencePath, setRecoveryEvidencePath] = useState<string | null>(null);
   const [recoveryCertificatePath, setRecoveryCertificatePath] = useState<string | null>(null);
   const [recoveryCertificateReview, setRecoveryCertificateReview] = useState<RecoveryReadinessCertificateReview | null>(null);
+  const [verifiedFirmwareBundles, setVerifiedFirmwareBundles] = useState<FirmwareBundleSummary[]>([]);
+  const [selectedVerifiedBundle, setSelectedVerifiedBundle] = useState('');
   const nativeRuntime = useMemo(() => isTauriRuntime(), []);
   const filteredPackages = useMemo(() => {
     const q = packageQuery.trim().toLowerCase();
@@ -300,6 +315,25 @@ export default function App() {
 
       const adb = await scanAdbDevices();
       setAdbDevices(adb);
+      const capabilityPairs = await Promise.all(
+        adb
+          .filter((device) => device.authorized)
+          .map(async (device) => {
+            try {
+              return [device.serial, await getAdbModeCapabilities(device.serial)] as const;
+            } catch {
+              return null;
+            }
+          }),
+      );
+      setAdbModeCapabilities(
+        Object.fromEntries(capabilityPairs.filter((item): item is readonly [string, AdbModeCapabilities] => item !== null)),
+      );
+      try {
+        setFastbootModeDevices(await getFastbootModeDevices());
+      } catch {
+        setFastbootModeDevices([]);
+      }
       if (!adbSelectedSerial && adb.length) {
         setAdbSelectedSerial(adb[0].serial);
       } else if (adbSelectedSerial && !adb.some((device) => device.serial === adbSelectedSerial)) {
@@ -311,6 +345,19 @@ export default function App() {
 
       const matrix = await getWorkflowCapabilities();
       setCapabilities(matrix);
+      try {
+        const firmware = await scanFirmwareLibrary();
+        const readyBundles = firmware?.bundles.filter((bundle) => bundle.planningReady) ?? [];
+        setVerifiedFirmwareBundles(readyBundles);
+        setSelectedVerifiedBundle((current) =>
+          current && readyBundles.some((bundle) => bundle.directory === current)
+            ? current
+            : readyBundles[0]?.directory ?? '',
+        );
+      } catch {
+        setVerifiedFirmwareBundles([]);
+        setSelectedVerifiedBundle('');
+      }
       await refreshJobs();
 
       if (mtpStatus?.storages.length) {
@@ -491,6 +538,84 @@ export default function App() {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
       setTransferBusy(false);
+    }
+  };
+
+  const verifyTransitionLater = (
+    serial: string,
+    requestedMode: 'normal' | 'recovery' | 'bootloader' | 'download',
+  ) => {
+    const verifyAt = (delay: number) => {
+      window.setTimeout(async () => {
+        try {
+          const receipt = await verifyModeTransition(serial, requestedMode);
+          setModeTransitionReceipts((current) => ({ ...current, [serial]: receipt }));
+          await refresh();
+        } catch {
+          // Re-enumeration can temporarily make every transport disappear. Later verification attempts remain authoritative.
+        }
+      }, delay);
+    };
+    verifyAt(1800);
+    verifyAt(4500);
+    verifyAt(8000);
+  };
+
+  const runAdbModeForSerial = async (
+    serial: string,
+    action: 'reboot-normal' | 'reboot-recovery' | 'reboot-bootloader' | 'reboot-download',
+  ) => {
+    if (transferBusy || modeActionBusy) return;
+    setModeActionBusy(serial + ':' + action);
+    setNativeError(null);
+    setModeTransitionReceipts((current) => {
+      const next = { ...current };
+      delete next[serial];
+      return next;
+    });
+    try {
+      const workflowMap = {
+        'reboot-normal': 'adb-reboot-normal',
+        'reboot-recovery': 'adb-reboot-recovery',
+        'reboot-bootloader': 'adb-reboot-bootloader',
+        'reboot-download': 'adb-reboot-download',
+      } as const;
+      const job = await startWorkflowJob(workflowMap[action], serial);
+      setAdbSelectedSerial(serial);
+      setAdbOutput(
+        `Mode command for ${serial}\n${job.summary}\nState: ${job.state}${job.verified ? ' · verified' : ' · awaiting re-detection'}`,
+      );
+      await refreshJobs();
+      verifyTransitionLater(serial, action.replace('reboot-', '') as 'normal' | 'recovery' | 'bootloader' | 'download');
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setModeActionBusy(null);
+    }
+  };
+
+  const runFastbootModeForSerial = async (
+    serial: string,
+    mode: 'normal' | 'bootloader' | 'recovery',
+  ) => {
+    if (transferBusy || modeActionBusy) return;
+    setModeActionBusy(serial + ':fastboot-' + mode);
+    setNativeError(null);
+    setModeTransitionReceipts((current) => {
+      const next = { ...current };
+      delete next[serial];
+      return next;
+    });
+    try {
+      const result = await fastbootRebootMode(serial, mode);
+      setAdbOutput(
+        `Fastboot mode command for ${serial}\n${result.message}\nRequested: ${result.requestedMode}\nStatus: accepted · awaiting re-detection`,
+      );
+      verifyTransitionLater(serial, mode);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setModeActionBusy(null);
     }
   };
 
@@ -710,6 +835,48 @@ export default function App() {
     }
   };
 
+  const useVerifiedFirmwareBundle = async () => {
+    if (recoveryBusy || !selectedVerifiedBundle) return;
+    setRecoveryBusy(true);
+    setNativeError(null);
+    setRecoveryEvidencePath(null);
+    setRecoveryCertificatePath(null);
+    setRecoveryCertificateReview(null);
+    try {
+      const bundle = verifiedFirmwareBundles.find((item) => item.directory === selectedVerifiedBundle);
+      if (!bundle || !bundle.planningReady) {
+        throw new Error('The selected firmware bundle is no longer verified for planning. Rescan the firmware library and resolve its blockers first.');
+      }
+
+      const expectedVendor = (selectedRecoveryCandidate?.workflow ?? recoveryKind) === 'qualcomm-edl'
+        ? 'qualcomm'
+        : 'mediatek';
+      if (bundle.vendorHint !== expectedVendor) {
+        throw new Error(
+          `The selected verified bundle is ${bundle.vendorHint}, but the active recovery lane requires ${expectedVendor}. Choose a package for the detected hardware lane.`,
+        );
+      }
+
+      const paths = await getVerifiedFirmwareBundleArtifacts(bundle.directory);
+      if (!paths.length) {
+        throw new Error('The verified bundle no longer exposes planning artifacts. Rescan the managed firmware library.');
+      }
+      const effectiveWorkflow = selectedRecoveryCandidate?.workflow ?? recoveryKind;
+      const plan = await buildRecoveryPlan(effectiveWorkflow, paths);
+      setRecoveryArtifacts(paths);
+      setRecoveryPlan(plan);
+      setRecoveryJob(null);
+      if (selectedRecoveryCandidate) {
+        const job = await prepareRecoveryJob(selectedRecoveryCandidate, paths);
+        setRecoveryJob(job);
+      }
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveryBusy(false);
+    }
+  };
+
   const inspectRecoveryPlan = async () => {
     if (recoveryBusy || !recoveryArtifacts.length) return;
     setRecoveryBusy(true);
@@ -889,32 +1056,230 @@ export default function App() {
                 {adbDevices.map((device) => {
                   const selected = adbSelectedSerial === device.serial;
                   return (
-                    <button
+                    <div
                       key={`adb-${device.serial}`}
-                      type="button"
-                      onClick={() => setAdbSelectedSerial(device.serial)}
-                      className={`rounded border p-4 text-left transition ${selected ? 'border-cyan-500 bg-cyan-950/30' : 'border-slate-800 bg-slate-950/60 hover:border-slate-600'}`}
+                      className={`rounded border p-4 text-left transition ${selected ? 'border-cyan-500 bg-cyan-950/30' : 'border-slate-800 bg-slate-950/60'}`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-medium text-white">Android phone</span>
-                        <span className={device.authorized ? 'text-xs text-emerald-300' : 'text-xs text-amber-300'}>
-                          {device.authorized ? 'Authorized' : 'Needs authorization'}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className={device.authorized ? 'text-xs text-emerald-300' : 'text-xs text-amber-300'}>
+                            {device.authorized ? 'Authorized' : 'Needs authorization'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setAdbSelectedSerial(device.serial)}
+                            className={selected ? 'rounded border border-cyan-700 px-2 py-1 text-[10px] font-semibold text-cyan-300' : 'rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-400 hover:bg-slate-800'}
+                          >
+                            {selected ? 'Selected' : 'Select device'}
+                          </button>
+                        </div>
                       </div>
                       <div className="mt-2 font-mono text-xs text-cyan-300">{device.serial}</div>
                       <div className="mt-1 text-xs text-slate-400">{device.state} · ADB connection</div>
                       {selected && <div className="mt-3 text-xs font-medium text-cyan-200">Selected — actions below use this phone</div>}
-                    </button>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          disabled={!device.authorized || !!modeActionBusy}
+                          onClick={(event) => { event.stopPropagation(); void runAdbModeForSerial(device.serial, 'reboot-normal'); }}
+                          className="rounded border border-slate-700 px-2 py-1.5 text-[10px] text-slate-200 disabled:opacity-40 hover:bg-slate-800"
+                        >
+                          Normal
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!device.authorized || !!modeActionBusy}
+                          onClick={(event) => { event.stopPropagation(); void runAdbModeForSerial(device.serial, 'reboot-recovery'); }}
+                          className="rounded border border-violet-800 px-2 py-1.5 text-[10px] text-violet-300 disabled:opacity-40 hover:bg-violet-950/40"
+                        >
+                          Recovery
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!device.authorized || !!modeActionBusy}
+                          onClick={(event) => { event.stopPropagation(); void runAdbModeForSerial(device.serial, 'reboot-bootloader'); }}
+                          className="rounded border border-cyan-800 px-2 py-1.5 text-[10px] text-cyan-300 disabled:opacity-40 hover:bg-cyan-950/40"
+                        >
+                          Bootloader
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!device.authorized || !!modeActionBusy || !adbModeCapabilities[device.serial]?.download}
+                          onClick={(event) => { event.stopPropagation(); void runAdbModeForSerial(device.serial, 'reboot-download'); }}
+                          className="rounded border border-amber-800 px-2 py-1.5 text-[10px] text-amber-300 disabled:opacity-40 hover:bg-amber-950/40"
+                          title="OEM/device-specific. Common on Samsung; unsupported devices will fail truthfully."
+                        >
+                          Download
+                        </button>
+                      </div>
+                      <div className="mt-2 text-[10px] leading-4 text-slate-500">
+                        Commands are sent only to serial <span className="font-mono">{device.serial}</span>. BobFWTools re-scans after the phone disconnects and changes mode.
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={refreshing || transferBusy || !!modeActionBusy}
+                          onClick={() => void refresh()}
+                          className="rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300 disabled:opacity-40 hover:bg-slate-800"
+                        >
+                          Re-scan modes
+                        </button>
+                        <span className="text-[10px] text-slate-600">
+                          Use after a manual OEM key-combo/service entry so BobFWTools can identify the new USB mode.
+                        </span>
+                      </div>
+                      {adbModeCapabilities[device.serial] && (
+                        <div className="mt-2 rounded border border-slate-800 bg-black/20 p-2 text-[10px] leading-4 text-slate-500">
+                          <div className="font-semibold text-slate-300">
+                            {adbModeCapabilities[device.serial].manufacturer || 'Android'} {adbModeCapabilities[device.serial].model || ''}
+                          </div>
+                          <div className="mt-1">
+                            Automated: Normal · Recovery · Bootloader{adbModeCapabilities[device.serial].download ? ' · Samsung Download' : ''}
+                          </div>
+                          {adbModeCapabilities[device.serial].qualcommEdl === false && adbModeCapabilities[device.serial].notes.some((note) => note.includes('Qualcomm hardware detected')) && (
+                            <div className="mt-1 text-amber-300">
+                              Qualcomm EDL: device/OEM-specific entry required; no generic adb reboot edl button is exposed.
+                            </div>
+                          )}
+                          {adbModeCapabilities[device.serial].mediatekBrom === false && adbModeCapabilities[device.serial].notes.some((note) => note.includes('MediaTek hardware detected')) && (
+                            <div className="mt-1 text-amber-300">
+                              MediaTek BROM/Preloader: device-specific or physical entry required; no fake generic ADB transition is exposed.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {modeTransitionReceipts[device.serial] && (
+                        <div className={modeTransitionReceipts[device.serial].verified
+                          ? 'mt-2 rounded border border-emerald-900/60 bg-emerald-950/20 p-2 text-[10px] text-emerald-300'
+                          : 'mt-2 rounded border border-amber-900/60 bg-amber-950/20 p-2 text-[10px] text-amber-300'}>
+                          <div className="font-semibold">
+                            {modeTransitionReceipts[device.serial].verified ? 'MODE VERIFIED' : 'MODE NOT YET VERIFIED'}
+                          </div>
+                          <div className="mt-1">
+                            requested {modeTransitionReceipts[device.serial].requestedMode} · observed {modeTransitionReceipts[device.serial].observedMode || 'not yet observed'}
+                          </div>
+                          <div className="mt-1 text-slate-500">
+                            identity: {modeTransitionReceipts[device.serial].identityConfidence}
+                          </div>
+                          {modeTransitionReceipts[device.serial].blockers.map((blocker) => (
+                            <div key={blocker} className="mt-1">{blocker}</div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
-                {usbDevices.map((device) => (
-                  <div key={`usb-${device.deviceUid}`} className="rounded border border-slate-800 bg-slate-950/60 p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-white">{device.productName || device.manufacturer || 'Detected USB phone/device'}</span>
-                      <span className="text-xs text-cyan-300">Detected</span>
+                {usbDevices.map((device) => {
+                  const serviceOnlyMode = ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download'].includes(device.mode);
+                  return (
+                    <div key={`usb-${device.deviceUid}`} className="rounded border border-slate-800 bg-slate-950/60 p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-white">{device.productName || device.manufacturer || 'Detected USB phone/device'}</span>
+                        <span className="text-xs text-cyan-300">Detected</span>
+                      </div>
+                      <div className="mt-2 text-xs text-slate-300">{device.platformHint} · {device.mode}</div>
+                      <div className="mt-1 text-xs text-slate-500">This connection is available for matching recovery and firmware workflows.</div>
+
+                      {serviceOnlyMode && (
+                        <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
+                          <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Mode transition matrix</div>
+                          {device.mode === 'qualcomm-edl' && (
+                            <>
+                              <div className="mt-2 text-[11px] text-amber-300">Normal/reboot signal: not exposed until an authorized Firehose session proves a supported reset command for this exact target.</div>
+                              <div className="mt-1 text-[10px] text-slate-500">Do not send guessed Sahara/Firehose reset packets. Use the OEM-supported physical exit procedure, then re-scan.</div>
+                            </>
+                          )}
+                          {(device.mode === 'mediatek-brom' || device.mode === 'mediatek-preloader') && (
+                            <>
+                              <div className="mt-2 text-[11px] text-amber-300">Normal/reboot signal: no generic BROM/Preloader exit command is exposed.</div>
+                              <div className="mt-1 text-[10px] text-slate-500">A software reset requires a legitimate compatible Download Agent session; otherwise use the OEM-supported physical exit procedure.</div>
+                            </>
+                          )}
+                          {device.mode === 'samsung-download' && (
+                            <>
+                              <div className="mt-2 text-[11px] text-amber-300">Normal/reboot signal: no generic unauthenticated Download Mode exit command is exposed in this transport layer.</div>
+                              <div className="mt-1 text-[10px] text-slate-500">Use the device's OEM-supported key/power exit procedure or a supported authorized service session, then re-scan.</div>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            disabled={refreshing || transferBusy || !!modeActionBusy}
+                            onClick={() => void refresh()}
+                            className="mt-3 rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300 disabled:opacity-40 hover:bg-slate-800"
+                          >
+                            Re-scan this mode
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <div className="mt-2 text-xs text-slate-300">{device.platformHint} · {device.mode}</div>
-                    <div className="mt-1 text-xs text-slate-500">This connection is available for matching recovery and firmware workflows.</div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {fastbootModeDevices.length > 0 && (
+            <section className="mb-4 rounded-lg border border-cyan-900/60 bg-cyan-950/10 p-5">
+              <div>
+                <h2 className="text-base font-semibold text-white">Fastboot mode controls</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Each button is bound to the exact Fastboot serial shown on its card. These are reboot/mode commands only; they do not grant flash authority.
+                </p>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {fastbootModeDevices.map((serial) => (
+                  <div key={serial} className="rounded border border-slate-800 bg-slate-950/60 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-cyan-400">Fastboot target</div>
+                    <div className="mt-1 break-all font-mono text-xs text-white">{serial}</div>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        disabled={!!modeActionBusy}
+                        onClick={() => void runFastbootModeForSerial(serial, 'normal')}
+                        className="rounded border border-slate-700 px-2 py-1.5 text-[10px] text-slate-200 disabled:opacity-40 hover:bg-slate-800"
+                      >
+                        Normal
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!modeActionBusy}
+                        onClick={() => void runFastbootModeForSerial(serial, 'recovery')}
+                        className="rounded border border-violet-800 px-2 py-1.5 text-[10px] text-violet-300 disabled:opacity-40 hover:bg-violet-950/40"
+                        title="Supported only by bootloaders that implement fastboot reboot recovery."
+                      >
+                        Recovery
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!modeActionBusy}
+                        onClick={() => void runFastbootModeForSerial(serial, 'bootloader')}
+                        className="rounded border border-cyan-800 px-2 py-1.5 text-[10px] text-cyan-300 disabled:opacity-40 hover:bg-cyan-950/40"
+                      >
+                        Bootloader
+                      </button>
+                    </div>
+                    <div className="mt-2 text-[10px] leading-4 text-slate-500">
+                      Download Mode is not exposed here because it is not a generic Fastboot transition.
+                    </div>
+                    {modeTransitionReceipts[serial] && (
+                      <div className={modeTransitionReceipts[serial].verified
+                        ? 'mt-2 rounded border border-emerald-900/60 bg-emerald-950/20 p-2 text-[10px] text-emerald-300'
+                        : 'mt-2 rounded border border-amber-900/60 bg-amber-950/20 p-2 text-[10px] text-amber-300'}>
+                        <div className="font-semibold">
+                          {modeTransitionReceipts[serial].verified ? 'MODE VERIFIED' : 'MODE NOT YET VERIFIED'}
+                        </div>
+                        <div className="mt-1">
+                          requested {modeTransitionReceipts[serial].requestedMode} · observed {modeTransitionReceipts[serial].observedMode || 'not yet observed'}
+                        </div>
+                        <div className="mt-1 text-slate-500">
+                          identity: {modeTransitionReceipts[serial].identityConfidence}
+                        </div>
+                        {modeTransitionReceipts[serial].blockers.map((blocker) => (
+                          <div key={blocker} className="mt-1">{blocker}</div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1336,6 +1701,45 @@ export default function App() {
                   </>
                 )}
 
+                <div className="mt-4 rounded border border-emerald-900/50 bg-emerald-950/10 p-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400">Verified firmware handoff</div>
+                  <div className="mt-1 text-xs leading-5 text-slate-400">
+                    Use a package that already passed provenance, exact model/board/SKU binding, chipset consistency, completeness, and SHA-256 verification.
+                  </div>
+                  <div className="mt-3 grid gap-2 lg:grid-cols-[1fr_auto]">
+                    <select
+                      value={selectedVerifiedBundle}
+                      onChange={(event) => setSelectedVerifiedBundle(event.target.value)}
+                      className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white"
+                    >
+                      <option value="">No verified package selected</option>
+                      {verifiedFirmwareBundles
+                        .filter((bundle) => {
+                          const expectedVendor = (selectedRecoveryCandidate?.workflow ?? recoveryKind) === 'qualcomm-edl'
+                            ? 'qualcomm'
+                            : 'mediatek';
+                          return bundle.vendorHint === expectedVendor;
+                        })
+                        .map((bundle) => (
+                          <option key={bundle.directory} value={bundle.directory}>
+                            {bundle.model || 'unknown model'} · {bundle.board || 'unknown board'} · {bundle.sku || 'unknown SKU'} · {bundle.directory}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => void useVerifiedFirmwareBundle()}
+                      disabled={recoveryBusy || !selectedVerifiedBundle}
+                      className="rounded bg-emerald-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 hover:bg-emerald-600"
+                    >
+                      {recoveryBusy ? 'Verifying package…' : 'Use verified package'}
+                    </button>
+                  </div>
+                  <div className="mt-2 text-[11px] leading-5 text-emerald-200/80">
+                    The backend rescans this package before handoff. If provenance, hashes, package contents, or readiness changed, planning stops instead of using stale UI state.
+                  </div>
+                </div>
+
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -1540,6 +1944,17 @@ export default function App() {
                     <div className="mt-2 space-y-1 text-xs text-amber-300">
                       {recoveryJob.blockers.length ? recoveryJob.blockers.map((blocker) => <div key={blocker}>{blocker}</div>) : <div className="text-emerald-300">No blockers.</div>}
                     </div>
+                    {recoveryJob.integrityFindings.length > 0 && (
+                      <div className="mt-3 rounded border border-rose-900/50 bg-rose-950/20 p-2 text-[11px] leading-5 text-rose-200">
+                        <div className="font-semibold">Layout or payload integrity failed</div>
+                        <div className="mt-1 space-y-1">
+                          {recoveryJob.integrityFindings.map((finding) => <div key={finding}>{finding}</div>)}
+                        </div>
+                        <div className="mt-2 text-rose-200/80">
+                          Next step: stop this job, return to the authoritative package, and verify the rawprogram/scatter file belongs to the exact model, board, SKU, storage type, and build. Re-import and regenerate provenance if the package changes. Do not edit partition addresses, storage regions, LUN numbers, or payload sizes merely to make the check pass.
+                        </div>
+                      </div>
+                    )}
                     {!!recoveryJob.highRiskPartitions.length && (
                       <div className="mt-3 text-[11px] text-amber-200">
                         High-risk partitions: <span className="font-mono">{recoveryJob.highRiskPartitions.join(', ')}</span>
