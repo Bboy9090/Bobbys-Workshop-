@@ -571,3 +571,23 @@ describe('Current INF hardware-ID claim proof', () => {
     expect(ui).toContain("scope {binding.claimMatchScope}");
   });
 });
+
+
+describe('Windows driver mutation elevation gate', () => {
+  it('blocks release and relatch until administrator elevation is proven', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('driver_binding_elevation_status');
+    expect(backend).toContain('require_elevation("Verified driver staging and relatch")');
+    expect(backend).toContain('require_elevation("Exact-device release and rescan")');
+    expect(backend).toContain('requires Windows administrator elevation');
+
+    expect(desktop).toContain('getDriverElevationStatus');
+    expect(ui).toContain('Windows mutation readiness');
+    expect(ui).toContain('Check admin readiness');
+    expect(ui).toContain('ADMIN READY');
+    expect(ui).toContain('ADMIN REQUIRED');
+  });
+});
