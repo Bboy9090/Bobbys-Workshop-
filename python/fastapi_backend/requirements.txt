@@ -17,7 +17,7 @@ pydantic==2.5.0
 # soundfile==0.12.1  # Audio file I/O
 
 # Ghost Codex - Metadata & Privacy
-Pillow==12.1.1  # Image metadata (EXIF)
+Pillow==12.2.0  # Image metadata (EXIF)
 exifread==3.0.0  # EXIF data extraction
 python-magic==0.4.27  # File type detection (requires system libmagic)
 
@@ -27,5 +27,5 @@ python-magic==0.4.27  # File type detection (requires system libmagic)
 # pyimg4==1.0.0  # iOS image4 parsing (for DFU mode)
 
 # Utilities
-requests==2.32.4  # HTTP requests
+requests==2.33.0  # HTTP requests
 aiofiles==23.2.1  # Async file operations
