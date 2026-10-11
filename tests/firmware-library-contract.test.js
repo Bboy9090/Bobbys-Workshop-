@@ -743,3 +743,22 @@ describe('Verified firmware package binding into recovery jobs', () => {
     expect(app).toContain('const job = await prepareRecoveryJob(selectedRecoveryCandidate, paths);');
   });
 });
+
+
+describe('Automated hardware-flow qualification preflight', () => {
+  it('collapses repeatable qualification evidence into one gate matrix without faking physical bench checks', () => {
+    const dossier = read('src/components/QualificationDossier.tsx');
+
+    expect(dossier).toContain('RUN ALL AUTOMATED GATES');
+    expect(dossier).toContain('AUTOMATED EVIDENCE READY');
+    expect(dossier).toContain('automatedEvidenceReady');
+    expect(dossier).toContain('sourceRevisionAvailable');
+    expect(dossier).toContain('qualifiedFlashCompiled');
+    expect(dossier).toContain('workstation.blockers.length === 0');
+    expect(dossier).toContain('selectedMatchesPreparedIdentity');
+    expect(dossier).toContain('transportObservationLooksStable');
+    expect(dossier).toContain("target.mode === 'qualcomm-edl' && !authorized.length");
+    expect(dossier).toContain('Complete automated preflight first');
+    expect(dossier).toContain('does not substitute for the destructive bench-write and post-write physical checks');
+  });
+});
