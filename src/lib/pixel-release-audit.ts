@@ -1,4 +1,4 @@
-import { preparePixelDownloadCandidate } from './pixel-download-candidate';
+import { preparePixelDownloadCandidate } from './pixel-download-candidate.ts';
 export type FirmwareAudit = {
   outcome: 'blocked';
   evaluatedAt: string;
