@@ -853,6 +853,9 @@ describe('macOS signed notarized release contract', () => {
 
     const releaseReceipt = read('scripts/create-bobfwtools-release-receipt.sh');
     expect(workflow).toContain('Create release provenance receipt');
+    expect(workflow).toContain('Sanitize release label');
+    expect(workflow).toContain("tr -cs 'A-Za-z0-9._-' '-'");
+    expect(workflow).toContain('steps.release_label.outputs.safe');
     expect(workflow).toContain('bobfwtools-release-receipt.json');
     expect(releaseReceipt).toContain('com.bobbyblanco.bobfwtools.release-receipt.v1');
     expect(releaseReceipt).toContain('"qualifiedDestructiveWriterIncluded": False');
