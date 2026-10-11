@@ -551,3 +551,23 @@ describe('Installed driver provenance metadata', () => {
     expect(ui).toContain("catalog {candidate.catalogFile || 'unavailable'}");
   });
 });
+
+
+describe('Current INF hardware-ID claim proof', () => {
+  it('requires the bound INF to advertise a compatible USB hardware ID', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('current_inf_hardware_match');
+    expect(backend).toContain('claim_hardware_id_verified');
+    expect(backend).toContain('claim_match_scope');
+    expect(backend).toContain('Current INF also advertises a compatible USB hardware ID');
+    expect(backend).toContain('could not prove a matching hardware ID inside the currently bound INF');
+
+    expect(desktop).toContain('claimHardwareIdVerified');
+    expect(desktop).toContain('claimMatchScope');
+    expect(ui).toContain('INF hardware-ID proof');
+    expect(ui).toContain("scope {binding.claimMatchScope}");
+  });
+});
