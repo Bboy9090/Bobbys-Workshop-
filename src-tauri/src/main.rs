@@ -1442,6 +1442,11 @@ struct QualificationDossierReview {
     recovery_job_matches_expected: bool,
     executor_build_matches_current: bool,
     binding_ready_claimed: bool,
+    live_device_identity_match: bool,
+    workstation_evidence_ready: bool,
+    transport_observation_ready: bool,
+    programmer_evidence_ready: bool,
+    binding_semantics_valid: bool,
     qualification_status_pending: bool,
     executor_qualified_claimed: bool,
     execution_enabled_claimed: bool,
@@ -1522,6 +1527,29 @@ fn bootforge_qualification_review(
         .get("qualificationBindingReady")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+    let live_device_identity_match = binding_material
+        .get("liveDeviceIdentityMatch")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let workstation_evidence_ready = binding_material
+        .get("workstationEvidenceReady")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let transport_observation_ready = binding_material
+        .get("transportObservationReady")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let programmer_evidence_ready = binding_material
+        .get("programmerEvidenceReady")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let binding_semantics_valid = binding_ready_claimed
+        == (recovery_job_fingerprint_valid
+            && executor_build_matches_current
+            && live_device_identity_match
+            && workstation_evidence_ready
+            && transport_observation_ready
+            && programmer_evidence_ready);
     let qualification_status_pending = value
         .get("qualificationStatus")
         .and_then(|v| v.as_str())
@@ -1554,6 +1582,12 @@ fn bootforge_qualification_review(
     if !binding_ready_claimed {
         blockers.push("Dossier did not claim qualification-binding readiness".to_string());
     }
+    if !binding_semantics_valid {
+        blockers.push(
+            "Dossier qualification-binding claim is inconsistent with its hash-bound identity/workstation/transport/programmer evidence"
+                .to_string(),
+        );
+    }
     if !qualification_status_pending {
         blockers.push("Qualification status is not pending-physical-review".to_string());
     }
@@ -1578,6 +1612,10 @@ fn bootforge_qualification_review(
             format!("dossier-fingerprint-valid:{}", dossier_fingerprint_valid),
             format!("job-match:{}", recovery_job_matches_expected),
             format!("executor-build-match:{}", executor_build_matches_current),
+            format!("binding-semantics-valid:{}", binding_semantics_valid),
+            format!("live-device-identity-match:{}", live_device_identity_match),
+            format!("transport-observation-ready:{}", transport_observation_ready),
+            format!("programmer-evidence-ready:{}", programmer_evidence_ready),
         ],
     );
 
@@ -1589,6 +1627,11 @@ fn bootforge_qualification_review(
         recovery_job_matches_expected,
         executor_build_matches_current,
         binding_ready_claimed,
+        live_device_identity_match,
+        workstation_evidence_ready,
+        transport_observation_ready,
+        programmer_evidence_ready,
+        binding_semantics_valid,
         qualification_status_pending,
         executor_qualified_claimed,
         execution_enabled_claimed,
