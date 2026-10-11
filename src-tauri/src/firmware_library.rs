@@ -139,6 +139,11 @@ fn firmware_root() -> PathBuf {
         .join("firmware")
 }
 
+fn ensure_firmware_root() -> Result<PathBuf, String> {
+    let root = ensure_firmware_root()?;
+    Ok(root)
+}
+
 fn hash_file(path: &Path) -> Result<String, String> {
     let mut file = File::open(path)
         .map_err(|e| format!("failed opening firmware artifact {}: {e}", path.display()))?;
@@ -706,7 +711,7 @@ pub fn firmware_provenance_write(input: FirmwareProvenanceWriteInput) -> Result<
         }
     }
 
-    let root = firmware_root();
+    let root = ensure_firmware_root()?;
     let package_dir = root.join(&directory);
     let root_canonical = fs::canonicalize(&root)
         .map_err(|e| format!("firmware library is unavailable: {e}"))?;
