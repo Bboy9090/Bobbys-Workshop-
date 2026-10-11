@@ -713,7 +713,8 @@ describe('Verified firmware package fingerprint', () => {
     expect(backend).toContain('bobfwtools-firmware-bundle-v1');
     expect(backend).toContain('entry.artifact_kind == "provenance-manifest" || entry.eligible_for_planning');
     expect(backend).toContain('lines.sort()');
-    expect(backend).toContain('package_fingerprint: bundle_package_fingerprint');
+    expect(backend).toContain('let package_fingerprint = bundle_package_fingerprint');
+    expect(backend).toContain('package_fingerprint,');
 
     expect(desktop).toContain('packageFingerprint?: string | null');
     expect(app).toContain('Selected package fingerprint:');
