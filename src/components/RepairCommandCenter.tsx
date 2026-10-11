@@ -26,11 +26,13 @@ import {
   chooseDriverInf,
   inspectDriverInf,
   stageAndRelatchDriver,
+  getInstalledDriverCandidates,
   type FirmwareChipsetProfile,
   type FirmwareLibraryReport,
   type DriverBindingRecord,
   type DriverInfInspection,
   type DriverRelatchResult,
+  type InstalledDriverCandidate,
   type WorkstationReadiness,
   type AdbDeviceRecord,
   type CalibrationBackupResult,
@@ -103,6 +105,7 @@ export default function RepairCommandCenter() {
   const [driverBindingBusy, setDriverBindingBusy] = useState<string | null>(null);
   const [driverInfInspections, setDriverInfInspections] = useState<Record<string, DriverInfInspection>>({});
   const [driverRelatchResults, setDriverRelatchResults] = useState<Record<string, DriverRelatchResult>>({});
+  const [driverCandidates, setDriverCandidates] = useState<Record<string, InstalledDriverCandidate[]>>({});
 
   const targets = useMemo(() => {
     const adbTargets = adbDevices.map((device) => ({
@@ -627,6 +630,61 @@ export default function RepairCommandCenter() {
                           This does not force an arbitrary driver. Windows is asked to release this exact node and select the best matching already-installed driver again. Forced INF binding remains blocked until hardware-ID compatibility is proven.
                         </div>
                       )}
+
+                      <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Installed driver candidates</div>
+                            <div className="mt-1 text-[10px] leading-4 text-slate-600">
+                              BobFWTools scans installed OEM INF packages and ranks only those whose USB hardware IDs match this exact device. Exact MI_xx interface matches rank above generic VID/PID family matches.
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={!!driverBindingBusy}
+                            onClick={() => {
+                              setDriverBindingBusy(binding.instanceId);
+                              setError(null);
+                              void getInstalledDriverCandidates(binding.instanceId)
+                                .then((items) => setDriverCandidates((current) => ({ ...current, [binding.instanceId]: items })))
+                                .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                                .finally(() => setDriverBindingBusy(null));
+                            }}
+                            className="rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300 disabled:opacity-40 hover:bg-slate-800"
+                          >
+                            Scan installed candidates
+                          </button>
+                        </div>
+
+                        {driverCandidates[binding.instanceId] && (
+                          <div className="mt-2 space-y-1.5">
+                            {driverCandidates[binding.instanceId].length === 0 ? (
+                              <div className="text-[10px] text-slate-600">No installed OEM INF package advertised a compatible USB hardware ID for this exact device.</div>
+                            ) : driverCandidates[binding.instanceId].map((candidate) => (
+                              <div key={candidate.infPath} className="rounded border border-slate-800 bg-slate-950/70 p-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-mono text-[10px] text-slate-200">{candidate.infName}</span>
+                                  <span className={candidate.exactInterfaceMatch ? 'text-[10px] text-emerald-300' : 'text-[10px] text-amber-300'}>
+                                    {candidate.exactInterfaceMatch ? 'exact interface match' : 'family match'}
+                                  </span>
+                                  {candidate.currentClaim && <span className="text-[10px] text-cyan-300">current claim</span>}
+                                  <span className="text-[10px] text-slate-500">score {candidate.compatibilityScore}</span>
+                                </div>
+                                <div className="mt-1 text-[10px] leading-4 text-slate-600">{candidate.detail}</div>
+                                {candidate.matchedHardwareIds.map((match) => (
+                                  <div key={match} className="mt-1 break-all font-mono text-[9px] text-slate-500">{match}</div>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {(driverCandidates[binding.instanceId]?.length || 0) > 1 && (
+                          <div className="mt-2 rounded border border-amber-900/50 bg-amber-950/20 p-2 text-[10px] leading-4 text-amber-200">
+                            Multiple compatible driver packages are installed for this interface. That can contribute to driver-claim churn. BobFWTools does not delete or force a package automatically; use exact hardware-ID evidence and the verified relatch workflow below.
+                          </div>
+                        )}
+                      </div>
 
                       <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
                         <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Verified INF relatch</div>
