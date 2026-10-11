@@ -698,3 +698,22 @@ describe('Firmware workspace initializer recursion guard', () => {
     expect(backend).not.toContain('let root = ensure_firmware_root()?;\n    Ok(root)');
   });
 });
+
+
+describe('Verified firmware package fingerprint', () => {
+  it('binds the provenance manifest and sorted planning artifact hashes into recovery handoff identity', () => {
+    const backend = read('src-tauri/src/firmware_library.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const app = read('src/App.tsx');
+
+    expect(backend).toContain('fn bundle_package_fingerprint');
+    expect(backend).toContain('bobfwtools-firmware-bundle-v1');
+    expect(backend).toContain('entry.artifact_kind == "provenance-manifest" || entry.eligible_for_planning');
+    expect(backend).toContain('lines.sort()');
+    expect(backend).toContain('package_fingerprint: bundle_package_fingerprint');
+
+    expect(desktop).toContain('packageFingerprint?: string | null');
+    expect(app).toContain('Selected package fingerprint:');
+    expect(app).toContain('The selected firmware bundle has no deterministic package fingerprint');
+  });
+});
