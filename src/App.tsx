@@ -568,6 +568,11 @@ export default function App() {
     if (transferBusy || modeActionBusy) return;
     setModeActionBusy(serial + ':' + action);
     setNativeError(null);
+    setModeTransitionReceipts((current) => {
+      const next = { ...current };
+      delete next[serial];
+      return next;
+    });
     try {
       const workflowMap = {
         'reboot-normal': 'adb-reboot-normal',
@@ -596,6 +601,11 @@ export default function App() {
     if (transferBusy || modeActionBusy) return;
     setModeActionBusy(serial + ':fastboot-' + mode);
     setNativeError(null);
+    setModeTransitionReceipts((current) => {
+      const next = { ...current };
+      delete next[serial];
+      return next;
+    });
     try {
       const result = await fastbootRebootMode(serial, mode);
       setAdbOutput(
@@ -1105,6 +1115,19 @@ export default function App() {
                       </div>
                       <div className="mt-2 text-[10px] leading-4 text-slate-500">
                         Commands are sent only to serial <span className="font-mono">{device.serial}</span>. BobFWTools re-scans after the phone disconnects and changes mode.
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={refreshing || transferBusy || !!modeActionBusy}
+                          onClick={() => void refresh()}
+                          className="rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300 disabled:opacity-40 hover:bg-slate-800"
+                        >
+                          Re-scan modes
+                        </button>
+                        <span className="text-[10px] text-slate-600">
+                          Use after a manual OEM key-combo/service entry so BobFWTools can identify the new USB mode.
+                        </span>
                       </div>
                       {adbModeCapabilities[device.serial] && (
                         <div className="mt-2 rounded border border-slate-800 bg-black/20 p-2 text-[10px] leading-4 text-slate-500">
