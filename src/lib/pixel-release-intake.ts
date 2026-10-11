@@ -39,7 +39,7 @@ export function validatePixelRelease(input: unknown): PixelRelease {
     filename.includes('..')) throw Error('Safe ZIP filename required');
   if(typeof sha256 !== 'string' || !hash.test(sha256)) throw Error('Published 64-character SHA-256 required');
   const downloadUrl = officialHttps(obj.downloadUrl,'dl.google.com');
-  if(decodeURIComponent(new URL(downloadUrl).pathname).split('/').at(-1) !== filename)
+  if(decodeURIComponent(new URL(downloadUrl).pathname).split('/').pop() !== filename)
     throw Error('Download filename mismatch');
   const provenanceUrl = officialHttps(obj.provenanceUrl,'developers.google.com');
   if(!['/android/ota','/android/images'].includes(new URL(provenanceUrl).pathname))
