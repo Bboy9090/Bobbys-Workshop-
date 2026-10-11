@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::process::Command;
 
 #[cfg(target_os = "windows")]
@@ -37,6 +38,7 @@ pub struct DriverBindingSnapshot {
     pub service: Option<String>,
     pub driver_inf: Option<String>,
     pub binding_state: String,
+    pub fingerprint: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -53,6 +55,7 @@ pub struct DriverRollbackPlan {
     pub exact_device_present: bool,
     pub hardware_identity_matches: bool,
     pub prior_inf_available: bool,
+    pub snapshot_fingerprint_valid: bool,
     pub rollback_ready: bool,
     pub prior_inf: Option<String>,
     pub current_inf: Option<String>,
@@ -177,6 +180,34 @@ pub struct DriverReleaseResult {
     pub rescanned: bool,
     pub detail: String,
     pub evidence: Vec<String>,
+}
+
+fn snapshot_fingerprint(snapshot: &DriverBindingSnapshot) -> String {
+    let mut hardware_ids = snapshot
+        .hardware_ids
+        .iter()
+        .map(|value| normalize_hardware_id(value))
+        .collect::<Vec<_>>();
+    hardware_ids.sort();
+    hardware_ids.dedup();
+
+    let canonical = [
+        snapshot.schema.as_str(),
+        &snapshot.created_at_ms.to_string(),
+        snapshot.instance_id.trim(),
+        snapshot.physical_device_key.trim(),
+        snapshot.interface_id.as_deref().unwrap_or(""),
+        &hardware_ids.join("\n"),
+        snapshot.expected_family.trim(),
+        snapshot.service.as_deref().unwrap_or(""),
+        snapshot.driver_inf.as_deref().unwrap_or(""),
+        snapshot.binding_state.trim(),
+    ]
+    .join("\n");
+
+    let mut hasher = Sha256::new();
+    hasher.update(canonical.as_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
 fn now_ms() -> u64 {
@@ -468,8 +499,8 @@ pub fn driver_binding_snapshot(instance_id: String) -> Result<DriverSnapshotResu
         .ok_or_else(|| "Exact Windows USB instance is no longer present; refresh before snapshotting its claim.".to_string())?
         .clone();
 
-    let snapshot = DriverBindingSnapshot {
-        schema: "com.bobbyblanco.bobfwtools.driver-binding-snapshot.v1".to_string(),
+    let mut snapshot = DriverBindingSnapshot {
+        schema: "com.bobbyblanco.bobfwtools.driver-binding-snapshot.v2".to_string(),
         created_at_ms: now_ms(),
         instance_id: record.instance_id.clone(),
         physical_device_key: record.physical_device_key.clone(),
@@ -479,7 +510,9 @@ pub fn driver_binding_snapshot(instance_id: String) -> Result<DriverSnapshotResu
         service: record.service.clone(),
         driver_inf: record.driver_inf.clone(),
         binding_state: record.binding_state.clone(),
+        fingerprint: String::new(),
     };
+    snapshot.fingerprint = snapshot_fingerprint(&snapshot);
 
     let dir = driver_snapshot_dir();
     std::fs::create_dir_all(&dir)
@@ -502,6 +535,7 @@ pub fn driver_binding_snapshot(instance_id: String) -> Result<DriverSnapshotResu
             format!("snapshot:{}", path.display()),
             format!("inf:{}", snapshot.driver_inf.as_deref().unwrap_or("<unavailable>")),
             format!("service:{}", snapshot.service.as_deref().unwrap_or("<unavailable>")),
+            format!("fingerprint:{}", snapshot.fingerprint),
         ],
     );
 
@@ -537,8 +571,13 @@ pub fn driver_binding_rollback_plan(snapshot_path: String) -> Result<DriverRollb
             .map_err(|e| format!("Failed to read driver snapshot {}: {e}", canonical_path.display()))?
     ).map_err(|e| format!("Failed to parse driver snapshot: {e}"))?;
 
-    if snapshot.schema != "com.bobbyblanco.bobfwtools.driver-binding-snapshot.v1" {
-        return Err("Unsupported driver binding snapshot schema.".to_string());
+    if snapshot.schema != "com.bobbyblanco.bobfwtools.driver-binding-snapshot.v2" {
+        return Err("Unsupported driver binding snapshot schema; create a fresh BobFWTools driver snapshot.".to_string());
+    }
+    let expected_fingerprint = snapshot_fingerprint(&snapshot);
+    let snapshot_fingerprint_valid = snapshot.fingerprint == expected_fingerprint;
+    if !snapshot_fingerprint_valid {
+        return Err("Driver rollback snapshot fingerprint mismatch; the receipt may have been edited or corrupted.".to_string());
     }
 
     let current = driver_binding_scan()?;
@@ -599,6 +638,7 @@ pub fn driver_binding_rollback_plan(snapshot_path: String) -> Result<DriverRollb
         exact_device_present,
         hardware_identity_matches,
         prior_inf_available,
+        snapshot_fingerprint_valid,
         rollback_ready,
         prior_inf: snapshot.driver_inf,
         current_inf: found.and_then(|record| record.driver_inf.clone()),
@@ -1267,6 +1307,27 @@ pub fn driver_binding_release_and_rescan(_instance_id: String) -> Result<DriverR
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn snapshot_fingerprint_changes_when_driver_claim_changes() {
+        let mut snapshot = DriverBindingSnapshot {
+            schema: "com.bobbyblanco.bobfwtools.driver-binding-snapshot.v2".to_string(),
+            created_at_ms: 1,
+            instance_id: r"USB\VID_05C6&PID_9008\ABC".to_string(),
+            physical_device_key: r"USB\VID_05C6&PID_9008\ABC".to_string(),
+            interface_id: None,
+            hardware_ids: vec![r"USB\VID_05C6&PID_9008".to_string()],
+            expected_family: "qualcomm-qdloader-9008".to_string(),
+            service: Some("qcusbser".to_string()),
+            driver_inf: Some("oem12.inf".to_string()),
+            binding_state: "matched".to_string(),
+            fingerprint: String::new(),
+        };
+        let before = snapshot_fingerprint(&snapshot);
+        snapshot.driver_inf = Some("oem99.inf".to_string());
+        let after = snapshot_fingerprint(&snapshot);
+        assert_ne!(before, after);
+    }
 
     #[test]
     fn recognizes_common_service_families() {
