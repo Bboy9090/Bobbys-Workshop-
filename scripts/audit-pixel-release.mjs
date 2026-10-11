@@ -3,7 +3,8 @@
  * Read-only audit of manually supplied Pixel metadata; never executes a firmware download.
  * Inputs are untrusted and cannot prove OEM origin merely by including an official URL.
  */
-import { open } from 'node:fs/promises';
+import { open, lstat } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { auditPixelFirmwareRelease } from '../src/lib/pixel-release-audit.ts';
 
 const args=process.argv.slice(2);
@@ -15,7 +16,10 @@ if(args.includes('--help')){
 try {
  const path=option('--record'),codename=option('--codename');
  if(!path||!codename) throw Error('Release JSON file and exact device codename required');
- const file=await open(path,'r');
+ const metadata=await lstat(path);
+ if(!metadata.isFile() || metadata.isSymbolicLink() || metadata.size>1024*1024)
+   throw Error('Metadata must be a non-symlink regular file at most one MiB');
+ const file=await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
  let text;
  try {
    const stats=await file.stat();
