@@ -125,3 +125,13 @@ jobs:
             ${{ runner.temp }}/firmware-fixture-receipt.json
           if-no-files-found: warn
           retention-days: 14
+      - name: Refuse oversized audit metadata before reading it
+        run: |
+          node -e 'require("fs").writeFileSync(process.argv[1],Buffer.alloc(1048577,65))' "$RUNNER_TEMP/oversized-release.json"
+          set +e
+          node scripts/audit-pixel-release.mjs --record "$RUNNER_TEMP/oversized-release.json" --codename shiba > "$RUNNER_TEMP/oversized-audit.json" 2> "$RUNNER_TEMP/oversized-error.txt"
+          audit_status=$?
+          set -e
+          test "$audit_status" -eq 2
+          test ! -s "$RUNNER_TEMP/oversized-audit.json"
+          grep -q "at most one MiB" "$RUNNER_TEMP/oversized-error.txt"
