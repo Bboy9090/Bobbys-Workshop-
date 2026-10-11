@@ -717,3 +717,29 @@ describe('Verified firmware package fingerprint', () => {
     expect(app).toContain('The selected firmware bundle has no deterministic package fingerprint');
   });
 });
+
+
+describe('Verified firmware package binding into recovery jobs', () => {
+  it('binds package identity into the recovery job fingerprint and revalidation chain', () => {
+    const recovery = read('libs/bootforgeusb/src/recovery_job.rs');
+    const backend = read('src-tauri/src/main.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const app = read('src/App.tsx');
+
+    expect(recovery).toContain('pub package_fingerprint: Option<String>');
+    expect(recovery).toContain('"package_fingerprint"');
+    expect(recovery).toContain('bind_package_fingerprint');
+    expect(recovery).toContain('verify_job_fingerprint');
+
+    expect(backend).toContain('package_fingerprint: Option<String>');
+    expect(backend).toContain('Recovery package binding failed');
+    expect(backend).toContain('Recovery job fingerprint no longer matches its prepared artifacts/package identity');
+    expect(backend).toContain('"packageFingerprint": job.package_fingerprint.clone()');
+
+    expect(desktop).toContain('packageFingerprint?: string | null');
+    expect(desktop).toContain('packageFingerprint: packageFingerprint?.trim() || null');
+
+    expect(app).toContain('bundle.packageFingerprint');
+    expect(app).toContain('const job = await prepareRecoveryJob(selectedRecoveryCandidate, paths);');
+  });
+});
