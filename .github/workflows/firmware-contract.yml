@@ -135,3 +135,13 @@ jobs:
           test "$audit_status" -eq 2
           test ! -s "$RUNNER_TEMP/oversized-audit.json"
           grep -q "at most one MiB" "$RUNNER_TEMP/oversized-error.txt"
+      - name: Refuse symlinked firmware audit metadata
+        run: |
+          ln -s "$RUNNER_TEMP/pixel-synthetic.json" "$RUNNER_TEMP/release-link.json"
+          set +e
+          node scripts/audit-pixel-release.mjs --record "$RUNNER_TEMP/release-link.json" --codename shiba > "$RUNNER_TEMP/symlink-audit.json" 2> "$RUNNER_TEMP/symlink-error.txt"
+          audit_status=$?
+          set -e
+          test "$audit_status" -eq 2
+          test ! -s "$RUNNER_TEMP/symlink-audit.json"
+          grep -q "non-symlink regular file" "$RUNNER_TEMP/symlink-error.txt"
