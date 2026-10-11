@@ -50,7 +50,9 @@ export async function downloadVerifiedFirmware({url, destination, expectedSha256
     // No overwrite. Publishing after verification does not establish OEM signing or hardware fitness.
     try { await lstat(destination); throw Error('Destination appeared during download'); }
     catch (e) { if (e?.code !== 'ENOENT') throw e; }
-    // Hard-link creation is exclusive: it fails if the destination already exists.\n    // Both paths are in the same directory/filesystem; cleanup removes only our temp link.\n    await link(temporary, destination);
+    // Hard-link creation is exclusive: fails if destination already exists.
+    // The temporary link is removed after publication.
+    await link(temporary, destination);
     return {destination, bytes:received, sha256:actualSha256, checksumMatched:true,
       oemSignatureVerified:false, deviceCompatible:false, flashAuthorized:false};
   } finally {
