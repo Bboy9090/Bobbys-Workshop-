@@ -639,6 +639,27 @@ export type DriverReleaseResult = {
   evidence: string[];
 };
 
+export type DriverConflictPlan = {
+  instanceId: string;
+  expectedFamily: string;
+  currentInf?: string | null;
+  currentService?: string | null;
+  bindingState: string;
+  compositeInterface?: string | null;
+  siblingCount: number;
+  candidateCount: number;
+  exactInterfaceCandidateCount: number;
+  conflictLevel: string;
+  recommendedAction: string;
+  nextSteps: string[];
+  blockers: string[];
+  evidence: string[];
+};
+
+export async function getDriverConflictPlan(instanceId: string): Promise<DriverConflictPlan> {
+  return invoke<DriverConflictPlan>('driver_binding_conflict_plan', { instanceId });
+}
+
 export type InstalledDriverCandidate = {
   instanceId: string;
   infName: string;
