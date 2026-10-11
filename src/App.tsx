@@ -43,6 +43,7 @@ import {
   exportRecoveryEvidence,
   exportRecoveryReadinessCertificate,
   reviewRecoveryReadinessCertificate,
+  reviewRecoveryReadinessCertificatePath,
   listWorkflowJobs,
   retryWorkflowJob,
   runAdbPackageAction,
@@ -978,7 +979,8 @@ export default function App() {
       const path = await exportRecoveryReadinessCertificate(recoveryJob, recoveryPlan);
       if (path) {
         setRecoveryCertificatePath(path);
-        setRecoveryCertificateReview(null);
+        const review = await reviewRecoveryReadinessCertificatePath(path, recoveryJob.jobFingerprint);
+        setRecoveryCertificateReview(review);
       }
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
