@@ -66,6 +66,8 @@ pub struct RecoveryJob {
     pub workflow: RecoveryKind,
     pub protocol: String,
     pub job_fingerprint: String,
+    #[serde(default)]
+    pub package_fingerprint: Option<String>,
     pub identity: DeviceIdentitySnapshot,
     pub artifact_digests: Vec<ArtifactDigest>,
     pub payload_digests: Vec<ArtifactDigest>,
@@ -566,6 +568,11 @@ pub fn recovery_job_fingerprint(job: &RecoveryJob) -> String {
     push_field(&mut hasher, "schema", "bobfwtools-recovery-job-core-v1");
     push_field(&mut hasher, "workflow", &format!("{:?}", job.workflow));
     push_field(&mut hasher, "protocol", &job.protocol);
+    push_field(
+        &mut hasher,
+        "package_fingerprint",
+        job.package_fingerprint.as_deref().unwrap_or("<none>"),
+    );
     push_field(&mut hasher, "device_uid", &job.identity.device_uid);
     push_field(&mut hasher, "vendor_id", &format!("{:04x}", job.identity.vendor_id));
     push_field(&mut hasher, "product_id", &format!("{:04x}", job.identity.product_id));
@@ -750,6 +757,7 @@ pub fn build_job(
         workflow: plan.workflow,
         protocol: plan.protocol.clone(),
         job_fingerprint: String::new(),
+        package_fingerprint: None,
         identity: DeviceIdentitySnapshot {
             device_uid: candidate.device_uid.clone(),
             vendor_id: candidate.vendor_id,
@@ -775,6 +783,30 @@ pub fn build_job(
     };
     job.job_fingerprint = recovery_job_fingerprint(&job);
     Ok(job)
+}
+
+pub fn bind_package_fingerprint(
+    job: &mut RecoveryJob,
+    package_fingerprint: Option<String>,
+) -> Result<(), RecoveryJobError> {
+    if let Some(value) = package_fingerprint {
+        let normalized = value.trim().to_ascii_lowercase();
+        if normalized.len() != 64 || !normalized.chars().all(|ch| ch.is_ascii_hexdigit()) {
+            return Err(RecoveryJobError::InvalidLayout {
+                path: "package-fingerprint".to_string(),
+                message: "verified package fingerprint must be a 64-character SHA-256 hex value".to_string(),
+            });
+        }
+        job.package_fingerprint = Some(normalized);
+    } else {
+        job.package_fingerprint = None;
+    }
+    job.job_fingerprint = recovery_job_fingerprint(job);
+    Ok(())
+}
+
+pub fn verify_job_fingerprint(job: &RecoveryJob) -> bool {
+    job.job_fingerprint.eq_ignore_ascii_case(&recovery_job_fingerprint(job))
 }
 
 pub fn revalidate_job_identity(
@@ -987,6 +1019,45 @@ mod tests {
         }];
         let issues = storage_domain_integrity_issues(RecoveryKind::MediatekDownload, &ops);
         assert!(issues.iter().any(|issue| issue.contains("unrecognized storage region")));
+    }
+
+    #[test]
+    fn package_fingerprint_is_bound_into_recovery_job_fingerprint() {
+        let mut job = RecoveryJob {
+            workflow: RecoveryKind::QualcommEdl,
+            protocol: "qualcomm-sahara-firehose".into(),
+            job_fingerprint: String::new(),
+            package_fingerprint: None,
+            identity: DeviceIdentitySnapshot {
+                device_uid: "usb:05c6:9008:SERIAL".into(),
+                vendor_id: 0x05c6,
+                product_id: 0x9008,
+                mode: "qualcomm-edl".into(),
+                serial_number: Some("SERIAL".into()),
+                bus_number: None,
+                device_address: None,
+            },
+            artifact_digests: vec![],
+            payload_digests: vec![],
+            operations: vec![],
+            integrity_checks_passed: false,
+            integrity_findings: vec![],
+            high_risk_partitions: vec![],
+            destructive: true,
+            requires_explicit_approval: true,
+            prerequisites_met: true,
+            identity_revalidated: false,
+            executor_qualified: false,
+            execution_ready: false,
+            blockers: vec![],
+        };
+        job.job_fingerprint = recovery_job_fingerprint(&job);
+        let before = job.job_fingerprint.clone();
+        bind_package_fingerprint(&mut job, Some("a".repeat(64))).unwrap();
+        assert_ne!(before, job.job_fingerprint);
+        assert!(verify_job_fingerprint(&job));
+        job.package_fingerprint = Some("b".repeat(64));
+        assert!(!verify_job_fingerprint(&job));
     }
 
     #[test]
