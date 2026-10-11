@@ -856,6 +856,10 @@ describe('macOS signed notarized release contract', () => {
     expect(workflow).toContain('Sanitize release label');
     expect(workflow).toContain("tr -cs 'A-Za-z0-9._-' '-'");
     expect(workflow).toContain('steps.release_label.outputs.safe');
+    expect(workflow).toContain('actions/checkout@v7');
+    expect(workflow).toContain('actions/setup-node@v7');
+    expect(workflow).toContain('actions/upload-artifact@v7');
+    expect(workflow).toContain('package-manager-cache: false');
     expect(workflow).toContain('bobfwtools-release-receipt.json');
     expect(releaseReceipt).toContain('com.bobbyblanco.bobfwtools.release-receipt.v1');
     expect(releaseReceipt).toContain('"qualifiedDestructiveWriterIncluded": False');
