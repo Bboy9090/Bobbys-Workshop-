@@ -27,12 +27,14 @@ import {
   inspectDriverInf,
   stageAndRelatchDriver,
   getInstalledDriverCandidates,
+  getDriverConflictPlan,
   type FirmwareChipsetProfile,
   type FirmwareLibraryReport,
   type DriverBindingRecord,
   type DriverInfInspection,
   type DriverRelatchResult,
   type InstalledDriverCandidate,
+  type DriverConflictPlan,
   type WorkstationReadiness,
   type AdbDeviceRecord,
   type CalibrationBackupResult,
@@ -106,6 +108,7 @@ export default function RepairCommandCenter() {
   const [driverInfInspections, setDriverInfInspections] = useState<Record<string, DriverInfInspection>>({});
   const [driverRelatchResults, setDriverRelatchResults] = useState<Record<string, DriverRelatchResult>>({});
   const [driverCandidates, setDriverCandidates] = useState<Record<string, InstalledDriverCandidate[]>>({});
+  const [driverConflictPlans, setDriverConflictPlans] = useState<Record<string, DriverConflictPlan>>({});
 
   const targets = useMemo(() => {
     const adbTargets = adbDevices.map((device) => ({
@@ -630,6 +633,62 @@ export default function RepairCommandCenter() {
                           This does not force an arbitrary driver. Windows is asked to release this exact node and select the best matching already-installed driver again. Forced INF binding remains blocked until hardware-ID compatibility is proven.
                         </div>
                       )}
+
+                      <div className="mt-3 rounded border border-cyan-900/40 bg-cyan-950/10 p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-400">Driver conflict resolution plan</div>
+                            <div className="mt-1 text-[10px] leading-4 text-cyan-100/70">
+                              Read-only diagnosis for this exact Windows interface. It does not remove driver packages or change bindings.
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={!!driverBindingBusy}
+                            onClick={() => {
+                              setDriverBindingBusy(binding.instanceId);
+                              setError(null);
+                              void getDriverConflictPlan(binding.instanceId)
+                                .then((plan) => setDriverConflictPlans((current) => ({ ...current, [binding.instanceId]: plan })))
+                                .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                                .finally(() => setDriverBindingBusy(null));
+                            }}
+                            className="rounded border border-cyan-800 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-40 hover:bg-cyan-950/40"
+                          >
+                            Build resolution plan
+                          </button>
+                        </div>
+
+                        {driverConflictPlans[binding.instanceId] && (
+                          <div className="mt-2 rounded border border-slate-800 bg-slate-950/70 p-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[10px] font-semibold text-white">{driverConflictPlans[binding.instanceId].recommendedAction}</span>
+                              <span className="rounded border border-slate-700 px-1.5 py-0.5 text-[9px] text-slate-400">
+                                {driverConflictPlans[binding.instanceId].conflictLevel}
+                              </span>
+                            </div>
+                            <div className="mt-1 text-[10px] text-slate-500">
+                              candidates {driverConflictPlans[binding.instanceId].candidateCount} · exact-interface {driverConflictPlans[binding.instanceId].exactInterfaceCandidateCount} · siblings {driverConflictPlans[binding.instanceId].siblingCount}
+                            </div>
+
+                            {driverConflictPlans[binding.instanceId].blockers.length > 0 && (
+                              <div className="mt-2 rounded border border-amber-900/50 bg-amber-950/20 p-2">
+                                <div className="text-[10px] font-semibold text-amber-200">Stop here until resolved</div>
+                                {driverConflictPlans[binding.instanceId].blockers.map((blocker) => (
+                                  <div key={blocker} className="mt-1 text-[10px] leading-4 text-amber-200/80">{blocker}</div>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="mt-2 text-[10px] font-semibold text-slate-300">Do this</div>
+                            <ol className="mt-1 space-y-1 text-[10px] leading-4 text-slate-500">
+                              {driverConflictPlans[binding.instanceId].nextSteps.map((step, index) => (
+                                <li key={step}>{index + 1}. {step}</li>
+                              ))}
+                            </ol>
+                          </div>
+                        )}
+                      </div>
 
                       <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
                         <div className="flex flex-wrap items-start justify-between gap-2">
