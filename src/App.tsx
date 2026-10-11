@@ -845,11 +845,7 @@ export default function App() {
       const plan = await buildRecoveryPlan(effectiveWorkflow, paths);
       setRecoveryPlan(plan);
       if (selectedRecoveryCandidate) {
-        const job = await prepareRecoveryJob(
-          selectedRecoveryCandidate,
-          paths,
-          bundle.packageFingerprint,
-        );
+        const job = await prepareRecoveryJob(selectedRecoveryCandidate, paths);
         setRecoveryJob(job);
       }
     } catch (error) {
@@ -894,7 +890,11 @@ export default function App() {
       setRecoveryPlan(plan);
       setRecoveryJob(null);
       if (selectedRecoveryCandidate) {
-        const job = await prepareRecoveryJob(selectedRecoveryCandidate, paths);
+        const job = await prepareRecoveryJob(
+          selectedRecoveryCandidate,
+          paths,
+          bundle.packageFingerprint,
+        );
         setRecoveryJob(job);
       }
     } catch (error) {
