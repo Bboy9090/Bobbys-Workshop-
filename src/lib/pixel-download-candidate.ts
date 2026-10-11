@@ -1,4 +1,4 @@
-import { validatePixelRelease } from './pixel-release-intake';
+import { validatePixelRelease } from './pixel-release-intake.ts';
 import type { PixelRelease } from './pixel-release-intake';
 /** Evidence-aware release selection. Never upgrades user-entered metadata to trusted source evidence. */
 export type PixelReleaseCandidate = { release: PixelRelease; status:'reference-unverified'; blockers:string[] };
