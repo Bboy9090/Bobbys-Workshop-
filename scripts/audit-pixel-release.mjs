@@ -3,7 +3,7 @@
  * Read-only audit of manually supplied Pixel metadata; never executes a firmware download.
  * Inputs are untrusted and cannot prove OEM origin merely by including an official URL.
  */
-import { readFile } from 'node:fs/promises';
+import { open } from 'node:fs/promises';
 import { auditPixelFirmwareRelease } from '../src/lib/pixel-release-audit.ts';
 
 const args=process.argv.slice(2);
@@ -15,8 +15,14 @@ if(args.includes('--help')){
 try {
  const path=option('--record'),codename=option('--codename');
  if(!path||!codename) throw Error('Release JSON file and exact device codename required');
- const text=await readFile(path,'utf8');
- if(Buffer.byteLength(text)>1024*1024) throw Error('Metadata exceeds one MiB limit');
+ const file=await open(path,'r');
+ let text;
+ try {
+   const stats=await file.stat();
+   if(!stats.isFile() || stats.size>1024*1024) throw Error('Metadata must be a regular file at most one MiB');
+   text=await file.readFile({encoding:'utf8'});
+   if(Buffer.byteLength(text)>1024*1024) throw Error('Metadata exceeds one MiB limit');
+ } finally { await file.close(); }
  const input=JSON.parse(text);
  const audit=auditPixelFirmwareRelease(input,codename,option('--reference-sha256'));
  console.log(JSON.stringify(audit,null,2));
