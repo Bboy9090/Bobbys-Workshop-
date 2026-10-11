@@ -3,11 +3,23 @@ import { createWriteStream } from 'node:fs';
 import { mkdir, link, rm, lstat } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { Readable, Transform } from 'node:stream';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve, parse, sep } from 'node:path';
 
 const HEX = /^[a-f0-9]{64}$/i;
 const ALLOWED_HOSTS = new Set(['dl.google.com', 'developers.google.com']);
 const MAX_BYTES = 12 * 1024 ** 3;
+
+async function assertNoSymlinkParents(dir) {
+  const full = resolve(dir);
+  const root = parse(full).root;
+  let current = root;
+  for (const part of full.slice(root.length).split(sep).filter(Boolean)) {
+    current = join(current, part);
+    const metadata = await lstat(current);
+    if (metadata.isSymbolicLink() || !metadata.isDirectory())
+      throw Error('Destination parent must be a real directory, not a symlink');
+  }
+}
 
 /** Download bytes from a tightly restricted OEM host, verify them, then atomically publish. */
 export async function downloadVerifiedFirmware({url, destination, expectedSha256, fetcher = fetch, onProgress}) {
@@ -20,6 +32,7 @@ export async function downloadVerifiedFirmware({url, destination, expectedSha256
     throw Error('A destination file path is required');
   const targetDir = dirname(destination);
   await mkdir(targetDir, {recursive: true});
+  await assertNoSymlinkParents(targetDir);
   try { await lstat(destination); throw Error('Destination already exists; refusing overwrite'); }
   catch (e) { if (e?.code !== 'ENOENT') throw e; }
   const temporary = join(targetDir, '.bobfwtools-' + randomUUID() + '.partial');
@@ -56,6 +69,7 @@ export async function downloadVerifiedFirmware({url, destination, expectedSha256
     catch (e) { if (e?.code !== 'ENOENT') throw e; }
     // Hard-link creation is exclusive: fails if destination already exists.
     // The temporary link is removed after publication.
+    await assertNoSymlinkParents(targetDir);
     await link(temporary, destination);
     return {destination, bytes:received, sha256:actualSha256, checksumMatched:true,
       oemSignatureVerified:false, deviceCompatible:false, flashAuthorized:false};
