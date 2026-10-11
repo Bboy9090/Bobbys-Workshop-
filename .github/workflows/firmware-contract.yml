@@ -1,0 +1,59 @@
+name: BobFWTools Firmware Contract
+
+on:
+  push:
+    branches:
+      - ipad/firmware-inventory-contract-20261010
+  pull_request:
+    paths:
+      - 'src/lib/firmware-inventory-contract.ts'
+      - 'src/lib/firmware-preflight.ts'
+      - 'src/lib/oem-source-discovery.ts'
+      - 'src/lib/oem-catalog-probe.ts'
+      - 'tests/firmware-inventory-contract.test.ts'
+      - 'tests/firmware-preflight.test.ts'
+      - 'tests/oem-source-discovery.test.ts'
+      - 'tests/oem-catalog-probe.test.ts'
+      - '.github/workflows/firmware-contract.yml'
+      - 'scripts/firmware-sources.mjs'
+      - 'scripts/verify-firmware-file.mjs'
+      - 'scripts/lib/verify-firmware-file.mjs'
+      - 'tests/firmware-file-verification.test.ts'
+      - 'tests/firmware-download.test.ts'
+      - 'scripts/lib/download-verified-firmware.mjs'
+      - 'scripts/download-verified-firmware.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Execute real firmware-contract unit tests
+        run: npx --no-install vitest run tests/firmware-inventory-contract.test.ts tests/firmware-preflight.test.ts tests/oem-source-discovery.test.ts tests/oem-catalog-probe.test.ts tests/firmware-file-verification.test.ts tests/firmware-download.test.ts
+      - name: Type check firmware modules
+        run: npx --no-install tsc --noEmit --skipLibCheck --strict --target es2020 --module esnext --moduleResolution bundler --allowImportingTsExtensions src/lib/firmware-inventory-contract.ts src/lib/firmware-preflight.ts src/lib/oem-source-discovery.ts src/lib/oem-catalog-probe.ts
+      - name: Exercise actual firmware source lookup CLI
+        run: |
+          node scripts/firmware-sources.mjs --manufacturer Google --model "Pixel 8" --json > /tmp/pixel-sources.json
+          node -e 'const f=require("/tmp/pixel-sources.json"); if(f.sources.length !== 2 || f.executable || f.firmwarePackagesVerified !== 0) process.exit(1)'
+          node scripts/firmware-sources.mjs --manufacturer Samsung --model SM-S911U --json > /tmp/unsupported.json
+          node -e 'const f=require("/tmp/unsupported.json"); if(f.sources.length !== 0) process.exit(1)'
+      - name: Verify downloader requires explicit consent
+        run: |
+          if node scripts/download-verified-firmware.mjs --url https://dl.google.com/test.zip --file /tmp/should-not-exist --sha256 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; then
+            echo "Downloader unexpectedly accepted missing explicit opt-in"
+            exit 1
+          fi
+          test ! -e /tmp/should-not-exist
