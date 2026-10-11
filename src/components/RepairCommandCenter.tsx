@@ -23,9 +23,14 @@ import {
   scanFirmwareLibrary,
   scanDriverBindings,
   releaseAndRescanDriverBinding,
+  chooseDriverInf,
+  inspectDriverInf,
+  stageAndRelatchDriver,
   type FirmwareChipsetProfile,
   type FirmwareLibraryReport,
   type DriverBindingRecord,
+  type DriverInfInspection,
+  type DriverRelatchResult,
   type WorkstationReadiness,
   type AdbDeviceRecord,
   type CalibrationBackupResult,
@@ -96,6 +101,8 @@ export default function RepairCommandCenter() {
   const [firmwareBusy, setFirmwareBusy] = useState(false);
   const [driverBindings, setDriverBindings] = useState<DriverBindingRecord[]>([]);
   const [driverBindingBusy, setDriverBindingBusy] = useState<string | null>(null);
+  const [driverInfInspections, setDriverInfInspections] = useState<Record<string, DriverInfInspection>>({});
+  const [driverRelatchResults, setDriverRelatchResults] = useState<Record<string, DriverRelatchResult>>({});
 
   const targets = useMemo(() => {
     const adbTargets = adbDevices.map((device) => ({
@@ -612,6 +619,90 @@ export default function RepairCommandCenter() {
                           This does not force an arbitrary driver. Windows is asked to release this exact node and select the best matching already-installed driver again. Forced INF binding remains blocked until hardware-ID compatibility is proven.
                         </div>
                       )}
+
+                      <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Verified INF relatch</div>
+                        <div className="mt-1 text-[10px] leading-4 text-slate-600">
+                          Choose the OEM/chipset INF you expect for this exact device. BobFWTools will inspect its USB hardware IDs before any staging or relatch is allowed.
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={!!driverBindingBusy}
+                            onClick={() => {
+                              setDriverBindingBusy(binding.instanceId);
+                              setError(null);
+                              void (async () => {
+                                const infPath = await chooseDriverInf();
+                                if (!infPath) return;
+                                const inspection = await inspectDriverInf(binding.instanceId, infPath);
+                                setDriverInfInspections((current) => ({ ...current, [binding.instanceId]: inspection }));
+                                setDriverRelatchResults((current) => {
+                                  const next = { ...current };
+                                  delete next[binding.instanceId];
+                                  return next;
+                                });
+                              })()
+                                .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                                .finally(() => setDriverBindingBusy(null));
+                            }}
+                            className="rounded border border-cyan-800 px-2 py-1.5 text-[10px] font-semibold text-cyan-300 disabled:opacity-40 hover:bg-cyan-950/40"
+                          >
+                            Inspect compatible INF
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!!driverBindingBusy || !driverInfInspections[binding.instanceId]?.compatible}
+                            onClick={() => {
+                              const inspection = driverInfInspections[binding.instanceId];
+                              if (!inspection?.compatible) return;
+                              setDriverBindingBusy(binding.instanceId);
+                              setError(null);
+                              void stageAndRelatchDriver(binding.instanceId, inspection.infPath)
+                                .then(async (result) => {
+                                  setDriverRelatchResults((current) => ({ ...current, [binding.instanceId]: result }));
+                                  setDriverBindings(await scanDriverBindings());
+                                })
+                                .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                                .finally(() => setDriverBindingBusy(null));
+                            }}
+                            className="rounded border border-emerald-800 bg-emerald-950/20 px-2 py-1.5 text-[10px] font-semibold text-emerald-300 disabled:opacity-30 hover:bg-emerald-950/40"
+                          >
+                            Stage + relatch exact device
+                          </button>
+                        </div>
+
+                        {driverInfInspections[binding.instanceId] && (
+                          <div className={driverInfInspections[binding.instanceId].compatible
+                            ? 'mt-2 rounded border border-emerald-900/50 bg-emerald-950/20 p-2 text-[10px] text-emerald-200'
+                            : 'mt-2 rounded border border-rose-900/50 bg-rose-950/20 p-2 text-[10px] text-rose-200'}>
+                            <div className="font-semibold">
+                              {driverInfInspections[binding.instanceId].compatible ? 'HARDWARE-ID MATCH VERIFIED' : 'INF MISMATCH — RELATCH BLOCKED'}
+                            </div>
+                            <div className="mt-1">{driverInfInspections[binding.instanceId].detail}</div>
+                            <div className="mt-1 break-all font-mono text-[9px] text-slate-500">
+                              {driverInfInspections[binding.instanceId].infPath}
+                            </div>
+                            {driverInfInspections[binding.instanceId].matchedHardwareIds.map((match) => (
+                              <div key={match} className="mt-1 break-all font-mono text-[9px]">{match}</div>
+                            ))}
+                          </div>
+                        )}
+
+                        {driverRelatchResults[binding.instanceId] && (
+                          <div className={driverRelatchResults[binding.instanceId].verifiedClaim
+                            ? 'mt-2 rounded border border-emerald-900/50 bg-emerald-950/20 p-2 text-[10px] text-emerald-200'
+                            : 'mt-2 rounded border border-amber-900/50 bg-amber-950/20 p-2 text-[10px] text-amber-200'}>
+                            <div className="font-semibold">
+                              {driverRelatchResults[binding.instanceId].verifiedClaim ? 'DRIVER CLAIM VERIFIED' : 'RELATCH COMPLETED — CLAIM NOT YET VERIFIED'}
+                            </div>
+                            <div className="mt-1">{driverRelatchResults[binding.instanceId].detail}</div>
+                            <div className="mt-1 text-slate-500">
+                              service {driverRelatchResults[binding.instanceId].observedService || 'not observed'} · INF {driverRelatchResults[binding.instanceId].observedInf || 'not observed'}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
