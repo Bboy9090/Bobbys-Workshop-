@@ -306,3 +306,28 @@ describe('USB-only service mode transition guidance', () => {
     expect(app).toContain('Re-scan this mode');
   });
 });
+
+
+describe('Windows driver claim control center', () => {
+  it('inspects exact device claims and releases only the selected device node', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('driver_binding_scan');
+    expect(backend).toContain('DEVPKEY_Device_DriverInfPath');
+    expect(backend).toContain('DEVPKEY_Device_HardwareIds');
+    expect(backend).toContain('driver_binding_release_and_rescan');
+    expect(backend).toContain('/remove-device');
+    expect(backend).toContain('/scan-devices');
+    expect(backend).toContain('No driver package was deleted');
+
+    expect(desktop).toContain('scanDriverBindings');
+    expect(desktop).toContain('releaseAndRescanDriverBinding');
+
+    expect(ui).toContain('Driver Claim Inspector');
+    expect(ui).toContain('Release + re-enumerate');
+    expect(ui).toContain('possible driver mismatch');
+    expect(ui).toContain('Forced INF binding remains blocked until hardware-ID compatibility is proven');
+  });
+});
