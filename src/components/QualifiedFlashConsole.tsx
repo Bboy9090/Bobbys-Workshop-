@@ -540,14 +540,36 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
           </div>
 
           <div className="mt-3 rounded border border-slate-800 bg-slate-950/60 p-4">
-            <div className="text-[10px] uppercase tracking-wide text-slate-600">Physical bench qualification — manual evidence</div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-600">Qualification evidence — automated where provable</div>
+            <div className="mt-1 text-[10px] leading-4 text-slate-500">
+              AUTO checks come only from a verified, hash-bound dossier review and cannot be clicked manually. Firmware/layout/backup and destructive bench outcomes remain explicit evidence steps.
+            </div>
             <div className="mt-3 grid gap-2 md:grid-cols-2">
-              {CHECK_LABELS.map(([key, label]) => (
-                <label key={key} className="flex items-start gap-2 rounded border border-slate-800 p-2 text-xs text-slate-300">
-                  <input type="checkbox" checked={checks[key]} onChange={(e) => { setChecks((current) => ({ ...current, [key]: e.target.checked })); setGrant(null); setBenchEvidencePath(null); setDecisionPath(null); }} />
-                  <span>{label}</span>
-                </label>
-              ))}
+              {CHECK_LABELS.map(([key, label]) => {
+                const automated = EVIDENCE_DERIVED_CHECKS.has(key);
+                return (
+                  <label key={key} className="flex items-start justify-between gap-2 rounded border border-slate-800 p-2 text-xs text-slate-300">
+                    <span className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={checks[key]}
+                        disabled={automated}
+                        onChange={(e) => {
+                          if (automated) return;
+                          setChecks((current) => ({ ...current, [key]: e.target.checked }));
+                          setGrant(null);
+                          setBenchEvidencePath(null);
+                          setDecisionPath(null);
+                        }}
+                      />
+                      <span>{label}</span>
+                    </span>
+                    <span className={automated ? 'text-[9px] font-semibold text-cyan-300' : 'text-[9px] font-semibold text-amber-300'}>
+                      {automated ? 'AUTO' : 'MANUAL'}
+                    </span>
+                  </label>
+                );
+              })}
             </div>
           </div>
 
