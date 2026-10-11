@@ -389,3 +389,24 @@ describe('Composite USB driver isolation', () => {
     expect(ui).toContain('not merely the same VID/PID family');
   });
 });
+
+
+describe('Installed driver conflict candidates', () => {
+  it('ranks compatible installed OEM INF packages by exact interface evidence', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('driver_binding_candidates');
+    expect(backend).toContain('exact_interface_match');
+    expect(backend).toContain('compatibility_score');
+    expect(backend).toContain('oem');
+    expect(backend).toContain('current_claim');
+
+    expect(desktop).toContain('getInstalledDriverCandidates');
+    expect(ui).toContain('Installed driver candidates');
+    expect(ui).toContain('exact interface match');
+    expect(ui).toContain('current claim');
+    expect(ui).toContain('Multiple compatible driver packages are installed for this interface');
+  });
+});
