@@ -140,7 +140,15 @@ fn firmware_root() -> PathBuf {
 }
 
 fn ensure_firmware_root() -> Result<PathBuf, String> {
-    let root = ensure_firmware_root()?;
+    let root = firmware_root();
+    fs::create_dir_all(root.join("inbox"))
+        .map_err(|e| format!("failed creating firmware inbox: {e}"))?;
+    fs::create_dir_all(root.join("qualcomm"))
+        .map_err(|e| format!("failed creating Qualcomm firmware directory: {e}"))?;
+    fs::create_dir_all(root.join("mediatek"))
+        .map_err(|e| format!("failed creating MediaTek firmware directory: {e}"))?;
+    fs::create_dir_all(root.join("quarantine"))
+        .map_err(|e| format!("failed creating firmware quarantine directory: {e}"))?;
     Ok(root)
 }
 
