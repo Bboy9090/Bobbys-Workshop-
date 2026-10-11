@@ -1294,6 +1294,27 @@ fn qualification_workstation_evidence_ready(
 
 
 
+fn qualification_programmer_evidence_ready(
+    device: &bootforgeusb::transport::TransportDevice,
+    programmers: &[QualificationProgrammerSnapshot],
+) -> bool {
+    if device.mode != "qualcomm-edl" {
+        return true;
+    }
+
+    programmers.iter().any(|programmer| {
+        programmer.authorized
+            && programmer.bytes > 0
+            && valid_sha256_hex(&programmer.sha256)
+            && programmer
+                .authorization_source
+                .as_deref()
+                .map(str::trim)
+                .map(|value| !value.is_empty())
+                .unwrap_or(false)
+    })
+}
+
 fn qualification_transport_observation_findings(
     observation: Option<&QualificationTransportObservation>,
     live: &bootforgeusb::transport::TransportDevice,
@@ -1631,6 +1652,27 @@ mod qualification_binding_tests {
     }
 
     #[test]
+    fn qualcomm_edl_requires_authorized_programmer_evidence() {
+        let live = transport("usb:05c6:9008:SERIAL", Some("SERIAL"));
+        assert!(!qualification_programmer_evidence_ready(&live, &[]));
+
+        let valid = QualificationProgrammerSnapshot {
+            path: "/authorized/prog_firehose.elf".into(),
+            sha256: "a".repeat(64),
+            bytes: 4096,
+            device_family: Some("SM8550".into()),
+            authorized: true,
+            authorization_source: Some("OEM service package".into()),
+            enrolled_at_unix_ms: Some(1),
+        };
+        assert!(qualification_programmer_evidence_ready(&live, &[valid]));
+
+        let mut mediatek = live;
+        mediatek.mode = "mediatek-preloader".into();
+        assert!(qualification_programmer_evidence_ready(&mediatek, &[]));
+    }
+
+    #[test]
     fn repeated_transport_observation_requires_stable_identity_and_bulk_endpoints() {
         let live = transport("usb:05c6:9008:SERIAL", Some("SERIAL"));
         let stable = QualificationTransportObservation {
@@ -1711,11 +1753,14 @@ fn bootforge_qualification_export(
         &input.device,
     );
     let transport_observation_ready = transport_findings.is_empty();
+    let programmer_evidence_ready =
+        qualification_programmer_evidence_ready(&input.device, &input.authorized_programmers);
     let qualification_binding_ready = fingerprint_valid
         && source_revision_available
         && device_identity_match
         && workstation_evidence_ready
-        && transport_observation_ready;
+        && transport_observation_ready
+        && programmer_evidence_ready;
     let mut binding_blockers = Vec::new();
     if !fingerprint_valid {
         binding_blockers.push(
@@ -1767,6 +1812,12 @@ fn bootforge_qualification_export(
         );
     }
     binding_blockers.extend(transport_findings.iter().cloned());
+    if !programmer_evidence_ready {
+        binding_blockers.push(
+            "Qualcomm EDL qualification requires an authorized programmer record with valid SHA-256, nonzero size, and authorization source"
+                .to_string(),
+        );
+    }
 
     let required_physical_checks = vec![
         "Repeat USB enumeration without identity drift",
@@ -1790,6 +1841,7 @@ fn bootforge_qualification_export(
         "liveDeviceIdentityMatch": device_identity_match,
         "workstationEvidenceReady": workstation_evidence_ready,
         "transportObservationReady": transport_observation_ready,
+        "programmerEvidenceReady": programmer_evidence_ready,
         "transportObservation": input.transport_observation,
         "transportFindings": transport_findings,
         "executorBuildFingerprint": executor_build_fingerprint,
@@ -1821,6 +1873,7 @@ fn bootforge_qualification_export(
         "liveDeviceIdentityMatch": device_identity_match,
         "workstationEvidenceReady": workstation_evidence_ready,
         "transportObservationReady": transport_observation_ready,
+        "programmerEvidenceReady": programmer_evidence_ready,
         "executorBuild": build_identity,
         "device": input.device,
         "workstation": input.workstation,
@@ -1848,6 +1901,7 @@ fn bootforge_qualification_export(
             format!("live-device-identity-match:{}", device_identity_match),
             format!("workstation-evidence-ready:{}", workstation_evidence_ready),
             format!("transport-observation-ready:{}", transport_observation_ready),
+            format!("programmer-evidence-ready:{}", programmer_evidence_ready),
             format!("qualification-binding-ready:{}", qualification_binding_ready),
             format!("executor-build-fingerprint:{}", executor_build_fingerprint),
         ],
