@@ -1066,6 +1066,7 @@ mod tests {
             workflow: RecoveryKind::QualcommEdl,
             protocol: "qualcomm-sahara-firehose".into(),
             job_fingerprint: String::new(),
+            package_fingerprint: None,
             identity: DeviceIdentitySnapshot {
                 device_uid: "usb:05c6:9008:SERIAL".into(),
                 vendor_id: 0x05c6,
@@ -1197,6 +1198,7 @@ mod tests {
             workflow: RecoveryKind::QualcommEdl,
             protocol: "qualcomm-sahara-firehose".into(),
             job_fingerprint: String::new(),
+            package_fingerprint: None,
             identity: DeviceIdentitySnapshot {
                 device_uid: "usb:05c6:9008:SERIAL".into(),
                 vendor_id: 0x05c6,
