@@ -1308,6 +1308,12 @@ fn qualification_programmer_evidence_ready(
             && programmer.bytes > 0
             && valid_sha256_hex(&programmer.sha256)
             && programmer
+                .device_family
+                .as_deref()
+                .map(str::trim)
+                .map(|value| !value.is_empty())
+                .unwrap_or(false)
+            && programmer
                 .authorization_source
                 .as_deref()
                 .map(str::trim)
@@ -1711,6 +1717,17 @@ mod qualification_binding_tests {
         };
         assert!(qualification_programmer_evidence_ready(&live, &[valid]));
 
+        let missing_family = QualificationProgrammerSnapshot {
+            path: "/authorized/prog_firehose.elf".into(),
+            sha256: "b".repeat(64),
+            bytes: 4096,
+            device_family: None,
+            authorized: true,
+            authorization_source: Some("OEM service package".into()),
+            enrolled_at_unix_ms: Some(1),
+        };
+        assert!(!qualification_programmer_evidence_ready(&live, &[missing_family]));
+
         let mut mediatek = live;
         mediatek.mode = "mediatek-preloader".into();
         assert!(qualification_programmer_evidence_ready(&mediatek, &[]));
@@ -1858,7 +1875,7 @@ fn bootforge_qualification_export(
     binding_blockers.extend(transport_findings.iter().cloned());
     if !programmer_evidence_ready {
         binding_blockers.push(
-            "Qualcomm EDL qualification requires an authorized programmer record with valid SHA-256, nonzero size, and authorization source"
+            "Qualcomm EDL qualification requires an authorized programmer record with valid SHA-256, nonzero size, declared device family, and authorization source"
                 .to_string(),
         );
     }
