@@ -1611,6 +1611,7 @@ export type FirmwareBundleSummary = {
   sku?: string | null;
   sourceCategory?: string | null;
   sourceReference?: string | null;
+  packageFingerprint?: string | null;
   warnings: string[];
 };
 
