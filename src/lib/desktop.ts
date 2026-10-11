@@ -613,6 +613,19 @@ export async function listEdlProgrammers(): Promise<EdlProgrammerRecord[]> {
 }
 
 
+export type DriverElevationStatus = {
+  required: boolean;
+  elevated: boolean;
+  detail: string;
+};
+
+export async function getDriverElevationStatus(): Promise<DriverElevationStatus> {
+  if (!isTauriRuntime()) {
+    return { required: false, elevated: true, detail: 'Windows elevation is not applicable outside the desktop runtime.' };
+  }
+  return invoke<DriverElevationStatus>('driver_binding_elevation_status');
+}
+
 export type DriverBindingRecord = {
   instanceId: string;
   friendlyName: string;
