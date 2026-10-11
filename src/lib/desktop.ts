@@ -1057,6 +1057,11 @@ export type QualificationDossierReview = {
   recoveryJobMatchesExpected: boolean;
   executorBuildMatchesCurrent: boolean;
   bindingReadyClaimed: boolean;
+  liveDeviceIdentityMatch: boolean;
+  workstationEvidenceReady: boolean;
+  transportObservationReady: boolean;
+  programmerEvidenceReady: boolean;
+  bindingSemanticsValid: boolean;
   qualificationStatusPending: boolean;
   executorQualifiedClaimed: boolean;
   executionEnabledClaimed: boolean;
