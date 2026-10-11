@@ -135,6 +135,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
     reviewer.trim() &&
     benchEvidencePath &&
     decisionPath &&
+    auditBundleReview?.safeToReview &&
     confirmation === `QUALIFY ${deviceSerial}` &&
     allChecksPass,
   );
@@ -368,6 +369,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
         dossierPath: review.path,
         benchEvidencePath,
         reviewDecisionPath: decisionPath,
+        auditBundlePath: auditBundleReview?.safeToReview ? auditBundleReview.path : null,
         expectedRecoveryJobFingerprint: recoveryJobFingerprint,
         deviceSerial,
         partitions,
