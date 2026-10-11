@@ -2096,6 +2096,7 @@ struct QualifiedFlashApprovalInput {
     dossierPath: String,
     benchEvidencePath: Option<String>,
     reviewDecisionPath: Option<String>,
+    auditBundlePath: Option<String>,
     expectedRecoveryJobFingerprint: String,
     deviceSerial: String,
     partitions: Vec<FlashPartition>,
@@ -3707,6 +3708,26 @@ fn bootforge_issue_qualified_flash_grant(
     let build = qualification_build_identity_snapshot();
     if !build.qualified_flash_compiled {
         return Err("This build does not contain the qualified destructive writer".to_string());
+    }
+
+    let audit_bundle_path = input
+        .auditBundlePath
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            "Production-qualified grant requires a verified qualification audit bundle"
+                .to_string()
+        })?;
+    let audit_bundle_review = bootforge_qualification_audit_bundle_review(
+        audit_bundle_path.to_string(),
+        Some(recovery_job_fingerprint.clone()),
+    )?;
+    if !audit_bundle_review.safe_to_review {
+        return Err(format!(
+            "Qualification audit bundle is not safe to approve: {}",
+            audit_bundle_review.blockers.join("; ")
+        ));
     }
 
     let decision_path = input
