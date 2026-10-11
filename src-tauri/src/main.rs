@@ -96,6 +96,7 @@ struct QualifiedFlashGrant {
     issuedAtUnixSeconds: u64,
     expiresAtUnixSeconds: u64,
     dossierFingerprint: String,
+    auditBundleFingerprint: Option<String>,
     grantMac: String,
 }
 
@@ -3483,6 +3484,7 @@ fn qualified_flash_grant_material(grant: &QualifiedFlashGrant) -> Result<Vec<u8>
         "issuedAtUnixSeconds": grant.issuedAtUnixSeconds,
         "expiresAtUnixSeconds": grant.expiresAtUnixSeconds,
         "dossierFingerprint": grant.dossierFingerprint,
+        "auditBundleFingerprint": grant.auditBundleFingerprint,
     });
     serde_json::to_vec(&value)
         .map_err(|e| format!("Could not serialize qualified flash grant material: {e}"))
@@ -3630,6 +3632,7 @@ fn bootforge_issue_qualification_trial_grant(
         issuedAtUnixSeconds: issued_at,
         expiresAtUnixSeconds: expires_at,
         dossierFingerprint: dossier_fingerprint,
+        auditBundleFingerprint: None,
         grantMac: String::new(),
     };
     grant.grantMac = qualified_flash_grant_mac(&state.qualification_grant_secret, &grant)?;
@@ -3729,6 +3732,14 @@ fn bootforge_issue_qualified_flash_grant(
             audit_bundle_review.blockers.join("; ")
         ));
     }
+
+    let audit_bundle_fingerprint = audit_bundle_review
+        .bundle_fingerprint
+        .clone()
+        .filter(|value| valid_sha256_hex(value))
+        .ok_or_else(|| {
+            "Verified qualification audit bundle is missing a valid fingerprint".to_string()
+        })?;
 
     let decision_path = input
         .reviewDecisionPath
@@ -3848,6 +3859,7 @@ fn bootforge_issue_qualified_flash_grant(
         issuedAtUnixSeconds: issued_at,
         expiresAtUnixSeconds: expires_at,
         dossierFingerprint: dossier_fingerprint,
+        auditBundleFingerprint: Some(audit_bundle_fingerprint.clone()),
         grantMac: String::new(),
     };
     grant.grantMac = qualified_flash_grant_mac(&state.qualification_grant_secret, &grant)?;
@@ -3905,6 +3917,17 @@ fn validate_qualified_flash_config(config: &FlashJobConfig, grant_secret: &str) 
     }
     if !valid_sha256_hex(&grant.dossierFingerprint) {
         return Err("Qualified flash grant dossier fingerprint is invalid".to_string());
+    }
+    if is_approved {
+        let audit_fingerprint = grant
+            .auditBundleFingerprint
+            .as_deref()
+            .ok_or_else(|| "Production-qualified grant is missing its audit-bundle fingerprint".to_string())?;
+        if !valid_sha256_hex(audit_fingerprint) {
+            return Err("Production-qualified grant audit-bundle fingerprint is invalid".to_string());
+        }
+    } else if grant.auditBundleFingerprint.is_some() {
+        return Err("Bench qualification trial must not carry production audit-bundle authority".to_string());
     }
     if is_trial {
         if config.partitions.len() != 1 || grant.approvedPartitions.len() != 1 {
@@ -5117,6 +5140,7 @@ mod qualified_flash_grant_tests {
                 issuedAtUnixSeconds: 1,
                 expiresAtUnixSeconds: u64::MAX,
                 dossierFingerprint: "c".repeat(64),
+                auditBundleFingerprint: Some("d".repeat(64)),
                 grantMac: String::new(),
             },
         };
