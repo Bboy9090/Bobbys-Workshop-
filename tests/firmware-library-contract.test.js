@@ -818,5 +818,9 @@ describe('Qualification dossier semantic review and evidence-derived flash check
     expect(consoleUi).toContain('auditBundlePath: auditBundleReview?.safeToReview ? auditBundleReview.path : null');
     expect(backend).toContain('Production-qualified grant requires a verified qualification audit bundle');
     expect(backend).toContain('bootforge_qualification_audit_bundle_review');
+    expect(backend).toContain('auditBundleFingerprint: Some(audit_bundle_fingerprint.clone())');
+    expect(backend).toContain('"auditBundleFingerprint": grant.auditBundleFingerprint');
+    expect(backend).toContain('Production-qualified grant is missing its audit-bundle fingerprint');
+    expect(desktop).toContain('auditBundleFingerprint?: string | null');
   });
 });
