@@ -756,6 +756,9 @@ export type InstalledDriverCandidate = {
   exactInterfaceMatch: boolean;
   currentClaim: boolean;
   compatibilityScore: number;
+  provider?: string | null;
+  driverVersion?: string | null;
+  catalogFile?: string | null;
   detail: string;
 };
 
