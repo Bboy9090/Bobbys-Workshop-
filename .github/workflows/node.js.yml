@@ -2,12 +2,15 @@ name: Node.js CI
 
 on:
   push:
-    branches: [ "main", "master", "main-tool-kit" ]
+    branches: [ "main", "master", "main-tool-kit", "feat/bobfwtools-macos-foundation", "feat/bobfwtools-calibration-edl-safety" ]
   pull_request:
-    branches: [ "main", "master", "main-tool-kit" ]
+    branches: [ "main", "master", "main-tool-kit", "feat/bobfwtools-macos-foundation", "feat/bobfwtools-calibration-edl-safety" ]
 
 permissions:
   contents: read
+
+env:
+  BOBFWTOOLS_SOURCE_REVISION: ${{ github.sha }}
 
 jobs:
   build:
@@ -28,6 +31,9 @@ jobs:
 
     - name: Production Reality Gate
       run: npm run verify:reality
+
+    - name: Typecheck Frontend
+      run: npm run typecheck
 
     - name: Build
       run: npm run build --if-present
@@ -55,6 +61,9 @@ jobs:
     - name: Production Reality Gate
       run: npm run verify:reality
 
+    - name: Typecheck Frontend
+      run: npm run typecheck
+
     - name: Build Frontend
       run: npm run build
 
@@ -63,3 +72,9 @@ jobs:
 
     - name: Check Tauri Rust core
       run: cargo check --manifest-path src-tauri/Cargo.toml
+
+    - name: Check qualified destructive writer build
+      run: cargo check --manifest-path src-tauri/Cargo.toml --features qualified-flash
+
+    - name: Test qualified destructive writer gates
+      run: cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --features qualified-flash

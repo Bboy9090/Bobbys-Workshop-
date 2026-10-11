@@ -175,7 +175,7 @@ async fn start_job_internal(
             true,
             report.evidence.into_iter().map(|e| format!("{}:{}", e.source, e.detail)).collect(),
         )),
-        "usb-cable-doctor" => crate::diagnostics::usb_cable_doctor().await.map(|report| (
+        "usb-cable-doctor" => crate::diagnostics::usb_cable_doctor(None).await.map(|report| (
             format!(
                 "Cable Doctor complete: grade {}; {} reconnect event(s) across {} samples",
                 report.grade, report.reconnect_events, report.samples
