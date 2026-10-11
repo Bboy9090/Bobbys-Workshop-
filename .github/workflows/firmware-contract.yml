@@ -31,6 +31,7 @@ on:
       - 'scripts/probe-official-catalogs.mjs'
       - 'scripts/audit-pixel-release.mjs'
       - 'scripts/lib/inspect-firmware-archive.mjs'
+      - 'scripts/inspect-firmware-archive.mjs'
       - 'tests/firmware-archive-inspection.test.ts'
   workflow_dispatch:
 
@@ -147,3 +148,14 @@ jobs:
           test "$audit_status" -eq 2
           test ! -s "$RUNNER_TEMP/symlink-audit.json"
           grep -q "non-symlink regular file" "$RUNNER_TEMP/symlink-error.txt"
+      - name: Exercise read-only archive CLI with actual fixture bytes
+        run: |
+          printf 'PK\\003\\004fixture' > "$RUNNER_TEMP/zip-marker.bin"
+          node scripts/inspect-firmware-archive.mjs --file "$RUNNER_TEMP/zip-marker.bin" > "$RUNNER_TEMP/archive-inspection.json"
+          node -e 'const r=require(process.argv[1]); if(r.format!=="zip-local-header" || r.flashAuthorized || r.structuralIntegrityVerified) process.exit(1)' "$RUNNER_TEMP/archive-inspection.json"
+          printf 'not-a-zip' > "$RUNNER_TEMP/unknown-marker.bin"
+          set +e
+          node scripts/inspect-firmware-archive.mjs --file "$RUNNER_TEMP/unknown-marker.bin" > "$RUNNER_TEMP/unknown-inspection.json"
+          result=$?
+          set -e
+          test "$result" -eq 3
