@@ -17,6 +17,9 @@ pub struct DriverBindingRecord {
     pub vendor_id: Option<u16>,
     pub product_id: Option<u16>,
     pub expected_family: String,
+    pub physical_device_key: String,
+    pub interface_id: Option<String>,
+    pub composite_sibling_count: usize,
     pub binding_state: String,
     pub detail: String,
 }
@@ -57,6 +60,26 @@ pub struct DriverReleaseResult {
     pub rescanned: bool,
     pub detail: String,
     pub evidence: Vec<String>,
+}
+
+fn composite_identity(instance_id: &str) -> (String, Option<String>) {
+    let upper = instance_id.to_ascii_uppercase();
+    if let Some(pos) = upper.find("&MI_") {
+        let end = (pos + 6).min(upper.len());
+        let interface_id = upper.get(pos + 1..end).map(ToString::to_string);
+        let mut key = upper.clone();
+        key.replace_range(pos..end, "");
+        return (key, interface_id);
+    }
+    (upper, None)
+}
+
+fn interface_specific_ids(values: &[String]) -> Vec<String> {
+    values
+        .iter()
+        .map(|value| normalize_hardware_id(value))
+        .filter(|value| value.contains("&MI_"))
+        .collect()
 }
 
 fn normalize_hardware_id(value: &str) -> String {
@@ -231,7 +254,7 @@ $items = Get-PnpDevice -PresentOnly | Where-Object {
     let rows: Vec<RawPnpRecord> = serde_json::from_str(trimmed)
         .map_err(|e| format!("Failed to parse Windows PnP driver evidence: {e}"))?;
 
-    Ok(rows
+    let mut records = rows
         .into_iter()
         .filter_map(|row| {
             let hardware_ids = row.hardware_ids.unwrap_or_default();
@@ -247,6 +270,7 @@ $items = Get-PnpDevice -PresentOnly | Where-Object {
                 row.driver_inf.as_deref(),
                 &friendly_name,
             );
+            let (physical_device_key, interface_id) = composite_identity(&row.instance_id);
             Some(DriverBindingRecord {
                 instance_id: row.instance_id,
                 friendly_name,
@@ -258,11 +282,23 @@ $items = Get-PnpDevice -PresentOnly | Where-Object {
                 vendor_id,
                 product_id,
                 expected_family: expected,
+                physical_device_key,
+                interface_id,
+                composite_sibling_count: 1,
                 binding_state,
                 detail,
             })
         })
-        .collect())
+        .collect::<Vec<_>>();
+
+    let mut counts = std::collections::HashMap::<String, usize>::new();
+    for record in &records {
+        *counts.entry(record.physical_device_key.clone()).or_insert(0) += 1;
+    }
+    for record in &mut records {
+        record.composite_sibling_count = *counts.get(&record.physical_device_key).unwrap_or(&1);
+    }
+    Ok(records)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -398,15 +434,25 @@ pub fn driver_binding_stage_and_relatch(
 
     std::thread::sleep(std::time::Duration::from_millis(1200));
     let after = driver_binding_scan().unwrap_or_default();
-    let rebound = after.iter().find(|candidate| {
-        candidate.hardware_ids.iter().any(|candidate_id| {
-            original.hardware_ids.iter().any(|original_id| {
-                let a = normalize_hardware_id(candidate_id);
-                let b = normalize_hardware_id(original_id);
-                a == b
+    let original_interface_ids = interface_specific_ids(&original.hardware_ids);
+    let rebound = if !original_interface_ids.is_empty() {
+        after.iter().find(|candidate| {
+            let candidate_specific = interface_specific_ids(&candidate.hardware_ids);
+            candidate_specific.iter().any(|candidate_id| {
+                original_interface_ids.iter().any(|original_id| candidate_id == original_id)
             })
         })
-    });
+    } else {
+        after.iter().find(|candidate| {
+            candidate.hardware_ids.iter().any(|candidate_id| {
+                original.hardware_ids.iter().any(|original_id| {
+                    let a = normalize_hardware_id(candidate_id);
+                    let b = normalize_hardware_id(original_id);
+                    a == b
+                })
+            })
+        })
+    };
 
     let verified_claim = rebound
         .map(|record| record.binding_state == "matched")
@@ -534,6 +580,25 @@ mod tests {
     fn parses_usb_hardware_ids() {
         let ids = vec!["USB\\VID_05C6&PID_9008".to_string()];
         assert_eq!(parse_vid_pid(&ids), (Some(0x05c6), Some(0x9008)));
+    }
+
+    #[test]
+    fn composite_identity_preserves_interface_and_groups_siblings() {
+        let (a_key, a_if) = composite_identity(r"USB\VID_18D1&PID_4EE7&MI_01\ABC");
+        let (b_key, b_if) = composite_identity(r"USB\VID_18D1&PID_4EE7&MI_02\ABC");
+        assert_eq!(a_key, b_key);
+        assert_eq!(a_if.as_deref(), Some("MI_01"));
+        assert_eq!(b_if.as_deref(), Some("MI_02"));
+    }
+
+    #[test]
+    fn interface_specific_ids_do_not_collapse_to_generic_vid_pid() {
+        let ids = vec![
+            r"USB\VID_18D1&PID_4EE7&MI_01".to_string(),
+            r"USB\VID_18D1&PID_4EE7".to_string(),
+        ];
+        let specific = interface_specific_ids(&ids);
+        assert_eq!(specific, vec![r"USB\VID_18D1&PID_4EE7&MI_01".to_string()]);
     }
 
     #[test]
