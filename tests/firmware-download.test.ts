@@ -43,3 +43,28 @@ describe('verified OEM downloader',()=>{
     } finally {await rm(dir,{force:true,recursive:true});}
   });
 });
+
+describe('download failure and concurrency gates',()=>{
+  it('rejects truncated HTTP bodies and clears temporary files',async()=>{
+    const dir=await mkdtemp(join(tmpdir(),'bobfw-short-'));
+    try {
+      const bad=()=>({status:200,headers:new Headers({'content-length':String(DATA.length+5)}),
+        body:new ReadableStream({start(c){c.enqueue(DATA);c.close();}})});
+      await expect(downloadVerifiedFirmware({url:'https://dl.google.com/a.zip',destination:join(dir,'a.zip'),
+        expectedSha256:SHA,fetcher:async()=>bad()})).rejects.toThrow('Incomplete download');
+      expect(await readdir(dir)).toEqual([]);
+    } finally {await rm(dir,{recursive:true,force:true});}
+  });
+  it('refuses to overwrite a destination created during transfer',async()=>{
+    const dir=await mkdtemp(join(tmpdir(),'bobfw-race-'));
+    const destination=join(dir,'image.zip');
+    try {
+      let injected=false;
+      await expect(downloadVerifiedFirmware({url:'https://dl.google.com/a.zip',destination,
+        expectedSha256:SHA,fetcher:async()=>mockResponse(),
+        onProgress:()=>{if(!injected){injected=true;writeFile(destination,'existing file');}}})).rejects.toThrow();
+      expect((await readFile(destination,'utf8'))).toBe('existing file');
+      expect(await readdir(dir)).toEqual(['image.zip']);
+    } finally {await rm(dir,{recursive:true,force:true});}
+  });
+});
