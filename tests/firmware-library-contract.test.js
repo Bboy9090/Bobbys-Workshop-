@@ -372,3 +372,20 @@ describe('Driver relatch audit evidence', () => {
     expect(backend).toContain('observed-inf:');
   });
 });
+
+
+describe('Composite USB driver isolation', () => {
+  it('tracks MI_xx siblings and verifies the same interface after relatch', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('composite_identity');
+    expect(backend).toContain('interface_specific_ids');
+    expect(backend).toContain('composite_sibling_count');
+    expect(backend).toContain('original_interface_ids');
+
+    expect(ui).toContain('Composite USB device detected');
+    expect(ui).toContain('Exact interface protection is active');
+    expect(ui).toContain('not merely the same VID/PID family');
+  });
+});
