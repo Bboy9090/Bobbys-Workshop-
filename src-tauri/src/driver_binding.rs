@@ -24,6 +24,42 @@ pub struct DriverBindingRecord {
     pub detail: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriverBindingSnapshot {
+    pub schema: String,
+    pub created_at_ms: u64,
+    pub instance_id: String,
+    pub physical_device_key: String,
+    pub interface_id: Option<String>,
+    pub hardware_ids: Vec<String>,
+    pub expected_family: String,
+    pub service: Option<String>,
+    pub driver_inf: Option<String>,
+    pub binding_state: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriverSnapshotResult {
+    pub path: String,
+    pub snapshot: DriverBindingSnapshot,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriverRollbackPlan {
+    pub snapshot_path: String,
+    pub exact_device_present: bool,
+    pub hardware_identity_matches: bool,
+    pub prior_inf_available: bool,
+    pub rollback_ready: bool,
+    pub prior_inf: Option<String>,
+    pub current_inf: Option<String>,
+    pub blockers: Vec<String>,
+    pub next_steps: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DriverCleanupRecommendation {
@@ -140,6 +176,22 @@ pub struct DriverReleaseResult {
     pub rescanned: bool,
     pub detail: String,
     pub evidence: Vec<String>,
+}
+
+fn now_ms() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+fn driver_snapshot_dir() -> std::path::PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join(".bobfwtools")
+        .join("logs")
+        .join("driver-snapshots")
 }
 
 fn composite_identity(instance_id: &str) -> (String, Option<String>) {
@@ -402,6 +454,162 @@ fn pnputil(args: &[&str], action: &str) -> Result<String, String> {
         return Err(format!("{action} failed: {}", combined.trim()));
     }
     Ok(combined.trim().to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn driver_binding_snapshot(instance_id: String) -> Result<DriverSnapshotResult, String> {
+    let instance_id = instance_id.trim().to_string();
+    let bindings = driver_binding_scan()?;
+    let record = bindings
+        .iter()
+        .find(|item| item.instance_id.eq_ignore_ascii_case(&instance_id))
+        .ok_or_else(|| "Exact Windows USB instance is no longer present; refresh before snapshotting its claim.".to_string())?
+        .clone();
+
+    let snapshot = DriverBindingSnapshot {
+        schema: "com.bobbyblanco.bobfwtools.driver-binding-snapshot.v1".to_string(),
+        created_at_ms: now_ms(),
+        instance_id: record.instance_id.clone(),
+        physical_device_key: record.physical_device_key.clone(),
+        interface_id: record.interface_id.clone(),
+        hardware_ids: record.hardware_ids.clone(),
+        expected_family: record.expected_family.clone(),
+        service: record.service.clone(),
+        driver_inf: record.driver_inf.clone(),
+        binding_state: record.binding_state.clone(),
+    };
+
+    let dir = driver_snapshot_dir();
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("Failed to create driver snapshot directory {}: {e}", dir.display()))?;
+    let safe_interface = snapshot.interface_id.clone().unwrap_or_else(|| "single".to_string()).replace(|ch: char| !ch.is_ascii_alphanumeric(), "_");
+    let path = dir.join(format!("driver-{}-{}.json", snapshot.created_at_ms, safe_interface));
+    let bytes = serde_json::to_vec_pretty(&snapshot)
+        .map_err(|e| format!("Failed to serialize driver snapshot: {e}"))?;
+    std::fs::write(&path, bytes)
+        .map_err(|e| format!("Failed to write driver snapshot {}: {e}", path.display()))?;
+
+    let _ = crate::audit::record(
+        "driver-binding",
+        "snapshot",
+        "read-only",
+        "completed",
+        Some(instance_id),
+        "Captured exact Windows driver claim before mutation.",
+        vec![
+            format!("snapshot:{}", path.display()),
+            format!("inf:{}", snapshot.driver_inf.as_deref().unwrap_or("<unavailable>")),
+            format!("service:{}", snapshot.service.as_deref().unwrap_or("<unavailable>")),
+        ],
+    );
+
+    Ok(DriverSnapshotResult {
+        path: path.display().to_string(),
+        snapshot,
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn driver_binding_snapshot(_instance_id: String) -> Result<DriverSnapshotResult, String> {
+    Err("Driver claim snapshots are Windows-only.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn driver_binding_rollback_plan(snapshot_path: String) -> Result<DriverRollbackPlan, String> {
+    let path = std::path::PathBuf::from(snapshot_path.trim());
+    if !path.is_file() {
+        return Err("Driver rollback plan requires an existing BobFWTools snapshot file.".to_string());
+    }
+    let canonical_dir = std::fs::canonicalize(driver_snapshot_dir())
+        .map_err(|e| format!("Failed to resolve driver snapshot directory: {e}"))?;
+    let canonical_path = std::fs::canonicalize(&path)
+        .map_err(|e| format!("Failed to resolve driver snapshot path {}: {e}", path.display()))?;
+    if !canonical_path.starts_with(&canonical_dir) {
+        return Err("Rollback snapshots must come from BobFWTools managed driver-snapshots storage.".to_string());
+    }
+
+    let snapshot: DriverBindingSnapshot = serde_json::from_slice(
+        &std::fs::read(&canonical_path)
+            .map_err(|e| format!("Failed to read driver snapshot {}: {e}", canonical_path.display()))?
+    ).map_err(|e| format!("Failed to parse driver snapshot: {e}"))?;
+
+    if snapshot.schema != "com.bobbyblanco.bobfwtools.driver-binding-snapshot.v1" {
+        return Err("Unsupported driver binding snapshot schema.".to_string());
+    }
+
+    let current = driver_binding_scan()?;
+    let original_specific = interface_specific_ids(&snapshot.hardware_ids);
+    let found = current.iter().find(|candidate| {
+        if !original_specific.is_empty() {
+            let candidate_specific = interface_specific_ids(&candidate.hardware_ids);
+            candidate_specific.iter().any(|candidate_id| original_specific.iter().any(|original_id| candidate_id == original_id))
+        } else {
+            candidate.hardware_ids.iter().any(|candidate_id| {
+                snapshot.hardware_ids.iter().any(|original_id| normalize_hardware_id(candidate_id) == normalize_hardware_id(original_id))
+            })
+        }
+    });
+
+    let exact_device_present = found.is_some();
+    let hardware_identity_matches = found.map(|record| {
+        if !original_specific.is_empty() {
+            !interface_specific_ids(&record.hardware_ids).iter().all(|id| !original_specific.contains(id))
+        } else {
+            true
+        }
+    }).unwrap_or(false);
+
+    let prior_inf_path = snapshot.driver_inf.as_ref().map(|name| {
+        let windows_dir = std::env::var_os("WINDIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"));
+        windows_dir.join("INF").join(name)
+    });
+    let prior_inf_available = prior_inf_path.as_ref().map(|p| p.is_file()).unwrap_or(false);
+
+    let mut blockers = Vec::new();
+    if !exact_device_present {
+        blockers.push("The snapshotted exact USB interface is not currently present.".to_string());
+    }
+    if !hardware_identity_matches {
+        blockers.push("Current interface hardware identity does not match the snapshot.".to_string());
+    }
+    if snapshot.driver_inf.is_none() {
+        blockers.push("Snapshot did not contain a prior INF claim.".to_string());
+    } else if !prior_inf_available {
+        blockers.push("The prior INF from the snapshot is no longer available in the Windows INF store.".to_string());
+    }
+
+    let rollback_ready = blockers.is_empty();
+    let mut next_steps = Vec::new();
+    if rollback_ready {
+        next_steps.push("Inspect the prior INF against the exact present device hardware IDs.".to_string());
+        next_steps.push("Require HARDWARE-ID MATCH VERIFIED before using the standard Stage + relatch exact device workflow.".to_string());
+        next_steps.push("Require DRIVER CLAIM VERIFIED after relatch before resuming service operations.".to_string());
+    } else {
+        next_steps.push("Resolve every blocker before attempting rollback.".to_string());
+    }
+
+    Ok(DriverRollbackPlan {
+        snapshot_path: canonical_path.display().to_string(),
+        exact_device_present,
+        hardware_identity_matches,
+        prior_inf_available,
+        rollback_ready,
+        prior_inf: snapshot.driver_inf,
+        current_inf: found.and_then(|record| record.driver_inf.clone()),
+        blockers,
+        next_steps,
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn driver_binding_rollback_plan(_snapshot_path: String) -> Result<DriverRollbackPlan, String> {
+    Err("Driver rollback planning is Windows-only.".to_string())
 }
 
 #[cfg(target_os = "windows")]
