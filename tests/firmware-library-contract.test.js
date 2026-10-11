@@ -665,3 +665,25 @@ describe('Mode transition verification hardening', () => {
     expect(backend).toContain('usb-evidence-unavailable');
   });
 });
+
+
+describe('Qualified flash trial versus production authority', () => {
+  it('requires exactly one trial partition and never treats trial authority as production authority', () => {
+    const ui = read('src/components/QualifiedFlashConsole.tsx');
+    const backend = read('src-tauri/src/main.rs');
+
+    expect(ui).toContain('partitions.length !== 1');
+    expect(ui).toContain('trialGrantActive');
+    expect(ui).toContain('productionGrantActive');
+    expect(ui).toContain('trial-only — exactly one approved partition; no wipe or automatic reboot');
+    expect(ui).toContain('production-qualified — short-lived approved authority');
+    expect(ui).toContain('exactly one trial partition required');
+
+    expect(backend).toContain('qualificationStatus: "qualification-trial".into()');
+    expect(backend).toContain('executorQualified: false');
+    expect(backend).toContain('qualificationStatus: "approved".into()');
+    expect(backend).toContain('executorQualified: true');
+    expect(backend).toContain('let is_approved = grant.qualificationStatus == "approved" && grant.executorQualified');
+    expect(backend).toContain('let is_trial = grant.qualificationStatus == "qualification-trial" && !grant.executorQualified');
+  });
+});
