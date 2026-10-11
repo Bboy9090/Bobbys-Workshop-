@@ -293,3 +293,16 @@ describe('Mode control stale-state protection', () => {
     expect(app).toContain('Use after a manual OEM key-combo/service entry');
   });
 });
+
+
+describe('USB-only service mode transition guidance', () => {
+  it('explains when software exit signals are unavailable instead of exposing fake controls', () => {
+    const app = read('src/App.tsx');
+
+    expect(app).toContain('Mode transition matrix');
+    expect(app).toContain('Do not send guessed Sahara/Firehose reset packets');
+    expect(app).toContain('no generic BROM/Preloader exit command is exposed');
+    expect(app).toContain('no generic unauthenticated Download Mode exit command is exposed');
+    expect(app).toContain('Re-scan this mode');
+  });
+});
