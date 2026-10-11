@@ -21,9 +21,6 @@ import {
   getFirmwareChipsetCatalog,
   lookupFirmwareChipset,
   scanFirmwareLibrary,
-  chooseFirmwareManifest,
-  inspectFirmwareManifest,
-  compareFirmwareManifest,
   scanDriverBindings,
   releaseAndRescanDriverBinding,
   chooseDriverInf,
@@ -35,9 +32,7 @@ import {
   getDriverCleanupReport,
   createDriverBindingSnapshot,
   getDriverRollbackPlan,
-  type DeviceFirmwareIdentity,
-  type FirmwareCompatibilityReport,
-  type FirmwareManifestInspection,
+  getDriverElevationStatus,
   type FirmwareChipsetProfile,
   type FirmwareLibraryReport,
   type DriverBindingRecord,
@@ -49,6 +44,7 @@ import {
   type DriverCleanupReport,
   type DriverSnapshotResult,
   type DriverRollbackPlan,
+  type DriverElevationStatus,
   type WorkstationReadiness,
   type AdbDeviceRecord,
   type CalibrationBackupResult,
@@ -117,18 +113,6 @@ export default function RepairCommandCenter() {
   const [firmwareMatches, setFirmwareMatches] = useState<FirmwareChipsetProfile[]>([]);
   const [firmwareReport, setFirmwareReport] = useState<FirmwareLibraryReport | null>(null);
   const [firmwareBusy, setFirmwareBusy] = useState(false);
-  const [manifestInspection, setManifestInspection] = useState<FirmwareManifestInspection | null>(null);
-  const [manifestCompatibility, setManifestCompatibility] = useState<FirmwareCompatibilityReport | null>(null);
-  const [manifestBusy, setManifestBusy] = useState(false);
-  const [manifestDevice, setManifestDevice] = useState<DeviceFirmwareIdentity>({
-    vendor: null,
-    chipset: null,
-    oem: null,
-    model: null,
-    variant: null,
-    region: null,
-    bootloaderRevision: null,
-  });
   const [driverBindings, setDriverBindings] = useState<DriverBindingRecord[]>([]);
   const [driverBindingBusy, setDriverBindingBusy] = useState<string | null>(null);
   const [driverInfInspections, setDriverInfInspections] = useState<Record<string, DriverInfInspection>>({});
@@ -139,6 +123,7 @@ export default function RepairCommandCenter() {
   const [driverCleanupReports, setDriverCleanupReports] = useState<Record<string, DriverCleanupReport>>({});
   const [driverSnapshots, setDriverSnapshots] = useState<Record<string, DriverSnapshotResult>>({});
   const [driverRollbackPlans, setDriverRollbackPlans] = useState<Record<string, DriverRollbackPlan>>({});
+  const [driverElevation, setDriverElevation] = useState<DriverElevationStatus | null>(null);
 
   const targets = useMemo(() => {
     const adbTargets = adbDevices.map((device) => ({
@@ -369,41 +354,6 @@ export default function RepairCommandCenter() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSamsungFirmwareBusy(false);
-    }
-  };
-
-  const verifyFirmwareManifest = async () => {
-    if (manifestBusy) return;
-    const path = await chooseFirmwareManifest();
-    if (!path) return;
-    setManifestBusy(true);
-    setManifestCompatibility(null);
-    setError(null);
-    try {
-      const inspection = await inspectFirmwareManifest(path);
-      setManifestInspection(inspection);
-    } catch (err) {
-      setManifestInspection(null);
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setManifestBusy(false);
-    }
-  };
-
-  const compareManifestToTarget = async () => {
-    if (manifestBusy || !manifestInspection) return;
-    setManifestBusy(true);
-    setError(null);
-    try {
-      setManifestCompatibility(await compareFirmwareManifest(
-        manifestInspection.manifestPath,
-        manifestDevice,
-      ));
-    } catch (err) {
-      setManifestCompatibility(null);
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setManifestBusy(false);
     }
   };
 
@@ -645,6 +595,40 @@ export default function RepairCommandCenter() {
                   </button>
                 </div>
 
+                <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Windows mutation readiness</div>
+                      <div className="mt-1 text-[10px] leading-4 text-slate-600">
+                        Read-only driver inspection works without elevation. Release/rescan and driver staging require Administrator rights.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!!driverBindingBusy}
+                      onClick={() => {
+                        setDriverBindingBusy('elevation-check');
+                        setError(null);
+                        void getDriverElevationStatus()
+                          .then(setDriverElevation)
+                          .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                          .finally(() => setDriverBindingBusy(null));
+                      }}
+                      className="rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300 disabled:opacity-40 hover:bg-slate-800"
+                    >
+                      Check admin readiness
+                    </button>
+                  </div>
+                  {driverElevation && (
+                    <div className={driverElevation.elevated
+                      ? 'mt-2 rounded border border-emerald-900/50 bg-emerald-950/20 p-2 text-[10px] text-emerald-200'
+                      : 'mt-2 rounded border border-amber-900/50 bg-amber-950/20 p-2 text-[10px] text-amber-200'}>
+                      <div className="font-semibold">{driverElevation.elevated ? 'ADMIN READY' : 'ADMIN REQUIRED'}</div>
+                      <div className="mt-1 leading-4">{driverElevation.detail}</div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="mt-3 space-y-2">
                   {driverBindings.length === 0 ? (
                     <div className="rounded border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-500">
@@ -665,6 +649,9 @@ export default function RepairCommandCenter() {
                             expected {binding.expectedFamily} · service {binding.service || 'unknown'} · INF {binding.driverInf || 'unknown'}
                           </div>
                           <div className="mt-1 text-[10px] text-slate-500">
+                            INF hardware-ID proof {binding.claimHardwareIdVerified ? 'verified' : 'not proven'} · scope {binding.claimMatchScope}
+                          </div>
+                          <div className="mt-1 text-[10px] text-slate-500">
                             interface {binding.interfaceId || 'single-interface'} · siblings {binding.compositeSiblingCount}
                           </div>
                           {binding.compositeSiblingCount > 1 && (
@@ -676,7 +663,7 @@ export default function RepairCommandCenter() {
                         </div>
                         <button
                           type="button"
-                          disabled={!!driverBindingBusy}
+                          disabled={!!driverBindingBusy || (driverElevation?.required === true && !driverElevation.elevated)}
                           onClick={() => {
                             setDriverBindingBusy(binding.instanceId);
                             setError(null);
@@ -757,6 +744,9 @@ export default function RepairCommandCenter() {
                             <div className="mt-1">
                               service {driverSnapshots[binding.instanceId].snapshot.service || 'unavailable'} · INF {driverSnapshots[binding.instanceId].snapshot.driverInf || 'unavailable'}
                             </div>
+                            <div className="mt-1 break-all font-mono text-[9px] text-sky-300">
+                              fingerprint {driverSnapshots[binding.instanceId].snapshot.fingerprint}
+                            </div>
                           </div>
                         )}
 
@@ -769,6 +759,9 @@ export default function RepairCommandCenter() {
                             </div>
                             <div className="mt-1">
                               prior INF {driverRollbackPlans[binding.instanceId].priorInf || 'unavailable'} · current INF {driverRollbackPlans[binding.instanceId].currentInf || 'unavailable'}
+                            </div>
+                            <div className="mt-1">
+                              snapshot fingerprint {driverRollbackPlans[binding.instanceId].snapshotFingerprintValid ? 'verified' : 'invalid'}
                             </div>
                             {driverRollbackPlans[binding.instanceId].blockers.map((item) => (
                               <div key={item} className="mt-1 leading-4">{item}</div>
@@ -983,6 +976,9 @@ export default function RepairCommandCenter() {
                                   <span className="text-[10px] text-slate-500">score {candidate.compatibilityScore}</span>
                                 </div>
                                 <div className="mt-1 text-[10px] leading-4 text-slate-600">{candidate.detail}</div>
+                                <div className="mt-1 text-[10px] text-slate-500">
+                                  provider {candidate.provider || 'unavailable'} · version {candidate.driverVersion || 'unavailable'} · catalog {candidate.catalogFile || 'unavailable'}
+                                </div>
                                 {candidate.matchedHardwareIds.map((match) => (
                                   <div key={match} className="mt-1 break-all font-mono text-[9px] text-slate-500">{match}</div>
                                 ))}
@@ -1035,7 +1031,7 @@ export default function RepairCommandCenter() {
                           </button>
                           <button
                             type="button"
-                            disabled={!!driverBindingBusy || !driverInfInspections[binding.instanceId]?.compatible}
+                            disabled={!!driverBindingBusy || !driverInfInspections[binding.instanceId]?.compatible || (driverElevation?.required === true && !driverElevation.elevated)}
                             onClick={() => {
                               const inspection = driverInfInspections[binding.instanceId];
                               if (!inspection?.compatible) return;
@@ -1080,6 +1076,9 @@ export default function RepairCommandCenter() {
                               {driverRelatchResults[binding.instanceId].verifiedClaim ? 'DRIVER CLAIM VERIFIED' : 'RELATCH COMPLETED — CLAIM NOT YET VERIFIED'}
                             </div>
                             <div className="mt-1">{driverRelatchResults[binding.instanceId].detail}</div>
+                            <div className="mt-1 text-slate-500">
+                              stability {driverRelatchResults[binding.instanceId].stabilityVerified ? 'verified' : 'not verified'} · {driverRelatchResults[binding.instanceId].stabilitySummary}
+                            </div>
                             {driverRelatchResults[binding.instanceId].snapshotPath && (
                               <div className="mt-1 break-all font-mono text-[9px] text-sky-300">
                                 pre-relatch snapshot {driverRelatchResults[binding.instanceId].snapshotPath}
@@ -1198,129 +1197,6 @@ export default function RepairCommandCenter() {
             ))}
           </div>
         )}
-
-        <details className="mt-4 rounded border border-slate-800 bg-black/20 p-3">
-          <summary className="cursor-pointer text-xs font-semibold text-slate-200">
-            Exact model / variant manifest verification
-          </summary>
-          <div className="mt-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="max-w-3xl text-[11px] leading-5 text-slate-500">
-                Verify <span className="font-mono text-slate-300">bobfwtools-firmware.json</span> metadata and every declared SHA-256 before comparing a package to an exact device identity.
-              </div>
-              <button
-                type="button"
-                disabled={manifestBusy}
-                onClick={() => void verifyFirmwareManifest()}
-                className="rounded border border-cyan-800 bg-cyan-950/20 px-3 py-2 text-xs font-semibold text-cyan-200 disabled:opacity-40 hover:bg-cyan-950/40"
-              >
-                {manifestBusy ? 'Verifying…' : 'Verify package manifest'}
-              </button>
-            </div>
-
-            {manifestInspection && (
-              <div className="mt-3 rounded border border-slate-800 bg-slate-950/60 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wide text-slate-600">Package identity</div>
-                    <div className="mt-1 text-sm font-semibold text-white">
-                      {manifestInspection.manifest.oem} · {manifestInspection.manifest.models.join(', ')}
-                    </div>
-                    <div className="mt-1 text-[10px] text-slate-500">
-                      {manifestInspection.manifest.vendor} · {manifestInspection.manifest.chipset} · build {manifestInspection.manifest.buildId}
-                    </div>
-                  </div>
-                  <span className={manifestInspection.packageVerified
-                    ? 'rounded bg-emerald-950 px-2 py-1 text-[10px] font-semibold text-emerald-300'
-                    : 'rounded bg-red-950 px-2 py-1 text-[10px] font-semibold text-red-300'}>
-                    {manifestInspection.packageVerified ? 'metadata + hashes verified' : 'package verification failed'}
-                  </span>
-                </div>
-
-                <div className="mt-2 break-all font-mono text-[9px] text-slate-600">{manifestInspection.manifestPath}</div>
-                <div className="mt-2 text-[10px] text-slate-500">
-                  Source: {manifestInspection.manifest.sourceKind} · {manifestInspection.manifest.sourceReference}
-                </div>
-
-                {!!manifestInspection.validationErrors.length && (
-                  <div className="mt-2 space-y-1 text-[10px] text-red-300">
-                    {manifestInspection.validationErrors.map((value) => <div key={value}>{value}</div>)}
-                  </div>
-                )}
-
-                <div className="mt-3 grid gap-1">
-                  {manifestInspection.artifacts.slice(0, 10).map((artifact) => (
-                    <div key={artifact.path} className="flex items-center justify-between gap-3 rounded border border-slate-900 bg-black/20 px-2 py-1.5">
-                      <span className="truncate font-mono text-[9px] text-slate-400" title={artifact.path}>{artifact.path}</span>
-                      <span className={artifact.hashMatch ? 'text-[9px] text-emerald-300' : 'text-[9px] text-red-300'}>
-                        {artifact.hashMatch ? 'SHA-256 match' : artifact.exists ? 'hash/size mismatch' : 'missing'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-4 border-t border-slate-800 pt-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-500">Compare exact target identity</div>
-                  <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-                    {([
-                      ['vendor', 'Vendor'],
-                      ['oem', 'OEM'],
-                      ['model', 'Exact model'],
-                      ['chipset', 'Chipset / SoC'],
-                      ['variant', 'Variant / SKU'],
-                      ['region', 'Region / carrier'],
-                      ['bootloaderRevision', 'Bootloader revision'],
-                    ] as const).map(([field, label]) => (
-                      <input
-                        key={field}
-                        value={manifestDevice[field] || ''}
-                        onChange={(event) => setManifestDevice((current) => ({ ...current, [field]: event.target.value || null }))}
-                        placeholder={label}
-                        className="rounded border border-slate-800 bg-black/30 px-2.5 py-2 text-[11px] text-white outline-none focus:border-cyan-800"
-                      />
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    disabled={manifestBusy || !manifestInspection.packageVerified}
-                    onClick={() => void compareManifestToTarget()}
-                    className="mt-2 rounded bg-cyan-800 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 hover:bg-cyan-700"
-                  >
-                    Compare package to exact target
-                  </button>
-
-                  {manifestCompatibility && (
-                    <div className={manifestCompatibility.candidateCompatible
-                      ? 'mt-3 rounded border border-emerald-900/60 bg-emerald-950/10 p-3'
-                      : 'mt-3 rounded border border-red-900/60 bg-red-950/10 p-3'}>
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className={manifestCompatibility.candidateCompatible ? 'text-xs font-semibold text-emerald-300' : 'text-xs font-semibold text-red-300'}>
-                          {manifestCompatibility.candidateCompatible ? 'Exact identity candidate match' : 'Package / target mismatch'}
-                        </span>
-                        <span className="rounded bg-slate-950 px-2 py-1 text-[9px] text-amber-300">
-                          execution authorization: NO
-                        </span>
-                      </div>
-                      {!!manifestCompatibility.matchedFields.length && (
-                        <div className="mt-2 text-[10px] text-slate-500">Matched: {manifestCompatibility.matchedFields.join(', ')}</div>
-                      )}
-                      {!!manifestCompatibility.blockers.length && (
-                        <div className="mt-2 space-y-1 text-[10px] text-red-300">
-                          {manifestCompatibility.blockers.map((value) => <div key={value}>{value}</div>)}
-                        </div>
-                      )}
-                      {!!manifestCompatibility.warnings.length && (
-                        <div className="mt-2 space-y-1 text-[10px] text-amber-300">
-                          {manifestCompatibility.warnings.map((value) => <div key={value}>{value}</div>)}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </details>
 
         {firmwareReport && (
           <div className="mt-4 rounded border border-slate-800 bg-black/20 p-3">
