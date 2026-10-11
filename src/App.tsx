@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import RepairCommandCenter from './components/RepairCommandCenter';
+import { SamsungDownloadStatus } from './components/SamsungDownloadStatus';
 import OperatorTimeline from './components/OperatorTimeline';
 import AuditLedger from './components/AuditLedger';
 import RecoverySafetyTools from './components/RecoverySafetyTools';
@@ -930,6 +931,19 @@ export default function App() {
             </div>
           )}
 
+          <div className="mb-4">
+            <SamsungDownloadStatus receipt={usbDevices.some(device => device.vendorId === 0x04e8 && device.productName === 'Gadget Serial') ? {
+              schema: 'bobfwtools.samsung.detect.v1',
+              transport: 'Samsung USB Gadget Serial',
+              detected: true,
+              protocolSessionVerified: false,
+              pitDownloaded: false,
+              modelIdentityVerified: false,
+              flashAuthorized: false,
+              frpStateChanged: false,
+              exitCode: 0
+            } : null} />
+          </div>
           <RepairCommandCenter />
           <OperatorTimeline />
           <AuditLedger />
