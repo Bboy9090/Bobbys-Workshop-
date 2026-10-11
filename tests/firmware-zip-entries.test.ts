@@ -24,6 +24,15 @@ describe('ZIP central entry metadata inspection',()=>{
     await writeFile(path,zip(name));
     expect((await inspectZipEntries(path)).accepted).toBe(false);
    }
+   const mismatch=zip();mismatch.writeUInt16LE(8,8);
+   await writeFile(path,mismatch);
+   expect((await inspectZipEntries(path)).accepted).toBe(false);
+   const inflated=zip();inflated.writeUInt32LE(2147483647,18);
+   await writeFile(path,inflated);
+   expect((await inspectZipEntries(path)).accepted).toBe(false);
+   const encrypted=zip();encrypted.writeUInt16LE(1,6);
+   await writeFile(path,encrypted);
+   expect((await inspectZipEntries(path)).accepted).toBe(false);
    await writeFile(path,zip('payload.bin',99));
    expect((await inspectZipEntries(path)).accepted).toBe(false);
   }finally{await rm(dir,{recursive:true,force:true});}
