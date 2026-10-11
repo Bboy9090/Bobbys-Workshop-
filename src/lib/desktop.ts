@@ -1429,6 +1429,7 @@ export type RecoveryJob = {
   workflow: RecoveryWorkflow;
   protocol: string;
   jobFingerprint: string;
+  packageFingerprint?: string | null;
   identity: {
     deviceUid: string;
     vendorId: number;
@@ -1484,8 +1485,13 @@ export async function buildRecoveryPlan(
 export async function prepareRecoveryJob(
   candidate: RecoveryCandidate,
   paths: string[],
+  packageFingerprint?: string | null,
 ): Promise<RecoveryJob> {
-  return invoke<RecoveryJob>('bootforge_recovery_prepare', { candidate, paths });
+  return invoke<RecoveryJob>('bootforge_recovery_prepare', {
+    candidate,
+    paths,
+    packageFingerprint: packageFingerprint?.trim() || null,
+  });
 }
 
 export async function revalidateRecoveryJob(job: RecoveryJob): Promise<RecoveryJob> {
