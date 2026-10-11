@@ -105,3 +105,23 @@ jobs:
             echo "Mismatched hash was incorrectly accepted"
             exit 1
           fi
+      - name: Refuse malformed firmware audit evidence
+        run: |
+          printf '{"deviceCodename":"shiba","sha256":"not-a-hash"}\n' > "$RUNNER_TEMP/malformed-firmware.json"
+          set +e
+          node scripts/audit-pixel-release.mjs --record "$RUNNER_TEMP/malformed-firmware.json" --codename shiba > "$RUNNER_TEMP/malformed-out.json" 2> "$RUNNER_TEMP/malformed-err.txt"
+          audit_status=$?
+          set -e
+          test "$audit_status" -eq 2
+          test ! -s "$RUNNER_TEMP/malformed-out.json"
+          grep -q "Release audit refused" "$RUNNER_TEMP/malformed-err.txt"
+      - name: Save synthetic inspection and hashing evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-readonly-evidence
+          path: |
+            ${{ runner.temp }}/pixel-audit.json
+            ${{ runner.temp }}/firmware-fixture-receipt.json
+          if-no-files-found: warn
+          retention-days: 14
