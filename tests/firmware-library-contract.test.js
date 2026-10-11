@@ -850,5 +850,14 @@ describe('macOS signed notarized release contract', () => {
     expect(notarize).toContain('xcrun stapler staple');
     expect(notarize).toContain('xcrun stapler validate');
     expect(notarize).toContain('spctl -a -vv --type execute');
+
+    const releaseReceipt = read('scripts/create-bobfwtools-release-receipt.sh');
+    expect(workflow).toContain('Create release provenance receipt');
+    expect(workflow).toContain('bobfwtools-release-receipt.json');
+    expect(releaseReceipt).toContain('com.bobbyblanco.bobfwtools.release-receipt.v1');
+    expect(releaseReceipt).toContain('"qualifiedDestructiveWriterIncluded": False');
+    expect(releaseReceipt).toContain('"submissionId": submission_id');
+    expect(releaseReceipt).toContain('"gatekeeperAccepted": True');
+    expect(releaseReceipt).toContain('"executableSha256": binary_sha256');
   });
 });
