@@ -135,6 +135,26 @@ export default function App() {
     [recoveryCandidates, selectedRecoveryUid],
   );
 
+  const expectedRecoveryVendor = (selectedRecoveryCandidate?.workflow ?? recoveryKind) === 'qualcomm-edl'
+    ? 'qualcomm'
+    : 'mediatek';
+
+  const laneVerifiedFirmwareBundles = useMemo(
+    () => verifiedFirmwareBundles.filter(
+      (bundle) => bundle.planningReady && bundle.vendorHint === expectedRecoveryVendor,
+    ),
+    [verifiedFirmwareBundles, expectedRecoveryVendor],
+  );
+
+  useEffect(() => {
+    setSelectedVerifiedBundle((current) => {
+      if (current && laneVerifiedFirmwareBundles.some((bundle) => bundle.directory === current)) {
+        return current;
+      }
+      return laneVerifiedFirmwareBundles[0]?.directory ?? '';
+    });
+  }, [laneVerifiedFirmwareBundles]);
+
   const selectedDiagnosticUsb = useMemo(
     () => diagnostic?.usbConnections.find((item) => item.deviceUid === selectedDiagnosticUid) || null,
     [diagnostic, selectedDiagnosticUid],
@@ -1713,14 +1733,7 @@ export default function App() {
                       className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white"
                     >
                       <option value="">No verified package selected</option>
-                      {verifiedFirmwareBundles
-                        .filter((bundle) => {
-                          const expectedVendor = (selectedRecoveryCandidate?.workflow ?? recoveryKind) === 'qualcomm-edl'
-                            ? 'qualcomm'
-                            : 'mediatek';
-                          return bundle.vendorHint === expectedVendor;
-                        })
-                        .map((bundle) => (
+                      {laneVerifiedFirmwareBundles.map((bundle) => (
                           <option key={bundle.directory} value={bundle.directory}>
                             {bundle.model || 'unknown model'} · {bundle.board || 'unknown board'} · {bundle.sku || 'unknown SKU'} · {bundle.directory}
                           </option>
@@ -1729,7 +1742,11 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => void useVerifiedFirmwareBundle()}
-                      disabled={recoveryBusy || !selectedVerifiedBundle}
+                      disabled={
+                        recoveryBusy ||
+                        !selectedVerifiedBundle ||
+                        !laneVerifiedFirmwareBundles.some((bundle) => bundle.directory === selectedVerifiedBundle)
+                      }
                       className="rounded bg-emerald-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 hover:bg-emerald-600"
                     >
                       {recoveryBusy ? 'Verifying package…' : 'Use verified package'}
@@ -1737,6 +1754,9 @@ export default function App() {
                   </div>
                   <div className="mt-2 text-[11px] leading-5 text-emerald-200/80">
                     The backend rescans this package before handoff. If provenance, hashes, package contents, or readiness changed, planning stops instead of using stale UI state.
+                  </div>
+                  <div className="mt-1 text-[10px] leading-4 text-slate-500">
+                    Active lane requires {expectedRecoveryVendor}. Switching recovery lanes automatically clears or replaces any package from the other vendor.
                   </div>
                 </div>
 
