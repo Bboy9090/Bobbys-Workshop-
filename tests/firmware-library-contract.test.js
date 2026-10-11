@@ -609,3 +609,45 @@ describe('Post-relatch claim stability verification', () => {
     expect(ui).toContain("stability {driverRelatchResults[binding.instanceId].stabilityVerified ? 'verified' : 'not verified'}");
   });
 });
+
+
+describe('Firmware provenance package switching', () => {
+  it('clears identity and source facts when the selected package directory changes', () => {
+    const ui = read('src/components/FirmwareProvenanceBuilder.tsx');
+
+    expect(ui).toContain('Package identity/source facts must never bleed across bundle changes');
+    expect(ui).toContain("setOem('')");
+    expect(ui).toContain("setModel('')");
+    expect(ui).toContain("setBoard('')");
+    expect(ui).toContain("setSku('')");
+    expect(ui).toContain("setBuildVersion('')");
+    expect(ui).toContain("setSourceReference('')");
+    expect(ui).toContain('Changing package directories clears all identity and source fields');
+  });
+});
+
+describe('Firmware managed root initialization', () => {
+  it('creates the managed firmware workspace before provenance canonicalization', () => {
+    const backend = read('src-tauri/src/firmware_library.rs');
+
+    expect(backend).toContain('fn ensure_firmware_root()');
+    expect(backend).toContain('let root = ensure_firmware_root()?;');
+    expect(backend).toContain('failed creating firmware inbox');
+    expect(backend).toContain('failed creating Qualcomm firmware directory');
+    expect(backend).toContain('failed creating MediaTek firmware directory');
+    expect(backend).toContain('failed creating firmware quarantine directory');
+  });
+});
+
+describe('Recovery lane verified firmware selection', () => {
+  it('invalidates a selected package when the active recovery vendor changes', () => {
+    const app = read('src/App.tsx');
+
+    expect(app).toContain('expectedRecoveryVendor');
+    expect(app).toContain('laneVerifiedFirmwareBundles');
+    expect(app).toContain('bundle.planningReady && bundle.vendorHint === expectedRecoveryVendor');
+    expect(app).toContain('setSelectedVerifiedBundle((current) =>');
+    expect(app).toContain("return laneVerifiedFirmwareBundles[0]?.directory ?? ''");
+    expect(app).toContain('Switching recovery lanes automatically clears or replaces any package from the other vendor');
+  });
+});
