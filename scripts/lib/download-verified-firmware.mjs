@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
-import { mkdir, rename, rm, lstat } from 'node:fs/promises';
+import { mkdir, link, rm, lstat } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { Readable, Transform } from 'node:stream';
 import { basename, dirname, join } from 'node:path';
@@ -50,7 +50,7 @@ export async function downloadVerifiedFirmware({url, destination, expectedSha256
     // No overwrite. Publishing after verification does not establish OEM signing or hardware fitness.
     try { await lstat(destination); throw Error('Destination appeared during download'); }
     catch (e) { if (e?.code !== 'ENOENT') throw e; }
-    await rename(temporary, destination);
+    // Hard-link creation is exclusive: it fails if the destination already exists.\n    // Both paths are in the same directory/filesystem; cleanup removes only our temp link.\n    await link(temporary, destination);
     return {destination, bytes:received, sha256:actualSha256, checksumMatched:true,
       oemSignatureVerified:false, deviceCompatible:false, flashAuthorized:false};
   } finally {
