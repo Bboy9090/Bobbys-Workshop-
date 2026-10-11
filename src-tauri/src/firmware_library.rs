@@ -690,6 +690,8 @@ fn summarize_bundles(root: &Path, entries: &[FirmwareLibraryEntry]) -> Vec<Firmw
                 warnings.push("Directory mixes Qualcomm and MediaTek artifacts; split it into vendor/model-specific folders before planning.".into());
             }
 
+            let package_fingerprint = bundle_package_fingerprint(&directory, entries);
+
             FirmwareBundleSummary {
                 directory,
                 vendor_hint: vendor_hint.clone(),
@@ -714,7 +716,7 @@ fn summarize_bundles(root: &Path, entries: &[FirmwareLibraryEntry]) -> Vec<Firmw
                 sku: provenance.sku,
                 source_category: provenance.source_category,
                 source_reference: provenance.source_reference,
-                package_fingerprint: bundle_package_fingerprint(&directory, entries),
+                package_fingerprint,
                 warnings,
             }
         })
