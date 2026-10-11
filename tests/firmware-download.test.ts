@@ -1,5 +1,6 @@
 import { describe,it,expect,vi } from 'vitest';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -62,7 +63,7 @@ describe('download failure and concurrency gates',()=>{
       let injected=false;
       await expect(downloadVerifiedFirmware({url:'https://dl.google.com/a.zip',destination,
         expectedSha256:SHA,fetcher:async()=>mockResponse(),
-        onProgress:()=>{if(!injected){injected=true;writeFile(destination,'existing file');}}})).rejects.toThrow();
+        onProgress:()=>{if(!injected){injected=true;writeFileSync(destination,'existing file');}}})).rejects.toThrow();
       expect((await readFile(destination,'utf8'))).toBe('existing file');
       expect(await readdir(dir)).toEqual(['image.zip']);
     } finally {await rm(dir,{recursive:true,force:true});}
