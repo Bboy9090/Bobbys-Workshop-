@@ -95,3 +95,13 @@ jobs:
           set -e
           test "$audit_status" -eq 3
           node -e 'const a=require(process.argv[1]); if(a.outcome!=="blocked" || a.downloadAuthorized || a.flashAuthorized || a.evidence.sourceReference!=="unverified") process.exit(1)' "$RUNNER_TEMP/pixel-audit.json"
+      - name: Exercise real file-hash CLI success and mismatch refusal
+        run: |
+          printf 'bobfwtools reproducible firmware fixture\n' > "$RUNNER_TEMP/firmware-fixture.bin"
+          expected="$(sha256sum "$RUNNER_TEMP/firmware-fixture.bin" | awk '{print $1}')"
+          node scripts/verify-firmware-file.mjs --file "$RUNNER_TEMP/firmware-fixture.bin" --sha256 "$expected" > "$RUNNER_TEMP/firmware-fixture-receipt.json"
+          node -e 'const r=require(process.argv[1]); if(!r.checksumMatched || r.flashAuthorized || r.oemSignatureVerified) process.exit(1)' "$RUNNER_TEMP/firmware-fixture-receipt.json"
+          if node scripts/verify-firmware-file.mjs --file "$RUNNER_TEMP/firmware-fixture.bin" --sha256 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; then
+            echo "Mismatched hash was incorrectly accepted"
+            exit 1
+          fi
