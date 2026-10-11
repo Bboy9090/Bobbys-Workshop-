@@ -801,5 +801,9 @@ describe('Qualification dossier semantic review and evidence-derived flash check
     expect(consoleUi).toContain('disabled={automated}');
     expect(consoleUi).toContain("{automated ? 'AUTO' : 'MANUAL'}");
     expect(consoleUi).toContain('cannot be clicked manually');
+    expect(consoleUi).toContain('auditBundleReview?.safeToReview');
+    expect(consoleUi).toContain('auditBundlePath: auditBundleReview?.safeToReview ? auditBundleReview.path : null');
+    expect(backend).toContain('Production-qualified grant requires a verified qualification audit bundle');
+    expect(backend).toContain('bootforge_qualification_audit_bundle_review');
   });
 });
