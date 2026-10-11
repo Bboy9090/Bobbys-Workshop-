@@ -776,6 +776,7 @@ export type DriverInfInspection = {
 export type DriverRelatchResult = {
   instanceId: string;
   infPath: string;
+  snapshotPath?: string | null;
   staged: boolean;
   released: boolean;
   rescanned: boolean;
