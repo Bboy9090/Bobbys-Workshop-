@@ -30,6 +30,8 @@ import {
   getDriverConflictPlan,
   runDriverClaimStabilityTest,
   getDriverCleanupReport,
+  createDriverBindingSnapshot,
+  getDriverRollbackPlan,
   type FirmwareChipsetProfile,
   type FirmwareLibraryReport,
   type DriverBindingRecord,
@@ -39,6 +41,8 @@ import {
   type DriverConflictPlan,
   type DriverClaimStabilityReport,
   type DriverCleanupReport,
+  type DriverSnapshotResult,
+  type DriverRollbackPlan,
   type WorkstationReadiness,
   type AdbDeviceRecord,
   type CalibrationBackupResult,
@@ -115,6 +119,8 @@ export default function RepairCommandCenter() {
   const [driverConflictPlans, setDriverConflictPlans] = useState<Record<string, DriverConflictPlan>>({});
   const [driverStabilityReports, setDriverStabilityReports] = useState<Record<string, DriverClaimStabilityReport>>({});
   const [driverCleanupReports, setDriverCleanupReports] = useState<Record<string, DriverCleanupReport>>({});
+  const [driverSnapshots, setDriverSnapshots] = useState<Record<string, DriverSnapshotResult>>({});
+  const [driverRollbackPlans, setDriverRollbackPlans] = useState<Record<string, DriverRollbackPlan>>({});
 
   const targets = useMemo(() => {
     const adbTargets = adbDevices.map((device) => ({
@@ -639,6 +645,88 @@ export default function RepairCommandCenter() {
                           This does not force an arbitrary driver. Windows is asked to release this exact node and select the best matching already-installed driver again. Forced INF binding remains blocked until hardware-ID compatibility is proven.
                         </div>
                       )}
+
+                      <div className="mt-3 rounded border border-sky-900/40 bg-sky-950/10 p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <div className="text-[10px] font-semibold uppercase tracking-wide text-sky-400">Driver claim snapshot + rollback plan</div>
+                            <div className="mt-1 text-[10px] leading-4 text-sky-100/70">
+                              Capture the exact current service, INF, hardware IDs, and interface identity before relatch. Rollback remains a guided plan and must re-prove identity.
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              disabled={!!driverBindingBusy}
+                              onClick={() => {
+                                setDriverBindingBusy(binding.instanceId);
+                                setError(null);
+                                void createDriverBindingSnapshot(binding.instanceId)
+                                  .then((snapshot) => {
+                                    setDriverSnapshots((current) => ({ ...current, [binding.instanceId]: snapshot }));
+                                    setDriverRollbackPlans((current) => {
+                                      const next = { ...current };
+                                      delete next[binding.instanceId];
+                                      return next;
+                                    });
+                                  })
+                                  .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                                  .finally(() => setDriverBindingBusy(null));
+                              }}
+                              className="rounded border border-sky-800 px-2 py-1 text-[10px] font-semibold text-sky-300 disabled:opacity-40 hover:bg-sky-950/40"
+                            >
+                              Snapshot current claim
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!!driverBindingBusy || !driverSnapshots[binding.instanceId]}
+                              onClick={() => {
+                                const snapshot = driverSnapshots[binding.instanceId];
+                                if (!snapshot) return;
+                                setDriverBindingBusy(binding.instanceId);
+                                setError(null);
+                                void getDriverRollbackPlan(snapshot.path)
+                                  .then((plan) => setDriverRollbackPlans((current) => ({ ...current, [binding.instanceId]: plan })))
+                                  .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                                  .finally(() => setDriverBindingBusy(null));
+                              }}
+                              className="rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-slate-300 disabled:opacity-30 hover:bg-slate-800"
+                            >
+                              Build rollback plan
+                            </button>
+                          </div>
+                        </div>
+
+                        {driverSnapshots[binding.instanceId] && (
+                          <div className="mt-2 rounded border border-sky-900/40 bg-sky-950/20 p-2 text-[10px] text-sky-200">
+                            <div className="font-semibold">SNAPSHOT CAPTURED</div>
+                            <div className="mt-1 break-all font-mono text-[9px] text-slate-500">{driverSnapshots[binding.instanceId].path}</div>
+                            <div className="mt-1">
+                              service {driverSnapshots[binding.instanceId].snapshot.service || 'unavailable'} · INF {driverSnapshots[binding.instanceId].snapshot.driverInf || 'unavailable'}
+                            </div>
+                          </div>
+                        )}
+
+                        {driverRollbackPlans[binding.instanceId] && (
+                          <div className={driverRollbackPlans[binding.instanceId].rollbackReady
+                            ? 'mt-2 rounded border border-emerald-900/50 bg-emerald-950/20 p-2 text-[10px] text-emerald-200'
+                            : 'mt-2 rounded border border-amber-900/50 bg-amber-950/20 p-2 text-[10px] text-amber-200'}>
+                            <div className="font-semibold">
+                              {driverRollbackPlans[binding.instanceId].rollbackReady ? 'ROLLBACK PATH VERIFIED' : 'ROLLBACK BLOCKED'}
+                            </div>
+                            <div className="mt-1">
+                              prior INF {driverRollbackPlans[binding.instanceId].priorInf || 'unavailable'} · current INF {driverRollbackPlans[binding.instanceId].currentInf || 'unavailable'}
+                            </div>
+                            {driverRollbackPlans[binding.instanceId].blockers.map((item) => (
+                              <div key={item} className="mt-1 leading-4">{item}</div>
+                            ))}
+                            <div className="mt-2 font-semibold">Next steps</div>
+                            {driverRollbackPlans[binding.instanceId].nextSteps.map((item, index) => (
+                              <div key={item} className="mt-1 leading-4">{index + 1}. {item}</div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
 
                       <div className="mt-3 rounded border border-orange-900/40 bg-orange-950/10 p-3">
                         <div className="flex flex-wrap items-start justify-between gap-2">
