@@ -220,7 +220,15 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint, readines
   useEffect(() => {
     setAuditBundlePath(null);
     setAuditBundleReview(null);
-  }, [benchEvidencePath, decisionPath, deviceSerial, reviewer, review?.path]);
+  }, [
+    benchEvidencePath,
+    decisionPath,
+    deviceSerial,
+    reviewer,
+    review?.path,
+    review?.dossierFingerprint,
+    readinessCertificatePath,
+  ]);
 
   const reviewSavedDossier = async () => {
     setBusy(true);
