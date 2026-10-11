@@ -21,8 +21,11 @@ import {
   getFirmwareChipsetCatalog,
   lookupFirmwareChipset,
   scanFirmwareLibrary,
+  scanDriverBindings,
+  releaseAndRescanDriverBinding,
   type FirmwareChipsetProfile,
   type FirmwareLibraryReport,
+  type DriverBindingRecord,
   type WorkstationReadiness,
   type AdbDeviceRecord,
   type CalibrationBackupResult,
@@ -91,6 +94,8 @@ export default function RepairCommandCenter() {
   const [firmwareMatches, setFirmwareMatches] = useState<FirmwareChipsetProfile[]>([]);
   const [firmwareReport, setFirmwareReport] = useState<FirmwareLibraryReport | null>(null);
   const [firmwareBusy, setFirmwareBusy] = useState(false);
+  const [driverBindings, setDriverBindings] = useState<DriverBindingRecord[]>([]);
+  const [driverBindingBusy, setDriverBindingBusy] = useState<string | null>(null);
 
   const targets = useMemo(() => {
     const adbTargets = adbDevices.map((device) => ({
@@ -221,7 +226,7 @@ export default function RepairCommandCenter() {
     let cancelled = false;
     const load = async () => {
       try {
-        const [policies, partitions, edl, adb, transport, programmers, readiness, chipsets] = await Promise.all([
+        const [policies, partitions, edl, adb, transport, programmers, readiness, chipsets, bindings] = await Promise.all([
           getWorkflowPolicyCatalog(),
           getCalibrationPartitionAllowlist(),
           getEdl9008Devices(),
@@ -230,6 +235,7 @@ export default function RepairCommandCenter() {
           listEdlProgrammers(),
           getWorkstationReadiness(),
           getFirmwareChipsetCatalog(),
+          scanDriverBindings(),
         ]);
         if (cancelled) return;
         setCatalog(policies);
@@ -240,6 +246,7 @@ export default function RepairCommandCenter() {
         setTransportDevices(transport);
         setEdlProgrammers(programmers);
         setFirmwareCatalog(chipsets);
+        setDriverBindings(bindings);
         const availableTargetKeys = [
           ...adb.map((device) => `adb:${device.serial}`),
           ...transport
@@ -539,6 +546,77 @@ export default function RepairCommandCenter() {
                 </div>
               ))}
             </div>
+
+            {workstation.os === 'windows' && (
+              <div className="mt-4 rounded border border-violet-900/50 bg-violet-950/10 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-violet-400">Driver Claim Inspector</div>
+                    <div className="mt-1 text-sm font-medium text-white">See which Windows driver owns each repair interface</div>
+                    <div className="mt-1 max-w-3xl text-[11px] leading-5 text-slate-500">
+                      BobFWTools compares the exact USB hardware IDs and current Windows service/INF against the expected Samsung, Qualcomm, MediaTek, or Android family. Release + re-enumerate removes only that present device node, not the installed driver package.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!!driverBindingBusy}
+                    onClick={() => void scanDriverBindings().then(setDriverBindings).catch((err) => setError(err instanceof Error ? err.message : String(err)))}
+                    className="rounded border border-violet-800 px-3 py-2 text-xs text-violet-300 disabled:opacity-40 hover:bg-violet-950/40"
+                  >
+                    Refresh driver claims
+                  </button>
+                </div>
+
+                <div className="mt-3 space-y-2">
+                  {driverBindings.length === 0 ? (
+                    <div className="rounded border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-500">
+                      No matching present repair-device driver claims detected.
+                    </div>
+                  ) : driverBindings.map((binding) => (
+                    <div key={binding.instanceId} className="rounded border border-slate-800 bg-slate-950/70 p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-semibold text-white">{binding.friendlyName || binding.expectedFamily}</span>
+                            <span className={binding.bindingState === 'matched' ? 'text-[10px] text-emerald-300' : 'text-[10px] text-amber-300'}>
+                              {binding.bindingState === 'matched' ? 'correct family claim' : 'possible driver mismatch'}
+                            </span>
+                          </div>
+                          <div className="mt-1 break-all font-mono text-[10px] text-slate-500">{binding.instanceId}</div>
+                          <div className="mt-1 text-[10px] text-slate-500">
+                            expected {binding.expectedFamily} · service {binding.service || 'unknown'} · INF {binding.driverInf || 'unknown'}
+                          </div>
+                          <div className="mt-1 text-[10px] leading-4 text-slate-600">{binding.detail}</div>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!!driverBindingBusy}
+                          onClick={() => {
+                            setDriverBindingBusy(binding.instanceId);
+                            setError(null);
+                            void releaseAndRescanDriverBinding(binding.instanceId)
+                              .then(async (result) => {
+                                if (!result.released || !result.rescanned) throw new Error(result.detail);
+                                setDriverBindings(await scanDriverBindings());
+                              })
+                              .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                              .finally(() => setDriverBindingBusy(null));
+                          }}
+                          className="rounded border border-amber-800 bg-amber-950/20 px-3 py-2 text-[10px] font-semibold text-amber-200 disabled:opacity-40 hover:bg-amber-950/40"
+                        >
+                          {driverBindingBusy === binding.instanceId ? 'Re-enumerating…' : 'Release + re-enumerate'}
+                        </button>
+                      </div>
+                      {binding.bindingState !== 'matched' && (
+                        <div className="mt-2 rounded border border-amber-900/50 bg-amber-950/20 p-2 text-[10px] leading-4 text-amber-200">
+                          This does not force an arbitrary driver. Windows is asked to release this exact node and select the best matching already-installed driver again. Forced INF binding remains blocked until hardware-ID compatibility is proven.
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {workstation.blockers.length > 0 && (
               <div className="mt-3 rounded border border-amber-900/70 bg-amber-950/20 p-3 text-xs text-amber-200">
