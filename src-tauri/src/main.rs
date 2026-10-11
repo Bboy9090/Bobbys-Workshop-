@@ -669,6 +669,7 @@ fn bootforge_recovery_plan(kind: String, paths: Vec<String>) -> Result<bootforge
 fn bootforge_recovery_prepare(
     candidate: bootforgeusb::recovery::RecoveryCandidate,
     paths: Vec<String>,
+    package_fingerprint: Option<String>,
 ) -> Result<bootforgeusb::recovery_job::RecoveryJob, String> {
     if paths.is_empty() {
         return Err("At least one recovery artifact path is required".to_string());
@@ -679,8 +680,10 @@ fn bootforge_recovery_prepare(
         candidate.workflow,
         paths.into_iter().map(std::path::PathBuf::from).collect(),
     ).map_err(|e| format!("Recovery planning failed: {e}"))?;
-    let job = bootforgeusb::recovery_job::build_job(&candidate, &plan)
+    let mut job = bootforgeusb::recovery_job::build_job(&candidate, &plan)
         .map_err(|e| format!("Recovery job preparation failed: {e}"))?;
+    bootforgeusb::recovery_job::bind_package_fingerprint(&mut job, package_fingerprint)
+        .map_err(|e| format!("Recovery package binding failed: {e}"))?;
 
     let evidence = job.artifact_digests.iter()
         .map(|artifact| format!("{}:{}:{}", artifact.role, artifact.size, artifact.sha256))
@@ -689,6 +692,10 @@ fn bootforge_recovery_prepare(
         .chain(std::iter::once(format!("high-risk-partitions:{}", job.high_risk_partitions.join(","))))
         .chain(std::iter::once(format!("normalized-operations:{}", job.operations.len())))
         .chain(std::iter::once(format!("prerequisites-met:{}", job.prerequisites_met)))
+        .chain(std::iter::once(format!(
+            "package-fingerprint:{}",
+            job.package_fingerprint.clone().unwrap_or_else(|| "<manual-unbound>".to_string())
+        )))
         .collect::<Vec<_>>();
     let _ = crate::audit::record(
         "Recovery",
@@ -706,6 +713,9 @@ fn bootforge_recovery_prepare(
 fn bootforge_recovery_revalidate(
     mut job: bootforgeusb::recovery_job::RecoveryJob,
 ) -> Result<bootforgeusb::recovery_job::RecoveryJob, String> {
+    if !bootforgeusb::recovery_job::verify_job_fingerprint(&job) {
+        return Err("Recovery job fingerprint no longer matches its prepared artifacts/package identity; rebuild the job from verified inputs.".to_string());
+    }
     let device_uid = job.identity.device_uid.clone();
     let risk = if job.destructive { "destructive" } else { "elevated" };
     let devices = bootforgeusb::transport::scan_transports()
@@ -899,6 +909,7 @@ fn bootforge_recovery_export_readiness_certificate(
         "grantsExecutionAuthority": false,
         "executionPerformed": false,
         "jobFingerprint": job.job_fingerprint.clone(),
+        "packageFingerprint": job.package_fingerprint.clone(),
         "deviceIdentity": job.identity.clone(),
         "qualificationGates": gates,
         "blockers": blockers,
