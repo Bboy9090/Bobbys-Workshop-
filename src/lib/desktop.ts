@@ -801,6 +801,8 @@ export type DriverRelatchResult = {
   released: boolean;
   rescanned: boolean;
   verifiedClaim: boolean;
+  stabilityVerified: boolean;
+  stabilitySummary: string;
   observedService?: string | null;
   observedInf?: string | null;
   detail: string;
