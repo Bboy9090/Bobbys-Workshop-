@@ -110,3 +110,25 @@ describe('firmware destination path guard',()=>{
   } finally {await rm(root,{recursive:true,force:true});}
  });
 });
+
+describe('restricted OEM package URL policy',()=>{
+ it('refuses misleading URLs before network or filesystem writes',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'bobfw-urls-'));
+  try {
+   const fetcher=vi.fn();
+   for (const url of [
+     'https://developers.google.com/android/ota',
+     'https://dl.google.com/android/firmware.zip?redirect=1',
+     'https://dl.google.com/android/firmware.zip#checksum',
+     'https://dl.google.com/android/firmware.zip.exe',
+     'https://dl.google.com/android/%2fsecret.zip',
+     'https://dl.google.com.evil.example/firmware.zip',
+   ]) {
+     await expect(downloadVerifiedFirmware({url,destination:join(root,'firmware.zip'),
+       expectedSha256:SHA,fetcher})).rejects.toThrow('allowlisted');
+   }
+   expect(fetcher).not.toHaveBeenCalled();
+   expect(await readdir(root)).toEqual([]);
+  } finally {await rm(root,{recursive:true,force:true});}
+ });
+});
