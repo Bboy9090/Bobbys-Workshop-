@@ -353,6 +353,9 @@ describe('Verified INF relatch workflow', () => {
     expect(ui).toContain('Inspect compatible INF');
     expect(ui).toContain('Stage + relatch exact device');
     expect(ui).toContain('HARDWARE-ID MATCH VERIFIED');
+    expect(ui).toContain('Auto-fix unique verified driver claim');
+    expect(ui).toContain('candidate.exactInterfaceMatch');
+    expect(ui).toContain('Automatic verified relatch stopped');
     expect(ui).toContain('INF MISMATCH — RELATCH BLOCKED');
     expect(ui).toContain('DRIVER CLAIM VERIFIED');
   });
