@@ -65,19 +65,38 @@ fn normalize_hardware_id(value: &str) -> String {
 
 fn extract_inf_hardware_ids(text: &str) -> Vec<String> {
     let mut ids = Vec::new();
+
     for raw in text.lines() {
         let line = raw.trim();
-        if line.starts_with(';') || line.is_empty() {
+        if line.is_empty() || line.starts_with(';') {
             continue;
         }
-        for token in line.split(|ch: char| ch == ',' || ch.is_whitespace()) {
-            let clean = token.trim().trim_matches('"').trim();
-            let upper = clean.to_ascii_uppercase();
-            if upper.starts_with("USB\\VID_") || upper.starts_with("USB\\Class_".to_ascii_uppercase().as_str()) {
-                ids.push(normalize_hardware_id(clean));
+
+        let upper = line.to_ascii_uppercase();
+        let mut search_from = 0usize;
+
+        while let Some(relative) = upper[search_from..].find("USB\\") {
+            let start = search_from + relative;
+            let remainder = &line[start..];
+            let end = remainder
+                .find(|ch: char| {
+                    ch == ',' || ch == ';' || ch.is_whitespace() || ch == '"' || ch == ']'
+                })
+                .unwrap_or(remainder.len());
+
+            let candidate = remainder[..end].trim();
+            let normalized = normalize_hardware_id(candidate);
+            if normalized.starts_with("USB\\VID_") || normalized.starts_with("USB\\CLASS_") {
+                ids.push(normalized);
+            }
+
+            search_from = start + end.max(4);
+            if search_from >= line.len() {
+                break;
             }
         }
     }
+
     ids.sort();
     ids.dedup();
     ids
