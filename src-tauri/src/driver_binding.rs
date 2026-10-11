@@ -158,6 +158,7 @@ pub struct DriverInfInspection {
 pub struct DriverRelatchResult {
     pub instance_id: String,
     pub inf_path: String,
+    pub snapshot_path: Option<String>,
     pub staged: bool,
     pub released: bool,
     pub rescanned: bool,
@@ -1112,6 +1113,9 @@ pub fn driver_binding_stage_and_relatch(
         .cloned()
         .ok_or_else(|| "Exact Windows USB instance disappeared before relatch.".to_string())?;
 
+    let snapshot = driver_binding_snapshot(instance_id.clone())
+        .map_err(|e| format!("Relatch blocked because pre-change driver snapshot could not be captured: {e}"))?;
+
     let _ = crate::audit::record(
         "driver-binding",
         "stage-relatch",
@@ -1178,6 +1182,7 @@ pub fn driver_binding_stage_and_relatch(
     Ok(DriverRelatchResult {
         instance_id,
         inf_path: inspection.inf_path,
+        snapshot_path: Some(snapshot.path.clone()),
         staged: true,
         released: true,
         rescanned: true,
