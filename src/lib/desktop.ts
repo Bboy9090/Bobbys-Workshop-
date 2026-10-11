@@ -1602,6 +1602,20 @@ export async function reviewRecoveryReadinessCertificate(
   );
 }
 
+export async function reviewRecoveryReadinessCertificatePath(
+  path: string,
+  expectedJobFingerprint?: string | null,
+): Promise<RecoveryReadinessCertificateReview | null> {
+  if (!isTauriRuntime() || !path.trim()) return null;
+  return invoke<RecoveryReadinessCertificateReview>(
+    'bootforge_recovery_review_readiness_certificate',
+    {
+      path: path.trim(),
+      expectedJobFingerprint: expectedJobFingerprint?.trim() || null,
+    },
+  );
+}
+
 
 export type FirmwareChipsetProfile = {
   vendor: 'qualcomm' | 'mediatek' | string;
