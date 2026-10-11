@@ -28,6 +28,7 @@ import {
   stageAndRelatchDriver,
   getInstalledDriverCandidates,
   getDriverConflictPlan,
+  runDriverClaimStabilityTest,
   type FirmwareChipsetProfile,
   type FirmwareLibraryReport,
   type DriverBindingRecord,
@@ -35,6 +36,7 @@ import {
   type DriverRelatchResult,
   type InstalledDriverCandidate,
   type DriverConflictPlan,
+  type DriverClaimStabilityReport,
   type WorkstationReadiness,
   type AdbDeviceRecord,
   type CalibrationBackupResult,
@@ -109,6 +111,7 @@ export default function RepairCommandCenter() {
   const [driverRelatchResults, setDriverRelatchResults] = useState<Record<string, DriverRelatchResult>>({});
   const [driverCandidates, setDriverCandidates] = useState<Record<string, InstalledDriverCandidate[]>>({});
   const [driverConflictPlans, setDriverConflictPlans] = useState<Record<string, DriverConflictPlan>>({});
+  const [driverStabilityReports, setDriverStabilityReports] = useState<Record<string, DriverClaimStabilityReport>>({});
 
   const targets = useMemo(() => {
     const adbTargets = adbDevices.map((device) => ({
@@ -633,6 +636,49 @@ export default function RepairCommandCenter() {
                           This does not force an arbitrary driver. Windows is asked to release this exact node and select the best matching already-installed driver again. Forced INF binding remains blocked until hardware-ID compatibility is proven.
                         </div>
                       )}
+
+                      <div className="mt-3 rounded border border-violet-900/40 bg-violet-950/10 p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <div className="text-[10px] font-semibold uppercase tracking-wide text-violet-400">Driver Claim Stability Test</div>
+                            <div className="mt-1 text-[10px] leading-4 text-violet-100/70">
+                              Samples this exact interface repeatedly and detects service/INF claim changes or disappear/reappear churn.
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={!!driverBindingBusy}
+                            onClick={() => {
+                              setDriverBindingBusy(binding.instanceId);
+                              setError(null);
+                              void runDriverClaimStabilityTest(binding.instanceId)
+                                .then((report) => setDriverStabilityReports((current) => ({ ...current, [binding.instanceId]: report })))
+                                .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                                .finally(() => setDriverBindingBusy(null));
+                            }}
+                            className="rounded border border-violet-800 px-2 py-1 text-[10px] font-semibold text-violet-300 disabled:opacity-40 hover:bg-violet-950/40"
+                          >
+                            Run claim stability test
+                          </button>
+                        </div>
+
+                        {driverStabilityReports[binding.instanceId] && (
+                          <div className={driverStabilityReports[binding.instanceId].stable
+                            ? 'mt-2 rounded border border-emerald-900/50 bg-emerald-950/20 p-3 text-[10px] text-emerald-200'
+                            : 'mt-2 rounded border border-amber-900/50 bg-amber-950/20 p-3 text-[10px] text-amber-200'}>
+                            <div className="font-semibold">
+                              {driverStabilityReports[binding.instanceId].stable ? 'CLAIM STABLE' : 'CLAIM CHURN DETECTED'}
+                            </div>
+                            <div className="mt-1">{driverStabilityReports[binding.instanceId].summary}</div>
+                            <div className="mt-1 text-slate-500">
+                              changes {driverStabilityReports[binding.instanceId].claimChanges} · presence transitions {driverStabilityReports[binding.instanceId].disappearanceEvents} · present {driverStabilityReports[binding.instanceId].presentSamples}/{driverStabilityReports[binding.instanceId].samples.length}
+                            </div>
+                            {driverStabilityReports[binding.instanceId].recommendations.map((item) => (
+                              <div key={item} className="mt-1 leading-4">{item}</div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
 
                       <div className="mt-3 rounded border border-cyan-900/40 bg-cyan-950/10 p-3">
                         <div className="flex flex-wrap items-start justify-between gap-2">
