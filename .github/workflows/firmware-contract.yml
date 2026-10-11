@@ -43,6 +43,7 @@ on:
       - 'tests/samsung-pit-evidence.test.ts'
       - 'scripts/samsung-readonly-detect.mjs'
       - 'tests/samsung-readonly-detect.test.ts'
+      - 'src/components/SamsungDownloadStatus.tsx'
   workflow_dispatch:
 
 permissions:
