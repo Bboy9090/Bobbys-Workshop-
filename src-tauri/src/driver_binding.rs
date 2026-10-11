@@ -26,6 +26,19 @@ pub struct DriverBindingRecord {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct InstalledDriverCandidate {
+    pub instance_id: String,
+    pub inf_name: String,
+    pub inf_path: String,
+    pub matched_hardware_ids: Vec<String>,
+    pub exact_interface_match: bool,
+    pub current_claim: bool,
+    pub compatibility_score: u32,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DriverInfInspection {
     pub instance_id: String,
     pub inf_path: String,
@@ -326,6 +339,108 @@ fn pnputil(args: &[&str], action: &str) -> Result<String, String> {
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
+pub fn driver_binding_candidates(instance_id: String) -> Result<Vec<InstalledDriverCandidate>, String> {
+    let instance_id = instance_id.trim().to_string();
+    if instance_id.is_empty() || !instance_id.to_ascii_uppercase().starts_with("USB") {
+        return Err("Driver candidate scan requires an exact present USB device instance ID.".to_string());
+    }
+
+    let current = driver_binding_scan()?;
+    let record = current
+        .iter()
+        .find(|item| item.instance_id.eq_ignore_ascii_case(&instance_id))
+        .ok_or_else(|| "Exact Windows USB instance is no longer present; refresh before scanning installed candidates.".to_string())?;
+
+    let windows_dir = std::env::var_os("WINDIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"));
+    let inf_dir = windows_dir.join("INF");
+    let entries = std::fs::read_dir(&inf_dir)
+        .map_err(|e| format!("Failed to enumerate Windows INF directory {}: {e}", inf_dir.display()))?;
+
+    let original_specific = interface_specific_ids(&record.hardware_ids);
+    let mut candidates = Vec::new();
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|v| v.to_str()) else { continue; };
+        if !name.to_ascii_lowercase().starts_with("oem") || !name.to_ascii_lowercase().ends_with(".inf") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&path) else { continue; };
+        let inf_ids = extract_inf_hardware_ids(&text);
+        if inf_ids.is_empty() {
+            continue;
+        }
+
+        let mut matches = Vec::new();
+        let mut exact_interface_match = false;
+        for device_id in &record.hardware_ids {
+            for inf_id in &inf_ids {
+                if hardware_id_matches(device_id, inf_id) {
+                    let normalized_device = normalize_hardware_id(device_id);
+                    let normalized_inf = normalize_hardware_id(inf_id);
+                    if normalized_inf.contains("&MI_")
+                        && original_specific.iter().any(|id| id == &normalized_device)
+                    {
+                        exact_interface_match = true;
+                    }
+                    matches.push(format!("{normalized_device} <= {normalized_inf}"));
+                }
+            }
+        }
+        matches.sort();
+        matches.dedup();
+        if matches.is_empty() {
+            continue;
+        }
+
+        let current_claim = record
+            .driver_inf
+            .as_deref()
+            .map(|value| value.eq_ignore_ascii_case(name))
+            .unwrap_or(false);
+        let compatibility_score = if exact_interface_match {
+            100
+        } else if matches.iter().any(|m| m.contains("&REV_")) {
+            90
+        } else {
+            70
+        } + if current_claim { 5 } else { 0 };
+
+        candidates.push(InstalledDriverCandidate {
+            instance_id: instance_id.clone(),
+            inf_name: name.to_string(),
+            inf_path: path.display().to_string(),
+            matched_hardware_ids: matches,
+            exact_interface_match,
+            current_claim,
+            compatibility_score,
+            detail: if exact_interface_match {
+                "Installed INF advertises this exact composite USB interface hardware ID.".to_string()
+            } else {
+                "Installed INF advertises a compatible USB hardware ID for this device family, but not an interface-specific MI_xx match.".to_string()
+            },
+        });
+    }
+
+    candidates.sort_by(|a, b| {
+        b.compatibility_score
+            .cmp(&a.compatibility_score)
+            .then_with(|| a.inf_name.cmp(&b.inf_name))
+    });
+
+    Ok(candidates)
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn driver_binding_candidates(_instance_id: String) -> Result<Vec<InstalledDriverCandidate>, String> {
+    Ok(Vec::new())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
 pub fn driver_binding_inspect_inf(instance_id: String, inf_path: String) -> Result<DriverInfInspection, String> {
     let instance_id = instance_id.trim().to_string();
     let inf_path = inf_path.trim().to_string();
@@ -599,6 +714,24 @@ mod tests {
         ];
         let specific = interface_specific_ids(&ids);
         assert_eq!(specific, vec![r"USB\VID_18D1&PID_4EE7&MI_01".to_string()]);
+    }
+
+    #[test]
+    fn interface_specific_match_is_stricter_than_family_match() {
+        let exact = hardware_id_matches(
+            r"USB\VID_18D1&PID_4EE7&MI_01",
+            r"USB\VID_18D1&PID_4EE7&MI_01",
+        );
+        let family = hardware_id_matches(
+            r"USB\VID_18D1&PID_4EE7&MI_01",
+            r"USB\VID_18D1&PID_4EE7",
+        );
+        assert!(exact);
+        assert!(family);
+        assert_ne!(
+            normalize_hardware_id(r"USB\VID_18D1&PID_4EE7&MI_01"),
+            normalize_hardware_id(r"USB\VID_18D1&PID_4EE7")
+        );
     }
 
     #[test]
