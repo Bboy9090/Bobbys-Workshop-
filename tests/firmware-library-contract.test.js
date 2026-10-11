@@ -651,3 +651,17 @@ describe('Recovery lane verified firmware selection', () => {
     expect(app).toContain('Switching recovery lanes automatically clears or replaces any package from the other vendor');
   });
 });
+
+
+describe('Mode transition verification hardening', () => {
+  it('requires positive normal-mode proof and makes USB scanning mode-specific', () => {
+    const backend = read('src-tauri/src/mode_control.rs');
+
+    expect(backend).toContain('sys.boot_completed');
+    expect(backend).toContain('normal Android userspace is not positively proven');
+    expect(backend).toContain('adb-present-mode-unverified');
+    expect(backend).toContain('USB re-detection unavailable');
+    expect(backend).toContain('Samsung Download Mode verification requires USB re-detection');
+    expect(backend).toContain('usb-evidence-unavailable');
+  });
+});
