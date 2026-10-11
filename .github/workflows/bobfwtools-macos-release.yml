@@ -29,6 +29,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate release label
+        shell: bash
+        env:
+          RELEASE_LABEL: ${{ inputs.release_label }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_LABEL" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; then
+            echo "Release label must be 1-64 characters using only letters, numbers, dot, underscore, or hyphen."
+            exit 1
+          fi
+
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
@@ -118,10 +129,29 @@ jobs:
           set -euo pipefail
           APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app"
           ZIP="$RUNNER_TEMP/BobFWTools-universal-macOS-notarization.zip"
+          OUT="$RUNNER_TEMP/release"
+          APP_NOTARY_JSON="$OUT/APP-NOTARIZATION.json"
+          mkdir -p "$OUT"
 
           ditto -c -k --keepParent "$APP" "$ZIP"
 
-          xcrun notarytool submit "$ZIP"             --apple-id "$APPLE_ID"             --password "$APPLE_APP_SPECIFIC_PASSWORD"             --team-id "$APPLE_TEAM_ID"             --wait
+          xcrun notarytool submit "$ZIP" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait \
+            --output-format json > "$APP_NOTARY_JSON"
+
+          python3 - "$APP_NOTARY_JSON" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding='utf-8'))
+          status = data.get('status')
+          submission_id = data.get('id')
+          if status != 'Accepted' or not submission_id:
+              raise SystemExit(f"App notarization was not accepted: status={status!r} id={submission_id!r}")
+          print(f"app_notary_id={submission_id}")
+          print(f"app_notary_status={status}")
+          PY
 
           xcrun stapler staple "$APP"
           xcrun stapler validate "$APP"
@@ -138,7 +168,24 @@ jobs:
 
           hdiutil create             -volname "BobFWTools"             -srcfolder "$APP"             -ov             -format UDZO             "$DMG"
 
-          xcrun notarytool submit "$DMG"             --apple-id "$APPLE_ID"             --password "$APPLE_APP_SPECIFIC_PASSWORD"             --team-id "$APPLE_TEAM_ID"             --wait
+          DMG_NOTARY_JSON="$OUT/DMG-NOTARIZATION.json"
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait \
+            --output-format json > "$DMG_NOTARY_JSON"
+
+          python3 - "$DMG_NOTARY_JSON" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding='utf-8'))
+          status = data.get('status')
+          submission_id = data.get('id')
+          if status != 'Accepted' or not submission_id:
+              raise SystemExit(f"DMG notarization was not accepted: status={status!r} id={submission_id!r}")
+          print(f"dmg_notary_id={submission_id}")
+          print(f"dmg_notary_status={status}")
+          PY
 
           xcrun stapler staple "$DMG"
           xcrun stapler validate "$DMG"
@@ -155,6 +202,13 @@ jobs:
           BIN="$APP/Contents/MacOS/bobfwtools"
           RECEIPT="$OUT/RELEASE-RECEIPT.txt"
 
+          APP_NOTARY_JSON="$OUT/APP-NOTARIZATION.json"
+          DMG_NOTARY_JSON="$OUT/DMG-NOTARIZATION.json"
+          APP_NOTARY_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$APP_NOTARY_JSON")"
+          APP_NOTARY_STATUS="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$APP_NOTARY_JSON")"
+          DMG_NOTARY_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$DMG_NOTARY_JSON")"
+          DMG_NOTARY_STATUS="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$DMG_NOTARY_JSON")"
+
           {
             echo "BobFWTools macOS release receipt"
             echo "label=${{ inputs.release_label }}"
@@ -162,9 +216,13 @@ jobs:
             echo "qualified_destructive_feature=false"
             echo "architectures=$(lipo -archs "$BIN")"
             echo "binary_sha256=$(shasum -a 256 "$BIN" | awk '{print $1}')"
+            echo "app_notary_id=$APP_NOTARY_ID"
+            echo "app_notary_status=$APP_NOTARY_STATUS"
+            echo "dmg_notary_id=$DMG_NOTARY_ID"
+            echo "dmg_notary_status=$DMG_NOTARY_STATUS"
             echo
             echo "Artifacts:"
-            (cd "$OUT" && shasum -a 256 *.dmg *.zip)
+            (cd "$OUT" && shasum -a 256 *.dmg *.zip APP-NOTARIZATION.json DMG-NOTARIZATION.json)
           } > "$RECEIPT"
 
           cat "$RECEIPT"
@@ -176,5 +234,15 @@ jobs:
           path: |
             ${{ runner.temp }}/release/*.dmg
             ${{ runner.temp }}/release/*.zip
+            ${{ runner.temp }}/release/APP-NOTARIZATION.json
+            ${{ runner.temp }}/release/DMG-NOTARIZATION.json
             ${{ runner.temp }}/release/RELEASE-RECEIPT.txt
           if-no-files-found: error
+
+      - name: Remove temporary signing material
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          security delete-keychain "$RUNNER_TEMP/bobfwtools-signing.keychain-db" >/dev/null 2>&1
+          rm -f "$RUNNER_TEMP/bobfwtools-signing.p12"

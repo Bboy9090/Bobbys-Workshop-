@@ -221,6 +221,25 @@ describe('nested MTP browser', () => {
 });
 
 
+describe('macOS signed release evidence', () => {
+  it('fails closed on unsafe labels, notarization status, credential cleanup, and qualified builds', () => {
+    const workflow = read('.github/workflows/bobfwtools-macos-release.yml');
+
+    expect(workflow).toContain('Validate release label');
+    expect(workflow).toContain('^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$');
+    expect(workflow).toContain('APP-NOTARIZATION.json');
+    expect(workflow).toContain('DMG-NOTARIZATION.json');
+    expect(workflow).toContain("status != 'Accepted'");
+    expect(workflow).toContain('Remove temporary signing material');
+    expect(workflow).toContain('if: always()');
+    expect(workflow).toContain('security delete-keychain');
+    expect(workflow).toContain('qualified_destructive_feature=false');
+    expect(workflow).not.toContain('tauri:build:macos:qualified:ci');
+    expect(workflow).not.toContain('--features qualified-flash');
+  });
+});
+
+
 describe('production command surface excludes destructive flash', () => {
   it('does not register unqualified flash commands in the default Tauri handler', () => {
     const main = read('src-tauri/src/main.rs');
