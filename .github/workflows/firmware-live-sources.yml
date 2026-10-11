@@ -1,0 +1,27 @@
+name: BobFWTools Live OEM Source Probe
+
+on:
+  push:
+    branches:
+      - ipad/firmware-inventory-contract-20261010
+    paths:
+      - 'scripts/probe-official-catalogs.mjs'
+      - 'src/lib/oem-catalog-probe.ts'
+      - 'src/lib/oem-source-discovery.ts'
+      - '.github/workflows/firmware-live-sources.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pixel-official-source-reachability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Live HTTPS catalog reachability (not firmware verification)
+        run: node scripts/probe-official-catalogs.mjs --manufacturer Google --model "Pixel 8" --json

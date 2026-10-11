@@ -1,0 +1,37 @@
+#!/usr/bin/env node
+/**
+ * Read-only audit of manually supplied Pixel metadata; never executes a firmware download.
+ * Inputs are untrusted and cannot prove OEM origin merely by including an official URL.
+ */
+import { open, lstat } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { auditPixelFirmwareRelease } from '../src/lib/pixel-release-audit.ts';
+
+const args=process.argv.slice(2);
+const option=(key)=>{const i=args.indexOf(key);return i>=0?args[i+1]:null;};
+if(args.includes('--help')){
+ console.log('Usage: node scripts/audit-pixel-release.mjs --record release.json --codename shiba [--reference-sha256 HEX]');
+ process.exit(0);
+}
+try {
+ const path=option('--record'),codename=option('--codename');
+ if(!path||!codename) throw Error('Release JSON file and exact device codename required');
+ const metadata=await lstat(path);
+ if(!metadata.isFile() || metadata.isSymbolicLink() || metadata.size>1024*1024)
+   throw Error('Metadata must be a non-symlink regular file at most one MiB');
+ const file=await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+ let text;
+ try {
+   const stats=await file.stat();
+   if(!stats.isFile() || stats.size>1024*1024) throw Error('Metadata must be a regular file at most one MiB');
+   text=await file.readFile({encoding:'utf8'});
+   if(Buffer.byteLength(text)>1024*1024) throw Error('Metadata exceeds one MiB limit');
+ } finally { await file.close(); }
+ const input=JSON.parse(text);
+ const audit=auditPixelFirmwareRelease(input,codename,option('--reference-sha256'));
+ console.log(JSON.stringify(audit,null,2));
+ process.exitCode=3; // audited but blocked; NEVER a readiness success
+} catch(error) {
+ console.error('Release audit refused: '+(error instanceof Error?error.message:String(error)));
+ process.exitCode=2;
+}
