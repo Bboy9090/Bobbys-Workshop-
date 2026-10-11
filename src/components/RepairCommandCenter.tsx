@@ -32,6 +32,7 @@ import {
   getDriverCleanupReport,
   createDriverBindingSnapshot,
   getDriverRollbackPlan,
+  getDriverElevationStatus,
   type FirmwareChipsetProfile,
   type FirmwareLibraryReport,
   type DriverBindingRecord,
@@ -43,6 +44,7 @@ import {
   type DriverCleanupReport,
   type DriverSnapshotResult,
   type DriverRollbackPlan,
+  type DriverElevationStatus,
   type WorkstationReadiness,
   type AdbDeviceRecord,
   type CalibrationBackupResult,
@@ -121,6 +123,7 @@ export default function RepairCommandCenter() {
   const [driverCleanupReports, setDriverCleanupReports] = useState<Record<string, DriverCleanupReport>>({});
   const [driverSnapshots, setDriverSnapshots] = useState<Record<string, DriverSnapshotResult>>({});
   const [driverRollbackPlans, setDriverRollbackPlans] = useState<Record<string, DriverRollbackPlan>>({});
+  const [driverElevation, setDriverElevation] = useState<DriverElevationStatus | null>(null);
 
   const targets = useMemo(() => {
     const adbTargets = adbDevices.map((device) => ({
@@ -592,6 +595,40 @@ export default function RepairCommandCenter() {
                   </button>
                 </div>
 
+                <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Windows mutation readiness</div>
+                      <div className="mt-1 text-[10px] leading-4 text-slate-600">
+                        Read-only driver inspection works without elevation. Release/rescan and driver staging require Administrator rights.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!!driverBindingBusy}
+                      onClick={() => {
+                        setDriverBindingBusy('elevation-check');
+                        setError(null);
+                        void getDriverElevationStatus()
+                          .then(setDriverElevation)
+                          .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                          .finally(() => setDriverBindingBusy(null));
+                      }}
+                      className="rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300 disabled:opacity-40 hover:bg-slate-800"
+                    >
+                      Check admin readiness
+                    </button>
+                  </div>
+                  {driverElevation && (
+                    <div className={driverElevation.elevated
+                      ? 'mt-2 rounded border border-emerald-900/50 bg-emerald-950/20 p-2 text-[10px] text-emerald-200'
+                      : 'mt-2 rounded border border-amber-900/50 bg-amber-950/20 p-2 text-[10px] text-amber-200'}>
+                      <div className="font-semibold">{driverElevation.elevated ? 'ADMIN READY' : 'ADMIN REQUIRED'}</div>
+                      <div className="mt-1 leading-4">{driverElevation.detail}</div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="mt-3 space-y-2">
                   {driverBindings.length === 0 ? (
                     <div className="rounded border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-500">
@@ -626,7 +663,7 @@ export default function RepairCommandCenter() {
                         </div>
                         <button
                           type="button"
-                          disabled={!!driverBindingBusy}
+                          disabled={!!driverBindingBusy || (driverElevation?.required === true && !driverElevation.elevated)}
                           onClick={() => {
                             setDriverBindingBusy(binding.instanceId);
                             setError(null);
@@ -994,7 +1031,7 @@ export default function RepairCommandCenter() {
                           </button>
                           <button
                             type="button"
-                            disabled={!!driverBindingBusy || !driverInfInspections[binding.instanceId]?.compatible}
+                            disabled={!!driverBindingBusy || !driverInfInspections[binding.instanceId]?.compatible || (driverElevation?.required === true && !driverElevation.elevated)}
                             onClick={() => {
                               const inspection = driverInfInspections[binding.instanceId];
                               if (!inspection?.compatible) return;
