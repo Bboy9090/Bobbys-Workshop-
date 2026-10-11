@@ -612,6 +612,9 @@ export default function RepairCommandCenter() {
                             expected {binding.expectedFamily} · service {binding.service || 'unknown'} · INF {binding.driverInf || 'unknown'}
                           </div>
                           <div className="mt-1 text-[10px] text-slate-500">
+                            INF hardware-ID proof {binding.claimHardwareIdVerified ? 'verified' : 'not proven'} · scope {binding.claimMatchScope}
+                          </div>
+                          <div className="mt-1 text-[10px] text-slate-500">
                             interface {binding.interfaceId || 'single-interface'} · siblings {binding.compositeSiblingCount}
                           </div>
                           {binding.compositeSiblingCount > 1 && (
