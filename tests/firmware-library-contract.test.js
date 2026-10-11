@@ -357,3 +357,18 @@ describe('Verified INF relatch workflow', () => {
     expect(ui).toContain('DRIVER CLAIM VERIFIED');
   });
 });
+
+
+describe('Driver relatch audit evidence', () => {
+  it('records exact-instance driver inspection and elevated relatch operations', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+
+    expect(backend).toContain('"driver-binding"');
+    expect(backend).toContain('"inspect-inf"');
+    expect(backend).toContain('"stage-relatch"');
+    expect(backend).toContain('"release-rescan"');
+    expect(backend).toContain('verified-claim:');
+    expect(backend).toContain('observed-service:');
+    expect(backend).toContain('observed-inf:');
+  });
+});
