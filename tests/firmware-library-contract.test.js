@@ -721,6 +721,9 @@ describe('Verified firmware package fingerprint', () => {
     expect(app).toContain('The selected firmware bundle has no deterministic package fingerprint');
     expect(desktop).toContain('reviewRecoveryReadinessCertificatePath');
     expect(app).toContain('reviewRecoveryReadinessCertificatePath(path, recoveryJob.jobFingerprint)');
+    expect(desktop).toContain('const suppliedReadiness = input.readinessCertificatePath?.trim() || null');
+    expect(app).toContain('readinessCertificatePath={recoveryCertificateReview?.safeToReview ? recoveryCertificatePath : null}');
+    expect(consoleUi).toContain('readinessCertificatePath: readinessCertificatePath?.trim() || null');
   });
 });
 
