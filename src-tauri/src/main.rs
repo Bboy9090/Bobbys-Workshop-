@@ -56,7 +56,7 @@ use calibration_backup_exec::{backup_calibration_partition, inspect_calibration_
 use edl_programmer_vault::{edl_inspect_programmer, edl_enroll_programmer, edl_list_programmers};
 use firmware_library::{firmware_bundle_planning_artifacts, firmware_chipset_catalog, firmware_chipset_lookup, firmware_library_scan, firmware_provenance_write};
 use mode_control::{fastboot_mode_devices, fastboot_reboot_mode, mode_transition_verify};
-use driver_binding::{driver_binding_scan, driver_binding_release_and_rescan, driver_binding_inspect_inf, driver_binding_stage_and_relatch};
+use driver_binding::{driver_binding_scan, driver_binding_release_and_rescan, driver_binding_candidates, driver_binding_inspect_inf, driver_binding_stage_and_relatch};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -5270,6 +5270,7 @@ fn main() {
             mode_transition_verify,
             driver_binding_scan,
             driver_binding_release_and_rescan,
+            driver_binding_candidates,
             driver_binding_inspect_inf,
             driver_binding_stage_and_relatch,
             firmware_provenance_write,
