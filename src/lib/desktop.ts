@@ -636,6 +636,55 @@ export type DriverReleaseResult = {
   evidence: string[];
 };
 
+export type DriverInfInspection = {
+  instanceId: string;
+  infPath: string;
+  deviceHardwareIds: string[];
+  infHardwareIds: string[];
+  matchedHardwareIds: string[];
+  compatible: boolean;
+  expectedFamily: string;
+  detail: string;
+};
+
+export type DriverRelatchResult = {
+  instanceId: string;
+  infPath: string;
+  staged: boolean;
+  released: boolean;
+  rescanned: boolean;
+  verifiedClaim: boolean;
+  observedService?: string | null;
+  observedInf?: string | null;
+  detail: string;
+  evidence: string[];
+};
+
+export async function chooseDriverInf(): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: 'Choose Windows USB driver INF',
+    filters: [{ name: 'Windows driver INF', extensions: ['inf'] }],
+  });
+  return typeof selected === 'string' ? selected : null;
+}
+
+export async function inspectDriverInf(
+  instanceId: string,
+  infPath: string,
+): Promise<DriverInfInspection> {
+  return invoke<DriverInfInspection>('driver_binding_inspect_inf', { instanceId, infPath });
+}
+
+export async function stageAndRelatchDriver(
+  instanceId: string,
+  infPath: string,
+): Promise<DriverRelatchResult> {
+  return invoke<DriverRelatchResult>('driver_binding_stage_and_relatch', { instanceId, infPath });
+}
+
 export async function scanDriverBindings(): Promise<DriverBindingRecord[]> {
   if (!isTauriRuntime()) return [];
   return invoke<DriverBindingRecord[]>('driver_binding_scan');
