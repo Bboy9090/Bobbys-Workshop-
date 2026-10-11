@@ -512,3 +512,23 @@ describe('Automatic pre-relatch driver snapshot', () => {
     expect(ui).toContain('pre-relatch snapshot');
   });
 });
+
+
+describe('Tamper-evident driver rollback snapshots', () => {
+  it('fingerprints exact claim state and rejects modified receipts', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('com.bobbyblanco.bobfwtools.driver-binding-snapshot.v2');
+    expect(backend).toContain('snapshot_fingerprint');
+    expect(backend).toContain('Driver rollback snapshot fingerprint mismatch');
+    expect(backend).toContain('snapshot_fingerprint_valid');
+    expect(backend).toContain('snapshot_fingerprint_changes_when_driver_claim_changes');
+
+    expect(desktop).toContain('fingerprint: string');
+    expect(desktop).toContain('snapshotFingerprintValid');
+    expect(ui).toContain('snapshot fingerprint');
+    expect(ui).toContain('fingerprint {driverSnapshots[binding.instanceId].snapshot.fingerprint}');
+  });
+});
