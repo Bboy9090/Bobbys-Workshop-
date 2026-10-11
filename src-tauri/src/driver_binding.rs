@@ -26,6 +26,25 @@ pub struct DriverBindingRecord {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DriverConflictPlan {
+    pub instance_id: String,
+    pub expected_family: String,
+    pub current_inf: Option<String>,
+    pub current_service: Option<String>,
+    pub binding_state: String,
+    pub composite_interface: Option<String>,
+    pub sibling_count: usize,
+    pub candidate_count: usize,
+    pub exact_interface_candidate_count: usize,
+    pub conflict_level: String,
+    pub recommended_action: String,
+    pub next_steps: Vec<String>,
+    pub blockers: Vec<String>,
+    pub evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InstalledDriverCandidate {
     pub instance_id: String,
     pub inf_name: String,
@@ -335,6 +354,105 @@ fn pnputil(args: &[&str], action: &str) -> Result<String, String> {
         return Err(format!("{action} failed: {}", combined.trim()));
     }
     Ok(combined.trim().to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn driver_binding_conflict_plan(instance_id: String) -> Result<DriverConflictPlan, String> {
+    let instance_id = instance_id.trim().to_string();
+    let bindings = driver_binding_scan()?;
+    let record = bindings
+        .iter()
+        .find(|item| item.instance_id.eq_ignore_ascii_case(&instance_id))
+        .ok_or_else(|| "Exact Windows USB instance is no longer present; refresh before building a conflict plan.".to_string())?
+        .clone();
+
+    let candidates = driver_binding_candidates(instance_id.clone())?;
+    let exact_interface_candidate_count = candidates.iter().filter(|item| item.exact_interface_match).count();
+    let candidate_count = candidates.len();
+
+    let mut blockers = Vec::new();
+    let mut next_steps = Vec::new();
+    let conflict_level;
+    let recommended_action;
+
+    if record.binding_state == "matched" && candidate_count <= 1 {
+        conflict_level = "none".to_string();
+        recommended_action = "Keep current driver claim".to_string();
+        next_steps.push("No relatch is needed. Continue with the matching device workflow.".to_string());
+    } else if record.binding_state != "matched" && exact_interface_candidate_count == 1 {
+        conflict_level = "actionable-mismatch".to_string();
+        recommended_action = "Inspect the single exact-interface candidate, then use verified relatch".to_string();
+        next_steps.push("Open the exact-interface candidate and confirm its hardware-ID evidence.".to_string());
+        next_steps.push("Run Inspect compatible INF for that package.".to_string());
+        next_steps.push("If BobFWTools reports HARDWARE-ID MATCH VERIFIED, use Stage + relatch exact device.".to_string());
+        next_steps.push("Require DRIVER CLAIM VERIFIED before continuing to VCOM/QDLoader/Download workflows.".to_string());
+    } else if record.binding_state != "matched" && exact_interface_candidate_count == 0 && candidate_count > 0 {
+        conflict_level = "ambiguous-family-only".to_string();
+        recommended_action = "Do not relatch yet; only family-level candidates are installed".to_string();
+        blockers.push("No installed INF proves an exact MI_xx interface match for this device.".to_string());
+        next_steps.push("Install or select the OEM/chipset driver package intended for this exact interface.".to_string());
+        next_steps.push("Re-run installed candidate scan and require an exact-interface match when the device is composite.".to_string());
+    } else if exact_interface_candidate_count > 1 {
+        conflict_level = "multiple-exact-candidates".to_string();
+        recommended_action = "Review competing exact-interface candidates before changing the claim".to_string();
+        blockers.push("Multiple installed INF packages advertise the same exact interface hardware ID.".to_string());
+        next_steps.push("Compare the candidate INF names, provider/version evidence, and intended OEM/chipset source.".to_string());
+        next_steps.push("Do not delete driver packages automatically. Select the known-good OEM/service package and inspect it first.".to_string());
+    } else if candidate_count > 1 {
+        conflict_level = "multiple-family-candidates".to_string();
+        recommended_action = "Review installed candidate conflict before relatch".to_string();
+        blockers.push("Multiple compatible family-level driver packages are installed.".to_string());
+        next_steps.push("Prefer an exact interface hardware-ID match over a generic VID/PID family match.".to_string());
+        next_steps.push("Use verified relatch only after selecting a compatible INF deliberately.".to_string());
+    } else {
+        conflict_level = "missing-compatible-driver".to_string();
+        recommended_action = "Install the correct OEM/chipset driver package".to_string();
+        blockers.push("No installed OEM INF package advertises a compatible hardware ID for this exact device.".to_string());
+        next_steps.push("Install the legitimate Samsung, Qualcomm, MediaTek, Google, or OEM driver intended for this mode.".to_string());
+        next_steps.push("Reconnect or re-enumerate the device, then rebuild this conflict plan.".to_string());
+    }
+
+    let mut evidence = vec![
+        format!("expected-family:{}", record.expected_family),
+        format!("binding-state:{}", record.binding_state),
+        format!("candidate-count:{candidate_count}"),
+        format!("exact-interface-candidate-count:{exact_interface_candidate_count}"),
+        format!("current-inf:{}", record.driver_inf.as_deref().unwrap_or("<unavailable>")),
+        format!("current-service:{}", record.service.as_deref().unwrap_or("<unavailable>")),
+    ];
+    for candidate in candidates.iter().take(10) {
+        evidence.push(format!(
+            "candidate:{} score={} exact-interface={} current={}",
+            candidate.inf_name,
+            candidate.compatibility_score,
+            candidate.exact_interface_match,
+            candidate.current_claim
+        ));
+    }
+
+    Ok(DriverConflictPlan {
+        instance_id,
+        expected_family: record.expected_family,
+        current_inf: record.driver_inf,
+        current_service: record.service,
+        binding_state: record.binding_state,
+        composite_interface: record.interface_id,
+        sibling_count: record.composite_sibling_count,
+        candidate_count,
+        exact_interface_candidate_count,
+        conflict_level,
+        recommended_action,
+        next_steps,
+        blockers,
+        evidence,
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn driver_binding_conflict_plan(_instance_id: String) -> Result<DriverConflictPlan, String> {
+    Err("Driver conflict planning is Windows-only.".to_string())
 }
 
 #[cfg(target_os = "windows")]
