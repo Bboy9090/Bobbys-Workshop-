@@ -800,6 +800,8 @@ describe('Qualification dossier semantic review and evidence-derived flash check
     expect(backend).toContain('workstationEvidenceReady');
     expect(backend).toContain('transportObservationReady');
     expect(backend).toContain('programmerEvidenceReady');
+    expect(backend).toContain('.device_family');
+    expect(backend).toContain('declared device family');
     expect(backend).toContain('Dossier qualification-binding claim is inconsistent');
 
     expect(desktop).toContain('bindingSemanticsValid');
