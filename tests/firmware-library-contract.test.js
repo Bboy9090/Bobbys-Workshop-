@@ -410,3 +410,25 @@ describe('Installed driver conflict candidates', () => {
     expect(ui).toContain('Multiple compatible driver packages are installed for this interface');
   });
 });
+
+
+describe('Guided driver conflict resolution plan', () => {
+  it('classifies exact-interface driver conflicts and gives non-destructive next steps', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('driver_binding_conflict_plan');
+    expect(backend).toContain('actionable-mismatch');
+    expect(backend).toContain('ambiguous-family-only');
+    expect(backend).toContain('multiple-exact-candidates');
+    expect(backend).toContain('missing-compatible-driver');
+    expect(backend).toContain('Do not delete driver packages automatically');
+
+    expect(desktop).toContain('getDriverConflictPlan');
+    expect(ui).toContain('Driver conflict resolution plan');
+    expect(ui).toContain('Build resolution plan');
+    expect(ui).toContain('Stop here until resolved');
+    expect(ui).toContain('Do this');
+  });
+});
