@@ -28,8 +28,11 @@ export async function downloadVerifiedFirmware({url, destination, expectedSha256
   let received = 0;
   const hash = createHash('sha256');
   try {
-    const response = await fetcher(address.href, {method:'GET',redirect:'manual',signal:abort.signal});
+    const response = await fetcher(address.href, {method:'GET',redirect:'manual',signal:abort.signal,headers:{'Accept-Encoding':'identity'}});
     if (response.status !== 200 || !response.body) throw Error('OEM download response must be HTTP 200 with a body');
+    const encoding = response.headers?.get?.('content-encoding');
+    if (encoding && encoding.toLowerCase() !== 'identity')
+      throw Error('Compressed HTTP transfer is not supported for firmware hashes');
     const length = response.headers?.get?.('content-length');
     if (length && (!/^\d+$/.test(length) || Number(length) > MAX_BYTES))
       throw Error('Firmware package exceeds size limit');
@@ -37,6 +40,7 @@ export async function downloadVerifiedFirmware({url, destination, expectedSha256
       transform(chunk, encoding, callback) {
         received += chunk.length;
         if (received > MAX_BYTES) return callback(Error('Firmware package exceeds size limit'));
+        if (length && received > Number(length)) return callback(Error('Response exceeded declared content length'));
         hash.update(chunk);
         onProgress?.(received);
         callback(null, chunk);
