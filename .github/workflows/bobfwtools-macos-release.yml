@@ -95,6 +95,7 @@ jobs:
       - name: Sign with Developer ID
         env:
           BOBFW_DEVELOPER_IDENTITY: ${{ secrets.BOBFW_DEVELOPER_IDENTITY }}
+          BOBFW_EXPECTED_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           bash scripts/sign-bobfwtools-developer-id.sh             src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app             src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools-DeveloperID.app
