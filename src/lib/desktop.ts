@@ -639,6 +639,30 @@ export type DriverReleaseResult = {
   evidence: string[];
 };
 
+export type DriverClaimSample = {
+  sample: number;
+  present: boolean;
+  instanceId?: string | null;
+  service?: string | null;
+  driverInf?: string | null;
+  bindingState?: string | null;
+};
+
+export type DriverClaimStabilityReport = {
+  requestedInstanceId: string;
+  samples: DriverClaimSample[];
+  presentSamples: number;
+  claimChanges: number;
+  disappearanceEvents: number;
+  stable: boolean;
+  summary: string;
+  recommendations: string[];
+};
+
+export async function runDriverClaimStabilityTest(instanceId: string): Promise<DriverClaimStabilityReport> {
+  return invoke<DriverClaimStabilityReport>('driver_binding_stability_test', { instanceId });
+}
+
 export type DriverConflictPlan = {
   instanceId: string;
   expectedFamily: string;
