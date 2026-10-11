@@ -282,3 +282,14 @@ describe('Device-aware mode capability matrix', () => {
     expect(app).toContain('MediaTek BROM/Preloader: device-specific or physical entry required');
   });
 });
+
+
+describe('Mode control stale-state protection', () => {
+  it('clears prior transition receipts and offers per-device re-scan after manual entry', () => {
+    const app = read('src/App.tsx');
+
+    expect(app).toContain('delete next[serial]');
+    expect(app).toContain('Re-scan modes');
+    expect(app).toContain('Use after a manual OEM key-combo/service entry');
+  });
+});
