@@ -3,6 +3,7 @@ import {
   chooseAndInspectQualifiedFlashImage,
   exportQualificationAuditBundle,
   reviewQualificationAuditBundle,
+  reviewQualificationAuditBundlePath,
   exportQualificationBenchEvidence,
   exportQualificationDecision,
   getQualificationBuildIdentity,
@@ -352,7 +353,11 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
         deviceSerial,
         reviewer: reviewer.trim(),
       });
-      if (path) setAuditBundlePath(path);
+      if (path) {
+        setAuditBundlePath(path);
+        const verified = await reviewQualificationAuditBundlePath(path, recoveryJobFingerprint);
+        if (verified) setAuditBundleReview(verified);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
