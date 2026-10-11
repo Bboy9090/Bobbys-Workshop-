@@ -30,6 +30,16 @@ jobs:
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
+      - name: Sanitize release label
+        id: release_label
+        env:
+          RAW_RELEASE_LABEL: ${{ inputs.release_label }}
+        run: |
+          set -euo pipefail
+          SAFE_LABEL="$(printf '%s' "$RAW_RELEASE_LABEL" | tr -cs 'A-Za-z0-9._-' '-' | sed 's/^-*//; s/-*$//' | cut -c1-64)"
+          test -n "$SAFE_LABEL" || { echo "Release label becomes empty after sanitization"; exit 1; }
+          echo "safe=$SAFE_LABEL" >> "$GITHUB_OUTPUT"
+
       - name: Preflight release credentials
         env:
           P12_B64: ${{ secrets.BOBFW_DEVELOPER_ID_P12_BASE64 }}
@@ -111,7 +121,7 @@ jobs:
 
       - name: Create release provenance receipt
         env:
-          BOBFWTOOLS_RELEASE_LABEL: ${{ inputs.release_label }}
+          BOBFWTOOLS_RELEASE_LABEL: ${{ steps.release_label.outputs.safe }}
         run: |
           set -euo pipefail
           bash scripts/create-bobfwtools-release-receipt.sh \
@@ -122,7 +132,7 @@ jobs:
       - name: Upload notarized release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BobFWTools-macOS-notarized-${{ inputs.release_label }}
+          name: BobFWTools-macOS-notarized-${{ steps.release_label.outputs.safe }}
           path: |
             src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools-DeveloperID.app
             bobfwtools-notarization-receipt.json
