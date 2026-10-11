@@ -29,6 +29,7 @@ on:
       - 'scripts/lib/download-verified-firmware.mjs'
       - 'scripts/download-verified-firmware.mjs'
       - 'scripts/probe-official-catalogs.mjs'
+      - 'scripts/audit-pixel-release.mjs'
   workflow_dispatch:
 
 permissions:
@@ -83,3 +84,14 @@ jobs:
           path: ${{ runner.temp }}/oem-catalog-reachability.json
           if-no-files-found: warn
           retention-days: 14
+      - name: Exercise Pixel release audit CLI without firmware execution
+        run: |
+          cat > "$RUNNER_TEMP/pixel-synthetic.json" <<'JSON'
+          {"deviceCodename":"shiba","buildId":"AP1A.240505.004","releaseDate":"2024-05-05","filename":"shiba-ota.zip","downloadUrl":"https://dl.google.com/android/shiba-ota.zip","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","provenanceUrl":"https://developers.google.com/android/ota"}
+          JSON
+          set +e
+          node scripts/audit-pixel-release.mjs --record "$RUNNER_TEMP/pixel-synthetic.json" --codename shiba > "$RUNNER_TEMP/pixel-audit.json"
+          audit_status=$?
+          set -e
+          test "$audit_status" -eq 3
+          node -e 'const a=require(process.argv[1]); if(a.outcome!=="blocked" || a.downloadAuthorized || a.flashAuthorized || a.evidence.sourceReference!=="unverified") process.exit(1)' "$RUNNER_TEMP/pixel-audit.json"
