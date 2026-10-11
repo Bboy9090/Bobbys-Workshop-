@@ -777,3 +777,29 @@ describe('Qualcomm qualification programmer evidence', () => {
     expect(backend).toContain('Qualcomm EDL qualification requires an authorized programmer record');
   });
 });
+
+
+describe('Qualification dossier semantic review and evidence-derived flash checks', () => {
+  it('recomputes hash-bound evidence semantics and prevents manual approval of automated checks', () => {
+    const backend = read('src-tauri/src/main.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const consoleUi = read('src/components/QualifiedFlashConsole.tsx');
+
+    expect(backend).toContain('binding_semantics_valid');
+    expect(backend).toContain('liveDeviceIdentityMatch');
+    expect(backend).toContain('workstationEvidenceReady');
+    expect(backend).toContain('transportObservationReady');
+    expect(backend).toContain('programmerEvidenceReady');
+    expect(backend).toContain('Dossier qualification-binding claim is inconsistent');
+
+    expect(desktop).toContain('bindingSemanticsValid');
+    expect(desktop).toContain('programmerEvidenceReady');
+
+    expect(consoleUi).toContain('EVIDENCE_DERIVED_CHECKS');
+    expect(consoleUi).toContain("result.bindingSemanticsValid && result.transportObservationReady");
+    expect(consoleUi).toContain("result.bindingSemanticsValid && result.programmerEvidenceReady");
+    expect(consoleUi).toContain('disabled={automated}');
+    expect(consoleUi).toContain("{automated ? 'AUTO' : 'MANUAL'}");
+    expect(consoleUi).toContain('cannot be clicked manually');
+  });
+});
