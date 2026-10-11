@@ -482,7 +482,7 @@ describe('Driver snapshot and rollback planning', () => {
     const ui = read('src/components/RepairCommandCenter.tsx');
 
     expect(backend).toContain('driver_binding_snapshot');
-    expect(backend).toContain('com.bobbyblanco.bobfwtools.driver-binding-snapshot.v1');
+    expect(backend).toContain('com.bobbyblanco.bobfwtools.driver-binding-snapshot.v2');
     expect(backend).toContain('driver-snapshots');
     expect(backend).toContain('driver_binding_rollback_plan');
     expect(backend).toContain('Rollback snapshots must come from BobFWTools managed driver-snapshots storage');
@@ -510,5 +510,102 @@ describe('Automatic pre-relatch driver snapshot', () => {
     expect(backend).toContain('snapshot_path: Some(snapshot.path.clone())');
     expect(desktop).toContain('snapshotPath?: string | null');
     expect(ui).toContain('pre-relatch snapshot');
+  });
+});
+
+
+describe('Tamper-evident driver rollback snapshots', () => {
+  it('fingerprints exact claim state and rejects modified receipts', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('com.bobbyblanco.bobfwtools.driver-binding-snapshot.v2');
+    expect(backend).toContain('snapshot_fingerprint');
+    expect(backend).toContain('Driver rollback snapshot fingerprint mismatch');
+    expect(backend).toContain('snapshot_fingerprint_valid');
+    expect(backend).toContain('snapshot_fingerprint_changes_when_driver_claim_changes');
+
+    expect(desktop).toContain('fingerprint: string');
+    expect(desktop).toContain('snapshotFingerprintValid');
+    expect(ui).toContain('snapshot fingerprint');
+    expect(ui).toContain('fingerprint {driverSnapshots[binding.instanceId].snapshot.fingerprint}');
+  });
+});
+
+
+describe('Installed driver provenance metadata', () => {
+  it('surfaces provider version and catalog evidence for competing INF packages', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('inf_metadata_value');
+    expect(backend).toContain('provider: inf_metadata_value(&text, "Provider")');
+    expect(backend).toContain('driver_version: inf_metadata_value(&text, "DriverVer")');
+    expect(backend).toContain('catalog_file: inf_metadata_value(&text, "CatalogFile")');
+
+    expect(desktop).toContain('driverVersion?: string | null');
+    expect(ui).toContain("provider {candidate.provider || 'unavailable'}");
+    expect(ui).toContain("version {candidate.driverVersion || 'unavailable'}");
+    expect(ui).toContain("catalog {candidate.catalogFile || 'unavailable'}");
+  });
+});
+
+
+describe('Current INF hardware-ID claim proof', () => {
+  it('requires the bound INF to advertise a compatible USB hardware ID', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('current_inf_hardware_match');
+    expect(backend).toContain('claim_hardware_id_verified');
+    expect(backend).toContain('claim_match_scope');
+    expect(backend).toContain('Current INF also advertises a compatible USB hardware ID');
+    expect(backend).toContain('could not prove a matching hardware ID inside the currently bound INF');
+
+    expect(desktop).toContain('claimHardwareIdVerified');
+    expect(desktop).toContain('claimMatchScope');
+    expect(ui).toContain('INF hardware-ID proof');
+    expect(ui).toContain("scope {binding.claimMatchScope}");
+  });
+});
+
+
+describe('Windows driver mutation elevation gate', () => {
+  it('blocks release and relatch until administrator elevation is proven', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('driver_binding_elevation_status');
+    expect(backend).toContain('require_elevation("Verified driver staging and relatch")');
+    expect(backend).toContain('require_elevation("Exact-device release and rescan")');
+    expect(backend).toContain('requires Windows administrator elevation');
+
+    expect(desktop).toContain('getDriverElevationStatus');
+    expect(ui).toContain('Windows mutation readiness');
+    expect(ui).toContain('Check admin readiness');
+    expect(ui).toContain('ADMIN READY');
+    expect(ui).toContain('ADMIN REQUIRED');
+  });
+});
+
+
+describe('Post-relatch claim stability verification', () => {
+  it('requires a stable exact-interface claim before final driver verification', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('claim_matched_once');
+    expect(backend).toContain('driver_binding_stability_test(record.instance_id.clone())');
+    expect(backend).toContain('let verified_claim = claim_matched_once && stability_verified');
+    expect(backend).toContain('stability_summary');
+
+    expect(desktop).toContain('stabilityVerified');
+    expect(desktop).toContain('stabilitySummary');
+    expect(ui).toContain("stability {driverRelatchResults[binding.instanceId].stabilityVerified ? 'verified' : 'not verified'}");
   });
 });
