@@ -140,6 +140,9 @@ pub struct InstalledDriverCandidate {
     pub exact_interface_match: bool,
     pub current_claim: bool,
     pub compatibility_score: u32,
+    pub provider: Option<String>,
+    pub driver_version: Option<String>,
+    pub catalog_file: Option<String>,
     pub detail: String,
 }
 
@@ -248,6 +251,23 @@ fn interface_specific_ids(values: &[String]) -> Vec<String> {
 
 fn normalize_hardware_id(value: &str) -> String {
     value.trim().trim_matches('"').to_ascii_uppercase()
+}
+
+fn inf_metadata_value(text: &str, key: &str) -> Option<String> {
+    for raw in text.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with(';') {
+            continue;
+        }
+        let Some((left, right)) = line.split_once('=') else { continue; };
+        if left.trim().eq_ignore_ascii_case(key) {
+            let value = right.trim().trim_matches('"').trim();
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
 }
 
 fn extract_inf_hardware_ids(text: &str) -> Vec<String> {
@@ -925,11 +945,13 @@ pub fn driver_binding_conflict_plan(instance_id: String) -> Result<DriverConflic
     ];
     for candidate in candidates.iter().take(10) {
         evidence.push(format!(
-            "candidate:{} score={} exact-interface={} current={}",
+            "candidate:{} score={} exact-interface={} current={} provider={} driverver={}",
             candidate.inf_name,
             candidate.compatibility_score,
             candidate.exact_interface_match,
-            candidate.current_claim
+            candidate.current_claim,
+            candidate.provider.as_deref().unwrap_or("<unavailable>"),
+            candidate.driver_version.as_deref().unwrap_or("<unavailable>")
         ));
     }
 
@@ -1036,6 +1058,9 @@ pub fn driver_binding_candidates(instance_id: String) -> Result<Vec<InstalledDri
             exact_interface_match,
             current_claim,
             compatibility_score,
+            provider: inf_metadata_value(&text, "Provider"),
+            driver_version: inf_metadata_value(&text, "DriverVer"),
+            catalog_file: inf_metadata_value(&text, "CatalogFile"),
             detail: if exact_interface_match {
                 "Installed INF advertises this exact composite USB interface hardware ID.".to_string()
             } else {
@@ -1359,6 +1384,17 @@ mod tests {
         ];
         let specific = interface_specific_ids(&ids);
         assert_eq!(specific, vec![r"USB\VID_18D1&PID_4EE7&MI_01".to_string()]);
+    }
+
+    #[test]
+    fn parses_inf_provider_version_and_catalog_metadata() {
+        let sample = r#"[Version]
+Provider=%ProviderName%
+DriverVer=08/21/2025,3.2.1.0
+CatalogFile=example.cat"#;
+        assert_eq!(inf_metadata_value(sample, "Provider").as_deref(), Some("%ProviderName%"));
+        assert_eq!(inf_metadata_value(sample, "DriverVer").as_deref(), Some("08/21/2025,3.2.1.0"));
+        assert_eq!(inf_metadata_value(sample, "CatalogFile").as_deref(), Some("example.cat"));
     }
 
     #[test]
