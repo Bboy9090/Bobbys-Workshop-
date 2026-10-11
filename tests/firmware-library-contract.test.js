@@ -866,5 +866,8 @@ describe('macOS signed notarized release contract', () => {
     expect(releaseReceipt).toContain('"submissionId": submission_id');
     expect(releaseReceipt).toContain('"gatekeeperAccepted": True');
     expect(releaseReceipt).toContain('"executableSha256": binary_sha256');
+    const signScript = read('scripts/sign-bobfwtools-developer-id.sh');
+    expect(workflow).toContain('BOBFW_EXPECTED_TEAM_ID');
+    expect(signScript).toContain('Developer ID TeamIdentifier does not match the expected Apple team');
   });
 });
