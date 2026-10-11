@@ -26,6 +26,30 @@ pub struct DriverBindingRecord {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DriverClaimSample {
+    pub sample: usize,
+    pub present: bool,
+    pub instance_id: Option<String>,
+    pub service: Option<String>,
+    pub driver_inf: Option<String>,
+    pub binding_state: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriverClaimStabilityReport {
+    pub requested_instance_id: String,
+    pub samples: Vec<DriverClaimSample>,
+    pub present_samples: usize,
+    pub claim_changes: usize,
+    pub disappearance_events: usize,
+    pub stable: bool,
+    pub summary: String,
+    pub recommendations: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DriverConflictPlan {
     pub instance_id: String,
     pub expected_family: String,
@@ -354,6 +378,129 @@ fn pnputil(args: &[&str], action: &str) -> Result<String, String> {
         return Err(format!("{action} failed: {}", combined.trim()));
     }
     Ok(combined.trim().to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn driver_binding_stability_test(instance_id: String) -> Result<DriverClaimStabilityReport, String> {
+    let requested_instance_id = instance_id.trim().to_string();
+    if requested_instance_id.is_empty() || !requested_instance_id.to_ascii_uppercase().starts_with("USB") {
+        return Err("Driver claim stability test requires an exact USB instance ID.".to_string());
+    }
+
+    let initial = driver_binding_scan()?;
+    let original = initial
+        .iter()
+        .find(|item| item.instance_id.eq_ignore_ascii_case(&requested_instance_id))
+        .cloned()
+        .ok_or_else(|| "Exact Windows USB instance is not present; refresh before running the claim stability test.".to_string())?;
+
+    let original_specific = interface_specific_ids(&original.hardware_ids);
+    let original_ids = original.hardware_ids.clone();
+    let mut samples = Vec::new();
+
+    for sample in 1..=6 {
+        let current = driver_binding_scan().unwrap_or_default();
+        let found = current.iter().find(|candidate| {
+            if !original_specific.is_empty() {
+                let candidate_specific = interface_specific_ids(&candidate.hardware_ids);
+                candidate_specific.iter().any(|candidate_id| {
+                    original_specific.iter().any(|original_id| candidate_id == original_id)
+                })
+            } else {
+                candidate.hardware_ids.iter().any(|candidate_id| {
+                    original_ids.iter().any(|original_id| {
+                        normalize_hardware_id(candidate_id) == normalize_hardware_id(original_id)
+                    })
+                })
+            }
+        });
+
+        samples.push(DriverClaimSample {
+            sample,
+            present: found.is_some(),
+            instance_id: found.map(|item| item.instance_id.clone()),
+            service: found.and_then(|item| item.service.clone()),
+            driver_inf: found.and_then(|item| item.driver_inf.clone()),
+            binding_state: found.map(|item| item.binding_state.clone()),
+        });
+
+        if sample < 6 {
+            std::thread::sleep(std::time::Duration::from_millis(650));
+        }
+    }
+
+    let present_samples = samples.iter().filter(|sample| sample.present).count();
+    let disappearance_events = samples.windows(2).filter(|pair| pair[0].present != pair[1].present).count();
+    let claim_changes = samples
+        .windows(2)
+        .filter(|pair| {
+            pair[0].service != pair[1].service
+                || pair[0].driver_inf != pair[1].driver_inf
+                || pair[0].binding_state != pair[1].binding_state
+        })
+        .count();
+
+    let stable = present_samples == samples.len() && disappearance_events == 0 && claim_changes == 0;
+    let mut recommendations = Vec::new();
+    if stable {
+        recommendations.push("Driver claim stayed stable across all samples. Continue with the matching service workflow.".to_string());
+    } else {
+        if disappearance_events > 0 {
+            recommendations.push("The exact interface disappeared/reappeared during sampling. Check cable/port stability and mode transitions before changing drivers.".to_string());
+        }
+        if claim_changes > 0 {
+            recommendations.push("The Windows service/INF claim changed during sampling. Build a driver conflict resolution plan and inspect installed candidates.".to_string());
+        }
+        recommendations.push("Do not start firmware writes while the exact interface claim is unstable.".to_string());
+    }
+
+    let summary = if stable {
+        "Exact Windows USB interface kept the same driver claim across all stability samples.".to_string()
+    } else {
+        format!(
+            "Driver claim instability detected: {claim_changes} claim change(s), {disappearance_events} presence transition(s), {present_samples}/{} samples present.",
+            samples.len()
+        )
+    };
+
+    let evidence = samples.iter().map(|sample| {
+        format!(
+            "sample={} present={} instance={} service={} inf={} state={}",
+            sample.sample,
+            sample.present,
+            sample.instance_id.as_deref().unwrap_or("<absent>"),
+            sample.service.as_deref().unwrap_or("<none>"),
+            sample.driver_inf.as_deref().unwrap_or("<none>"),
+            sample.binding_state.as_deref().unwrap_or("<none>")
+        )
+    }).collect::<Vec<_>>();
+    let _ = crate::audit::record(
+        "driver-binding",
+        "claim-stability-test",
+        "read-only",
+        if stable { "stable" } else { "unstable" },
+        Some(requested_instance_id.clone()),
+        summary.clone(),
+        evidence,
+    );
+
+    Ok(DriverClaimStabilityReport {
+        requested_instance_id,
+        samples,
+        present_samples,
+        claim_changes,
+        disappearance_events,
+        stable,
+        summary,
+        recommendations,
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn driver_binding_stability_test(_instance_id: String) -> Result<DriverClaimStabilityReport, String> {
+    Err("Driver claim stability testing is Windows-only.".to_string())
 }
 
 #[cfg(target_os = "windows")]
