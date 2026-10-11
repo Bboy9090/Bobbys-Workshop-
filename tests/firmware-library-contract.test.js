@@ -473,3 +473,28 @@ describe('Protected driver cleanup recommendations', () => {
     expect(ui).toContain('protected current INF');
   });
 });
+
+
+describe('Driver snapshot and rollback planning', () => {
+  it('captures exact claim evidence and refuses blind rollback', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('driver_binding_snapshot');
+    expect(backend).toContain('com.bobbyblanco.bobfwtools.driver-binding-snapshot.v1');
+    expect(backend).toContain('driver-snapshots');
+    expect(backend).toContain('driver_binding_rollback_plan');
+    expect(backend).toContain('Rollback snapshots must come from BobFWTools managed driver-snapshots storage');
+    expect(backend).toContain('Current interface hardware identity does not match the snapshot');
+    expect(backend).toContain('The prior INF from the snapshot is no longer available in the Windows INF store');
+    expect(backend).toContain('Require HARDWARE-ID MATCH VERIFIED');
+
+    expect(desktop).toContain('createDriverBindingSnapshot');
+    expect(desktop).toContain('getDriverRollbackPlan');
+    expect(ui).toContain('Snapshot current claim');
+    expect(ui).toContain('Build rollback plan');
+    expect(ui).toContain('ROLLBACK PATH VERIFIED');
+    expect(ui).toContain('ROLLBACK BLOCKED');
+  });
+});
