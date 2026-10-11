@@ -18,6 +18,10 @@ describe('Pixel release metadata intake (synthetic fixtures, not OEM evidence)',
    {filename:'../evil.zip'},
    {provenanceUrl:'https://developers.google.com/search?q=shiba'},
    {sha256:'abcd'},
+   {releaseDate:'2024-02-30'},
+   {downloadUrl:'https://dl.google.com/android/shiba-ota.zip?mirror=1'},
+   {downloadUrl:'https://dl.google.com/android/%73hiba-ota.zip'},
+   {provenanceUrl:'https://developers.google.com/android/ota?redirect=1'},
   ]) expect(()=>validatePixelRelease({...fixture,...change})).toThrow();
  });
  it('rejects duplicate release identity and incomplete data',()=>{
