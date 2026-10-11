@@ -591,3 +591,21 @@ describe('Windows driver mutation elevation gate', () => {
     expect(ui).toContain('ADMIN REQUIRED');
   });
 });
+
+
+describe('Post-relatch claim stability verification', () => {
+  it('requires a stable exact-interface claim before final driver verification', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('claim_matched_once');
+    expect(backend).toContain('driver_binding_stability_test(record.instance_id.clone())');
+    expect(backend).toContain('let verified_claim = claim_matched_once && stability_verified');
+    expect(backend).toContain('stability_summary');
+
+    expect(desktop).toContain('stabilityVerified');
+    expect(desktop).toContain('stabilitySummary');
+    expect(ui).toContain("stability {driverRelatchResults[binding.instanceId].stabilityVerified ? 'verified' : 'not verified'}");
+  });
+});
