@@ -831,3 +831,24 @@ describe('Qualification dossier semantic review and evidence-derived flash check
     expect(consoleUi).toContain('readinessCertificatePath,');
   });
 });
+
+
+describe('macOS signed notarized release contract', () => {
+  it('keeps Developer ID signing and notarization behind an explicit credential-gated release lane', () => {
+    const workflow = read('.github/workflows/bobfwtools-macos-release.yml');
+    const notarize = read('scripts/notarize-bobfwtools.sh');
+
+    expect(workflow).toContain('workflow_dispatch:');
+    expect(workflow).toContain('BOBFW_DEVELOPER_ID_P12_BASE64');
+    expect(workflow).toContain('APPLE_APP_SPECIFIC_PASSWORD');
+    expect(workflow).toContain('Import Developer ID certificate');
+    expect(workflow).toContain('Cleanup temporary signing material');
+    expect(workflow).not.toContain('tauri:build:macos:qualified:ci');
+
+    expect(notarize).toContain('xcrun notarytool submit');
+    expect(notarize).toContain('[[ "$STATUS" == "Accepted" ]]');
+    expect(notarize).toContain('xcrun stapler staple');
+    expect(notarize).toContain('xcrun stapler validate');
+    expect(notarize).toContain('spctl -a -vv --type execute');
+  });
+});
