@@ -615,9 +615,9 @@ mod tests {
 
     #[test]
     fn inf_parser_extracts_usb_ids() {
-        let sample = r#"Device=Install,USB\\VID_05C6&PID_9008
+        let sample = r#"Device=Install,USB\VID_05C6&PID_9008
 ; ignored
-Other=Install,USB\\VID_0E8D&PID_2000"#;
+Other=Install,USB\VID_0E8D&PID_2000"#;
         let ids = extract_inf_hardware_ids(sample);
         assert!(ids.contains(&"USB\\VID_05C6&PID_9008".to_string()));
         assert!(ids.contains(&"USB\\VID_0E8D&PID_2000".to_string()));
@@ -625,8 +625,8 @@ Other=Install,USB\\VID_0E8D&PID_2000"#;
 
     #[test]
     fn inf_parser_handles_quoted_and_specific_model_lines() {
-        let sample = r#"%DeviceDesc%=Install,USB\\VID_04E8&PID_685D&REV_0400
-%Other%=Install,"USB\\VID_18D1&PID_4EE0""#;
+        let sample = r#"%DeviceDesc%=Install,USB\VID_04E8&PID_685D&REV_0400
+%Other%=Install,"USB\VID_18D1&PID_4EE0""#;
         let ids = extract_inf_hardware_ids(sample);
         assert!(ids.contains(&"USB\\VID_04E8&PID_685D&REV_0400".to_string()));
         assert!(ids.contains(&"USB\\VID_18D1&PID_4EE0".to_string()));
