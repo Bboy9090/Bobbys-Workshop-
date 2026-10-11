@@ -639,6 +639,44 @@ export type DriverReleaseResult = {
   evidence: string[];
 };
 
+export type DriverBindingSnapshot = {
+  schema: string;
+  createdAtMs: number;
+  instanceId: string;
+  physicalDeviceKey: string;
+  interfaceId?: string | null;
+  hardwareIds: string[];
+  expectedFamily: string;
+  service?: string | null;
+  driverInf?: string | null;
+  bindingState: string;
+};
+
+export type DriverSnapshotResult = {
+  path: string;
+  snapshot: DriverBindingSnapshot;
+};
+
+export type DriverRollbackPlan = {
+  snapshotPath: string;
+  exactDevicePresent: boolean;
+  hardwareIdentityMatches: boolean;
+  priorInfAvailable: boolean;
+  rollbackReady: boolean;
+  priorInf?: string | null;
+  currentInf?: string | null;
+  blockers: string[];
+  nextSteps: string[];
+};
+
+export async function createDriverBindingSnapshot(instanceId: string): Promise<DriverSnapshotResult> {
+  return invoke<DriverSnapshotResult>('driver_binding_snapshot', { instanceId });
+}
+
+export async function getDriverRollbackPlan(snapshotPath: string): Promise<DriverRollbackPlan> {
+  return invoke<DriverRollbackPlan>('driver_binding_rollback_plan', { snapshotPath });
+}
+
 export type DriverCleanupRecommendation = {
   instanceId: string;
   infName: string;
