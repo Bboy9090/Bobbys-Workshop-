@@ -263,3 +263,22 @@ describe('Mode transition verification receipts', () => {
     expect(app).toContain('identity:');
   });
 });
+
+
+describe('Device-aware mode capability matrix', () => {
+  it('gates Samsung Download and refuses fake universal EDL/BROM buttons', () => {
+    const adb = read('src-tauri/src/adb_workflows.rs');
+    const app = read('src/App.tsx');
+    const desktop = read('src/lib/desktop.ts');
+
+    expect(adb).toContain('adb_mode_capabilities');
+    expect(adb).toContain('Download Mode is only exposed after BobFWTools identifies the authorized ADB target as Samsung');
+    expect(adb).toContain('generic adb reboot edl is intentionally not exposed');
+    expect(adb).toContain('BROM/preloader entry is intentionally not exposed as a generic ADB command');
+
+    expect(desktop).toContain('getAdbModeCapabilities');
+    expect(app).toContain('adbModeCapabilities[device.serial]?.download');
+    expect(app).toContain('Qualcomm EDL: device/OEM-specific entry required');
+    expect(app).toContain('MediaTek BROM/Preloader: device-specific or physical entry required');
+  });
+});
