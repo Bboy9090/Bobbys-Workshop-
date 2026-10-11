@@ -26,6 +26,30 @@ pub struct DriverBindingRecord {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DriverCleanupRecommendation {
+    pub instance_id: String,
+    pub inf_name: String,
+    pub disposition: String,
+    pub reason: String,
+    pub current_claim: bool,
+    pub exact_interface_match: bool,
+    pub compatibility_score: u32,
+    pub matched_hardware_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriverCleanupReport {
+    pub instance_id: String,
+    pub protected_current_inf: Option<String>,
+    pub recommendations: Vec<DriverCleanupRecommendation>,
+    pub safe_to_consider_cleanup: bool,
+    pub summary: String,
+    pub blockers: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DriverClaimSample {
     pub sample: usize,
     pub present: bool,
@@ -378,6 +402,88 @@ fn pnputil(args: &[&str], action: &str) -> Result<String, String> {
         return Err(format!("{action} failed: {}", combined.trim()));
     }
     Ok(combined.trim().to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn driver_binding_cleanup_report(instance_id: String) -> Result<DriverCleanupReport, String> {
+    let instance_id = instance_id.trim().to_string();
+    let bindings = driver_binding_scan()?;
+    let record = bindings
+        .iter()
+        .find(|item| item.instance_id.eq_ignore_ascii_case(&instance_id))
+        .ok_or_else(|| "Exact Windows USB instance is no longer present; refresh before building a cleanup report.".to_string())?
+        .clone();
+    let candidates = driver_binding_candidates(instance_id.clone())?;
+
+    let mut blockers = Vec::new();
+    if record.binding_state != "matched" {
+        blockers.push("Current driver claim is not verified as compatible; do not clean up packages until a correct claim is established.".to_string());
+    }
+    let exact_count = candidates.iter().filter(|item| item.exact_interface_match).count();
+    if exact_count == 0 && record.composite_sibling_count > 1 {
+        blockers.push("No exact MI_xx candidate is proven for this composite interface.".to_string());
+    }
+
+    let recommendations = candidates
+        .iter()
+        .map(|candidate| {
+            let (disposition, reason) = if candidate.current_claim {
+                (
+                    "keep-protected".to_string(),
+                    "This INF currently owns the exact interface. BobFWTools will never recommend deleting the active claim automatically.".to_string(),
+                )
+            } else if candidate.exact_interface_match && candidate.compatibility_score >= 100 {
+                (
+                    "review-competing-exact".to_string(),
+                    "This installed INF also advertises the exact interface hardware ID. Review provider/version/source before considering removal.".to_string(),
+                )
+            } else if candidate.exact_interface_match {
+                (
+                    "review".to_string(),
+                    "This INF has exact-interface evidence but is not the current claim.".to_string(),
+                )
+            } else {
+                (
+                    "candidate-for-cleanup-review".to_string(),
+                    "This INF only provides a family-level match for this device and is not the current claim. It may be redundant, but removal must be deliberate and separately confirmed.".to_string(),
+                )
+            };
+
+            DriverCleanupRecommendation {
+                instance_id: instance_id.clone(),
+                inf_name: candidate.inf_name.clone(),
+                disposition,
+                reason,
+                current_claim: candidate.current_claim,
+                exact_interface_match: candidate.exact_interface_match,
+                compatibility_score: candidate.compatibility_score,
+                matched_hardware_ids: candidate.matched_hardware_ids.clone(),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let safe_to_consider_cleanup = blockers.is_empty()
+        && recommendations.iter().any(|item| item.disposition == "candidate-for-cleanup-review");
+
+    Ok(DriverCleanupReport {
+        instance_id,
+        protected_current_inf: record.driver_inf,
+        recommendations,
+        safe_to_consider_cleanup,
+        summary: if safe_to_consider_cleanup {
+            "Current driver claim is protected and at least one non-current family-level INF can be reviewed as a possible redundant package.".to_string()
+        } else {
+            "No automatic cleanup is recommended. Resolve blockers or review competing exact-interface candidates first.".to_string()
+        },
+        blockers,
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn driver_binding_cleanup_report(_instance_id: String) -> Result<DriverCleanupReport, String> {
+    Err("Driver cleanup recommendations are Windows-only.".to_string())
 }
 
 #[cfg(target_os = "windows")]
