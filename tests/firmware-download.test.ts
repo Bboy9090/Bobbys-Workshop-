@@ -1,5 +1,5 @@
 import { describe,it,expect,vi } from 'vitest';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, symlink, mkdir } from 'node:fs/promises';
 import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -90,5 +90,23 @@ describe('HTTP wire-byte integrity policy',()=>{
       body:new ReadableStream({start(c){c.enqueue(DATA);c.close();}})})})).rejects.toThrow('exceeded declared');
    expect(await readdir(dir)).toEqual([]);
   } finally {await rm(dir,{recursive:true,force:true});}
+ });
+});
+
+describe('firmware destination path guard',()=>{
+ it('rejects symlinked destination directories without fetching data',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'bobfw-path-'));
+  try {
+   const real=join(root,'real');
+   await mkdir(real);
+   const alias=join(root,'alias');
+   await symlink(real,alias,'dir');
+   const fetcher=vi.fn();
+   await expect(downloadVerifiedFirmware({url:'https://dl.google.com/firmware.zip',
+      destination:join(alias,'firmware.zip'),expectedSha256:SHA,fetcher}))
+      .rejects.toThrow('not a symlink');
+   expect(fetcher).not.toHaveBeenCalled();
+   expect(await readdir(real)).toEqual([]);
+  } finally {await rm(root,{recursive:true,force:true});}
  });
 });
