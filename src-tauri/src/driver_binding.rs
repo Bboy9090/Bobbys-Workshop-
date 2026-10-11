@@ -21,6 +21,8 @@ pub struct DriverBindingRecord {
     pub physical_device_key: String,
     pub interface_id: Option<String>,
     pub composite_sibling_count: usize,
+    pub claim_hardware_id_verified: bool,
+    pub claim_match_scope: String,
     pub binding_state: String,
     pub detail: String,
 }
@@ -340,6 +342,49 @@ fn expected_family(vendor_id: Option<u16>, product_id: Option<u16>, text: &str) 
     }
 }
 
+#[cfg(target_os = "windows")]
+fn current_inf_hardware_match(
+    driver_inf: Option<&str>,
+    hardware_ids: &[String],
+) -> (bool, String) {
+    let Some(inf_name) = driver_inf.map(str::trim).filter(|value| !value.is_empty()) else {
+        return (false, "unavailable".to_string());
+    };
+    let windows_dir = std::env::var_os("WINDIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"));
+    let path = windows_dir.join("INF").join(inf_name);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return (false, "inf-unreadable".to_string());
+    };
+    let inf_ids = extract_inf_hardware_ids(&text);
+    if inf_ids.is_empty() {
+        return (false, "no-usb-hardware-ids".to_string());
+    }
+
+    let device_specific = interface_specific_ids(hardware_ids);
+    if !device_specific.is_empty() {
+        for device_id in &device_specific {
+            for inf_id in &inf_ids {
+                let normalized_inf = normalize_hardware_id(inf_id);
+                if normalized_inf.contains("&MI_") && hardware_id_matches(device_id, inf_id) {
+                    return (true, "exact-interface".to_string());
+                }
+            }
+        }
+    }
+
+    for device_id in hardware_ids {
+        for inf_id in &inf_ids {
+            if hardware_id_matches(device_id, inf_id) {
+                return (true, "family-hardware-id".to_string());
+            }
+        }
+    }
+
+    (false, "no-match".to_string())
+}
+
 fn binding_assessment(expected: &str, service: Option<&str>, inf: Option<&str>, name: &str) -> (String, String) {
     let evidence = format!(
         "{} {} {}",
@@ -448,12 +493,30 @@ $items = Get-PnpDevice -PresentOnly | Where-Object {
             if expected == "generic-usb" {
                 return None;
             }
-            let (binding_state, detail) = binding_assessment(
+            let (family_state, family_detail) = binding_assessment(
                 &expected,
                 row.service.as_deref(),
                 row.driver_inf.as_deref(),
                 &friendly_name,
             );
+            let (claim_hardware_id_verified, claim_match_scope) =
+                current_inf_hardware_match(row.driver_inf.as_deref(), &hardware_ids);
+            let binding_state = if family_state == "matched" && claim_hardware_id_verified {
+                "matched".to_string()
+            } else {
+                "mismatch".to_string()
+            };
+            let detail = if claim_hardware_id_verified && family_state == "matched" {
+                format!(
+                    "{family_detail} Current INF also advertises a compatible USB hardware ID ({claim_match_scope})."
+                )
+            } else if family_state == "matched" {
+                format!(
+                    "{family_detail} However, BobFWTools could not prove a matching hardware ID inside the currently bound INF ({claim_match_scope})."
+                )
+            } else {
+                family_detail
+            };
             let (physical_device_key, interface_id) = composite_identity(&row.instance_id);
             Some(DriverBindingRecord {
                 instance_id: row.instance_id,
@@ -469,6 +532,8 @@ $items = Get-PnpDevice -PresentOnly | Where-Object {
                 physical_device_key,
                 interface_id,
                 composite_sibling_count: 1,
+                claim_hardware_id_verified,
+                claim_match_scope,
                 binding_state,
                 detail,
             })
@@ -1359,6 +1424,22 @@ mod tests {
         assert_eq!(expected_family(Some(0x05c6), Some(0x9008), ""), "qualcomm-qdloader-9008");
         assert_eq!(expected_family(Some(0x0e8d), Some(0x2000), ""), "mediatek-vcom-preloader");
         assert_eq!(expected_family(Some(0x04e8), Some(0x685d), ""), "samsung-download");
+    }
+
+    #[test]
+    fn hardware_id_matching_distinguishes_exact_interface_from_family() {
+        assert!(hardware_id_matches(
+            r"USB\VID_04E8&PID_685D&MI_02",
+            r"USB\VID_04E8&PID_685D&MI_02"
+        ));
+        assert!(hardware_id_matches(
+            r"USB\VID_04E8&PID_685D&MI_02",
+            r"USB\VID_04E8&PID_685D"
+        ));
+        assert!(!hardware_id_matches(
+            r"USB\VID_04E8&PID_685D&MI_02",
+            r"USB\VID_04E8&PID_685D&MI_01"
+        ));
     }
 
     #[test]
