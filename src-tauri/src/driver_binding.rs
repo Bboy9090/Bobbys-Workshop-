@@ -306,6 +306,19 @@ pub fn driver_binding_inspect_inf(instance_id: String, inf_path: String) -> Resu
     matched.sort();
     matched.dedup();
     let compatible = !matched.is_empty();
+    let _ = crate::audit::record(
+        "driver-binding",
+        "inspect-inf",
+        "read-only",
+        if compatible { "compatible" } else { "blocked" },
+        Some(instance_id.clone()),
+        if compatible {
+            "Selected INF advertised a hardware ID compatible with the exact present USB device."
+        } else {
+            "Selected INF did not advertise a hardware ID compatible with the exact present USB device."
+        },
+        matched.clone(),
+    );
 
     Ok(DriverInfInspection {
         instance_id,
@@ -350,6 +363,16 @@ pub fn driver_binding_stage_and_relatch(
         .cloned()
         .ok_or_else(|| "Exact Windows USB instance disappeared before relatch.".to_string())?;
 
+    let _ = crate::audit::record(
+        "driver-binding",
+        "stage-relatch",
+        "elevated",
+        "started",
+        Some(instance_id.clone()),
+        "Beginning hardware-ID-verified driver staging and exact-device relatch.",
+        inspection.matched_hardware_ids.clone(),
+    );
+
     let staged = pnputil(&["/add-driver", &inspection.inf_path], "pnputil /add-driver")?;
     let remove = pnputil(&["/remove-device", &original.instance_id], "pnputil /remove-device")?;
     let scan = pnputil(&["/scan-devices"], "pnputil /scan-devices")?;
@@ -370,6 +393,29 @@ pub fn driver_binding_stage_and_relatch(
         .map(|record| record.binding_state == "matched")
         .unwrap_or(false);
 
+    let observed_service = rebound.and_then(|record| record.service.clone());
+    let observed_inf = rebound.and_then(|record| record.driver_inf.clone());
+    let mut evidence = vec![staged, remove, scan];
+    evidence.push(format!("verified-claim:{verified_claim}"));
+    evidence.push(format!("observed-service:{}", observed_service.as_deref().unwrap_or("<unavailable>")));
+    evidence.push(format!("observed-inf:{}", observed_inf.as_deref().unwrap_or("<unavailable>")));
+
+    if let Err(error) = crate::audit::record(
+        "driver-binding",
+        "stage-relatch",
+        "elevated",
+        if verified_claim { "verified" } else { "completed-unverified" },
+        Some(instance_id.clone()),
+        if verified_claim {
+            "Compatible INF staged and exact device re-enumerated with a verified compatible driver-family claim."
+        } else {
+            "Compatible INF staged and exact device re-enumerated, but the resulting driver-family claim is not yet verified."
+        },
+        evidence.clone(),
+    ) {
+        evidence.push(format!("audit-write-failed:{error}"));
+    }
+
     Ok(DriverRelatchResult {
         instance_id,
         inf_path: inspection.inf_path,
@@ -377,14 +423,14 @@ pub fn driver_binding_stage_and_relatch(
         released: true,
         rescanned: true,
         verified_claim,
-        observed_service: rebound.and_then(|record| record.service.clone()),
-        observed_inf: rebound.and_then(|record| record.driver_inf.clone()),
+        observed_service,
+        observed_inf,
         detail: if verified_claim {
             "Compatible INF was staged, the exact device node was released, Windows re-enumerated it, and BobFWTools observed a compatible driver-family claim afterward.".to_string()
         } else {
             "Compatible INF was staged and the exact device node was re-enumerated, but BobFWTools has not yet verified that the expected driver family claimed it. Refresh driver claims before continuing.".to_string()
         },
-        evidence: vec![staged, remove, scan],
+        evidence,
     })
 }
 
@@ -411,15 +457,40 @@ pub fn driver_binding_release_and_rescan(instance_id: String) -> Result<DriverRe
         .find(|item| item.instance_id.eq_ignore_ascii_case(&instance_id))
         .ok_or_else(|| "Exact Windows USB instance is no longer present; refresh before releasing it.".to_string())?;
 
+    let _ = crate::audit::record(
+        "driver-binding",
+        "release-rescan",
+        "elevated",
+        "started",
+        Some(instance_id.clone()),
+        "Releasing the exact Windows USB device node without deleting its driver package.",
+        vec![
+            format!("expected-family:{}", record.expected_family),
+            format!("current-inf:{}", record.driver_inf.as_deref().unwrap_or("<unavailable>")),
+            format!("current-service:{}", record.service.as_deref().unwrap_or("<unavailable>")),
+        ],
+    );
     let remove = pnputil(&["/remove-device", &record.instance_id], "pnputil /remove-device")?;
     let scan = pnputil(&["/scan-devices"], "pnputil /scan-devices")?;
+    let mut evidence = vec![remove, scan];
+    if let Err(error) = crate::audit::record(
+        "driver-binding",
+        "release-rescan",
+        "elevated",
+        "completed",
+        Some(instance_id.clone()),
+        "Exact Windows USB device node released and Plug and Play rescan requested.",
+        evidence.clone(),
+    ) {
+        evidence.push(format!("audit-write-failed:{error}"));
+    }
 
     Ok(DriverReleaseResult {
         instance_id,
         released: true,
         rescanned: true,
         detail: "The exact Windows USB device node was released and Plug and Play was rescanned. No driver package was deleted. Windows will select the best matching installed driver on re-enumeration.".to_string(),
-        evidence: vec![remove, scan],
+        evidence,
     })
 }
 
