@@ -613,6 +613,38 @@ export async function listEdlProgrammers(): Promise<EdlProgrammerRecord[]> {
 }
 
 
+export type DriverBindingRecord = {
+  instanceId: string;
+  friendlyName: string;
+  status: string;
+  className: string;
+  service?: string | null;
+  driverInf?: string | null;
+  hardwareIds: string[];
+  vendorId?: number | null;
+  productId?: number | null;
+  expectedFamily: string;
+  bindingState: string;
+  detail: string;
+};
+
+export type DriverReleaseResult = {
+  instanceId: string;
+  released: boolean;
+  rescanned: boolean;
+  detail: string;
+  evidence: string[];
+};
+
+export async function scanDriverBindings(): Promise<DriverBindingRecord[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<DriverBindingRecord[]>('driver_binding_scan');
+}
+
+export async function releaseAndRescanDriverBinding(instanceId: string): Promise<DriverReleaseResult> {
+  return invoke<DriverReleaseResult>('driver_binding_release_and_rescan', { instanceId });
+}
+
 export type WorkstationToolReadiness = {
   id: string;
   present: boolean;
