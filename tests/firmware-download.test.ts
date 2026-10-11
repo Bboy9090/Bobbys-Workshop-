@@ -18,7 +18,7 @@ describe('verified OEM downloader',()=>{
       const receipt=await downloadVerifiedFirmware({url:'https://dl.google.com/test.zip',destination:dest,expectedSha256:SHA,fetcher});
       expect((await readFile(dest)).equals(DATA)).toBe(true);
       expect(receipt.checksumMatched).toBe(true);
-      expect((await readdir(dir)).toEqual(['firmware.zip']));
+      expect(await readdir(dir)).toEqual(['firmware.zip']);
       expect(receipt.flashAuthorized).toBe(false);
       expect(fetcher.mock.calls[0][1]).toMatchObject({redirect:'manual',method:'GET'});
       await expect(downloadVerifiedFirmware({url:'https://dl.google.com/test.zip',destination:dest,expectedSha256:SHA,fetcher})).rejects.toThrow('already exists');
