@@ -70,9 +70,10 @@ function formatBytes(bytes: number) {
 
 type Props = {
   recoveryJobFingerprint?: string | null;
+  readinessCertificatePath?: string | null;
 };
 
-export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props) {
+export default function QualifiedFlashConsole({ recoveryJobFingerprint, readinessCertificatePath }: Props) {
   const [build, setBuild] = useState<QualificationBuildIdentity | null>(null);
   const [fastbootDevices, setFastbootDevices] = useState<string[]>([]);
   const [deviceSerial, setDeviceSerial] = useState('');
@@ -349,6 +350,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint }: Props)
         dossierPath: review.path,
         benchEvidencePath,
         decisionPath,
+        readinessCertificatePath: readinessCertificatePath?.trim() || null,
         expectedRecoveryJobFingerprint: recoveryJobFingerprint,
         deviceSerial,
         reviewer: reviewer.trim(),
