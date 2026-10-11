@@ -17,9 +17,9 @@ export function SamsungDownloadStatus({receipt}: {receipt: SamsungReadOnlyReceip
   const observed = receipt?.detected === true && receipt.exitCode === 0;
   return <section aria-label="Samsung Download Mode diagnostics" className="rounded-lg border border-slate-700 p-4">
     <h2 className="text-sm font-bold">Samsung Download Mode</h2>
-    <p role="status">{observed ? 'Samsung interface detected' : 'No verified Samsung connection'}</p>
+    <p role="status">{observed ? 'Samsung USB observation only' : 'No verified Samsung connection'}</p>
     <dl className="mt-2 grid grid-cols-2 gap-2 text-xs">
-      <dt>USB/Odin detection</dt><dd>{observed ? 'Observed' : 'Not verified'}</dd>
+      <dt>USB observation (not Odin confirmation)</dt><dd>{observed ? 'Observed' : 'Not verified'}</dd>
       <dt>Protocol session</dt><dd>{receipt?.protocolSessionVerified ? 'Reported; verify evidence' : 'Not verified'}</dd>
       <dt>PIT retrieval</dt><dd>{receipt?.pitDownloaded ? 'Reported; verify evidence' : 'Not verified'}</dd>
       <dt>Exact model</dt><dd>{receipt?.modelIdentityVerified ? 'Reported; verify evidence' : 'Not verified'}</dd>
