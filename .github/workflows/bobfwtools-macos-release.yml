@@ -109,6 +109,16 @@ jobs:
           lipo -info "$BIN"
           strings "$BIN" | grep -F "$GITHUB_SHA"
 
+      - name: Create release provenance receipt
+        env:
+          BOBFWTOOLS_RELEASE_LABEL: ${{ inputs.release_label }}
+        run: |
+          set -euo pipefail
+          bash scripts/create-bobfwtools-release-receipt.sh \
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools-DeveloperID.app \
+            bobfwtools-notarization-receipt.json \
+            bobfwtools-release-receipt.json
+
       - name: Upload notarized release artifact
         uses: actions/upload-artifact@v4
         with:
@@ -116,6 +126,7 @@ jobs:
           path: |
             src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools-DeveloperID.app
             bobfwtools-notarization-receipt.json
+            bobfwtools-release-receipt.json
           if-no-files-found: error
 
       - name: Cleanup temporary signing material
