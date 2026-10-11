@@ -532,3 +532,22 @@ describe('Tamper-evident driver rollback snapshots', () => {
     expect(ui).toContain('fingerprint {driverSnapshots[binding.instanceId].snapshot.fingerprint}');
   });
 });
+
+
+describe('Installed driver provenance metadata', () => {
+  it('surfaces provider version and catalog evidence for competing INF packages', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('inf_metadata_value');
+    expect(backend).toContain('provider: inf_metadata_value(&text, "Provider")');
+    expect(backend).toContain('driver_version: inf_metadata_value(&text, "DriverVer")');
+    expect(backend).toContain('catalog_file: inf_metadata_value(&text, "CatalogFile")');
+
+    expect(desktop).toContain('driverVersion?: string | null');
+    expect(ui).toContain("provider {candidate.provider || 'unavailable'}");
+    expect(ui).toContain("version {candidate.driverVersion || 'unavailable'}");
+    expect(ui).toContain("catalog {candidate.catalogFile || 'unavailable'}");
+  });
+});
