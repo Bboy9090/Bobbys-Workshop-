@@ -453,3 +453,23 @@ describe('Windows driver claim stability test', () => {
     expect(ui).toContain('CLAIM STABLE');
   });
 });
+
+
+describe('Protected driver cleanup recommendations', () => {
+  it('protects the active claim and never auto-deletes competing packages', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('driver_binding_cleanup_report');
+    expect(backend).toContain('keep-protected');
+    expect(backend).toContain('candidate-for-cleanup-review');
+    expect(backend).toContain('BobFWTools will never recommend deleting the active claim automatically');
+    expect(backend).not.toContain('driver_binding_cleanup_delete');
+
+    expect(desktop).toContain('getDriverCleanupReport');
+    expect(ui).toContain('Driver cleanup recommendation');
+    expect(ui).toContain('Evidence only');
+    expect(ui).toContain('protected current INF');
+  });
+});
