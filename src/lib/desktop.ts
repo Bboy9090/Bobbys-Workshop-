@@ -1278,15 +1278,18 @@ export async function exportQualificationAuditBundle(
 ): Promise<string | null> {
   if (!isTauriRuntime()) return null;
 
-  const readinessCertificatePath = await open({
-    multiple: false,
-    directory: false,
-    title: 'Optional: choose recovery readiness certificate',
-    filters: [{ name: 'JSON readiness certificate', extensions: ['json'] }],
-  });
+  const suppliedReadiness = input.readinessCertificatePath?.trim() || null;
+  const readinessCertificatePath = suppliedReadiness
+    ? suppliedReadiness
+    : await open({
+        multiple: false,
+        directory: false,
+        title: 'Optional: choose recovery readiness certificate',
+        filters: [{ name: 'JSON readiness certificate', extensions: ['json'] }],
+      });
   const normalizedReadiness =
-    readinessCertificatePath && !Array.isArray(readinessCertificatePath)
-      ? readinessCertificatePath
+    typeof readinessCertificatePath === 'string' && readinessCertificatePath.trim()
+      ? readinessCertificatePath.trim()
       : null;
 
   const destinationPath = await save({
