@@ -38,4 +38,19 @@ describe('BobFWTools macOS signed release contract', () => {
     expect(sign).toContain('BOBFW_EXPECTED_TEAM_ID');
     expect(sign).toContain('Developer ID TeamIdentifier does not match the expected Apple team');
   });
+
+  it('supports a local notarized release without exporting the Developer ID private key', () => {
+    const localRelease = read('scripts/release-bobfwtools-macos-local.sh');
+    const profileSetup = read('scripts/configure-bobfwtools-notary-profile.sh');
+    const runbook = read('docs/BOBFWTOOLS_LOCAL_NOTARIZED_RELEASE.md');
+
+    expect(localRelease).toContain('notarytool history --keychain-profile');
+    expect(localRelease).toContain('notarytool submit');
+    expect(localRelease).toContain('scripts/sign-bobfwtools-developer-id.sh');
+    expect(localRelease).toContain('scripts/create-bobfwtools-release-receipt.sh');
+    expect(localRelease).toContain('scripts/verify-bobfwtools-macos-release-preflight.sh');
+    expect(profileSetup).toContain('notarytool store-credentials');
+    expect(profileSetup).toContain('BOBFW_APP_SPECIFIC_PASSWORD');
+    expect(runbook).toContain('keeps the Developer ID private key in the Mac login keychain');
+  });
 });
