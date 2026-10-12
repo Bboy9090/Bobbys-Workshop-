@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import WorkflowWalkthrough, { type GuidedWorkflowKind } from './WorkflowWalkthrough';
+import HardwareFlowReadiness from './HardwareFlowReadiness';
 import FirmwareProvenanceBuilder from './FirmwareProvenanceBuilder';
 import {
   getCalibrationPartitionAllowlist,
@@ -497,6 +498,8 @@ export default function RepairCommandCenter() {
           Command Center backend error: {error}
         </div>
       )}
+
+      <HardwareFlowReadiness />
 
       <WorkflowWalkthrough kind={walkthroughKind} />
 
