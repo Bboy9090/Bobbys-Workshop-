@@ -922,6 +922,8 @@ describe('One-click hardware flow readiness orchestrator', () => {
     expect(desktop).toContain('Production grant is intentionally unavailable until all prior hardware gates are satisfied');
     expect(desktop).toContain("id: 'device-identity'");
     expect(desktop).toContain('Transport detection is not exact identity proof.');
+    expect(desktop).toContain("title: 'Verified package + exact-device binding'");
+    expect(desktop).toContain('this gate stays missing until one package is bound to the independently proven live model/board/SKU');
     expect(desktop).toContain('satisfied: false');
   });
 });
@@ -971,6 +973,7 @@ describe('Hardware readiness catalog completeness', () => {
     expect(desktop).toContain('representedPolicyIds');
     expect(desktop).toContain('item.activeInBobfwtools && !representedPolicyIds.has(item.id)');
     expect(desktop).toContain('Physical qualification is still pending for this workflow.');
+    expect(desktop).toContain("state: 'blocked'");
 
     expect(ui).toContain('Reserved / inactive workflows');
     expect(ui).toContain('.filter((policy) => !policy.activeInBobfwtools)');
