@@ -30,7 +30,7 @@ import {
   type WorkflowJobRecord,
 } from '../lib/desktop';
 
-type FlowState = 'ready' | 'planning-ready' | 'bench-gated' | 'blocked';
+type FlowState = 'ready' | 'planning-ready' | 'executor-gated' | 'bench-gated' | 'blocked';
 
 type FlowRow = {
   id: string;
@@ -82,6 +82,7 @@ const emptySnapshot = (): SweepSnapshot => ({
 function stateClasses(state: FlowState): string {
   if (state === 'ready') return 'border-emerald-900/60 bg-emerald-950/15 text-emerald-200';
   if (state === 'planning-ready') return 'border-cyan-900/60 bg-cyan-950/15 text-cyan-200';
+  if (state === 'executor-gated') return 'border-fuchsia-900/60 bg-fuchsia-950/15 text-fuchsia-200';
   if (state === 'bench-gated') return 'border-amber-900/60 bg-amber-950/15 text-amber-200';
   return 'border-rose-900/60 bg-rose-950/15 text-rose-200';
 }
@@ -89,6 +90,7 @@ function stateClasses(state: FlowState): string {
 function stateLabel(state: FlowState): string {
   if (state === 'ready') return 'READY';
   if (state === 'planning-ready') return 'PLANNING READY';
+  if (state === 'executor-gated') return 'EXECUTOR GATED';
   if (state === 'bench-gated') return 'BENCH GATED';
   return 'BLOCKED';
 }
@@ -301,12 +303,12 @@ export default function HardwareFlowOrchestrator() {
     rows.push({
       id: 'samsung',
       label: 'Samsung Download Mode',
-      state: samsungDetected ? 'bench-gated' : 'blocked',
+      state: samsungDetected ? 'executor-gated' : 'blocked',
       summary: samsungDetected
         ? 'Samsung Download Mode is physically detected. Firmware inspection/planning may proceed.'
         : 'No Samsung Download Mode target is currently detected.',
       next: samsungDetected
-        ? 'Verify exact stock firmware identity, backup/recovery evidence, then complete the designated-device bench qualification before any destructive write.'
+        ? 'The Samsung lane is planning-only today (executionEnabled=false). Finish exact model/package verification and implement a separately qualified Samsung executor before physical bench qualification can authorize writes.'
         : 'Connect the intended Samsung target in Download Mode.',
       evidence: snapshot.transports
         .filter((item) => item.mode === 'samsung-download')
@@ -314,7 +316,7 @@ export default function HardwareFlowOrchestrator() {
     });
 
     const qcomState: FlowState = qcomCandidate && qcomBundle && snapshot.authorizedProgrammers > 0
-      ? 'bench-gated'
+      ? 'executor-gated'
       : qcomCandidate || qcomBundle
         ? 'planning-ready'
         : 'blocked';
@@ -323,8 +325,8 @@ export default function HardwareFlowOrchestrator() {
       label: 'Qualcomm EDL / Firehose',
       state: qcomState,
       summary: `EDL target=${qcomCandidate}; verified Qualcomm bundle=${qcomBundle}; authorized programmer(s)=${snapshot.authorizedProgrammers}.`,
-      next: qcomState === 'bench-gated'
-        ? 'Software evidence is assembled. Complete repeated-enumeration, endpoint, backup, one-partition bench-write, and post-write verification on the designated device.'
+      next: qcomState === 'executor-gated'
+        ? 'Software evidence is assembled, but Qualcomm recovery execution is still disabled and Firehose is dry-run-only. Implement and separately qualify an authenticated executor before any bench write.'
         : 'Connect the exact EDL target, import an official/authorized hash-bound bundle, and enroll a legitimate authorized programmer.',
       evidence: [
         `edl target=${qcomCandidate}`,
@@ -333,14 +335,14 @@ export default function HardwareFlowOrchestrator() {
       ],
     });
 
-    const mtkState: FlowState = mtkCandidate && mtkBundle ? 'bench-gated' : mtkCandidate || mtkBundle ? 'planning-ready' : 'blocked';
+    const mtkState: FlowState = mtkCandidate && mtkBundle ? 'executor-gated' : mtkCandidate || mtkBundle ? 'planning-ready' : 'blocked';
     rows.push({
       id: 'mediatek',
       label: 'MediaTek BROM / Preloader',
       state: mtkState,
       summary: `MediaTek recovery target=${mtkCandidate}; verified MediaTek bundle=${mtkBundle}.`,
-      next: mtkState === 'bench-gated'
-        ? 'Use only legitimate OEM/service DA/auth material and complete designated-device physical qualification before destructive execution.'
+      next: mtkState === 'executor-gated'
+        ? 'Use only legitimate OEM/service DA/auth material. The current MediaTek lane is planning-only; implement and qualify a real authenticated executor before destructive bench qualification.'
         : 'Connect the target in BROM/Preloader and import an official/authorized hash-bound package.',
       evidence: [`mtk target=${mtkCandidate}`, `verified bundle=${mtkBundle}`],
     });
@@ -418,6 +420,82 @@ export default function HardwareFlowOrchestrator() {
       ) ?? [],
     });
 
+    const policyById = (id: string) => snapshot.policies.find((policy) => policy.id === id);
+
+    const calibrationBackup = policyById('calibration.backup');
+    rows.push({
+      id: 'calibration-backup',
+      label: 'Calibration / identity partition backup',
+      state: calibrationBackup?.activeInBobfwtools ? 'planning-ready' : 'blocked',
+      summary: calibrationBackup?.activeInBobfwtools
+        ? 'Allowlisted calibration backup policy is active, read-oriented, audit-logged, and requires legitimate block/service access.'
+        : 'Calibration backup policy is not active.',
+      next: calibrationBackup?.activeInBobfwtools
+        ? 'Prove authorization and legitimate block/service access, then capture same-device hash-bound backups before any restore-capable work.'
+        : 'Enable only the approved allowlisted backup lane; do not add identity-editing behavior.',
+      evidence: calibrationBackup ? [`${calibrationBackup.id}:${calibrationBackup.risk}:physical=${calibrationBackup.physicallyQualified}`] : [],
+    });
+
+    const calibrationRestore = policyById('calibration.restore');
+    rows.push({
+      id: 'calibration-restore',
+      label: 'Calibration restore',
+      state: calibrationRestore?.activeInBobfwtools
+        ? (calibrationRestore.physicallyQualified ? 'bench-gated' : 'executor-gated')
+        : 'blocked',
+      summary: calibrationRestore?.activeInBobfwtools
+        ? 'Same-device restore policy is active, destructive, and still not physically qualified.'
+        : 'Calibration restore policy is not active.',
+      next: calibrationRestore?.activeInBobfwtools
+        ? 'Require a verified same-device backup manifest, hash/size match, exact partition binding, rollback evidence, and designated-device bench qualification. Never expose IMEI/identity rewriting.'
+        : 'Keep restore unavailable until the protected same-device evidence path is enabled.',
+      evidence: calibrationRestore ? [`${calibrationRestore.id}:${calibrationRestore.risk}:physical=${calibrationRestore.physicallyQualified}`] : [],
+    });
+
+    const storageIdentify = policyById('hardware.storage-identify');
+    rows.push({
+      id: 'storage-identify',
+      label: 'ISP / JTAG / eMMC / UFS storage identification',
+      state: storageIdentify?.activeInBobfwtools ? 'planning-ready' : 'blocked',
+      summary: storageIdentify?.activeInBobfwtools
+        ? 'Hardware-service planning is active and intentionally begins read-only.'
+        : 'Hardware storage-identification planning is inactive.',
+      next: storageIdentify?.activeInBobfwtools
+        ? 'Capture board/storage evidence, exact chip geometry, voltage/pinout references, and backup strategy before any invasive bench operation.'
+        : 'Keep invasive hardware work disabled until a read-only evidence profile exists.',
+      evidence: storageIdentify ? [`${storageIdentify.id}:${storageIdentify.risk}:physical=${storageIdentify.physicallyQualified}`] : [],
+    });
+
+    const chipOff = policyById('hardware.chip-off-plan');
+    rows.push({
+      id: 'chip-off',
+      label: 'Chip-off / reball planning',
+      state: chipOff?.activeInBobfwtools ? 'executor-gated' : 'blocked',
+      summary: chipOff?.activeInBobfwtools
+        ? 'Chip-off/reball is planning-only and not physically qualified.'
+        : 'Chip-off/reball planning is inactive.',
+      next: chipOff?.activeInBobfwtools
+        ? 'Require designated bench procedures, board-specific thermal profile, storage backup/read verification, and independent physical qualification before execution.'
+        : 'Do not expose chip-off execution from generic desktop automation.',
+      evidence: chipOff ? [`${chipOff.id}:${chipOff.risk}:physical=${chipOff.physicallyQualified}`] : [],
+    });
+
+    const bootforgeMedia = policyById('bootforge.media');
+    rows.push({
+      id: 'bootforge-media',
+      label: 'BootForge removable-media provisioning',
+      state: bootforgeMedia?.activeInBobfwtools
+        ? (bootforgeMedia.physicallyQualified ? 'bench-gated' : 'executor-gated')
+        : 'blocked',
+      summary: bootforgeMedia?.activeInBobfwtools
+        ? 'Destructive removable-media provisioning is active in policy but remains physically unqualified.'
+        : 'BootForge media provisioning is inactive.',
+      next: bootforgeMedia?.activeInBobfwtools
+        ? 'Require target re-identification immediately before each destructive step, backup/rollback evidence, and designated-media qualification.'
+        : 'Keep media writes disabled.',
+      evidence: bootforgeMedia ? [`${bootforgeMedia.id}:${bootforgeMedia.risk}:physical=${bootforgeMedia.physicallyQualified}`] : [],
+    });
+
     rows.push({
       id: 'policy',
       label: 'Safety / approval policy',
@@ -447,6 +525,7 @@ export default function HardwareFlowOrchestrator() {
   const counts = useMemo(() => ({
     ready: flows.filter((flow) => flow.state === 'ready').length,
     planning: flows.filter((flow) => flow.state === 'planning-ready').length,
+    executor: flows.filter((flow) => flow.state === 'executor-gated').length,
     bench: flows.filter((flow) => flow.state === 'bench-gated').length,
     blocked: flows.filter((flow) => flow.state === 'blocked').length,
   }), [flows]);
@@ -497,7 +576,7 @@ export default function HardwareFlowOrchestrator() {
 
       {snapshot.scannedAt > 0 && (
         <>
-          <div className="mt-4 grid gap-2 sm:grid-cols-4">
+          <div className="mt-4 grid gap-2 sm:grid-cols-5">
             <div className="rounded border border-slate-800 bg-black/20 p-3">
               <div className="text-[10px] uppercase tracking-wide text-slate-600">Ready</div>
               <div className="mt-1 text-xl font-semibold text-emerald-300">{counts.ready}</div>
@@ -505,6 +584,10 @@ export default function HardwareFlowOrchestrator() {
             <div className="rounded border border-slate-800 bg-black/20 p-3">
               <div className="text-[10px] uppercase tracking-wide text-slate-600">Planning ready</div>
               <div className="mt-1 text-xl font-semibold text-cyan-300">{counts.planning}</div>
+            </div>
+            <div className="rounded border border-slate-800 bg-black/20 p-3">
+              <div className="text-[10px] uppercase tracking-wide text-slate-600">Executor gated</div>
+              <div className="mt-1 text-xl font-semibold text-fuchsia-300">{counts.executor}</div>
             </div>
             <div className="rounded border border-slate-800 bg-black/20 p-3">
               <div className="text-[10px] uppercase tracking-wide text-slate-600">Bench gated</div>
