@@ -686,3 +686,23 @@ describe('automated read-only Windows driver prequalification', () => {
     expect(panel).toContain('competing-driver claim churn');
   });
 });
+
+
+describe('exact firmware target identity gate', () => {
+  it('exposes the native preflight API and refuses model-only destructive approval', () => {
+    const desktop = read('src/lib/desktop.ts');
+    const panel = read('src/components/HardwareFlowOrchestrator.tsx');
+    const preflight = read('libs/bootforgeusb/src/preflight.rs');
+
+    expect(desktop).toContain('runFirmwareTargetPreflight');
+    expect(desktop).toContain('firmware_target_preflight');
+    expect(desktop).toContain('partitionLayoutId');
+    expect(panel).toContain('Exact firmware target identity preflight');
+    expect(panel).toContain('destructive layout identity is never inferred from chipset/model alone');
+    expect(panel).toContain('firmware_target_preflight with destructive=true');
+
+    expect(preflight).toContain('destructive flash requires both device and firmware partition-layout identifiers');
+    expect(preflight).toContain('model mismatch');
+    expect(preflight).toContain('bootloader rollback blocked');
+  });
+});
