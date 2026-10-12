@@ -918,3 +918,21 @@ describe('One-click hardware flow readiness orchestrator', () => {
     expect(desktop).toContain('Production grant is intentionally unavailable until all prior hardware gates are satisfied');
   });
 });
+
+
+describe('Automatic target selection and exact-device firmware withholding', () => {
+  it('auto-selects the only live repair target and clears stale selections', () => {
+    const commandCenter = read('src/components/RepairCommandCenter.tsx');
+
+    expect(commandCenter).toContain('targets.length === 1 ? targets[0].key :');
+    expect(commandCenter).toContain('targets.some((target) => target.key === current)');
+  });
+
+  it('does not expose vendor-only firmware as an exact-device recovery match', () => {
+    const desktop = read('src/lib/desktop.ts');
+
+    expect(desktop).toContain('intentionally withheld until exact device model/board/SKU identity is independently proven');
+    expect(desktop).toContain('Prove exact device model/board/SKU first');
+    expect(desktop).toContain("firmwareCandidates: []");
+  });
+});
