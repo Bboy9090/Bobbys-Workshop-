@@ -9,9 +9,14 @@ fail() {
   exit 1
 }
 
-: "${APPLE_ID:?APPLE_ID is required}"
-: "${APPLE_APP_SPECIFIC_PASSWORD:?APPLE_APP_SPECIFIC_PASSWORD is required}"
-: "${APPLE_TEAM_ID:?APPLE_TEAM_ID is required}"
+# Prefer a macOS Keychain-backed notarytool profile; legacy environment credentials
+# remain available only for explicitly configured CI runners.
+NOTARY_KEYCHAIN_PROFILE="${BOBFW_NOTARY_KEYCHAIN_PROFILE:-}"
+if [[ -z "$NOTARY_KEYCHAIN_PROFILE" ]]; then
+  : "${APPLE_ID:?APPLE_ID is required when BOBFW_NOTARY_KEYCHAIN_PROFILE is unset}"
+  : "${APPLE_APP_SPECIFIC_PASSWORD:?APPLE_APP_SPECIFIC_PASSWORD is required when BOBFW_NOTARY_KEYCHAIN_PROFILE is unset}"
+  : "${APPLE_TEAM_ID:?APPLE_TEAM_ID is required when BOBFW_NOTARY_KEYCHAIN_PROFILE is unset}"
+fi
 
 [[ -d "$APP_PATH" ]] || fail "signed app not found: $APP_PATH"
 
@@ -23,7 +28,11 @@ ZIP_PATH="$WORK_DIR/BobFWTools-notarization.zip"
 
 ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
 
-xcrun notarytool submit "$ZIP_PATH"   --apple-id "$APPLE_ID"   --password "$APPLE_APP_SPECIFIC_PASSWORD"   --team-id "$APPLE_TEAM_ID"   --wait   --output-format json > "$RECEIPT_PATH"
+if [[ -n "$NOTARY_KEYCHAIN_PROFILE" ]]; then
+  xcrun notarytool submit "$ZIP_PATH" --keychain-profile "$NOTARY_KEYCHAIN_PROFILE" --wait --output-format json > "$RECEIPT_PATH"
+else
+  xcrun notarytool submit "$ZIP_PATH" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait --output-format json > "$RECEIPT_PATH"
+fi
 
 STATUS="$(python3 - "$RECEIPT_PATH" <<'PY'
 import json, sys
