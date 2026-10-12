@@ -509,3 +509,59 @@ describe('production command surface excludes unqualified destructive flash', ()
     expect(cargo).toContain('qualified-flash = []');
   });
 });
+
+
+describe('hardware flow approval orchestrator', () => {
+  it('runs a consolidated non-destructive readiness sweep across every major hardware lane', () => {
+    const app = read('src/App.tsx');
+    const panel = read('src/components/HardwareFlowOrchestrator.tsx');
+
+    expect(app).toContain('HardwareFlowOrchestrator');
+    expect(panel).toContain('Hardware Flow Approval Matrix');
+    expect(panel).toContain('Run full safe sweep');
+    expect(panel).toContain('Automate safe setup');
+    expect(panel).toContain('initializeWorkstation');
+    expect(panel).toContain('prepareAdb');
+    expect(panel).toContain('getWorkstationReadiness');
+    expect(panel).toContain('getWorkflowCapabilities');
+    expect(panel).toContain('diagnosePhone');
+    expect(panel).toContain('scanTransportDevices');
+    expect(panel).toContain('scanRecoveryCandidates');
+    expect(panel).toContain('scanFirmwareLibrary');
+    expect(panel).toContain('getQualificationBuildIdentity');
+    expect(panel).toContain('getQualifiedFastbootDevices');
+    expect(panel).toContain('scanDriverBindings');
+    expect(panel).toContain('getWorkflowPolicyCatalog');
+
+    for (const lane of [
+      'USB + device diagnostics',
+      'ADB authorized service',
+      'Fastboot mode control',
+      'Samsung Download Mode',
+      'Qualcomm EDL / Firehose',
+      'MediaTek BROM / Preloader',
+      'Verified firmware library',
+      'Windows exact-interface driver ownership',
+      'Qualified destructive writer',
+      'One-click safe automation',
+      'Safety / approval policy',
+    ]) {
+      expect(panel).toContain(lane);
+    }
+
+    expect(panel).toContain('bench-gated');
+    expect(panel).toContain('complete the designated-device bench qualification');
+    expect(panel).toContain('do not convert this gate into a software-only approval');
+    expect(panel).toContain('No destructive command is executed by this panel');
+  });
+
+  it('requires verified fingerprinted firmware and physical evidence before destructive readiness', () => {
+    const panel = read('src/components/HardwareFlowOrchestrator.tsx');
+
+    expect(panel).toContain('bundle.planningReady && bundle.vendorHint === \'qualcomm\' && Boolean(bundle.packageFingerprint)');
+    expect(panel).toContain('bundle.planningReady && bundle.vendorHint === \'mediatek\' && Boolean(bundle.packageFingerprint)');
+    expect(panel).toContain('one-partition bench-write');
+    expect(panel).toContain('dossier → one-partition bench trial → bench evidence → human decision → audit bundle → short-lived production grant');
+    expect(panel).toContain('restricted/bypass-class workflow exposure');
+  });
+});
