@@ -508,6 +508,33 @@ export async function getHardwareExecutorCapabilities(): Promise<HardwareExecuto
   return invoke<HardwareExecutorCapability[]>('hardware_executor_capabilities');
 }
 
+export type HardwareQualificationCandidateInput = {
+  flowId: string;
+  executorState: string;
+  deviceEvidence: string[];
+  packageFingerprints: string[];
+  workstationReady: boolean;
+  driverEvidence: string[];
+  requiredPhysicalChecks: string[];
+  blockers: string[];
+};
+
+export async function exportHardwareQualificationCandidate(
+  candidate: HardwareQualificationCandidateInput,
+): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const destinationPath = await save({
+    title: 'Export BobFWTools hardware qualification candidate',
+    defaultPath: `bobfwtools-${candidate.flowId}-qualification-candidate.json`,
+    filters: [{ name: 'JSON qualification candidate', extensions: ['json'] }],
+  });
+  if (!destinationPath) return null;
+  return invoke<string>('hardware_qualification_candidate_export', {
+    candidate,
+    destinationPath,
+  });
+}
+
 export type HardwareApprovalGapItem = {
   id: string;
   label: string;
