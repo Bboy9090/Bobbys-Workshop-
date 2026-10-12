@@ -493,6 +493,21 @@ export async function runUsbCableDoctor(targetDeviceUid?: string | null): Promis
 }
 
 
+export type HardwareExecutorCapability = {
+  id: string;
+  protocol: string;
+  implementationState: string;
+  compiled: boolean;
+  destructive: boolean;
+  physicalQualificationRequired: boolean;
+  detail: string;
+};
+
+export async function getHardwareExecutorCapabilities(): Promise<HardwareExecutorCapability[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<HardwareExecutorCapability[]>('hardware_executor_capabilities');
+}
+
 export type HardwareApprovalGapItem = {
   id: string;
   label: string;
