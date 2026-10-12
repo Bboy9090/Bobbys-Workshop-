@@ -871,3 +871,50 @@ describe('macOS signed notarized release contract', () => {
     expect(signScript).toContain('Developer ID TeamIdentifier does not match the expected Apple team');
   });
 });
+
+
+describe('One-click hardware flow readiness orchestrator', () => {
+  it('runs safe probes together and classifies all supported service lanes', () => {
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/HardwareFlowReadiness.tsx');
+    const commandCenter = read('src/components/RepairCommandCenter.tsx');
+
+    expect(desktop).toContain('buildHardwareFlowReadinessReport');
+    expect(desktop).toContain('Promise.all([');
+    expect(desktop).toContain("id: 'adb-service'");
+    expect(desktop).toContain("id: 'fastboot'");
+    expect(desktop).toContain("id: 'mtp-usb'");
+    expect(desktop).toContain("id: 'samsung-download'");
+    expect(desktop).toContain("id: 'qualcomm-edl'");
+    expect(desktop).toContain("id: 'mediatek-download'");
+    expect(desktop).toContain('bundle.planningReady && Boolean(bundle.packageFingerprint)');
+    expect(desktop).toContain('Authorized programmer/service-loader evidence and designated-device physical qualification remain required before writes');
+
+    expect(ui).toContain('Run full safe hardware audit');
+    expect(ui).toContain('SOFTWARE READY');
+    expect(ui).toContain('Hardware write approval gates');
+    expect(ui).toContain('REQUIRED FOR WRITE LANES');
+    expect(commandCenter).toContain('<HardwareFlowReadiness />');
+  });
+
+  it('keeps destructive approval as provable gates instead of an automatic bypass', () => {
+    const desktop = read('src/lib/desktop.ts');
+
+    for (const gate of [
+      'workstation',
+      'driver-claim',
+      'device-identity',
+      'verified-firmware',
+      'recovery-job',
+      'backup-rollback',
+      'qualification-dossier',
+      'bench-evidence',
+      'human-decision',
+      'audit-bundle',
+      'write-authority',
+    ]) {
+      expect(desktop).toContain(`id: '${gate}'`);
+    }
+    expect(desktop).toContain('Production grant is intentionally unavailable until all prior hardware gates are satisfied');
+  });
+});
