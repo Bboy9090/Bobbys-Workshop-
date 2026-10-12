@@ -493,6 +493,41 @@ export async function runUsbCableDoctor(targetDeviceUid?: string | null): Promis
 }
 
 
+export type HardwareApprovalGapItem = {
+  id: string;
+  label: string;
+  state: 'ready' | 'planning-ready' | 'executor-gated' | 'bench-gated' | 'blocked';
+  summary: string;
+  next: string;
+  evidence: string[];
+};
+
+export type HardwareApprovalGapReportInput = {
+  scannedAt: number;
+  counts: {
+    ready: number;
+    planning: number;
+    executor: number;
+    bench: number;
+    blocked: number;
+  };
+  flows: HardwareApprovalGapItem[];
+  sweepErrors: string[];
+};
+
+export async function exportHardwareApprovalGapReport(
+  report: HardwareApprovalGapReportInput,
+): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const destinationPath = await save({
+    title: 'Export BobFWTools hardware approval gap report',
+    defaultPath: 'bobfwtools-hardware-approval-gap.json',
+    filters: [{ name: 'JSON approval gap report', extensions: ['json'] }],
+  });
+  if (!destinationPath) return null;
+  return invoke<string>('hardware_approval_gap_export', { report, destinationPath });
+}
+
 export type WorkflowRiskLevel = 'read-only' | 'low' | 'elevated' | 'destructive' | 'restricted';
 
 export type WorkflowPolicy = {
