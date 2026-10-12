@@ -648,7 +648,11 @@ describe('Recovery lane verified firmware selection', () => {
 
     expect(app).toContain('expectedRecoveryVendor');
     expect(app).toContain('laneVerifiedFirmwareBundles');
-    expect(app).toContain('bundle.planningReady && bundle.vendorHint === expectedRecoveryVendor');
+    expect(app).toContain('bundle.planningReady &&');
+    expect(app).toContain('bundle.vendorHint === expectedRecoveryVendor &&');
+    expect(app).toContain('sameIdentityValue(bundle.model, lockedRecoveryIdentity.model)');
+    expect(app).toContain('sameIdentityValue(bundle.board, lockedRecoveryIdentity.board)');
+    expect(app).toContain('sameIdentityValue(bundle.sku, lockedRecoveryIdentity.sku)');
     expect(app).toContain('setSelectedVerifiedBundle((current) =>');
     expect(app).toContain("return laneVerifiedFirmwareBundles[0]?.directory ?? ''");
     expect(app).toContain('Switching recovery lanes automatically clears or replaces any package from the other vendor');
@@ -916,6 +920,9 @@ describe('One-click hardware flow readiness orchestrator', () => {
       expect(desktop).toContain(`id: '${gate}'`);
     }
     expect(desktop).toContain('Production grant is intentionally unavailable until all prior hardware gates are satisfied');
+    expect(desktop).toContain("id: 'device-identity'");
+    expect(desktop).toContain('Transport detection is not exact identity proof.');
+    expect(desktop).toContain('satisfied: false');
   });
 });
 
