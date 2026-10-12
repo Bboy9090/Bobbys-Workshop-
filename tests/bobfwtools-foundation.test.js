@@ -584,3 +584,39 @@ describe('safe automation batch boundaries', () => {
     expect(panel).not.toContain("startWorkflowJob('adb-factory-reset-settings')");
   });
 });
+
+
+describe('executor implementation gate truthfulness', () => {
+  it('distinguishes planning-only protocol lanes from physically bench-gated executors', () => {
+    const panel = read('src/components/HardwareFlowOrchestrator.tsx');
+    const samsung = read('libs/bootforgeusb/src/planner.rs');
+    const recovery = read('libs/bootforgeusb/src/recovery.rs');
+    const firehose = read('libs/bootforgeusb/src/firehose_plan.rs');
+
+    expect(panel).toContain('executor-gated');
+    expect(panel).toContain('EXECUTOR GATED');
+    expect(panel).toContain('executionEnabled=false');
+    expect(panel).toContain('Firehose is dry-run-only');
+    expect(panel).toContain('MediaTek lane is planning-only');
+
+    expect(samsung).toContain('execution_enabled: false');
+    expect(recovery).toContain('execution_enabled: false');
+    expect(firehose).toContain('dry_run_only: true');
+    expect(firehose).toContain('executor_qualified: false');
+  });
+
+  it('covers calibration, hardware-service, chip-off, and removable-media policy lanes', () => {
+    const panel = read('src/components/HardwareFlowOrchestrator.tsx');
+
+    expect(panel).toContain('Calibration / identity partition backup');
+    expect(panel).toContain('Calibration restore');
+    expect(panel).toContain('ISP / JTAG / eMMC / UFS storage identification');
+    expect(panel).toContain('Chip-off / reball planning');
+    expect(panel).toContain('BootForge removable-media provisioning');
+    expect(panel).toContain("policyById('calibration.backup')");
+    expect(panel).toContain("policyById('calibration.restore')");
+    expect(panel).toContain("policyById('hardware.storage-identify')");
+    expect(panel).toContain("policyById('hardware.chip-off-plan')");
+    expect(panel).toContain("policyById('bootforge.media')");
+  });
+});
