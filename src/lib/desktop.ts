@@ -1102,7 +1102,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       title: policy.category + ' · ' + policy.id,
       workflowPolicyId: policy.id,
       physicallyQualified: policy.physicallyQualified,
-      state: policy.physicallyQualified ? 'guided' : 'blocked',
+      state: 'blocked',
       automation: destructiveLike ? 'qualified-destructive' : 'guided-safe-action',
       detected: false,
       applicableDevices: [],
@@ -1168,7 +1168,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       };
     });
 
-  const packageBoundFirmwareReady = verifiedBundles.length > 0;
+  const packageBoundFirmwareIndexed = verifiedBundles.length > 0;
   const approvalGates: HardwareApprovalGate[] = [
     {
       id: 'workstation',
@@ -1197,11 +1197,11 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     },
     {
       id: 'verified-firmware',
-      title: 'Verified package + package fingerprint',
-      satisfied: packageBoundFirmwareReady,
+      title: 'Verified package + exact-device binding',
+      satisfied: false,
       requiredForWrites: true,
-      detail: packageBoundFirmwareReady
-        ? `${verifiedBundles.length} planning-ready bundle(s) have deterministic package fingerprints.`
+      detail: packageBoundFirmwareIndexed
+        ? `${verifiedBundles.length} planning-ready bundle(s) are indexed, but this gate stays missing until one package is bound to the independently proven live model/board/SKU and its deterministic fingerprint is revalidated for the recovery job.`
         : 'No planning-ready firmware bundle with a deterministic package fingerprint is available.',
     },
     {
