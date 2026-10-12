@@ -954,3 +954,19 @@ describe('Hardware readiness workflow policy binding', () => {
     expect(ui).toContain("lane.physicallyQualified ? 'complete' : 'pending'");
   });
 });
+
+
+describe('Hardware readiness catalog completeness', () => {
+  it('accounts for every active workflow and shows reserved workflows explicitly', () => {
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/HardwareFlowReadiness.tsx');
+
+    expect(desktop).toContain('representedPolicyIds');
+    expect(desktop).toContain('item.activeInBobfwtools && !representedPolicyIds.has(item.id)');
+    expect(desktop).toContain('Physical qualification is still pending for this workflow.');
+
+    expect(ui).toContain('Reserved / inactive workflows');
+    expect(ui).toContain('.filter((policy) => !policy.activeInBobfwtools)');
+    expect(ui).toContain('RESERVED');
+  });
+});
