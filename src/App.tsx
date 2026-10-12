@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import RepairCommandCenter from './components/RepairCommandCenter';
+import HardwareFlowOrchestrator from './components/HardwareFlowOrchestrator';
 import OperatorTimeline from './components/OperatorTimeline';
 import AuditLedger from './components/AuditLedger';
 import RecoverySafetyTools from './components/RecoverySafetyTools';
@@ -1062,6 +1063,8 @@ export default function App() {
         </aside>
 
         <main className="min-w-0 flex-1 overflow-y-auto p-5">
+          <HardwareFlowOrchestrator />
+
           {nativeError && (
             <div className="mb-4 rounded border border-red-900 bg-red-950/30 p-3 text-sm text-red-200">
               {nativeError}
