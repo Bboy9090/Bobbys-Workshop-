@@ -1034,13 +1034,15 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       automation: 'qualified-destructive',
       detected: qualcommRecovery.length > 0,
       applicableDevices: qualcommRecovery.map((candidate) => candidate.deviceUid),
-      firmwareCandidates: qualcommBundles.map((bundle) => bundle.directory),
+      firmwareCandidates: [],
       blockers: [
         ...(!qualcommRecovery.length ? ['No Qualcomm EDL 9008 recovery target detected.'] : []),
-        ...(!qualcommBundles.length ? ['No verified Qualcomm firmware bundle with provenance + package fingerprint is available.'] : []),
+        ...(!qualcommBundles.length
+          ? ['No verified Qualcomm firmware bundle with provenance + package fingerprint is available.']
+          : [`${qualcommBundles.length} verified Qualcomm bundle(s) are indexed but intentionally withheld until exact device model/board/SKU identity is independently proven.`]),
         'Authorized programmer/service-loader evidence and designated-device physical qualification remain required before writes.',
       ],
-      nextSteps: ['Auto-select only verified Qualcomm bundles, prepare a package-bound recovery job, export evidence, then stop at qualification.'],
+      nextSteps: ['Prove exact device model/board/SKU first; only then may a matching verified Qualcomm package be promoted into recovery planning.'],
     },
     {
       id: 'mediatek-download',
@@ -1049,13 +1051,15 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       automation: 'qualified-destructive',
       detected: mediatekRecovery.length > 0,
       applicableDevices: mediatekRecovery.map((candidate) => candidate.deviceUid),
-      firmwareCandidates: mediatekBundles.map((bundle) => bundle.directory),
+      firmwareCandidates: [],
       blockers: [
         ...(!mediatekRecovery.length ? ['No MediaTek Preloader/Download recovery target detected.'] : []),
-        ...(!mediatekBundles.length ? ['No verified MediaTek firmware bundle with provenance + package fingerprint is available.'] : []),
+        ...(!mediatekBundles.length
+          ? ['No verified MediaTek firmware bundle with provenance + package fingerprint is available.']
+          : [`${mediatekBundles.length} verified MediaTek bundle(s) are indexed but intentionally withheld until exact device model/board/SKU identity is independently proven.`]),
         'Legitimate OEM/service DA/auth requirements and designated-device physical qualification remain required before writes.',
       ],
-      nextSteps: ['Auto-select only verified MediaTek bundles, prepare a package-bound recovery job, export evidence, then stop at qualification.'],
+      nextSteps: ['Prove exact device model/board/SKU first; only then may a matching verified MediaTek package be promoted into recovery planning.'],
     },
   ];
 
