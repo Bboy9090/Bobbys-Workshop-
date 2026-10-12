@@ -90,6 +90,7 @@ type LockedRecoveryFirmwareIdentity = {
   board: string;
   sku: string;
   source: string;
+  trustedForWrite: boolean;
 };
 
 function sameIdentityValue(a?: string | null, b?: string | null): boolean {
@@ -154,7 +155,7 @@ export default function App() {
     : 'mediatek';
 
   const laneVerifiedFirmwareBundles = useMemo(() => {
-    if (!lockedRecoveryIdentity) return [];
+    if (!lockedRecoveryIdentity?.trustedForWrite) return [];
     return verifiedFirmwareBundles.filter(
       (bundle) =>
         bundle.planningReady &&
@@ -200,10 +201,11 @@ export default function App() {
           board,
           sku,
           source: `adb:${adbSelectedSerial}`,
+          trustedForWrite: true,
         });
       } else {
         setLockedRecoveryIdentity(null);
-        setNativeError('ADB identity was only partially available. Verify/fill model, board, and SKU, then lock the exact identity manually.');
+        setNativeError('ADB identity was only partially available. You may fill the missing fields for planning, but manual identity entry will not unlock write-qualified firmware.');
       }
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
@@ -218,7 +220,13 @@ export default function App() {
       setNativeError('Exact firmware identity requires model, board, and SKU before a package can be selected.');
       return;
     }
-    setLockedRecoveryIdentity({ model, board, sku, source: 'operator-verified' });
+    setLockedRecoveryIdentity({
+      model,
+      board,
+      sku,
+      source: 'operator-asserted',
+      trustedForWrite: false,
+    });
     setNativeError(null);
   };
 
@@ -937,8 +945,8 @@ export default function App() {
       if (!bundle.packageFingerprint) {
         throw new Error('The selected firmware bundle has no deterministic package fingerprint. Rescan or rebuild provenance before recovery handoff.');
       }
-      if (!lockedRecoveryIdentity) {
-        throw new Error('Lock the exact device model/board/SKU identity before selecting firmware for recovery.');
+      if (!lockedRecoveryIdentity?.trustedForWrite) {
+        throw new Error('Write-qualified recovery requires independently captured exact device identity. Manual model/board/SKU entry is planning-only.');
       }
       if (
         !sameIdentityValue(bundle.model, lockedRecoveryIdentity.model) ||
