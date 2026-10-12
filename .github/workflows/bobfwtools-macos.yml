@@ -16,12 +16,13 @@ jobs:
   macos-core:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Use Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "24.x"
+          package-manager-cache: false
 
       - name: Install frontend dependencies
         run: npm install
@@ -89,7 +90,7 @@ jobs:
           fi
 
       - name: Upload BobFWTools app artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: BobFWTools-universal-macOS-unsigned
           path: src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
@@ -111,7 +112,7 @@ jobs:
           strings "$BIN" | grep -F "bootforge_qualified_fastboot_devices"
 
       - name: Upload qualified BobFWTools app artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: BobFWTools-universal-macOS-qualified-unsigned
           path: src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app

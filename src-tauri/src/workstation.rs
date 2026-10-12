@@ -91,6 +91,10 @@ fn expected_paths() -> Vec<(&'static str, PathBuf)> {
     vec![
         ("root", root.clone()),
         ("firmware", root.join("firmware")),
+        ("firmware-inbox", root.join("firmware").join("inbox")),
+        ("firmware-qualcomm", root.join("firmware").join("qualcomm")),
+        ("firmware-mediatek", root.join("firmware").join("mediatek")),
+        ("firmware-quarantine", root.join("firmware").join("quarantine")),
         ("backups", root.join("backups")),
         ("logs", root.join("logs")),
         ("manifests", root.join("manifests")),

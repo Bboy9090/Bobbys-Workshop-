@@ -136,6 +136,13 @@ export default function RecoverySafetyTools() {
           Read-only backup only. BobFWTools resolves the allowlisted block path, reads the exact partition size,
           streams the partition directly to the workstation, verifies the byte count, and writes a SHA-256 manifest.
         </p>
+        <div className="mt-3 rounded border border-cyan-900/50 bg-cyan-950/20 p-3 text-[11px] leading-5 text-cyan-100">
+          <div className="font-semibold">Backup walkthrough</div>
+          <div className="mt-1 text-cyan-200/80">
+            1. Unlock and authorize the exact ADB phone. 2. Confirm its serial here. 3. Select only an allowlisted calibration partition.
+            4. Choose a workstation folder you can identify later. 5. Create the backup and keep both the image and SHA-256 manifest together.
+          </div>
+        </div>
 
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
           <label className="text-xs text-slate-500">
@@ -176,7 +183,14 @@ export default function RecoverySafetyTools() {
         </button>
 
         {backupError && (
-          <div className="mt-3 rounded border border-red-900 bg-red-950/20 p-3 text-xs text-red-300">{backupError}</div>
+          <div className="mt-3 rounded border border-red-900 bg-red-950/20 p-3 text-xs text-red-300">
+            <div className="font-semibold">Backup blocked</div>
+            <div className="mt-1">{backupError}</div>
+            <div className="mt-2 text-[11px] leading-5 text-red-200/80">
+              Next step: verify the selected phone is still authorized, reconnect it if needed, reselect the allowlisted partition, and retry.
+              Do not continue to a write workflow without a verified backup when the workflow requires one.
+            </div>
+          </div>
         )}
 
         {backupResult && (
@@ -202,6 +216,16 @@ export default function RecoverySafetyTools() {
           Inspect .elf/.mbn programmers, record their SHA-256 and size, and explicitly enroll only files from
           an authorized OEM/service source. A changed or missing file automatically loses authorization.
         </p>
+        <div className="mt-3 rounded border border-violet-900/50 bg-violet-950/20 p-3 text-[11px] leading-5 text-violet-100">
+          <div className="font-semibold">Programmer enrollment walkthrough</div>
+          <div className="mt-1 text-violet-200/80">
+            1. Enter the target chipset/device family. 2. Choose only the OEM/service programmer supplied for that family.
+            3. Inspect and record its SHA-256. 4. Enter where the authorization came from. 5. Enroll only after the file and source are both verified.
+          </div>
+          <div className="mt-1 text-amber-200">
+            Stop if the loader is patched, bypass-labeled, from an unknown source, or cannot be tied to the intended device family.
+          </div>
+        </div>
 
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
           <label className="text-xs text-slate-500">
@@ -267,7 +291,13 @@ export default function RecoverySafetyTools() {
         )}
 
         {vaultError && (
-          <div className="mt-3 rounded border border-red-900 bg-red-950/20 p-3 text-xs text-red-300">{vaultError}</div>
+          <div className="mt-3 rounded border border-red-900 bg-red-950/20 p-3 text-xs text-red-300">
+            <div className="font-semibold">Programmer enrollment blocked</div>
+            <div className="mt-1">{vaultError}</div>
+            <div className="mt-2 text-[11px] leading-5 text-red-200/80">
+              Resolve the authorization/source problem first. Choosing a different unverified programmer is not a valid workaround.
+            </div>
+          </div>
         )}
 
         <div className="mt-4">

@@ -66,6 +66,8 @@ pub struct RecoveryJob {
     pub workflow: RecoveryKind,
     pub protocol: String,
     pub job_fingerprint: String,
+    #[serde(default)]
+    pub package_fingerprint: Option<String>,
     pub identity: DeviceIdentitySnapshot,
     pub artifact_digests: Vec<ArtifactDigest>,
     pub payload_digests: Vec<ArtifactDigest>,
@@ -352,6 +354,66 @@ fn overlapping_operation_pairs(operations: &[PartitionOperation]) -> Vec<String>
 }
 
 
+fn storage_domain_integrity_issues(
+    workflow: RecoveryKind,
+    operations: &[PartitionOperation],
+) -> Vec<String> {
+    let mut issues = Vec::new();
+
+    match workflow {
+        RecoveryKind::QualcommEdl => {
+            for op in operations {
+                if op.physical_partition.is_none() {
+                    let label = op
+                        .partition_name
+                        .as_deref()
+                        .unwrap_or(op.filename.as_str());
+                    issues.push(format!(
+                        "Qualcomm rawprogram operation {label} does not declare physical_partition_number"
+                    ));
+                }
+            }
+        }
+        RecoveryKind::MediatekDownload => {
+            let mut families = std::collections::BTreeSet::new();
+            for op in operations {
+                let label = op
+                    .partition_name
+                    .as_deref()
+                    .unwrap_or(op.filename.as_str());
+                let Some(region) = op.region.as_deref().map(str::trim).filter(|value| !value.is_empty()) else {
+                    issues.push(format!(
+                        "MediaTek scatter operation {label} does not declare a storage region"
+                    ));
+                    continue;
+                };
+                let upper = region.to_ascii_uppercase();
+                if upper.contains("EMMC") {
+                    families.insert("emmc");
+                } else if upper.contains("UFS") {
+                    families.insert("ufs");
+                } else {
+                    families.insert("unknown");
+                }
+            }
+            if families.contains("emmc") && families.contains("ufs") {
+                issues.push(
+                    "MediaTek scatter mixes eMMC and UFS storage families in one recovery layout"
+                        .to_string(),
+                );
+            }
+            if families.contains("unknown") {
+                issues.push(
+                    "MediaTek scatter contains an unrecognized storage region; exact storage compatibility is not proven"
+                        .to_string(),
+                );
+            }
+        }
+    }
+
+    issues
+}
+
 fn range_integrity_issues(operations: &[PartitionOperation]) -> Vec<String> {
     let mut issues = Vec::new();
     for op in operations {
@@ -506,6 +568,11 @@ pub fn recovery_job_fingerprint(job: &RecoveryJob) -> String {
     push_field(&mut hasher, "schema", "bobfwtools-recovery-job-core-v1");
     push_field(&mut hasher, "workflow", &format!("{:?}", job.workflow));
     push_field(&mut hasher, "protocol", &job.protocol);
+    push_field(
+        &mut hasher,
+        "package_fingerprint",
+        job.package_fingerprint.as_deref().unwrap_or("<none>"),
+    );
     push_field(&mut hasher, "device_uid", &job.identity.device_uid);
     push_field(&mut hasher, "vendor_id", &format!("{:04x}", job.identity.vendor_id));
     push_field(&mut hasher, "product_id", &format!("{:04x}", job.identity.product_id));
@@ -651,9 +718,11 @@ pub fn build_job(
     let payload_digests = payload_digest_map.into_values().collect::<Vec<_>>();
     let overlap_issues = overlapping_operation_pairs(&operations);
     let range_issues = range_integrity_issues(&operations);
+    let storage_domain_issues = storage_domain_integrity_issues(plan.workflow, &operations);
     let mut integrity_findings = Vec::new();
     integrity_findings.extend(overlap_issues.iter().cloned());
     integrity_findings.extend(range_issues.iter().cloned());
+    integrity_findings.extend(storage_domain_issues.iter().cloned());
     integrity_findings.extend(payload_length_findings.iter().cloned());
     integrity_findings.sort();
     integrity_findings.dedup();
@@ -688,6 +757,7 @@ pub fn build_job(
         workflow: plan.workflow,
         protocol: plan.protocol.clone(),
         job_fingerprint: String::new(),
+        package_fingerprint: None,
         identity: DeviceIdentitySnapshot {
             device_uid: candidate.device_uid.clone(),
             vendor_id: candidate.vendor_id,
@@ -713,6 +783,30 @@ pub fn build_job(
     };
     job.job_fingerprint = recovery_job_fingerprint(&job);
     Ok(job)
+}
+
+pub fn bind_package_fingerprint(
+    job: &mut RecoveryJob,
+    package_fingerprint: Option<String>,
+) -> Result<(), RecoveryJobError> {
+    if let Some(value) = package_fingerprint {
+        let normalized = value.trim().to_ascii_lowercase();
+        if normalized.len() != 64 || !normalized.chars().all(|ch| ch.is_ascii_hexdigit()) {
+            return Err(RecoveryJobError::InvalidLayout {
+                path: "package-fingerprint".to_string(),
+                message: "verified package fingerprint must be a 64-character SHA-256 hex value".to_string(),
+            });
+        }
+        job.package_fingerprint = Some(normalized);
+    } else {
+        job.package_fingerprint = None;
+    }
+    job.job_fingerprint = recovery_job_fingerprint(job);
+    Ok(())
+}
+
+pub fn verify_job_fingerprint(job: &RecoveryJob) -> bool {
+    job.job_fingerprint.eq_ignore_ascii_case(&recovery_job_fingerprint(job))
 }
 
 pub fn revalidate_job_identity(
@@ -868,11 +962,111 @@ mod tests {
     }
 
     #[test]
+    fn qualcomm_rawprogram_requires_explicit_physical_partition_domain() {
+        let ops = vec![PartitionOperation {
+            partition_name: Some("boot".into()),
+            filename: "boot.img".into(),
+            start: Some(0),
+            length: Some(4096),
+            source_offset: Some(0),
+            physical_partition: None,
+            region: None,
+            operation: "program".into(),
+        }];
+        let issues = storage_domain_integrity_issues(RecoveryKind::QualcommEdl, &ops);
+        assert!(issues.iter().any(|issue| issue.contains("physical_partition_number")));
+    }
+
+    #[test]
+    fn mediatek_scatter_rejects_mixed_emmc_and_ufs_domains() {
+        let ops = vec![
+            PartitionOperation {
+                partition_name: Some("boot".into()),
+                filename: "boot.img".into(),
+                start: Some(0),
+                length: Some(4096),
+                source_offset: Some(0),
+                physical_partition: None,
+                region: Some("EMMC_USER".into()),
+                operation: "download".into(),
+            },
+            PartitionOperation {
+                partition_name: Some("vendor".into()),
+                filename: "vendor.img".into(),
+                start: Some(8192),
+                length: Some(4096),
+                source_offset: Some(0),
+                physical_partition: None,
+                region: Some("UFS_LU2".into()),
+                operation: "download".into(),
+            },
+        ];
+        let issues = storage_domain_integrity_issues(RecoveryKind::MediatekDownload, &ops);
+        assert!(issues.iter().any(|issue| issue.contains("mixes eMMC and UFS")));
+    }
+
+    #[test]
+    fn mediatek_scatter_requires_recognized_storage_regions() {
+        let ops = vec![PartitionOperation {
+            partition_name: Some("boot".into()),
+            filename: "boot.img".into(),
+            start: Some(0),
+            length: Some(4096),
+            source_offset: Some(0),
+            physical_partition: None,
+            region: Some("MYSTERY_REGION".into()),
+            operation: "download".into(),
+        }];
+        let issues = storage_domain_integrity_issues(RecoveryKind::MediatekDownload, &ops);
+        assert!(issues.iter().any(|issue| issue.contains("unrecognized storage region")));
+    }
+
+    #[test]
+    fn package_fingerprint_is_bound_into_recovery_job_fingerprint() {
+        let mut job = RecoveryJob {
+            workflow: RecoveryKind::QualcommEdl,
+            protocol: "qualcomm-sahara-firehose".into(),
+            job_fingerprint: String::new(),
+            package_fingerprint: None,
+            identity: DeviceIdentitySnapshot {
+                device_uid: "usb:05c6:9008:SERIAL".into(),
+                vendor_id: 0x05c6,
+                product_id: 0x9008,
+                mode: "qualcomm-edl".into(),
+                serial_number: Some("SERIAL".into()),
+                bus_number: None,
+                device_address: None,
+            },
+            artifact_digests: vec![],
+            payload_digests: vec![],
+            operations: vec![],
+            integrity_checks_passed: false,
+            integrity_findings: vec![],
+            high_risk_partitions: vec![],
+            destructive: true,
+            requires_explicit_approval: true,
+            prerequisites_met: true,
+            identity_revalidated: false,
+            executor_qualified: false,
+            execution_ready: false,
+            blockers: vec![],
+        };
+        job.job_fingerprint = recovery_job_fingerprint(&job);
+        let before = job.job_fingerprint.clone();
+        bind_package_fingerprint(&mut job, Some("a".repeat(64))).unwrap();
+        assert_ne!(before, job.job_fingerprint);
+        assert!(verify_job_fingerprint(&job));
+        job.package_fingerprint = Some("b".repeat(64));
+        assert!(!verify_job_fingerprint(&job));
+    }
+
+    #[test]
     fn identity_revalidation_never_unlocks_unqualified_executor() {
         let mut job = RecoveryJob {
             workflow: RecoveryKind::QualcommEdl,
             protocol: "qualcomm-sahara-firehose".into(),
             job_fingerprint: String::new(),
+            package_fingerprint: None,
             identity: DeviceIdentitySnapshot {
                 device_uid: "usb:05c6:9008:SERIAL".into(),
                 vendor_id: 0x05c6,
@@ -1004,6 +1198,7 @@ mod tests {
             workflow: RecoveryKind::QualcommEdl,
             protocol: "qualcomm-sahara-firehose".into(),
             job_fingerprint: String::new(),
+            package_fingerprint: None,
             identity: DeviceIdentitySnapshot {
                 device_uid: "usb:05c6:9008:SERIAL".into(),
                 vendor_id: 0x05c6,

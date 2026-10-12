@@ -4,6 +4,7 @@ import {
   getQualificationBuildIdentity,
   getWorkstationReadiness,
   reviewQualificationDossier,
+  reviewQualificationDossierPath,
   listEdlProgrammers,
   scanTransportDevices,
   type EdlProgrammerRecord,
@@ -35,6 +36,7 @@ export default function QualificationDossier({
   const [savedPath, setSavedPath] = useState<string | null>(null);
   const [review, setReview] = useState<QualificationDossierReview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [automatedPreflightRan, setAutomatedPreflightRan] = useState(false);
 
   const selected = useMemo(
     () => devices.find((device) => device.deviceUid === selectedUid) || null,
@@ -71,6 +73,102 @@ export default function QualificationDossier({
     );
   }, [selected, transportObservation]);
 
+  const automatedGates = useMemo(() => {
+    const recoveryFingerprintValid = Boolean(
+      recoveryJobFingerprint &&
+      /^[a-f0-9]{64}$/i.test(recoveryJobFingerprint.trim()),
+    );
+    const qualcommProgrammerReady =
+      selected?.mode !== 'qualcomm-edl' || authorizedProgrammers.length > 0;
+
+    return [
+      {
+        id: 'build-identity',
+        label: 'Executor build identity',
+        passed: Boolean(buildIdentity?.sourceRevisionAvailable),
+        detail: buildIdentity?.sourceRevisionAvailable
+          ? buildIdentity.sourceRevision
+          : 'source revision unavailable',
+      },
+      {
+        id: 'qualified-writer',
+        label: 'Qualified writer compiled',
+        passed: Boolean(buildIdentity?.qualifiedFlashCompiled),
+        detail: buildIdentity?.qualifiedFlashCompiled
+          ? 'qualified-flash executor present in this build'
+          : 'qualified-flash executor not compiled',
+      },
+      {
+        id: 'workstation',
+        label: 'Workstation blockers',
+        passed: Boolean(workstation && workstation.blockers.length === 0),
+        detail: workstation
+          ? workstation.blockers.length
+            ? workstation.blockers.join(' · ')
+            : 'no workstation blockers'
+          : 'workstation readiness unavailable',
+      },
+      {
+        id: 'job-fingerprint',
+        label: 'Prepared recovery job fingerprint',
+        passed: recoveryFingerprintValid,
+        detail: recoveryFingerprintValid ? recoveryJobFingerprint!.trim() : 'missing or invalid SHA-256 fingerprint',
+      },
+      {
+        id: 'prepared-identity',
+        label: 'Frozen device identity',
+        passed: Boolean(preparedRecoveryIdentity),
+        detail: preparedRecoveryIdentity?.deviceUid || 'prepare the recovery job first',
+      },
+      {
+        id: 'live-target',
+        label: 'Exact live device match',
+        passed: selectedMatchesPreparedIdentity,
+        detail: selectedMatchesPreparedIdentity
+          ? selected?.deviceUid || 'matched'
+          : 'live target does not match the prepared identity',
+      },
+      {
+        id: 'endpoints',
+        label: 'Bulk transport endpoints',
+        passed: Boolean(selected && selected.bulkIn.length > 0 && selected.bulkOut.length > 0),
+        detail: selected
+          ? `IN ${selected.bulkIn.length} · OUT ${selected.bulkOut.length}`
+          : 'no recovery-mode transport selected',
+      },
+      {
+        id: 'transport-stability',
+        label: 'Repeated USB enumeration',
+        passed: transportObservationLooksStable,
+        detail: transportObservationLooksStable
+          ? `${transportObservation?.samples.length || 0}/3 stable samples`
+          : 'stable 3-scan observation required',
+      },
+      {
+        id: 'programmer',
+        label: 'Authorized service programmer',
+        passed: qualcommProgrammerReady,
+        detail: selected?.mode === 'qualcomm-edl'
+          ? authorizedProgrammers.length
+            ? `${authorizedProgrammers.length} authorized programmer(s)`
+            : 'Qualcomm EDL requires an authorized programmer record'
+          : 'not required for this recovery lane',
+      },
+    ];
+  }, [
+    authorizedProgrammers.length,
+    buildIdentity,
+    preparedRecoveryIdentity,
+    recoveryJobFingerprint,
+    selected,
+    selectedMatchesPreparedIdentity,
+    transportObservation,
+    transportObservationLooksStable,
+    workstation,
+  ]);
+
+  const automatedEvidenceReady = automatedGates.every((gate) => gate.passed);
+
   const refresh = async () => {
     try {
       const [transport, host, vault, build] = await Promise.all([
@@ -100,6 +198,77 @@ export default function QualificationDossier({
     const id = window.setInterval(() => void refresh(), 5000);
     return () => window.clearInterval(id);
   }, [selectedUid]);
+
+  const runAutomatedPreflight = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    setAutomatedPreflightRan(true);
+    try {
+      const [transport, host, vault, build] = await Promise.all([
+        scanTransportDevices(),
+        getWorkstationReadiness(),
+        listEdlProgrammers(),
+        getQualificationBuildIdentity(),
+      ]);
+      const recovery = transport.filter((device) =>
+        ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download'].includes(device.mode),
+      );
+      const authorized = vault.filter((programmer) => programmer.authorized);
+      setDevices(recovery);
+      setWorkstation(host);
+      setBuildIdentity(build);
+      setProgrammers(vault);
+
+      const target =
+        (preparedRecoveryIdentity
+          ? recovery.find((device) =>
+              device.deviceUid === preparedRecoveryIdentity.deviceUid &&
+              device.vendorId === preparedRecoveryIdentity.vendorId &&
+              device.productId === preparedRecoveryIdentity.productId &&
+              device.mode === preparedRecoveryIdentity.mode &&
+              (device.serialNumber ?? null) === (preparedRecoveryIdentity.serialNumber ?? null)
+            )
+          : null) ||
+        recovery.find((device) => device.deviceUid === selectedUid) ||
+        recovery[0] ||
+        null;
+
+      if (!target) {
+        setSelectedUid('');
+        setTransportObservation(null);
+        throw new Error('No supported recovery-mode device is visible for automated qualification preflight.');
+      }
+
+      setSelectedUid(target.deviceUid);
+      const samples: QualificationTransportObservation['samples'] = [];
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const scan = await scanTransportDevices();
+        const device = scan.find((entry) =>
+          entry.deviceUid === target.deviceUid &&
+          entry.vendorId === target.vendorId &&
+          entry.productId === target.productId &&
+          entry.mode === target.mode &&
+          (entry.serialNumber ?? null) === (target.serialNumber ?? null)
+        );
+        if (device) samples.push({ observedUnixMs: Date.now(), device });
+        if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 250));
+      }
+      setTransportObservation({
+        expectedDeviceUid: target.deviceUid,
+        attemptedSamples: 3,
+        samples,
+      });
+
+      if (target.mode === 'qualcomm-edl' && !authorized.length) {
+        setError('Automated preflight found Qualcomm EDL hardware but no authorized Firehose programmer record. Enroll the legitimate service programmer before qualification.');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const captureTransportObservation = async () => {
     if (!selected) return;
@@ -140,7 +309,11 @@ export default function QualificationDossier({
         transportObservation,
         operatorNotes: notes.trim(),
       });
-      if (path) setSavedPath(path);
+      if (path) {
+        setSavedPath(path);
+        const verified = await reviewQualificationDossierPath(path, recoveryJobFingerprint);
+        if (verified) setReview(verified);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -174,10 +347,60 @@ export default function QualificationDossier({
             Captures live USB identity, endpoint evidence, workstation readiness, authorized programmer records, and the exact prepared recovery-job fingerprint.
             Exporting this dossier never enables a writer and never marks an executor physically qualified.
           </p>
+          <div className="mt-3 rounded border border-amber-900/50 bg-amber-950/20 p-3 text-[11px] leading-5 text-amber-100">
+            <div className="font-semibold">Qualification walkthrough</div>
+            <div className="mt-1 text-amber-200/80">
+              1. Select the exact recovery-mode device. 2. Resolve every workstation blocker. 3. Confirm the authorized service programmer where required.
+              4. Bind the prepared recovery-job fingerprint. 5. Confirm the live device matches the frozen recovery identity.
+              6. Capture three stable USB observations. 7. Export the dossier. 8. Review the saved dossier before any physical qualification stage.
+            </div>
+          </div>
         </div>
         <span className="rounded border border-amber-900 bg-amber-950/40 px-2 py-1 text-xs text-amber-300">
           qualification pending
         </span>
+      </div>
+
+      <div className="mt-4 rounded border border-cyan-900/50 bg-cyan-950/10 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-400">Automated hardware-flow preflight</div>
+            <div className="mt-1 text-xs leading-5 text-slate-400">
+              Runs every repeatable software/evidence gate in one pass. A green result means the dossier is ready to export; it does not substitute for the destructive bench-write and post-write physical checks.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => void runAutomatedPreflight()}
+            disabled={busy}
+            className="rounded bg-cyan-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 hover:bg-cyan-600"
+          >
+            {busy ? 'Running preflight…' : 'RUN ALL AUTOMATED GATES'}
+          </button>
+        </div>
+
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {automatedGates.map((gate) => (
+            <div key={gate.id} className={gate.passed
+              ? 'rounded border border-emerald-900/50 bg-emerald-950/20 p-2'
+              : 'rounded border border-amber-900/50 bg-amber-950/20 p-2'}>
+              <div className={gate.passed ? 'text-[10px] font-semibold text-emerald-300' : 'text-[10px] font-semibold text-amber-300'}>
+                {gate.passed ? 'PASS' : 'BLOCK'} · {gate.label}
+              </div>
+              <div className="mt-1 break-words text-[10px] leading-4 text-slate-500">{gate.detail}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className={automatedEvidenceReady
+          ? 'mt-3 rounded border border-emerald-800 bg-emerald-950/30 p-3 text-xs text-emerald-200'
+          : 'mt-3 rounded border border-amber-900/50 bg-amber-950/20 p-3 text-xs text-amber-200'}>
+          {automatedEvidenceReady
+            ? 'AUTOMATED EVIDENCE READY — export the dossier, review it, then proceed to the physical bench qualification stages.'
+            : automatedPreflightRan
+              ? 'AUTOMATED PREFLIGHT BLOCKED — resolve every BLOCK item above and run the automated gates again.'
+              : 'Run the automated gates to collapse software, identity, programmer, and transport prerequisites into one approval result.'}
+        </div>
       </div>
 
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
@@ -232,8 +455,14 @@ export default function QualificationDossier({
             </div>
           </div>
           {workstation?.blockers.length ? (
-            <div className="mt-3 space-y-1 text-[11px] text-amber-300">
-              {workstation.blockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
+            <div className="mt-3 rounded border border-amber-900/50 bg-amber-950/20 p-3 text-[11px] text-amber-300">
+              <div className="font-semibold">Bench readiness blocked</div>
+              <div className="mt-1 space-y-1">
+                {workstation.blockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
+              </div>
+              <div className="mt-2 leading-5 text-amber-200/80">
+                Next step: return to Workstation readiness, resolve the listed host requirement, reconnect the same target if needed, then refresh this evidence.
+              </div>
             </div>
           ) : null}
         </div>
@@ -261,20 +490,35 @@ export default function QualificationDossier({
         {recoveryJobFingerprint ? (
           <div className="mt-1 break-all font-mono text-[10px] text-cyan-300">{recoveryJobFingerprint}</div>
         ) : (
-          <div className="mt-1 text-xs text-amber-300">No prepared recovery job is bound. Export is evidence-only and cannot be qualification-binding ready.</div>
+          <div className="mt-1 rounded border border-amber-900/40 bg-amber-950/20 p-2 text-xs text-amber-300">
+            <div>No prepared recovery job is bound. Export is evidence-only and cannot be qualification-binding ready.</div>
+            <div className="mt-1 text-[11px] leading-5 text-amber-200/80">
+              Next step: build and prepare the recovery plan first, then return here with its exact frozen job fingerprint.
+            </div>
+          </div>
         )}
       </div>
       <div className="mt-3 rounded border border-slate-800 bg-slate-950/60 p-3">
         <div className="text-[10px] uppercase tracking-wide text-slate-600">Live device identity binding</div>
         {!preparedRecoveryIdentity ? (
-          <div className="mt-1 text-xs text-amber-300">No frozen recovery identity is available yet.</div>
+          <div className="mt-1 rounded border border-amber-900/40 bg-amber-950/20 p-2 text-xs text-amber-300">
+            <div>No frozen recovery identity is available yet.</div>
+            <div className="mt-1 text-[11px] leading-5 text-amber-200/80">
+              Next step: prepare the recovery job so BobFWTools can freeze the exact device identity before qualification evidence is captured.
+            </div>
+          </div>
         ) : !selected ? (
-          <div className="mt-1 text-xs text-amber-300">No live recovery-mode device is selected.</div>
+          <div className="mt-1 text-xs text-amber-300">No live recovery-mode device is selected. Select the same physical device used to prepare the recovery job.</div>
         ) : (
           <>
             <div className={selectedMatchesPreparedIdentity ? 'mt-1 text-xs font-semibold text-emerald-300' : 'mt-1 text-xs font-semibold text-rose-300'}>
               {selectedMatchesPreparedIdentity ? 'MATCH' : 'MISMATCH — qualification binding blocked'}
             </div>
+            {!selectedMatchesPreparedIdentity && (
+              <div className="mt-2 rounded border border-rose-900/50 bg-rose-950/20 p-2 text-[11px] leading-5 text-rose-200">
+                Stop here. Do not substitute another phone or continue with this dossier. Reconnect the exact prepared device and verify its identity first.
+              </div>
+            )}
             <div className="mt-1 break-all font-mono text-[10px] text-slate-500">
               prepared: {preparedRecoveryIdentity.deviceUid}
             </div>
@@ -306,6 +550,11 @@ export default function QualificationDossier({
         <div className="mt-2 text-[10px] leading-4 text-slate-500">
           Read-only USB enumeration only. Qualification binding requires exact device identity and stable non-empty bulk IN/OUT endpoints across all three samples.
         </div>
+        {!transportObservationLooksStable && transportObservation && (
+          <div className="mt-2 rounded border border-amber-900/40 bg-amber-950/20 p-2 text-[11px] leading-5 text-amber-200">
+            Stability evidence is incomplete or changed. Keep the same cable/port/device, stabilize the connection, and capture the three-scan observation again.
+          </div>
+        )}
       </div>
 
       <label className="mt-3 block text-xs text-slate-500">
@@ -322,10 +571,10 @@ export default function QualificationDossier({
         <button
           type="button"
           onClick={() => void exportDossier()}
-          disabled={busy || !selected || !workstation}
+          disabled={busy || !automatedEvidenceReady}
           className="rounded bg-amber-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 hover:bg-amber-600"
         >
-          {busy ? 'Exporting…' : 'Export qualification dossier'}
+          {busy ? 'Exporting…' : automatedEvidenceReady ? 'Export qualification dossier' : 'Complete automated preflight first'}
         </button>
         <button
           type="button"
@@ -359,8 +608,14 @@ export default function QualificationDossier({
             <div>executor build: {review.executorBuildMatchesCurrent ? 'MATCH' : 'MISMATCH'}</div>
           </div>
           {!!review.blockers.length && (
-            <div className="mt-2 space-y-1 text-[11px] text-rose-300">
-              {review.blockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
+            <div className="mt-2 rounded border border-rose-900/50 bg-rose-950/20 p-2 text-[11px] text-rose-300">
+              <div className="font-semibold">What must be fixed before review can pass</div>
+              <div className="mt-1 space-y-1">
+                {review.blockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
+              </div>
+              <div className="mt-2 leading-5 text-rose-200/80">
+                Fix the underlying evidence, export a new dossier, and review that new file. Do not edit the blocked dossier to make it pass.
+              </div>
             </div>
           )}
           <div className="mt-2 text-[10px] text-slate-600">
@@ -375,7 +630,13 @@ export default function QualificationDossier({
         </div>
       )}
       {error && (
-        <div className="mt-3 rounded border border-red-900/60 bg-red-950/20 p-3 text-xs text-red-300">{error}</div>
+        <div className="mt-3 rounded border border-red-900/60 bg-red-950/20 p-3 text-xs text-red-300">
+          <div className="font-semibold">Qualification step blocked</div>
+          <div className="mt-1">{error}</div>
+          <div className="mt-2 text-[11px] leading-5 text-red-200/80">
+            Resolve the failed prerequisite and repeat this stage. Do not bypass identity, transport, build, or evidence checks.
+          </div>
+        </div>
       )}
     </section>
   );
