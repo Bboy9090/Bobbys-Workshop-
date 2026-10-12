@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   diagnosePhone,
   exportHardwareApprovalGapReport,
+  getCalibrationPartitionAllowlist,
   getDriverConflictPlan,
   getDriverElevationStatus,
   getHardwareExecutorCapabilities,
@@ -60,6 +61,7 @@ type SweepSnapshot = {
   fastbootDevices: string[];
   qualifiedFastbootDevices: string[];
   driverBindings: DriverBindingRecord[];
+  calibrationAllowlist: string[];
   driverStability: Record<string, DriverClaimStabilityReport>;
   driverConflicts: Record<string, DriverConflictPlan>;
   policies: WorkflowPolicy[];
@@ -82,6 +84,7 @@ const emptySnapshot = (): SweepSnapshot => ({
   fastbootDevices: [],
   qualifiedFastbootDevices: [],
   driverBindings: [],
+  calibrationAllowlist: [],
   driverStability: {},
   driverConflicts: {},
   policies: [],
@@ -139,6 +142,7 @@ export default function HardwareFlowOrchestrator() {
       fastbootDevices,
       qualifiedFastbootDevices,
       driverBindings,
+      calibrationAllowlist,
       policies,
       executors,
       programmers,
@@ -155,6 +159,7 @@ export default function HardwareFlowOrchestrator() {
       safeCall('fastboot scan', getFastbootModeDevices, errors),
       safeCall('qualified fastboot scan', getQualifiedFastbootDevices, errors),
       safeCall('driver claim scan', scanDriverBindings, errors),
+      safeCall('calibration partition allowlist', getCalibrationPartitionAllowlist, errors),
       safeCall('workflow policy catalog', getWorkflowPolicyCatalog, errors),
       safeCall('hardware executor capability inventory', getHardwareExecutorCapabilities, errors),
       safeCall('authorized programmer inventory', listEdlProgrammers, errors),
@@ -199,6 +204,7 @@ export default function HardwareFlowOrchestrator() {
       fastbootDevices: fastbootDevices ?? [],
       qualifiedFastbootDevices: qualifiedFastbootDevices ?? [],
       driverBindings: driverBindings ?? [],
+      calibrationAllowlist: calibrationAllowlist ?? [],
       driverStability,
       driverConflicts,
       policies: policies ?? [],
@@ -515,19 +521,32 @@ export default function HardwareFlowOrchestrator() {
     const policyById = (id: string) => snapshot.policies.find((policy) => policy.id === id);
 
     const calibrationBackup = policyById('calibration.backup');
+    const calibrationBackupPrequalified =
+      Boolean(calibrationBackup?.activeInBobfwtools) &&
+      authorizedAdb &&
+      snapshot.calibrationAllowlist.length > 0;
     rows.push({
       id: 'calibration-backup',
       label: 'Calibration / identity partition backup',
-      state: calibrationBackup?.activeInBobfwtools
-        ? (calibrationBackupExecutor?.compiled ? 'ready' : 'planning-ready')
-        : 'blocked',
+      state: calibrationBackupPrequalified && calibrationBackupExecutor?.compiled
+        ? 'planning-ready'
+        : calibrationBackup?.activeInBobfwtools
+          ? 'planning-ready'
+          : 'blocked',
       summary: calibrationBackup?.activeInBobfwtools
-        ? 'Allowlisted calibration backup policy is active, read-oriented, audit-logged, and requires legitimate block/service access.'
+        ? `Allowlisted backup policy is active; ${snapshot.calibrationAllowlist.length} protected partition name(s) are allowlisted; authorized ADB target=${authorizedAdb}. No backup is assumed captured until a verified manifest exists.`
         : 'Calibration backup policy is not active.',
       next: calibrationBackup?.activeInBobfwtools
-        ? 'Prove authorization and legitimate block/service access, then capture same-device hash-bound backups before any restore-capable work.'
+        ? (calibrationBackupPrequalified
+            ? 'Choose an explicit backup destination and prove legitimate block/service access, then capture hash-bound same-device backup manifests. The sweep does not auto-read protected partitions.'
+            : 'Authorize exactly one ADB target and confirm the calibration allowlist before any backup attempt.')
         : 'Enable only the approved allowlisted backup lane; do not add identity-editing behavior.',
-      evidence: calibrationBackup ? [`${calibrationBackup.id}:${calibrationBackup.risk}:physical=${calibrationBackup.physicallyQualified}`] : [],
+      evidence: calibrationBackup ? [
+        `${calibrationBackup.id}:${calibrationBackup.risk}:physical=${calibrationBackup.physicallyQualified}`,
+        `allowlist count=${snapshot.calibrationAllowlist.length}`,
+        `authorized adb=${authorizedAdb}`,
+        'backup evidence captured=false unless a verified manifest is explicitly created',
+      ] : [],
     });
 
     const calibrationRestore = policyById('calibration.restore');
