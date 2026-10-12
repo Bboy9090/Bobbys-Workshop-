@@ -1779,6 +1779,39 @@ export async function scanFirmwareLibrary(): Promise<FirmwareLibraryReport | nul
 }
 
 
+export type PreflightDeviceFirmwareIdentity = {
+  model: string;
+  bootloaderRevision?: number | null;
+  partitionLayoutId?: string | null;
+  regionOrCsc?: string | null;
+};
+
+export type PreflightFirmwareTargetIdentity = {
+  model: string;
+  bootloaderRevision?: number | null;
+  partitionLayoutId?: string | null;
+  regionOrCsc?: string | null;
+};
+
+export type FirmwareTargetPreflightResult = {
+  allowed: boolean;
+  destructive: boolean;
+  reasons: string[];
+  warnings: string[];
+};
+
+export async function runFirmwareTargetPreflight(
+  device: PreflightDeviceFirmwareIdentity,
+  firmware: PreflightFirmwareTargetIdentity,
+  destructive: boolean,
+): Promise<FirmwareTargetPreflightResult> {
+  return invoke<FirmwareTargetPreflightResult>('firmware_target_preflight', {
+    device,
+    firmware,
+    destructive,
+  });
+}
+
 export type FirmwareManifestArtifact = {
   path: string;
   sha256: string;
