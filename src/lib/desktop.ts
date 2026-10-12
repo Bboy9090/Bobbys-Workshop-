@@ -887,6 +887,215 @@ export async function initializeWorkstation(): Promise<WorkstationReadiness> {
 }
 
 
+export type HardwareFlowReadinessLane = {
+  id: string;
+  title: string;
+  state: 'ready' | 'guided' | 'blocked';
+  automation: 'automatic-read-only' | 'guided-safe-action' | 'qualified-destructive';
+  detected: boolean;
+  applicableDevices: string[];
+  firmwareCandidates: string[];
+  blockers: string[];
+  nextSteps: string[];
+};
+
+export type HardwareFlowReadinessReport = {
+  generatedAtMs: number;
+  softwareReady: boolean;
+  physicalApprovalRequired: boolean;
+  workstation: WorkstationReadiness;
+  adbDevices: AdbDeviceRecord[];
+  fastbootSerials: string[];
+  mtpConnected: boolean;
+  transportDevices: TransportDevice[];
+  recoveryCandidates: RecoveryCandidate[];
+  firmwareBundles: FirmwareBundleSummary[];
+  driverBindings: DriverBindingRecord[];
+  driverElevation: DriverElevationStatus;
+  lanes: HardwareFlowReadinessLane[];
+  blockers: string[];
+};
+
+export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowReadinessReport> {
+  const [
+    workstation,
+    adbDevices,
+    fastbootSerials,
+    mtp,
+    transportDevices,
+    recoveryCandidates,
+    firmware,
+    driverBindings,
+    driverElevation,
+  ] = await Promise.all([
+    getWorkstationReadiness(),
+    scanAdbDevices(),
+    getFastbootModeDevices(),
+    getMtpStatus(),
+    scanTransportDevices(),
+    scanRecoveryCandidates(),
+    scanFirmwareLibrary(),
+    scanDriverBindings(),
+    getDriverElevationStatus(),
+  ]);
+
+  const bundles = firmware?.bundles ?? [];
+  const verifiedBundles = bundles.filter(
+    (bundle) => bundle.planningReady && Boolean(bundle.packageFingerprint),
+  );
+  const qualcommBundles = verifiedBundles.filter((bundle) => bundle.vendorHint === 'qualcomm');
+  const mediatekBundles = verifiedBundles.filter((bundle) => bundle.vendorHint === 'mediatek');
+  const authorizedAdb = adbDevices.filter((device) => device.authorized);
+  const unmatchedDrivers = driverBindings.filter((binding) => binding.bindingState !== 'matched');
+
+  const samsungDevices = transportDevices.filter((device) => {
+    const haystack = [
+      device.mode,
+      device.manufacturer ?? '',
+      device.productName ?? '',
+      device.vendorId.toString(16).padStart(4, '0'),
+    ].join(' ').toLowerCase();
+    return haystack.includes('samsung') || haystack.includes('download') || device.vendorId === 0x04e8;
+  });
+  const qualcommRecovery = recoveryCandidates.filter((candidate) => candidate.workflow === 'qualcomm-edl');
+  const mediatekRecovery = recoveryCandidates.filter((candidate) => candidate.workflow === 'mediatek-download');
+
+  const lanes: HardwareFlowReadinessLane[] = [
+    {
+      id: 'adb-service',
+      title: 'ADB authorized service',
+      state: authorizedAdb.length && workstation.readyForAndroidService ? 'ready' : 'blocked',
+      automation: 'automatic-read-only',
+      detected: adbDevices.length > 0,
+      applicableDevices: adbDevices.map((device) => device.serial),
+      firmwareCandidates: [],
+      blockers: [
+        ...(!workstation.readyForAndroidService ? workstation.blockers : []),
+        ...(adbDevices.length && !authorizedAdb.length ? ['ADB device is present but not authorized.'] : []),
+        ...(!adbDevices.length ? ['No ADB device detected.'] : []),
+      ],
+      nextSteps: authorizedAdb.length
+        ? ['Run diagnostics, identity reads, screenshots, logs, package inventory, and safe mode capability checks automatically.']
+        : ['Unlock the phone and approve the host RSA prompt when lawful ADB access is available.'],
+    },
+    {
+      id: 'fastboot',
+      title: 'Fastboot / bootloader service',
+      state: fastbootSerials.length && workstation.readyForAndroidService ? 'ready' : 'blocked',
+      automation: 'guided-safe-action',
+      detected: fastbootSerials.length > 0,
+      applicableDevices: fastbootSerials,
+      firmwareCandidates: [],
+      blockers: [
+        ...(!fastbootSerials.length ? ['No Fastboot device detected.'] : []),
+        ...(!workstation.readyForAndroidService ? workstation.blockers : []),
+      ],
+      nextSteps: ['Keep identity-bound Fastboot actions guided; destructive partition writes remain qualification-gated.'],
+    },
+    {
+      id: 'mtp-usb',
+      title: 'MTP / USB file service',
+      state: mtp.connected ? 'ready' : 'blocked',
+      automation: 'automatic-read-only',
+      detected: mtp.connected,
+      applicableDevices: mtp.deviceName ? [mtp.deviceName] : [],
+      firmwareCandidates: [],
+      blockers: mtp.connected ? [] : ['No MTP device is currently connected.'],
+      nextSteps: ['Allow automated browse/copy/upload operations that do not alter protected device security state.'],
+    },
+    {
+      id: 'samsung-download',
+      title: 'Samsung Download Mode',
+      state: samsungDevices.length ? 'guided' : 'blocked',
+      automation: 'qualified-destructive',
+      detected: samsungDevices.length > 0,
+      applicableDevices: samsungDevices.map((device) => device.deviceUid),
+      firmwareCandidates: [],
+      blockers: samsungDevices.length
+        ? ['Stock Samsung package still requires exact-device package verification and physical qualification before flash execution.']
+        : ['No Samsung Download Mode transport detected.'],
+      nextSteps: ['Inspect stock AP/BL/CP/CSC packages, verify MD5/package structure, then route into qualification rather than auto-flashing.'],
+    },
+    {
+      id: 'qualcomm-edl',
+      title: 'Qualcomm EDL / Sahara / Firehose',
+      state: qualcommRecovery.length && qualcommBundles.length ? 'guided' : 'blocked',
+      automation: 'qualified-destructive',
+      detected: qualcommRecovery.length > 0,
+      applicableDevices: qualcommRecovery.map((candidate) => candidate.deviceUid),
+      firmwareCandidates: qualcommBundles.map((bundle) => bundle.directory),
+      blockers: [
+        ...(!qualcommRecovery.length ? ['No Qualcomm EDL 9008 recovery target detected.'] : []),
+        ...(!qualcommBundles.length ? ['No verified Qualcomm firmware bundle with provenance + package fingerprint is available.'] : []),
+        'Authorized programmer/service-loader evidence and designated-device physical qualification remain required before writes.',
+      ],
+      nextSteps: ['Auto-select only verified Qualcomm bundles, prepare a package-bound recovery job, export evidence, then stop at qualification.'],
+    },
+    {
+      id: 'mediatek-download',
+      title: 'MediaTek Preloader / Download',
+      state: mediatekRecovery.length && mediatekBundles.length ? 'guided' : 'blocked',
+      automation: 'qualified-destructive',
+      detected: mediatekRecovery.length > 0,
+      applicableDevices: mediatekRecovery.map((candidate) => candidate.deviceUid),
+      firmwareCandidates: mediatekBundles.map((bundle) => bundle.directory),
+      blockers: [
+        ...(!mediatekRecovery.length ? ['No MediaTek Preloader/Download recovery target detected.'] : []),
+        ...(!mediatekBundles.length ? ['No verified MediaTek firmware bundle with provenance + package fingerprint is available.'] : []),
+        'Legitimate OEM/service DA/auth requirements and designated-device physical qualification remain required before writes.',
+      ],
+      nextSteps: ['Auto-select only verified MediaTek bundles, prepare a package-bound recovery job, export evidence, then stop at qualification.'],
+    },
+  ];
+
+  if (unmatchedDrivers.length) {
+    lanes.push({
+      id: 'windows-driver-claim',
+      title: 'Windows USB driver claim',
+      state: 'blocked',
+      automation: 'guided-safe-action',
+      detected: true,
+      applicableDevices: unmatchedDrivers.map((binding) => binding.instanceId),
+      firmwareCandidates: [],
+      blockers: unmatchedDrivers.map(
+        (binding) => `${binding.friendlyName || binding.instanceId}: ${binding.detail}`,
+      ),
+      nextSteps: [
+        driverElevation.elevated
+          ? 'Build the exact-interface conflict plan and use only hardware-ID-verified relatch.'
+          : 'Restart BobFWTools as Administrator before any driver mutation.',
+      ],
+    });
+  }
+
+  const globalBlockers = [
+    ...workstation.blockers,
+    ...unmatchedDrivers.map((binding) => `Driver claim unresolved: ${binding.instanceId}`),
+  ];
+
+  const softwareReady =
+    workstation.readyForDiagnostics &&
+    unmatchedDrivers.length === 0 &&
+    lanes.some((lane) => lane.state !== 'blocked');
+
+  return {
+    generatedAtMs: Date.now(),
+    softwareReady,
+    physicalApprovalRequired: lanes.some((lane) => lane.automation === 'qualified-destructive' && lane.detected),
+    workstation,
+    adbDevices,
+    fastbootSerials,
+    mtpConnected: mtp.connected,
+    transportDevices,
+    recoveryCandidates,
+    firmwareBundles: verifiedBundles,
+    driverBindings,
+    driverElevation,
+    lanes,
+    blockers: globalBlockers,
+  };
+}
+
 export type AuditEvent = {
   timestampMs: number;
   category: string;
