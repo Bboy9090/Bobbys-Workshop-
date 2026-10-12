@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   diagnosePhone,
   exportHardwareApprovalGapReport,
+  getDriverConflictPlan,
   getDriverElevationStatus,
   getHardwareExecutorCapabilities,
   getFastbootModeDevices,
@@ -14,6 +15,7 @@ import {
   isTauriRuntime,
   listEdlProgrammers,
   prepareAdb,
+  runDriverClaimStabilityTest,
   scanAdbDevices,
   scanDriverBindings,
   scanFirmwareLibrary,
@@ -22,6 +24,8 @@ import {
   startWorkflowJob,
   type DeviceCapabilityMatrix,
   type DriverBindingRecord,
+  type DriverClaimStabilityReport,
+  type DriverConflictPlan,
   type FirmwareLibraryReport,
   type HardwareExecutorCapability,
   type PhoneDiagnosticReport,
@@ -56,6 +60,8 @@ type SweepSnapshot = {
   fastbootDevices: string[];
   qualifiedFastbootDevices: string[];
   driverBindings: DriverBindingRecord[];
+  driverStability: Record<string, DriverClaimStabilityReport>;
+  driverConflicts: Record<string, DriverConflictPlan>;
   policies: WorkflowPolicy[];
   executors: HardwareExecutorCapability[];
   authorizedProgrammers: number;
@@ -76,6 +82,8 @@ const emptySnapshot = (): SweepSnapshot => ({
   fastbootDevices: [],
   qualifiedFastbootDevices: [],
   driverBindings: [],
+  driverStability: {},
+  driverConflicts: {},
   policies: [],
   executors: [],
   authorizedProgrammers: 0,
@@ -154,6 +162,26 @@ export default function HardwareFlowOrchestrator() {
       safeCall('ADB scan', scanAdbDevices, errors),
     ]);
 
+    const driverStability: Record<string, DriverClaimStabilityReport> = {};
+    const driverConflicts: Record<string, DriverConflictPlan> = {};
+    for (const binding of driverBindings ?? []) {
+      if (binding.bindingState === 'matched') {
+        const report = await safeCall(
+          `driver stability ${binding.instanceId}`,
+          () => runDriverClaimStabilityTest(binding.instanceId),
+          errors,
+        );
+        if (report) driverStability[binding.instanceId] = report;
+      } else {
+        const plan = await safeCall(
+          `driver conflict plan ${binding.instanceId}`,
+          () => getDriverConflictPlan(binding.instanceId),
+          errors,
+        );
+        if (plan) driverConflicts[binding.instanceId] = plan;
+      }
+    }
+
     const normalizedCapabilities = capabilities ?? null;
     if (normalizedCapabilities && adbDevices) {
       normalizedCapabilities.adbDevicesSeen = adbDevices.length;
@@ -171,6 +199,8 @@ export default function HardwareFlowOrchestrator() {
       fastbootDevices: fastbootDevices ?? [],
       qualifiedFastbootDevices: qualifiedFastbootDevices ?? [],
       driverBindings: driverBindings ?? [],
+      driverStability,
+      driverConflicts,
       policies: policies ?? [],
       executors: executors ?? [],
       authorizedProgrammers: (programmers ?? []).filter((item) => item.authorized).length,
@@ -260,6 +290,7 @@ export default function HardwareFlowOrchestrator() {
       (policy) => policy.activeInBobfwtools && policy.risk === 'destructive' && !policy.physicallyQualified,
     );
     const driverMismatches = snapshot.driverBindings.filter((binding) => binding.bindingState !== 'matched');
+    const unstableDriverClaims = Object.values(snapshot.driverStability).filter((report) => !report.stable);
     const enabledOneClick = snapshot.capabilities?.workflows.filter((workflow) => workflow.enabled).length ?? 0;
     const executorById = (id: string) => snapshot.executors.find((executor) => executor.id === id);
     const samsungExecutor = executorById('samsung-odin-writer');
@@ -389,26 +420,32 @@ export default function HardwareFlowOrchestrator() {
       label: 'Windows exact-interface driver ownership',
       state: !snapshot.adminRequired
         ? 'ready'
-        : driverMismatches.length === 0 && snapshot.adminReady
+        : driverMismatches.length === 0 && unstableDriverClaims.length === 0 && snapshot.adminReady
           ? 'ready'
           : 'blocked',
       summary: !snapshot.adminRequired
         ? 'Windows driver mutation gating is not applicable on this host.'
         : driverMismatches.length
           ? `${driverMismatches.length} Windows USB interface claim(s) are not verified.`
-          : snapshot.adminReady
-            ? 'Driver claims are verified and Administrator mutation readiness is available.'
-            : 'Driver inspection is available, but Administrator rights are not active.',
+          : unstableDriverClaims.length
+            ? `${unstableDriverClaims.length} verified claim(s) showed service/INF or presence churn during the stability sample.`
+            : snapshot.adminReady
+              ? 'Driver claims are verified, stable, and Administrator mutation readiness is available.'
+              : 'Driver inspection is available, but Administrator rights are not active.',
       next: !snapshot.adminRequired
         ? 'No action on this host.'
         : driverMismatches.length
-          ? 'Use Driver Claim Inspector, exact-interface candidates, conflict plan, and stability test before any relatch.'
-          : snapshot.adminReady
-            ? 'No driver blocker.'
-            : 'Restart BobFWTools as Administrator before PnP mutation.',
+          ? 'Use the automatically generated conflict plan, exact-interface candidates, and verified relatch path before service.'
+          : unstableDriverClaims.length
+            ? 'Resolve cable/port or competing-driver claim churn and require CLAIM STABLE before firmware service.'
+            : snapshot.adminReady
+              ? 'No driver blocker.'
+              : 'Restart BobFWTools as Administrator before PnP mutation.',
       evidence: [
         `driver bindings=${snapshot.driverBindings.length}`,
         `mismatches=${driverMismatches.length}`,
+        `unstable claims=${unstableDriverClaims.length}`,
+        `conflict plans=${Object.keys(snapshot.driverConflicts).length}`,
         `admin ready=${snapshot.adminReady}`,
       ],
     });
