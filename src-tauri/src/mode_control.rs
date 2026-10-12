@@ -90,9 +90,9 @@ fn adb_devices_with_state() -> Result<Vec<(String, String)>, String> {
         .collect())
 }
 
-fn adb_bootmode(serial: &str) -> Option<String> {
+fn adb_property(serial: &str, property: &str) -> Option<String> {
     let mut command = Command::new("adb");
-    command.args(["-s", serial, "shell", "getprop", "ro.bootmode"]);
+    command.args(["-s", serial, "shell", "getprop", property]);
     #[cfg(target_os = "windows")]
     {
         command.creation_flags(0x08000000);
@@ -103,6 +103,10 @@ fn adb_bootmode(serial: &str) -> Option<String> {
         .filter(|output| output.status.success())
         .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
         .filter(|value| !value.is_empty())
+}
+
+fn adb_bootmode(serial: &str) -> Option<String> {
+    adb_property(serial, "ro.bootmode")
 }
 
 #[tauri::command]
@@ -120,29 +124,57 @@ pub fn mode_transition_verify(
     let mut blockers = Vec::new();
     let adb = adb_devices_with_state().unwrap_or_default();
     let fastboot = fastboot_devices_internal().unwrap_or_default();
-    let usb = bootforgeusb::scan().map_err(|e| format!("USB re-detection failed: {e}"))?;
+    let (usb, usb_scan_error) = match bootforgeusb::scan() {
+        Ok(devices) => (devices, None),
+        Err(error) => {
+            let detail = format!("USB re-detection unavailable: {error}");
+            evidence.push(detail.clone());
+            (Vec::new(), Some(detail))
+        }
+    };
 
     match requested_mode.as_str() {
         "normal" => {
             let present = adb.iter().any(|(found, state)| found == &serial && state == "device");
             if present {
                 let bootmode = adb_bootmode(&serial);
+                let boot_completed = adb_property(&serial, "sys.boot_completed");
                 evidence.push(format!("adb:{serial}:device"));
                 if let Some(mode) = &bootmode {
                     evidence.push(format!("adb:getprop:ro.bootmode={mode}"));
                 }
-                let normal = bootmode
+                if let Some(value) = &boot_completed {
+                    evidence.push(format!("adb:getprop:sys.boot_completed={value}"));
+                }
+
+                let reports_recovery = bootmode
                     .as_deref()
-                    .map(|mode| !mode.to_ascii_lowercase().contains("recovery"))
-                    .unwrap_or(true);
+                    .map(|mode| mode.to_ascii_lowercase().contains("recovery"))
+                    .unwrap_or(false);
+                let normal = boot_completed.as_deref() == Some("1") && !reports_recovery;
+
+                let mut normal_blockers = Vec::new();
+                if reports_recovery {
+                    normal_blockers.push("ADB target returned but still reports recovery boot mode.".into());
+                }
+                if boot_completed.as_deref() != Some("1") {
+                    normal_blockers.push(
+                        "ADB target reappeared, but normal Android userspace is not positively proven because sys.boot_completed is not 1.".into(),
+                    );
+                }
+
                 return Ok(ModeTransitionVerification {
                     serial,
                     requested_mode,
-                    observed_mode: Some(bootmode.unwrap_or_else(|| "adb-normal".into())),
+                    observed_mode: Some(
+                        bootmode.unwrap_or_else(|| {
+                            if normal { "android-userspace-complete".into() } else { "adb-present-mode-unverified".into() }
+                        }),
+                    ),
                     verified: normal,
                     identity_confidence: "exact-serial".into(),
                     evidence,
-                    blockers: if normal { vec![] } else { vec!["ADB target returned but still reports recovery boot mode.".into()] },
+                    blockers: normal_blockers,
                 });
             }
             blockers.push("Original ADB serial has not reappeared in normal device state yet.".into());
@@ -187,6 +219,21 @@ pub fn mode_transition_verify(
             }
         }
         "download" => {
+            if let Some(error) = usb_scan_error {
+                blockers.push(format!(
+                    "Samsung Download Mode verification requires USB re-detection, but the USB scan failed: {error}"
+                ));
+                return Ok(ModeTransitionVerification {
+                    serial,
+                    requested_mode,
+                    observed_mode: None,
+                    verified: false,
+                    identity_confidence: "usb-evidence-unavailable".into(),
+                    evidence,
+                    blockers,
+                });
+            }
+
             let exact = usb.iter().find(|device| {
                 device.mode == "samsung-download"
                     && device.serial_number.as_deref() == Some(serial.as_str())

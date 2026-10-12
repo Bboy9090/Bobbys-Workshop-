@@ -41,11 +41,25 @@ export default function FirmwareProvenanceBuilder({ bundles, onWritten }: Props)
     setDirectory(nextDirectory);
     setResult(null);
     setError(null);
+
+    // Package identity/source facts must never bleed across bundle changes.
+    setOem('');
+    setModel('');
+    setBoard('');
+    setSku('');
+    setRegion('');
+    setCarrier('');
+    setBuildVersion('');
+    setBootloaderRevision('');
+    setStorage('');
+    setSourceCategory('official-oem');
+    setSourceReference('');
+    setChipsetFamily('');
+
     const bundle = candidates.find((candidate) => candidate.directory === nextDirectory);
     if (!bundle) return;
     const firstChipset = bundle.chipsetMatches.find((value) => value.startsWith(bundle.vendorHint + ':'));
     setChipsetFamily(firstChipset?.split(':')[1] || '');
-    setStorage('');
   };
 
   const canWrite = Boolean(
@@ -187,6 +201,9 @@ export default function FirmwareProvenanceBuilder({ bundles, onWritten }: Props)
 
           <div className="mt-3 rounded border border-amber-900/50 bg-amber-950/20 p-3 text-[11px] leading-5 text-amber-200">
             Stop if you cannot prove the exact model/board/SKU or package source. Do not guess these fields from chipset alone and do not copy identity from another phone variant.
+          </div>
+          <div className="mt-2 rounded border border-sky-900/40 bg-sky-950/20 p-2 text-[10px] leading-4 text-sky-200">
+            Changing package directories clears all identity and source fields. Re-enter them from records for the newly selected package.
           </div>
 
           <button

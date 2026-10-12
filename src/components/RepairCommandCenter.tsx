@@ -35,6 +35,7 @@ import {
   getDriverCleanupReport,
   createDriverBindingSnapshot,
   getDriverRollbackPlan,
+  getDriverElevationStatus,
   type DeviceFirmwareIdentity,
   type FirmwareCompatibilityReport,
   type FirmwareManifestInspection,
@@ -49,6 +50,7 @@ import {
   type DriverCleanupReport,
   type DriverSnapshotResult,
   type DriverRollbackPlan,
+  type DriverElevationStatus,
   type WorkstationReadiness,
   type AdbDeviceRecord,
   type CalibrationBackupResult,
@@ -139,6 +141,7 @@ export default function RepairCommandCenter() {
   const [driverCleanupReports, setDriverCleanupReports] = useState<Record<string, DriverCleanupReport>>({});
   const [driverSnapshots, setDriverSnapshots] = useState<Record<string, DriverSnapshotResult>>({});
   const [driverRollbackPlans, setDriverRollbackPlans] = useState<Record<string, DriverRollbackPlan>>({});
+  const [driverElevation, setDriverElevation] = useState<DriverElevationStatus | null>(null);
 
   const targets = useMemo(() => {
     const adbTargets = adbDevices.map((device) => ({
@@ -645,6 +648,40 @@ export default function RepairCommandCenter() {
                   </button>
                 </div>
 
+                <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Windows mutation readiness</div>
+                      <div className="mt-1 text-[10px] leading-4 text-slate-600">
+                        Read-only driver inspection works without elevation. Release/rescan and driver staging require Administrator rights.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!!driverBindingBusy}
+                      onClick={() => {
+                        setDriverBindingBusy('elevation-check');
+                        setError(null);
+                        void getDriverElevationStatus()
+                          .then(setDriverElevation)
+                          .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                          .finally(() => setDriverBindingBusy(null));
+                      }}
+                      className="rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300 disabled:opacity-40 hover:bg-slate-800"
+                    >
+                      Check admin readiness
+                    </button>
+                  </div>
+                  {driverElevation && (
+                    <div className={driverElevation.elevated
+                      ? 'mt-2 rounded border border-emerald-900/50 bg-emerald-950/20 p-2 text-[10px] text-emerald-200'
+                      : 'mt-2 rounded border border-amber-900/50 bg-amber-950/20 p-2 text-[10px] text-amber-200'}>
+                      <div className="font-semibold">{driverElevation.elevated ? 'ADMIN READY' : 'ADMIN REQUIRED'}</div>
+                      <div className="mt-1 leading-4">{driverElevation.detail}</div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="mt-3 space-y-2">
                   {driverBindings.length === 0 ? (
                     <div className="rounded border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-500">
@@ -665,6 +702,9 @@ export default function RepairCommandCenter() {
                             expected {binding.expectedFamily} · service {binding.service || 'unknown'} · INF {binding.driverInf || 'unknown'}
                           </div>
                           <div className="mt-1 text-[10px] text-slate-500">
+                            INF hardware-ID proof {binding.claimHardwareIdVerified ? 'verified' : 'not proven'} · scope {binding.claimMatchScope}
+                          </div>
+                          <div className="mt-1 text-[10px] text-slate-500">
                             interface {binding.interfaceId || 'single-interface'} · siblings {binding.compositeSiblingCount}
                           </div>
                           {binding.compositeSiblingCount > 1 && (
@@ -676,7 +716,7 @@ export default function RepairCommandCenter() {
                         </div>
                         <button
                           type="button"
-                          disabled={!!driverBindingBusy}
+                          disabled={!!driverBindingBusy || (driverElevation?.required === true && !driverElevation.elevated)}
                           onClick={() => {
                             setDriverBindingBusy(binding.instanceId);
                             setError(null);
@@ -757,6 +797,9 @@ export default function RepairCommandCenter() {
                             <div className="mt-1">
                               service {driverSnapshots[binding.instanceId].snapshot.service || 'unavailable'} · INF {driverSnapshots[binding.instanceId].snapshot.driverInf || 'unavailable'}
                             </div>
+                            <div className="mt-1 break-all font-mono text-[9px] text-sky-300">
+                              fingerprint {driverSnapshots[binding.instanceId].snapshot.fingerprint}
+                            </div>
                           </div>
                         )}
 
@@ -769,6 +812,9 @@ export default function RepairCommandCenter() {
                             </div>
                             <div className="mt-1">
                               prior INF {driverRollbackPlans[binding.instanceId].priorInf || 'unavailable'} · current INF {driverRollbackPlans[binding.instanceId].currentInf || 'unavailable'}
+                            </div>
+                            <div className="mt-1">
+                              snapshot fingerprint {driverRollbackPlans[binding.instanceId].snapshotFingerprintValid ? 'verified' : 'invalid'}
                             </div>
                             {driverRollbackPlans[binding.instanceId].blockers.map((item) => (
                               <div key={item} className="mt-1 leading-4">{item}</div>
@@ -983,6 +1029,9 @@ export default function RepairCommandCenter() {
                                   <span className="text-[10px] text-slate-500">score {candidate.compatibilityScore}</span>
                                 </div>
                                 <div className="mt-1 text-[10px] leading-4 text-slate-600">{candidate.detail}</div>
+                                <div className="mt-1 text-[10px] text-slate-500">
+                                  provider {candidate.provider || 'unavailable'} · version {candidate.driverVersion || 'unavailable'} · catalog {candidate.catalogFile || 'unavailable'}
+                                </div>
                                 {candidate.matchedHardwareIds.map((match) => (
                                   <div key={match} className="mt-1 break-all font-mono text-[9px] text-slate-500">{match}</div>
                                 ))}
@@ -996,6 +1045,43 @@ export default function RepairCommandCenter() {
                             Multiple compatible driver packages are installed for this interface. That can contribute to driver-claim churn. BobFWTools does not delete or force a package automatically; use exact hardware-ID evidence and the verified relatch workflow below.
                           </div>
                         )}
+
+                        <button
+                          type="button"
+                          disabled={
+                            !!driverBindingBusy ||
+                            (driverElevation?.required === true && !driverElevation.elevated) ||
+                            (driverCandidates[binding.instanceId]?.filter((candidate) => candidate.exactInterfaceMatch).length || 0) !== 1
+                          }
+                          onClick={() => {
+                            const exactCandidates = (driverCandidates[binding.instanceId] || []).filter((candidate) => candidate.exactInterfaceMatch);
+                            if (exactCandidates.length !== 1) return;
+                            const candidate = exactCandidates[0];
+                            setDriverBindingBusy(binding.instanceId);
+                            setError(null);
+                            void (async () => {
+                              const inspection = await inspectDriverInf(binding.instanceId, candidate.infPath);
+                              if (!inspection.compatible) {
+                                throw new Error('Automatic verified relatch stopped because the installed exact-interface INF no longer matches the live device hardware IDs.');
+                              }
+                              setDriverInfInspections((current) => ({ ...current, [binding.instanceId]: inspection }));
+                              const result = await stageAndRelatchDriver(binding.instanceId, inspection.infPath);
+                              setDriverRelatchResults((current) => ({ ...current, [binding.instanceId]: result }));
+                              setDriverBindings(await scanDriverBindings());
+                              setDriverCandidates((current) => {
+                                const next = { ...current };
+                                delete next[binding.instanceId];
+                                return next;
+                              });
+                            })()
+                              .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                              .finally(() => setDriverBindingBusy(null));
+                          }}
+                          className="mt-2 rounded border border-emerald-800 bg-emerald-950/20 px-2 py-1.5 text-[10px] font-semibold text-emerald-300 disabled:opacity-30 hover:bg-emerald-950/40"
+                          title="Enabled only when exactly one installed INF matches the exact USB interface. The backend re-verifies hardware IDs, captures rollback evidence, relatches the exact device, and checks post-relatch stability."
+                        >
+                          Auto-fix unique verified driver claim
+                        </button>
                       </div>
 
                       <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
@@ -1035,7 +1121,7 @@ export default function RepairCommandCenter() {
                           </button>
                           <button
                             type="button"
-                            disabled={!!driverBindingBusy || !driverInfInspections[binding.instanceId]?.compatible}
+                            disabled={!!driverBindingBusy || !driverInfInspections[binding.instanceId]?.compatible || (driverElevation?.required === true && !driverElevation.elevated)}
                             onClick={() => {
                               const inspection = driverInfInspections[binding.instanceId];
                               if (!inspection?.compatible) return;
@@ -1080,6 +1166,9 @@ export default function RepairCommandCenter() {
                               {driverRelatchResults[binding.instanceId].verifiedClaim ? 'DRIVER CLAIM VERIFIED' : 'RELATCH COMPLETED — CLAIM NOT YET VERIFIED'}
                             </div>
                             <div className="mt-1">{driverRelatchResults[binding.instanceId].detail}</div>
+                            <div className="mt-1 text-slate-500">
+                              stability {driverRelatchResults[binding.instanceId].stabilityVerified ? 'verified' : 'not verified'} · {driverRelatchResults[binding.instanceId].stabilitySummary}
+                            </div>
                             {driverRelatchResults[binding.instanceId].snapshotPath && (
                               <div className="mt-1 break-all font-mono text-[9px] text-sky-300">
                                 pre-relatch snapshot {driverRelatchResults[binding.instanceId].snapshotPath}

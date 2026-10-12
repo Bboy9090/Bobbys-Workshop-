@@ -106,6 +106,13 @@ pub fn edl_enroll_programmer(
     if source.len() < 3 {
         return Err("authorization source must identify the OEM/service source".to_string());
     }
+    let family = record
+        .device_family
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "authorized EDL programmer enrollment requires a declared device family".to_string())?;
+    record.device_family = Some(family.to_string());
 
     let current = edl_inspect_programmer(record.path.clone(), record.device_family.clone())?;
     if current.sha256 != record.sha256 || current.bytes != record.bytes {
@@ -171,5 +178,25 @@ mod tests {
     fn rejects_bypass_named_loader() {
         let path = PathBuf::from("prog_firehose_auth-bypass.elf");
         assert!(validate_programmer_extension(&path).is_err());
+    }
+
+    #[test]
+    fn authorization_requires_declared_device_family() {
+        let record = EdlProgrammerRecord {
+            path: "/missing/prog_firehose.elf".into(),
+            sha256: "a".repeat(64),
+            bytes: 1,
+            device_family: None,
+            authorized: false,
+            authorization_source: None,
+            enrolled_at_unix_ms: None,
+        };
+        let err = edl_enroll_programmer(
+            record,
+            "OEM service package".into(),
+            "I CONFIRM OEM OR SERVICE AUTHORIZATION".into(),
+        )
+        .unwrap_err();
+        assert!(err.contains("declared device family"));
     }
 }

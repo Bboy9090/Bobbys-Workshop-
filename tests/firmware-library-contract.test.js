@@ -353,6 +353,9 @@ describe('Verified INF relatch workflow', () => {
     expect(ui).toContain('Inspect compatible INF');
     expect(ui).toContain('Stage + relatch exact device');
     expect(ui).toContain('HARDWARE-ID MATCH VERIFIED');
+    expect(ui).toContain('Auto-fix unique verified driver claim');
+    expect(ui).toContain('candidate.exactInterfaceMatch');
+    expect(ui).toContain('Automatic verified relatch stopped');
     expect(ui).toContain('INF MISMATCH — RELATCH BLOCKED');
     expect(ui).toContain('DRIVER CLAIM VERIFIED');
   });
@@ -482,7 +485,7 @@ describe('Driver snapshot and rollback planning', () => {
     const ui = read('src/components/RepairCommandCenter.tsx');
 
     expect(backend).toContain('driver_binding_snapshot');
-    expect(backend).toContain('com.bobbyblanco.bobfwtools.driver-binding-snapshot.v1');
+    expect(backend).toContain('com.bobbyblanco.bobfwtools.driver-binding-snapshot.v2');
     expect(backend).toContain('driver-snapshots');
     expect(backend).toContain('driver_binding_rollback_plan');
     expect(backend).toContain('Rollback snapshots must come from BobFWTools managed driver-snapshots storage');
@@ -510,5 +513,361 @@ describe('Automatic pre-relatch driver snapshot', () => {
     expect(backend).toContain('snapshot_path: Some(snapshot.path.clone())');
     expect(desktop).toContain('snapshotPath?: string | null');
     expect(ui).toContain('pre-relatch snapshot');
+  });
+});
+
+
+describe('Tamper-evident driver rollback snapshots', () => {
+  it('fingerprints exact claim state and rejects modified receipts', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('com.bobbyblanco.bobfwtools.driver-binding-snapshot.v2');
+    expect(backend).toContain('snapshot_fingerprint');
+    expect(backend).toContain('Driver rollback snapshot fingerprint mismatch');
+    expect(backend).toContain('snapshot_fingerprint_valid');
+    expect(backend).toContain('snapshot_fingerprint_changes_when_driver_claim_changes');
+
+    expect(desktop).toContain('fingerprint: string');
+    expect(desktop).toContain('snapshotFingerprintValid');
+    expect(ui).toContain('snapshot fingerprint');
+    expect(ui).toContain('fingerprint {driverSnapshots[binding.instanceId].snapshot.fingerprint}');
+  });
+});
+
+
+describe('Installed driver provenance metadata', () => {
+  it('surfaces provider version and catalog evidence for competing INF packages', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('inf_metadata_value');
+    expect(backend).toContain('provider: inf_metadata_value(&text, "Provider")');
+    expect(backend).toContain('driver_version: inf_metadata_value(&text, "DriverVer")');
+    expect(backend).toContain('catalog_file: inf_metadata_value(&text, "CatalogFile")');
+
+    expect(desktop).toContain('driverVersion?: string | null');
+    expect(ui).toContain("provider {candidate.provider || 'unavailable'}");
+    expect(ui).toContain("version {candidate.driverVersion || 'unavailable'}");
+    expect(ui).toContain("catalog {candidate.catalogFile || 'unavailable'}");
+  });
+});
+
+
+describe('Current INF hardware-ID claim proof', () => {
+  it('requires the bound INF to advertise a compatible USB hardware ID', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('current_inf_hardware_match');
+    expect(backend).toContain('claim_hardware_id_verified');
+    expect(backend).toContain('claim_match_scope');
+    expect(backend).toContain('Current INF also advertises a compatible USB hardware ID');
+    expect(backend).toContain('could not prove a matching hardware ID inside the currently bound INF');
+
+    expect(desktop).toContain('claimHardwareIdVerified');
+    expect(desktop).toContain('claimMatchScope');
+    expect(ui).toContain('INF hardware-ID proof');
+    expect(ui).toContain("scope {binding.claimMatchScope}");
+  });
+});
+
+
+describe('Windows driver mutation elevation gate', () => {
+  it('blocks release and relatch until administrator elevation is proven', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('driver_binding_elevation_status');
+    expect(backend).toContain('require_elevation("Verified driver staging and relatch")');
+    expect(backend).toContain('require_elevation("Exact-device release and rescan")');
+    expect(backend).toContain('requires Windows administrator elevation');
+
+    expect(desktop).toContain('getDriverElevationStatus');
+    expect(ui).toContain('Windows mutation readiness');
+    expect(ui).toContain('Check admin readiness');
+    expect(ui).toContain('ADMIN READY');
+    expect(ui).toContain('ADMIN REQUIRED');
+  });
+});
+
+
+describe('Post-relatch claim stability verification', () => {
+  it('requires a stable exact-interface claim before final driver verification', () => {
+    const backend = read('src-tauri/src/driver_binding.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('claim_matched_once');
+    expect(backend).toContain('driver_binding_stability_test(record.instance_id.clone())');
+    expect(backend).toContain('let verified_claim = claim_matched_once && stability_verified');
+    expect(backend).toContain('stability_summary');
+
+    expect(desktop).toContain('stabilityVerified');
+    expect(desktop).toContain('stabilitySummary');
+    expect(ui).toContain("stability {driverRelatchResults[binding.instanceId].stabilityVerified ? 'verified' : 'not verified'}");
+  });
+});
+
+
+describe('Firmware provenance package switching', () => {
+  it('clears identity and source facts when the selected package directory changes', () => {
+    const ui = read('src/components/FirmwareProvenanceBuilder.tsx');
+
+    expect(ui).toContain('Package identity/source facts must never bleed across bundle changes');
+    expect(ui).toContain("setOem('')");
+    expect(ui).toContain("setModel('')");
+    expect(ui).toContain("setBoard('')");
+    expect(ui).toContain("setSku('')");
+    expect(ui).toContain("setBuildVersion('')");
+    expect(ui).toContain("setSourceReference('')");
+    expect(ui).toContain('Changing package directories clears all identity and source fields');
+  });
+});
+
+describe('Firmware managed root initialization', () => {
+  it('creates the managed firmware workspace before provenance canonicalization', () => {
+    const backend = read('src-tauri/src/firmware_library.rs');
+
+    expect(backend).toContain('fn ensure_firmware_root()');
+    expect(backend).toContain('let root = ensure_firmware_root()?;');
+    expect(backend).toContain('failed creating firmware inbox');
+    expect(backend).toContain('failed creating Qualcomm firmware directory');
+    expect(backend).toContain('failed creating MediaTek firmware directory');
+    expect(backend).toContain('failed creating firmware quarantine directory');
+  });
+});
+
+describe('Recovery lane verified firmware selection', () => {
+  it('invalidates a selected package when the active recovery vendor changes', () => {
+    const app = read('src/App.tsx');
+
+    expect(app).toContain('expectedRecoveryVendor');
+    expect(app).toContain('laneVerifiedFirmwareBundles');
+    expect(app).toContain('bundle.planningReady && bundle.vendorHint === expectedRecoveryVendor');
+    expect(app).toContain('setSelectedVerifiedBundle((current) =>');
+    expect(app).toContain("return laneVerifiedFirmwareBundles[0]?.directory ?? ''");
+    expect(app).toContain('Switching recovery lanes automatically clears or replaces any package from the other vendor');
+  });
+});
+
+
+describe('Mode transition verification hardening', () => {
+  it('requires positive normal-mode proof and makes USB scanning mode-specific', () => {
+    const backend = read('src-tauri/src/mode_control.rs');
+
+    expect(backend).toContain('sys.boot_completed');
+    expect(backend).toContain('normal Android userspace is not positively proven');
+    expect(backend).toContain('adb-present-mode-unverified');
+    expect(backend).toContain('USB re-detection unavailable');
+    expect(backend).toContain('Samsung Download Mode verification requires USB re-detection');
+    expect(backend).toContain('usb-evidence-unavailable');
+  });
+});
+
+
+describe('Qualified flash trial versus production authority', () => {
+  it('requires exactly one trial partition and never treats trial authority as production authority', () => {
+    const ui = read('src/components/QualifiedFlashConsole.tsx');
+    const backend = read('src-tauri/src/main.rs');
+
+    expect(ui).toContain('partitions.length !== 1');
+    expect(ui).toContain('trialGrantActive');
+    expect(ui).toContain('productionGrantActive');
+    expect(ui).toContain('trial-only — exactly one approved partition; no wipe or automatic reboot');
+    expect(ui).toContain('production-qualified — short-lived approved authority');
+    expect(ui).toContain('exactly one trial partition required');
+
+    expect(backend).toContain('qualificationStatus: "qualification-trial".into()');
+    expect(backend).toContain('executorQualified: false');
+    expect(backend).toContain('qualificationStatus: "approved".into()');
+    expect(backend).toContain('executorQualified: true');
+    expect(backend).toContain('let is_approved = grant.qualificationStatus == "approved" && grant.executorQualified');
+    expect(backend).toContain('let is_trial = grant.qualificationStatus == "qualification-trial" && !grant.executorQualified');
+  });
+});
+
+
+describe('Firmware workspace initializer recursion guard', () => {
+  it('creates the managed firmware root from firmware_root instead of calling itself', () => {
+    const backend = read('src-tauri/src/firmware_library.rs');
+
+    expect(backend).toContain('fn ensure_firmware_root()');
+    expect(backend).toContain('let root = firmware_root();');
+    expect(backend).not.toContain('let root = ensure_firmware_root()?;\n    Ok(root)');
+  });
+});
+
+
+describe('Verified firmware package fingerprint', () => {
+  it('binds the provenance manifest and sorted planning artifact hashes into recovery handoff identity', () => {
+    const backend = read('src-tauri/src/firmware_library.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const app = read('src/App.tsx');
+    const consoleUi = read('src/components/QualifiedFlashConsole.tsx');
+
+    expect(backend).toContain('fn bundle_package_fingerprint');
+    expect(backend).toContain('bobfwtools-firmware-bundle-v1');
+    expect(backend).toContain('entry.artifact_kind == "provenance-manifest" || entry.eligible_for_planning');
+    expect(backend).toContain('lines.sort()');
+    expect(backend).toContain('let package_fingerprint = bundle_package_fingerprint');
+    expect(backend).toContain('package_fingerprint,');
+
+    expect(desktop).toContain('packageFingerprint?: string | null');
+    expect(app).toContain('Selected package fingerprint:');
+    expect(app).toContain('The selected firmware bundle has no deterministic package fingerprint');
+    expect(desktop).toContain('reviewRecoveryReadinessCertificatePath');
+    expect(app).toContain('reviewRecoveryReadinessCertificatePath(path, recoveryJob.jobFingerprint)');
+    expect(desktop).toContain('const suppliedReadiness = input.readinessCertificatePath?.trim() || null');
+    expect(app).toContain('readinessCertificatePath={recoveryCertificateReview?.safeToReview ? recoveryCertificatePath : null}');
+    expect(consoleUi).toContain('readinessCertificatePath: readinessCertificatePath?.trim() || null');
+  });
+});
+
+
+describe('Verified firmware package binding into recovery jobs', () => {
+  it('binds package identity into the recovery job fingerprint and revalidation chain', () => {
+    const recovery = read('libs/bootforgeusb/src/recovery_job.rs');
+    const backend = read('src-tauri/src/main.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const app = read('src/App.tsx');
+
+    expect(recovery).toContain('pub package_fingerprint: Option<String>');
+    expect(recovery).toContain('"package_fingerprint"');
+    expect(recovery).toContain('bind_package_fingerprint');
+    expect(recovery).toContain('verify_job_fingerprint');
+
+    expect(backend).toContain('package_fingerprint: Option<String>');
+    expect(backend).toContain('Recovery package binding failed');
+    expect(backend).toContain('Recovery job fingerprint no longer matches its prepared artifacts/package identity');
+    expect(backend).toContain('"packageFingerprint": job.package_fingerprint.clone()');
+
+    expect(desktop).toContain('packageFingerprint?: string | null');
+    expect(desktop).toContain('packageFingerprint: packageFingerprint?.trim() || null');
+
+    expect(app).toContain('bundle.packageFingerprint');
+    expect(app).toContain('const job = await prepareRecoveryJob(selectedRecoveryCandidate, paths);');
+  });
+});
+
+
+describe('Automated hardware-flow qualification preflight', () => {
+  it('collapses repeatable qualification evidence into one gate matrix without faking physical bench checks', () => {
+    const dossier = read('src/components/QualificationDossier.tsx');
+
+    expect(dossier).toContain('RUN ALL AUTOMATED GATES');
+    expect(dossier).toContain('AUTOMATED EVIDENCE READY');
+    expect(dossier).toContain('automatedEvidenceReady');
+    expect(dossier).toContain('sourceRevisionAvailable');
+    expect(dossier).toContain('qualifiedFlashCompiled');
+    expect(dossier).toContain('workstation.blockers.length === 0');
+    expect(dossier).toContain('selectedMatchesPreparedIdentity');
+    expect(dossier).toContain('transportObservationLooksStable');
+    expect(dossier).toContain("target.mode === 'qualcomm-edl' && !authorized.length");
+    expect(dossier).toContain('Complete automated preflight first');
+    expect(dossier).toContain('does not substitute for the destructive bench-write and post-write physical checks');
+  });
+});
+
+
+describe('Qualcomm qualification programmer evidence', () => {
+  it('requires a valid authorized programmer for Qualcomm EDL binding only', () => {
+    const backend = read('src-tauri/src/main.rs');
+
+    expect(backend).toContain('qualification_programmer_evidence_ready');
+    expect(backend).toContain('device.mode != "qualcomm-edl"');
+    expect(backend).toContain('programmer.authorized');
+    expect(backend).toContain('valid_sha256_hex(&programmer.sha256)');
+    expect(backend).toContain('programmer.bytes > 0');
+    expect(backend).toContain('authorization_source');
+    expect(backend).toContain('Qualcomm EDL qualification requires an authorized programmer record');
+  });
+});
+
+
+describe('Qualification dossier semantic review and evidence-derived flash checks', () => {
+  it('recomputes hash-bound evidence semantics and prevents manual approval of automated checks', () => {
+    const backend = read('src-tauri/src/main.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const consoleUi = read('src/components/QualifiedFlashConsole.tsx');
+
+    expect(backend).toContain('binding_semantics_valid');
+    expect(backend).toContain('liveDeviceIdentityMatch');
+    expect(backend).toContain('workstationEvidenceReady');
+    expect(backend).toContain('transportObservationReady');
+    expect(backend).toContain('programmerEvidenceReady');
+    expect(backend).toContain('.device_family');
+    expect(backend).toContain('declared device family');
+    expect(read('src-tauri/src/edl_programmer_vault.rs')).toContain('authorized EDL programmer enrollment requires a declared device family');
+    expect(backend).toContain('Dossier qualification-binding claim is inconsistent');
+
+    expect(desktop).toContain('bindingSemanticsValid');
+    expect(desktop).toContain('programmerEvidenceReady');
+
+    expect(consoleUi).toContain('EVIDENCE_DERIVED_CHECKS');
+    expect(consoleUi).toContain("result.bindingSemanticsValid && result.transportObservationReady");
+    expect(consoleUi).toContain("result.bindingSemanticsValid && result.programmerEvidenceReady");
+    expect(consoleUi).toContain('disabled={automated}');
+    expect(consoleUi).toContain("{automated ? 'AUTO' : 'MANUAL'}");
+    expect(consoleUi).toContain('cannot be clicked manually');
+    expect(desktop).toContain('reviewQualificationDossierPath');
+    expect(desktop).toContain('reviewQualificationAuditBundlePath');
+    expect(consoleUi).toContain('reviewQualificationAuditBundlePath(path, recoveryJobFingerprint)');
+    expect(consoleUi).toContain('auditBundleReview?.safeToReview');
+    expect(consoleUi).toContain('auditBundlePath: auditBundleReview?.safeToReview ? auditBundleReview.path : null');
+    expect(backend).toContain('Production-qualified grant requires a verified qualification audit bundle');
+    expect(backend).toContain('bootforge_qualification_audit_bundle_review');
+    expect(backend).toContain('auditBundleFingerprint: Some(audit_bundle_fingerprint.clone())');
+    expect(backend).toContain('"auditBundleFingerprint": grant.auditBundleFingerprint');
+    expect(backend).toContain('Production-qualified grant is missing its audit-bundle fingerprint');
+    expect(desktop).toContain('auditBundleFingerprint?: string | null');
+    expect(consoleUi).toContain('/^[a-f0-9]{64}$/i.test(grant.auditBundleFingerprint)');
+    expect(consoleUi).toContain('Audit bundle binding:');
+    expect(consoleUi).toContain('review?.dossierFingerprint');
+    expect(consoleUi).toContain('readinessCertificatePath,');
+  });
+});
+
+
+describe('macOS signed notarized release contract', () => {
+  it('keeps Developer ID signing and notarization behind an explicit credential-gated release lane', () => {
+    const workflow = read('.github/workflows/bobfwtools-macos-release.yml');
+    const notarize = read('scripts/notarize-bobfwtools.sh');
+
+    expect(workflow).toContain('workflow_dispatch:');
+    expect(workflow).toContain('BOBFW_DEVELOPER_ID_P12_BASE64');
+    expect(workflow).toContain('APPLE_APP_SPECIFIC_PASSWORD');
+    expect(workflow).toContain('Import Developer ID certificate');
+    expect(workflow).toContain('Cleanup temporary signing material');
+    expect(workflow).not.toContain('tauri:build:macos:qualified:ci');
+
+    expect(notarize).toContain('xcrun notarytool submit');
+    expect(notarize).toContain('[[ "$STATUS" == "Accepted" ]]');
+    expect(notarize).toContain('xcrun stapler staple');
+    expect(notarize).toContain('xcrun stapler validate');
+    expect(notarize).toContain('spctl -a -vv --type execute');
+
+    const releaseReceipt = read('scripts/create-bobfwtools-release-receipt.sh');
+    expect(workflow).toContain('Create release provenance receipt');
+    expect(workflow).toContain('Sanitize release label');
+    expect(workflow).toContain("tr -cs 'A-Za-z0-9._-' '-'");
+    expect(workflow).toContain('steps.release_label.outputs.safe');
+    expect(workflow).toContain('actions/checkout@v7');
+    expect(workflow).toContain('actions/setup-node@v7');
+    expect(workflow).toContain('actions/upload-artifact@v7');
+    expect(workflow).toContain('package-manager-cache: false');
+    expect(workflow).toContain('bobfwtools-release-receipt.json');
+    expect(releaseReceipt).toContain('com.bobbyblanco.bobfwtools.release-receipt.v1');
+    expect(releaseReceipt).toContain('"qualifiedDestructiveWriterIncluded": False');
+    expect(releaseReceipt).toContain('"submissionId": submission_id');
+    expect(releaseReceipt).toContain('"gatekeeperAccepted": True');
+    expect(releaseReceipt).toContain('"executableSha256": binary_sha256');
+    const signScript = read('scripts/sign-bobfwtools-developer-id.sh');
+    expect(workflow).toContain('BOBFW_EXPECTED_TEAM_ID');
+    expect(signScript).toContain('Developer ID TeamIdentifier does not match the expected Apple team');
   });
 });

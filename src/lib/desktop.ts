@@ -613,6 +613,19 @@ export async function listEdlProgrammers(): Promise<EdlProgrammerRecord[]> {
 }
 
 
+export type DriverElevationStatus = {
+  required: boolean;
+  elevated: boolean;
+  detail: string;
+};
+
+export async function getDriverElevationStatus(): Promise<DriverElevationStatus> {
+  if (!isTauriRuntime()) {
+    return { required: false, elevated: true, detail: 'Windows elevation is not applicable outside the desktop runtime.' };
+  }
+  return invoke<DriverElevationStatus>('driver_binding_elevation_status');
+}
+
 export type DriverBindingRecord = {
   instanceId: string;
   friendlyName: string;
@@ -627,6 +640,8 @@ export type DriverBindingRecord = {
   physicalDeviceKey: string;
   interfaceId?: string | null;
   compositeSiblingCount: number;
+  claimHardwareIdVerified: boolean;
+  claimMatchScope: string;
   bindingState: string;
   detail: string;
 };
@@ -650,6 +665,7 @@ export type DriverBindingSnapshot = {
   service?: string | null;
   driverInf?: string | null;
   bindingState: string;
+  fingerprint: string;
 };
 
 export type DriverSnapshotResult = {
@@ -662,6 +678,7 @@ export type DriverRollbackPlan = {
   exactDevicePresent: boolean;
   hardwareIdentityMatches: boolean;
   priorInfAvailable: boolean;
+  snapshotFingerprintValid: boolean;
   rollbackReady: boolean;
   priorInf?: string | null;
   currentInf?: string | null;
@@ -754,6 +771,9 @@ export type InstalledDriverCandidate = {
   exactInterfaceMatch: boolean;
   currentClaim: boolean;
   compatibilityScore: number;
+  provider?: string | null;
+  driverVersion?: string | null;
+  catalogFile?: string | null;
   detail: string;
 };
 
@@ -781,6 +801,8 @@ export type DriverRelatchResult = {
   released: boolean;
   rescanned: boolean;
   verifiedClaim: boolean;
+  stabilityVerified: boolean;
+  stabilitySummary: string;
   observedService?: string | null;
   observedInf?: string | null;
   detail: string;
@@ -1035,6 +1057,11 @@ export type QualificationDossierReview = {
   recoveryJobMatchesExpected: boolean;
   executorBuildMatchesCurrent: boolean;
   bindingReadyClaimed: boolean;
+  liveDeviceIdentityMatch: boolean;
+  workstationEvidenceReady: boolean;
+  transportObservationReady: boolean;
+  programmerEvidenceReady: boolean;
+  bindingSemanticsValid: boolean;
   qualificationStatusPending: boolean;
   executorQualifiedClaimed: boolean;
   executionEnabledClaimed: boolean;
@@ -1058,6 +1085,17 @@ export async function reviewQualificationDossier(
   if (!selected || Array.isArray(selected)) return null;
   return invoke<QualificationDossierReview>('bootforge_qualification_review', {
     path: selected,
+    expectedRecoveryJobFingerprint: expectedRecoveryJobFingerprint?.trim() || null,
+  });
+}
+
+export async function reviewQualificationDossierPath(
+  path: string,
+  expectedRecoveryJobFingerprint?: string | null,
+): Promise<QualificationDossierReview | null> {
+  if (!isTauriRuntime() || !path.trim()) return null;
+  return invoke<QualificationDossierReview>('bootforge_qualification_review', {
+    path: path.trim(),
     expectedRecoveryJobFingerprint: expectedRecoveryJobFingerprint?.trim() || null,
   });
 }
@@ -1100,6 +1138,7 @@ export type QualifiedFlashGrant = {
   issuedAtUnixSeconds: number;
   expiresAtUnixSeconds: number;
   dossierFingerprint: string;
+  auditBundleFingerprint?: string | null;
   grantMac: string;
 };
 
@@ -1107,6 +1146,7 @@ export type QualifiedFlashApprovalInput = {
   dossierPath: string;
   benchEvidencePath?: string | null;
   reviewDecisionPath?: string | null;
+  auditBundlePath?: string | null;
   expectedRecoveryJobFingerprint: string;
   deviceSerial: string;
   partitions: QualifiedFlashPartition[];
@@ -1220,20 +1260,37 @@ export async function reviewQualificationAuditBundle(
   );
 }
 
+export async function reviewQualificationAuditBundlePath(
+  path: string,
+  expectedRecoveryJobFingerprint?: string | null,
+): Promise<QualificationAuditBundleReview | null> {
+  if (!isTauriRuntime() || !path.trim()) return null;
+  return invoke<QualificationAuditBundleReview>(
+    'bootforge_qualification_audit_bundle_review',
+    {
+      path: path.trim(),
+      expectedRecoveryJobFingerprint: expectedRecoveryJobFingerprint?.trim() || null,
+    },
+  );
+}
+
 export async function exportQualificationAuditBundle(
   input: QualificationAuditBundleInput,
 ): Promise<string | null> {
   if (!isTauriRuntime()) return null;
 
-  const readinessCertificatePath = await open({
-    multiple: false,
-    directory: false,
-    title: 'Optional: choose recovery readiness certificate',
-    filters: [{ name: 'JSON readiness certificate', extensions: ['json'] }],
-  });
+  const suppliedReadiness = input.readinessCertificatePath?.trim() || null;
+  const readinessCertificatePath = suppliedReadiness
+    ? suppliedReadiness
+    : await open({
+        multiple: false,
+        directory: false,
+        title: 'Optional: choose recovery readiness certificate',
+        filters: [{ name: 'JSON readiness certificate', extensions: ['json'] }],
+      });
   const normalizedReadiness =
-    readinessCertificatePath && !Array.isArray(readinessCertificatePath)
-      ? readinessCertificatePath
+    typeof readinessCertificatePath === 'string' && readinessCertificatePath.trim()
+      ? readinessCertificatePath.trim()
       : null;
 
   const destinationPath = await save({
@@ -1407,6 +1464,7 @@ export type RecoveryJob = {
   workflow: RecoveryWorkflow;
   protocol: string;
   jobFingerprint: string;
+  packageFingerprint?: string | null;
   identity: {
     deviceUid: string;
     vendorId: number;
@@ -1462,8 +1520,13 @@ export async function buildRecoveryPlan(
 export async function prepareRecoveryJob(
   candidate: RecoveryCandidate,
   paths: string[],
+  packageFingerprint?: string | null,
 ): Promise<RecoveryJob> {
-  return invoke<RecoveryJob>('bootforge_recovery_prepare', { candidate, paths });
+  return invoke<RecoveryJob>('bootforge_recovery_prepare', {
+    candidate,
+    paths,
+    packageFingerprint: packageFingerprint?.trim() || null,
+  });
 }
 
 export async function revalidateRecoveryJob(job: RecoveryJob): Promise<RecoveryJob> {
@@ -1543,6 +1606,20 @@ export async function reviewRecoveryReadinessCertificate(
   );
 }
 
+export async function reviewRecoveryReadinessCertificatePath(
+  path: string,
+  expectedJobFingerprint?: string | null,
+): Promise<RecoveryReadinessCertificateReview | null> {
+  if (!isTauriRuntime() || !path.trim()) return null;
+  return invoke<RecoveryReadinessCertificateReview>(
+    'bootforge_recovery_review_readiness_certificate',
+    {
+      path: path.trim(),
+      expectedJobFingerprint: expectedJobFingerprint?.trim() || null,
+    },
+  );
+}
+
 
 export type FirmwareChipsetProfile = {
   vendor: 'qualcomm' | 'mediatek' | string;
@@ -1589,6 +1666,7 @@ export type FirmwareBundleSummary = {
   sku?: string | null;
   sourceCategory?: string | null;
   sourceReference?: string | null;
+  packageFingerprint?: string | null;
   warnings: string[];
 };
 

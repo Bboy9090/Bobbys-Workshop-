@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+#[cfg(target_os = "windows")]
 use std::process::Command;
-
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -20,6 +21,8 @@ pub struct DriverBindingRecord {
     pub physical_device_key: String,
     pub interface_id: Option<String>,
     pub composite_sibling_count: usize,
+    pub claim_hardware_id_verified: bool,
+    pub claim_match_scope: String,
     pub binding_state: String,
     pub detail: String,
 }
@@ -37,6 +40,7 @@ pub struct DriverBindingSnapshot {
     pub service: Option<String>,
     pub driver_inf: Option<String>,
     pub binding_state: String,
+    pub fingerprint: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -53,6 +57,7 @@ pub struct DriverRollbackPlan {
     pub exact_device_present: bool,
     pub hardware_identity_matches: bool,
     pub prior_inf_available: bool,
+    pub snapshot_fingerprint_valid: bool,
     pub rollback_ready: bool,
     pub prior_inf: Option<String>,
     pub current_inf: Option<String>,
@@ -137,6 +142,9 @@ pub struct InstalledDriverCandidate {
     pub exact_interface_match: bool,
     pub current_claim: bool,
     pub compatibility_score: u32,
+    pub provider: Option<String>,
+    pub driver_version: Option<String>,
+    pub catalog_file: Option<String>,
     pub detail: String,
 }
 
@@ -163,10 +171,20 @@ pub struct DriverRelatchResult {
     pub released: bool,
     pub rescanned: bool,
     pub verified_claim: bool,
+    pub stability_verified: bool,
+    pub stability_summary: String,
     pub observed_service: Option<String>,
     pub observed_inf: Option<String>,
     pub detail: String,
     pub evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriverElevationStatus {
+    pub required: bool,
+    pub elevated: bool,
+    pub detail: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -177,6 +195,34 @@ pub struct DriverReleaseResult {
     pub rescanned: bool,
     pub detail: String,
     pub evidence: Vec<String>,
+}
+
+fn snapshot_fingerprint(snapshot: &DriverBindingSnapshot) -> String {
+    let mut hardware_ids = snapshot
+        .hardware_ids
+        .iter()
+        .map(|value| normalize_hardware_id(value))
+        .collect::<Vec<_>>();
+    hardware_ids.sort();
+    hardware_ids.dedup();
+
+    let canonical = [
+        snapshot.schema.as_str(),
+        &snapshot.created_at_ms.to_string(),
+        snapshot.instance_id.trim(),
+        snapshot.physical_device_key.trim(),
+        snapshot.interface_id.as_deref().unwrap_or(""),
+        &hardware_ids.join("\n"),
+        snapshot.expected_family.trim(),
+        snapshot.service.as_deref().unwrap_or(""),
+        snapshot.driver_inf.as_deref().unwrap_or(""),
+        snapshot.binding_state.trim(),
+    ]
+    .join("\n");
+
+    let mut hasher = Sha256::new();
+    hasher.update(canonical.as_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
 fn now_ms() -> u64 {
@@ -217,6 +263,23 @@ fn interface_specific_ids(values: &[String]) -> Vec<String> {
 
 fn normalize_hardware_id(value: &str) -> String {
     value.trim().trim_matches('"').to_ascii_uppercase()
+}
+
+fn inf_metadata_value(text: &str, key: &str) -> Option<String> {
+    for raw in text.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with(';') {
+            continue;
+        }
+        let Some((left, right)) = line.split_once('=') else { continue; };
+        if left.trim().eq_ignore_ascii_case(key) {
+            let value = right.trim().trim_matches('"').trim();
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
 }
 
 fn extract_inf_hardware_ids(text: &str) -> Vec<String> {
@@ -287,6 +350,49 @@ fn expected_family(vendor_id: Option<u16>, product_id: Option<u16>, text: &str) 
         (Some(0x0e8d), _) => "mediatek-usb",
         _ => "generic-usb",
     }
+}
+
+#[cfg(target_os = "windows")]
+fn current_inf_hardware_match(
+    driver_inf: Option<&str>,
+    hardware_ids: &[String],
+) -> (bool, String) {
+    let Some(inf_name) = driver_inf.map(str::trim).filter(|value| !value.is_empty()) else {
+        return (false, "unavailable".to_string());
+    };
+    let windows_dir = std::env::var_os("WINDIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"));
+    let path = windows_dir.join("INF").join(inf_name);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return (false, "inf-unreadable".to_string());
+    };
+    let inf_ids = extract_inf_hardware_ids(&text);
+    if inf_ids.is_empty() {
+        return (false, "no-usb-hardware-ids".to_string());
+    }
+
+    let device_specific = interface_specific_ids(hardware_ids);
+    if !device_specific.is_empty() {
+        for device_id in &device_specific {
+            for inf_id in &inf_ids {
+                let normalized_inf = normalize_hardware_id(inf_id);
+                if normalized_inf.contains("&MI_") && hardware_id_matches(device_id, inf_id) {
+                    return (true, "exact-interface".to_string());
+                }
+            }
+        }
+    }
+
+    for device_id in hardware_ids {
+        for inf_id in &inf_ids {
+            if hardware_id_matches(device_id, inf_id) {
+                return (true, "family-hardware-id".to_string());
+            }
+        }
+    }
+
+    (false, "no-match".to_string())
 }
 
 fn binding_assessment(expected: &str, service: Option<&str>, inf: Option<&str>, name: &str) -> (String, String) {
@@ -397,12 +503,30 @@ $items = Get-PnpDevice -PresentOnly | Where-Object {
             if expected == "generic-usb" {
                 return None;
             }
-            let (binding_state, detail) = binding_assessment(
+            let (family_state, family_detail) = binding_assessment(
                 &expected,
                 row.service.as_deref(),
                 row.driver_inf.as_deref(),
                 &friendly_name,
             );
+            let (claim_hardware_id_verified, claim_match_scope) =
+                current_inf_hardware_match(row.driver_inf.as_deref(), &hardware_ids);
+            let binding_state = if family_state == "matched" && claim_hardware_id_verified {
+                "matched".to_string()
+            } else {
+                "mismatch".to_string()
+            };
+            let detail = if claim_hardware_id_verified && family_state == "matched" {
+                format!(
+                    "{family_detail} Current INF also advertises a compatible USB hardware ID ({claim_match_scope})."
+                )
+            } else if family_state == "matched" {
+                format!(
+                    "{family_detail} However, BobFWTools could not prove a matching hardware ID inside the currently bound INF ({claim_match_scope})."
+                )
+            } else {
+                family_detail
+            };
             let (physical_device_key, interface_id) = composite_identity(&row.instance_id);
             Some(DriverBindingRecord {
                 instance_id: row.instance_id,
@@ -418,6 +542,8 @@ $items = Get-PnpDevice -PresentOnly | Where-Object {
                 physical_device_key,
                 interface_id,
                 composite_sibling_count: 1,
+                claim_hardware_id_verified,
+                claim_match_scope,
                 binding_state,
                 detail,
             })
@@ -438,6 +564,52 @@ $items = Get-PnpDevice -PresentOnly | Where-Object {
 #[tauri::command]
 pub fn driver_binding_scan() -> Result<Vec<DriverBindingRecord>, String> {
     Ok(Vec::new())
+}
+
+#[cfg(target_os = "windows")]
+fn is_process_elevated() -> Result<bool, String> {
+    let script = r#"
+$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+"#;
+    let raw = powershell_json(script)?;
+    Ok(raw.trim().eq_ignore_ascii_case("true"))
+}
+
+#[cfg(target_os = "windows")]
+fn require_elevation(action: &str) -> Result<(), String> {
+    if is_process_elevated()? {
+        Ok(())
+    } else {
+        Err(format!(
+            "{action} requires Windows administrator elevation. Restart BobFWTools as Administrator, reconnect the device, and refresh Driver Claim Inspector before retrying."
+        ))
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn driver_binding_elevation_status() -> Result<DriverElevationStatus, String> {
+    let elevated = is_process_elevated()?;
+    Ok(DriverElevationStatus {
+        required: true,
+        elevated,
+        detail: if elevated {
+            "BobFWTools is running with Windows administrator rights required for PnP release/rescan and driver staging.".to_string()
+        } else {
+            "Driver inspection is available, but PnP mutation is blocked until BobFWTools is restarted as Administrator.".to_string()
+        },
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn driver_binding_elevation_status() -> Result<DriverElevationStatus, String> {
+    Ok(DriverElevationStatus {
+        required: false,
+        elevated: true,
+        detail: "Windows administrator elevation is not applicable on this platform.".to_string(),
+    })
 }
 
 #[cfg(target_os = "windows")]
@@ -468,8 +640,8 @@ pub fn driver_binding_snapshot(instance_id: String) -> Result<DriverSnapshotResu
         .ok_or_else(|| "Exact Windows USB instance is no longer present; refresh before snapshotting its claim.".to_string())?
         .clone();
 
-    let snapshot = DriverBindingSnapshot {
-        schema: "com.bobbyblanco.bobfwtools.driver-binding-snapshot.v1".to_string(),
+    let mut snapshot = DriverBindingSnapshot {
+        schema: "com.bobbyblanco.bobfwtools.driver-binding-snapshot.v2".to_string(),
         created_at_ms: now_ms(),
         instance_id: record.instance_id.clone(),
         physical_device_key: record.physical_device_key.clone(),
@@ -479,7 +651,9 @@ pub fn driver_binding_snapshot(instance_id: String) -> Result<DriverSnapshotResu
         service: record.service.clone(),
         driver_inf: record.driver_inf.clone(),
         binding_state: record.binding_state.clone(),
+        fingerprint: String::new(),
     };
+    snapshot.fingerprint = snapshot_fingerprint(&snapshot);
 
     let dir = driver_snapshot_dir();
     std::fs::create_dir_all(&dir)
@@ -502,6 +676,7 @@ pub fn driver_binding_snapshot(instance_id: String) -> Result<DriverSnapshotResu
             format!("snapshot:{}", path.display()),
             format!("inf:{}", snapshot.driver_inf.as_deref().unwrap_or("<unavailable>")),
             format!("service:{}", snapshot.service.as_deref().unwrap_or("<unavailable>")),
+            format!("fingerprint:{}", snapshot.fingerprint),
         ],
     );
 
@@ -537,8 +712,13 @@ pub fn driver_binding_rollback_plan(snapshot_path: String) -> Result<DriverRollb
             .map_err(|e| format!("Failed to read driver snapshot {}: {e}", canonical_path.display()))?
     ).map_err(|e| format!("Failed to parse driver snapshot: {e}"))?;
 
-    if snapshot.schema != "com.bobbyblanco.bobfwtools.driver-binding-snapshot.v1" {
-        return Err("Unsupported driver binding snapshot schema.".to_string());
+    if snapshot.schema != "com.bobbyblanco.bobfwtools.driver-binding-snapshot.v2" {
+        return Err("Unsupported driver binding snapshot schema; create a fresh BobFWTools driver snapshot.".to_string());
+    }
+    let expected_fingerprint = snapshot_fingerprint(&snapshot);
+    let snapshot_fingerprint_valid = snapshot.fingerprint == expected_fingerprint;
+    if !snapshot_fingerprint_valid {
+        return Err("Driver rollback snapshot fingerprint mismatch; the receipt may have been edited or corrupted.".to_string());
     }
 
     let current = driver_binding_scan()?;
@@ -599,6 +779,7 @@ pub fn driver_binding_rollback_plan(snapshot_path: String) -> Result<DriverRollb
         exact_device_present,
         hardware_identity_matches,
         prior_inf_available,
+        snapshot_fingerprint_valid,
         rollback_ready,
         prior_inf: snapshot.driver_inf,
         current_inf: found.and_then(|record| record.driver_inf.clone()),
@@ -885,11 +1066,13 @@ pub fn driver_binding_conflict_plan(instance_id: String) -> Result<DriverConflic
     ];
     for candidate in candidates.iter().take(10) {
         evidence.push(format!(
-            "candidate:{} score={} exact-interface={} current={}",
+            "candidate:{} score={} exact-interface={} current={} provider={} driverver={}",
             candidate.inf_name,
             candidate.compatibility_score,
             candidate.exact_interface_match,
-            candidate.current_claim
+            candidate.current_claim,
+            candidate.provider.as_deref().unwrap_or("<unavailable>"),
+            candidate.driver_version.as_deref().unwrap_or("<unavailable>")
         ));
     }
 
@@ -996,6 +1179,9 @@ pub fn driver_binding_candidates(instance_id: String) -> Result<Vec<InstalledDri
             exact_interface_match,
             current_claim,
             compatibility_score,
+            provider: inf_metadata_value(&text, "Provider"),
+            driver_version: inf_metadata_value(&text, "DriverVer"),
+            catalog_file: inf_metadata_value(&text, "CatalogFile"),
             detail: if exact_interface_match {
                 "Installed INF advertises this exact composite USB interface hardware ID.".to_string()
             } else {
@@ -1101,6 +1287,7 @@ pub fn driver_binding_stage_and_relatch(
     instance_id: String,
     inf_path: String,
 ) -> Result<DriverRelatchResult, String> {
+    require_elevation("Verified driver staging and relatch")?;
     let inspection = driver_binding_inspect_inf(instance_id.clone(), inf_path.clone())?;
     if !inspection.compatible {
         return Err("Driver relatch blocked: selected INF hardware IDs do not match the exact device.".to_string());
@@ -1152,13 +1339,25 @@ pub fn driver_binding_stage_and_relatch(
         })
     };
 
-    let verified_claim = rebound
+    let claim_matched_once = rebound
         .map(|record| record.binding_state == "matched")
         .unwrap_or(false);
+
+    let (stability_verified, stability_summary) = if let Some(record) = rebound {
+        match driver_binding_stability_test(record.instance_id.clone()) {
+            Ok(report) => (report.stable, report.summary),
+            Err(error) => (false, format!("Post-relatch claim stability test failed: {error}")),
+        }
+    } else {
+        (false, "Post-relatch exact interface was not observed for stability verification.".to_string())
+    };
+    let verified_claim = claim_matched_once && stability_verified;
 
     let observed_service = rebound.and_then(|record| record.service.clone());
     let observed_inf = rebound.and_then(|record| record.driver_inf.clone());
     let mut evidence = vec![staged, remove, scan];
+    evidence.push(format!("claim-matched-once:{claim_matched_once}"));
+    evidence.push(format!("stability-verified:{stability_verified}"));
     evidence.push(format!("verified-claim:{verified_claim}"));
     evidence.push(format!("observed-service:{}", observed_service.as_deref().unwrap_or("<unavailable>")));
     evidence.push(format!("observed-inf:{}", observed_inf.as_deref().unwrap_or("<unavailable>")));
@@ -1187,10 +1386,12 @@ pub fn driver_binding_stage_and_relatch(
         released: true,
         rescanned: true,
         verified_claim,
+        stability_verified,
+        stability_summary,
         observed_service,
         observed_inf,
         detail: if verified_claim {
-            "Compatible INF was staged, the exact device node was released, Windows re-enumerated it, and BobFWTools observed a compatible driver-family claim afterward.".to_string()
+            "Compatible INF was staged, the exact device node was released, Windows re-enumerated it, and BobFWTools verified a compatible driver-family claim that remained stable across the post-relatch sample window.".to_string()
         } else {
             "Compatible INF was staged and the exact device node was re-enumerated, but BobFWTools has not yet verified that the expected driver family claimed it. Refresh driver claims before continuing.".to_string()
         },
@@ -1210,6 +1411,7 @@ pub fn driver_binding_stage_and_relatch(
 #[cfg(target_os = "windows")]
 #[tauri::command]
 pub fn driver_binding_release_and_rescan(instance_id: String) -> Result<DriverReleaseResult, String> {
+    require_elevation("Exact-device release and rescan")?;
     let instance_id = instance_id.trim().to_string();
     if instance_id.is_empty() || !instance_id.to_ascii_uppercase().starts_with("USB") {
         return Err("Driver release requires an exact present USB device instance ID.".to_string());
@@ -1269,10 +1471,47 @@ mod tests {
     use super::*;
 
     #[test]
+    fn snapshot_fingerprint_changes_when_driver_claim_changes() {
+        let mut snapshot = DriverBindingSnapshot {
+            schema: "com.bobbyblanco.bobfwtools.driver-binding-snapshot.v2".to_string(),
+            created_at_ms: 1,
+            instance_id: r"USB\VID_05C6&PID_9008\ABC".to_string(),
+            physical_device_key: r"USB\VID_05C6&PID_9008\ABC".to_string(),
+            interface_id: None,
+            hardware_ids: vec![r"USB\VID_05C6&PID_9008".to_string()],
+            expected_family: "qualcomm-qdloader-9008".to_string(),
+            service: Some("qcusbser".to_string()),
+            driver_inf: Some("oem12.inf".to_string()),
+            binding_state: "matched".to_string(),
+            fingerprint: String::new(),
+        };
+        let before = snapshot_fingerprint(&snapshot);
+        snapshot.driver_inf = Some("oem99.inf".to_string());
+        let after = snapshot_fingerprint(&snapshot);
+        assert_ne!(before, after);
+    }
+
+    #[test]
     fn recognizes_common_service_families() {
         assert_eq!(expected_family(Some(0x05c6), Some(0x9008), ""), "qualcomm-qdloader-9008");
         assert_eq!(expected_family(Some(0x0e8d), Some(0x2000), ""), "mediatek-vcom-preloader");
         assert_eq!(expected_family(Some(0x04e8), Some(0x685d), ""), "samsung-download");
+    }
+
+    #[test]
+    fn hardware_id_matching_distinguishes_exact_interface_from_family() {
+        assert!(hardware_id_matches(
+            r"USB\VID_04E8&PID_685D&MI_02",
+            r"USB\VID_04E8&PID_685D&MI_02"
+        ));
+        assert!(hardware_id_matches(
+            r"USB\VID_04E8&PID_685D&MI_02",
+            r"USB\VID_04E8&PID_685D"
+        ));
+        assert!(!hardware_id_matches(
+            r"USB\VID_04E8&PID_685D&MI_02",
+            r"USB\VID_04E8&PID_685D&MI_01"
+        ));
     }
 
     #[test]
@@ -1298,6 +1537,17 @@ mod tests {
         ];
         let specific = interface_specific_ids(&ids);
         assert_eq!(specific, vec![r"USB\VID_18D1&PID_4EE7&MI_01".to_string()]);
+    }
+
+    #[test]
+    fn parses_inf_provider_version_and_catalog_metadata() {
+        let sample = r#"[Version]
+Provider=%ProviderName%
+DriverVer=08/21/2025,3.2.1.0
+CatalogFile=example.cat"#;
+        assert_eq!(inf_metadata_value(sample, "Provider").as_deref(), Some("%ProviderName%"));
+        assert_eq!(inf_metadata_value(sample, "DriverVer").as_deref(), Some("08/21/2025,3.2.1.0"));
+        assert_eq!(inf_metadata_value(sample, "CatalogFile").as_deref(), Some("example.cat"));
     }
 
     #[test]

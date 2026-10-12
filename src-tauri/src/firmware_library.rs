@@ -117,6 +117,7 @@ pub struct FirmwareBundleSummary {
     pub sku: Option<String>,
     pub source_category: Option<String>,
     pub source_reference: Option<String>,
+    pub package_fingerprint: Option<String>,
     pub warnings: Vec<String>,
 }
 
@@ -137,6 +138,19 @@ fn firmware_root() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".bobfwtools")
         .join("firmware")
+}
+
+fn ensure_firmware_root() -> Result<PathBuf, String> {
+    let root = firmware_root();
+    fs::create_dir_all(root.join("inbox"))
+        .map_err(|e| format!("failed creating firmware inbox: {e}"))?;
+    fs::create_dir_all(root.join("qualcomm"))
+        .map_err(|e| format!("failed creating Qualcomm firmware directory: {e}"))?;
+    fs::create_dir_all(root.join("mediatek"))
+        .map_err(|e| format!("failed creating MediaTek firmware directory: {e}"))?;
+    fs::create_dir_all(root.join("quarantine"))
+        .map_err(|e| format!("failed creating firmware quarantine directory: {e}"))?;
+    Ok(root)
 }
 
 fn hash_file(path: &Path) -> Result<String, String> {
@@ -550,6 +564,45 @@ fn assess_provenance(root: &Path, directory: &str, entries: &[FirmwareLibraryEnt
     assessment
 }
 
+fn bundle_package_fingerprint(directory: &str, entries: &[FirmwareLibraryEntry]) -> Option<String> {
+    let mut lines = entries
+        .iter()
+        .filter(|entry| {
+            let parent = Path::new(&entry.relative_path)
+                .parent()
+                .map(|path| path.display().to_string())
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| ".".to_string());
+            parent == directory
+                && (entry.artifact_kind == "provenance-manifest" || entry.eligible_for_planning)
+                && entry.artifact_kind != "other"
+        })
+        .map(|entry| {
+            format!(
+                "{}|{}|{}",
+                entry.relative_path.replace('\\', "/"),
+                entry.artifact_kind,
+                entry.sha256.to_ascii_lowercase()
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let has_manifest = lines.iter().any(|line| line.contains("|provenance-manifest|"));
+    let has_artifact = lines.iter().any(|line| !line.contains("|provenance-manifest|"));
+    if !has_manifest || !has_artifact {
+        return None;
+    }
+
+    lines.sort();
+    let mut hasher = Sha256::new();
+    hasher.update(b"bobfwtools-firmware-bundle-v1\n");
+    for line in lines {
+        hasher.update(line.as_bytes());
+        hasher.update(b"\n");
+    }
+    Some(format!("{:x}", hasher.finalize()))
+}
+
 fn summarize_bundles(root: &Path, entries: &[FirmwareLibraryEntry]) -> Vec<FirmwareBundleSummary> {
     #[derive(Default)]
     struct Acc {
@@ -637,6 +690,8 @@ fn summarize_bundles(root: &Path, entries: &[FirmwareLibraryEntry]) -> Vec<Firmw
                 warnings.push("Directory mixes Qualcomm and MediaTek artifacts; split it into vendor/model-specific folders before planning.".into());
             }
 
+            let package_fingerprint = bundle_package_fingerprint(&directory, entries);
+
             FirmwareBundleSummary {
                 directory,
                 vendor_hint: vendor_hint.clone(),
@@ -661,6 +716,7 @@ fn summarize_bundles(root: &Path, entries: &[FirmwareLibraryEntry]) -> Vec<Firmw
                 sku: provenance.sku,
                 source_category: provenance.source_category,
                 source_reference: provenance.source_reference,
+                package_fingerprint,
                 warnings,
             }
         })
@@ -706,7 +762,7 @@ pub fn firmware_provenance_write(input: FirmwareProvenanceWriteInput) -> Result<
         }
     }
 
-    let root = firmware_root();
+    let root = ensure_firmware_root()?;
     let package_dir = root.join(&directory);
     let root_canonical = fs::canonicalize(&root)
         .map_err(|e| format!("firmware library is unavailable: {e}"))?;

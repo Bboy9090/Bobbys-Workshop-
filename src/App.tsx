@@ -43,6 +43,7 @@ import {
   exportRecoveryEvidence,
   exportRecoveryReadinessCertificate,
   reviewRecoveryReadinessCertificate,
+  reviewRecoveryReadinessCertificatePath,
   listWorkflowJobs,
   retryWorkflowJob,
   runAdbPackageAction,
@@ -134,6 +135,26 @@ export default function App() {
     () => recoveryCandidates.find((item) => item.deviceUid === selectedRecoveryUid) || null,
     [recoveryCandidates, selectedRecoveryUid],
   );
+
+  const expectedRecoveryVendor = (selectedRecoveryCandidate?.workflow ?? recoveryKind) === 'qualcomm-edl'
+    ? 'qualcomm'
+    : 'mediatek';
+
+  const laneVerifiedFirmwareBundles = useMemo(
+    () => verifiedFirmwareBundles.filter(
+      (bundle) => bundle.planningReady && bundle.vendorHint === expectedRecoveryVendor,
+    ),
+    [verifiedFirmwareBundles, expectedRecoveryVendor],
+  );
+
+  useEffect(() => {
+    setSelectedVerifiedBundle((current) => {
+      if (current && laneVerifiedFirmwareBundles.some((bundle) => bundle.directory === current)) {
+        return current;
+      }
+      return laneVerifiedFirmwareBundles[0]?.directory ?? '';
+    });
+  }, [laneVerifiedFirmwareBundles]);
 
   const selectedDiagnosticUsb = useMemo(
     () => diagnostic?.usbConnections.find((item) => item.deviceUid === selectedDiagnosticUid) || null,
@@ -847,6 +868,9 @@ export default function App() {
       if (!bundle || !bundle.planningReady) {
         throw new Error('The selected firmware bundle is no longer verified for planning. Rescan the firmware library and resolve its blockers first.');
       }
+      if (!bundle.packageFingerprint) {
+        throw new Error('The selected firmware bundle has no deterministic package fingerprint. Rescan or rebuild provenance before recovery handoff.');
+      }
 
       const expectedVendor = (selectedRecoveryCandidate?.workflow ?? recoveryKind) === 'qualcomm-edl'
         ? 'qualcomm'
@@ -867,7 +891,11 @@ export default function App() {
       setRecoveryPlan(plan);
       setRecoveryJob(null);
       if (selectedRecoveryCandidate) {
-        const job = await prepareRecoveryJob(selectedRecoveryCandidate, paths);
+        const job = await prepareRecoveryJob(
+          selectedRecoveryCandidate,
+          paths,
+          bundle.packageFingerprint,
+        );
         setRecoveryJob(job);
       }
     } catch (error) {
@@ -951,7 +979,8 @@ export default function App() {
       const path = await exportRecoveryReadinessCertificate(recoveryJob, recoveryPlan);
       if (path) {
         setRecoveryCertificatePath(path);
-        setRecoveryCertificateReview(null);
+        const review = await reviewRecoveryReadinessCertificatePath(path, recoveryJob.jobFingerprint);
+        setRecoveryCertificateReview(review);
       }
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
@@ -1304,7 +1333,10 @@ export default function App() {
             recoveryJobFingerprint={recoveryJob?.jobFingerprint ?? null}
             preparedRecoveryIdentity={recoveryJob?.identity ?? null}
           />
-          <QualifiedFlashConsole recoveryJobFingerprint={recoveryJob?.jobFingerprint ?? null} />
+          <QualifiedFlashConsole
+            recoveryJobFingerprint={recoveryJob?.jobFingerprint ?? null}
+            readinessCertificatePath={recoveryCertificateReview?.safeToReview ? recoveryCertificatePath : null}
+          />
 
           <section className="mb-4 rounded-lg border border-cyan-900/70 bg-cyan-950/10 p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1713,23 +1745,20 @@ export default function App() {
                       className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white"
                     >
                       <option value="">No verified package selected</option>
-                      {verifiedFirmwareBundles
-                        .filter((bundle) => {
-                          const expectedVendor = (selectedRecoveryCandidate?.workflow ?? recoveryKind) === 'qualcomm-edl'
-                            ? 'qualcomm'
-                            : 'mediatek';
-                          return bundle.vendorHint === expectedVendor;
-                        })
-                        .map((bundle) => (
+                      {laneVerifiedFirmwareBundles.map((bundle) => (
                           <option key={bundle.directory} value={bundle.directory}>
-                            {bundle.model || 'unknown model'} · {bundle.board || 'unknown board'} · {bundle.sku || 'unknown SKU'} · {bundle.directory}
+                            {bundle.model || 'unknown model'} · {bundle.board || 'unknown board'} · {bundle.sku || 'unknown SKU'} · {bundle.packageFingerprint ? bundle.packageFingerprint.slice(0, 12) + '…' : 'no fingerprint'} · {bundle.directory}
                           </option>
                         ))}
                     </select>
                     <button
                       type="button"
                       onClick={() => void useVerifiedFirmwareBundle()}
-                      disabled={recoveryBusy || !selectedVerifiedBundle}
+                      disabled={
+                        recoveryBusy ||
+                        !selectedVerifiedBundle ||
+                        !laneVerifiedFirmwareBundles.some((bundle) => bundle.directory === selectedVerifiedBundle)
+                      }
                       className="rounded bg-emerald-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 hover:bg-emerald-600"
                     >
                       {recoveryBusy ? 'Verifying package…' : 'Use verified package'}
@@ -1737,6 +1766,18 @@ export default function App() {
                   </div>
                   <div className="mt-2 text-[11px] leading-5 text-emerald-200/80">
                     The backend rescans this package before handoff. If provenance, hashes, package contents, or readiness changed, planning stops instead of using stale UI state.
+                  </div>
+                  {selectedVerifiedBundle && (() => {
+                    const selectedBundle = laneVerifiedFirmwareBundles.find((bundle) => bundle.directory === selectedVerifiedBundle);
+                    return selectedBundle ? (
+                      <div className="mt-2 rounded border border-emerald-900/40 bg-black/20 p-2 text-[10px] leading-4 text-slate-500">
+                        <span className="font-semibold text-slate-300">Selected package fingerprint:</span>{' '}
+                        <span className="break-all font-mono">{selectedBundle.packageFingerprint || 'unavailable — rescan/rebuild provenance before relying on this package'}</span>
+                      </div>
+                    ) : null;
+                  })()}
+                  <div className="mt-1 text-[10px] leading-4 text-slate-500">
+                    Active lane requires {expectedRecoveryVendor}. Switching recovery lanes automatically clears or replaces any package from the other vendor.
                   </div>
                 </div>
 

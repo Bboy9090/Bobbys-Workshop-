@@ -58,7 +58,7 @@ use edl_programmer_vault::{edl_inspect_programmer, edl_enroll_programmer, edl_li
 use firmware_library::{firmware_bundle_planning_artifacts, firmware_chipset_catalog, firmware_chipset_lookup, firmware_library_scan, firmware_provenance_write};
 use firmware_manifest_commands::{firmware_manifest_inspect, firmware_manifest_compare};
 use mode_control::{fastboot_mode_devices, fastboot_reboot_mode, mode_transition_verify};
-use driver_binding::{driver_binding_scan, driver_binding_release_and_rescan, driver_binding_candidates, driver_binding_conflict_plan, driver_binding_cleanup_report, driver_binding_snapshot, driver_binding_rollback_plan, driver_binding_stability_test, driver_binding_inspect_inf, driver_binding_stage_and_relatch};
+use driver_binding::{driver_binding_scan, driver_binding_release_and_rescan, driver_binding_candidates, driver_binding_conflict_plan, driver_binding_cleanup_report, driver_binding_snapshot, driver_binding_rollback_plan, driver_binding_stability_test, driver_binding_elevation_status, driver_binding_inspect_inf, driver_binding_stage_and_relatch};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -96,6 +96,7 @@ struct QualifiedFlashGrant {
     issuedAtUnixSeconds: u64,
     expiresAtUnixSeconds: u64,
     dossierFingerprint: String,
+    auditBundleFingerprint: Option<String>,
     grantMac: String,
 }
 
@@ -669,6 +670,7 @@ fn bootforge_recovery_plan(kind: String, paths: Vec<String>) -> Result<bootforge
 fn bootforge_recovery_prepare(
     candidate: bootforgeusb::recovery::RecoveryCandidate,
     paths: Vec<String>,
+    package_fingerprint: Option<String>,
 ) -> Result<bootforgeusb::recovery_job::RecoveryJob, String> {
     if paths.is_empty() {
         return Err("At least one recovery artifact path is required".to_string());
@@ -679,8 +681,10 @@ fn bootforge_recovery_prepare(
         candidate.workflow,
         paths.into_iter().map(std::path::PathBuf::from).collect(),
     ).map_err(|e| format!("Recovery planning failed: {e}"))?;
-    let job = bootforgeusb::recovery_job::build_job(&candidate, &plan)
+    let mut job = bootforgeusb::recovery_job::build_job(&candidate, &plan)
         .map_err(|e| format!("Recovery job preparation failed: {e}"))?;
+    bootforgeusb::recovery_job::bind_package_fingerprint(&mut job, package_fingerprint)
+        .map_err(|e| format!("Recovery package binding failed: {e}"))?;
 
     let evidence = job.artifact_digests.iter()
         .map(|artifact| format!("{}:{}:{}", artifact.role, artifact.size, artifact.sha256))
@@ -689,6 +693,10 @@ fn bootforge_recovery_prepare(
         .chain(std::iter::once(format!("high-risk-partitions:{}", job.high_risk_partitions.join(","))))
         .chain(std::iter::once(format!("normalized-operations:{}", job.operations.len())))
         .chain(std::iter::once(format!("prerequisites-met:{}", job.prerequisites_met)))
+        .chain(std::iter::once(format!(
+            "package-fingerprint:{}",
+            job.package_fingerprint.clone().unwrap_or_else(|| "<manual-unbound>".to_string())
+        )))
         .collect::<Vec<_>>();
     let _ = crate::audit::record(
         "Recovery",
@@ -706,6 +714,9 @@ fn bootforge_recovery_prepare(
 fn bootforge_recovery_revalidate(
     mut job: bootforgeusb::recovery_job::RecoveryJob,
 ) -> Result<bootforgeusb::recovery_job::RecoveryJob, String> {
+    if !bootforgeusb::recovery_job::verify_job_fingerprint(&job) {
+        return Err("Recovery job fingerprint no longer matches its prepared artifacts/package identity; rebuild the job from verified inputs.".to_string());
+    }
     let device_uid = job.identity.device_uid.clone();
     let risk = if job.destructive { "destructive" } else { "elevated" };
     let devices = bootforgeusb::transport::scan_transports()
@@ -899,6 +910,7 @@ fn bootforge_recovery_export_readiness_certificate(
         "grantsExecutionAuthority": false,
         "executionPerformed": false,
         "jobFingerprint": job.job_fingerprint.clone(),
+        "packageFingerprint": job.package_fingerprint.clone(),
         "deviceIdentity": job.identity.clone(),
         "qualificationGates": gates,
         "blockers": blockers,
@@ -1283,6 +1295,33 @@ fn qualification_workstation_evidence_ready(
 
 
 
+fn qualification_programmer_evidence_ready(
+    device: &bootforgeusb::transport::TransportDevice,
+    programmers: &[QualificationProgrammerSnapshot],
+) -> bool {
+    if device.mode != "qualcomm-edl" {
+        return true;
+    }
+
+    programmers.iter().any(|programmer| {
+        programmer.authorized
+            && programmer.bytes > 0
+            && valid_sha256_hex(&programmer.sha256)
+            && programmer
+                .device_family
+                .as_deref()
+                .map(str::trim)
+                .map(|value| !value.is_empty())
+                .unwrap_or(false)
+            && programmer
+                .authorization_source
+                .as_deref()
+                .map(str::trim)
+                .map(|value| !value.is_empty())
+                .unwrap_or(false)
+    })
+}
+
 fn qualification_transport_observation_findings(
     observation: Option<&QualificationTransportObservation>,
     live: &bootforgeusb::transport::TransportDevice,
@@ -1410,6 +1449,11 @@ struct QualificationDossierReview {
     recovery_job_matches_expected: bool,
     executor_build_matches_current: bool,
     binding_ready_claimed: bool,
+    live_device_identity_match: bool,
+    workstation_evidence_ready: bool,
+    transport_observation_ready: bool,
+    programmer_evidence_ready: bool,
+    binding_semantics_valid: bool,
     qualification_status_pending: bool,
     executor_qualified_claimed: bool,
     execution_enabled_claimed: bool,
@@ -1490,6 +1534,29 @@ fn bootforge_qualification_review(
         .get("qualificationBindingReady")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+    let live_device_identity_match = binding_material
+        .get("liveDeviceIdentityMatch")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let workstation_evidence_ready = binding_material
+        .get("workstationEvidenceReady")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let transport_observation_ready = binding_material
+        .get("transportObservationReady")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let programmer_evidence_ready = binding_material
+        .get("programmerEvidenceReady")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let binding_semantics_valid = binding_ready_claimed
+        == (recovery_job_fingerprint_valid
+            && executor_build_matches_current
+            && live_device_identity_match
+            && workstation_evidence_ready
+            && transport_observation_ready
+            && programmer_evidence_ready);
     let qualification_status_pending = value
         .get("qualificationStatus")
         .and_then(|v| v.as_str())
@@ -1522,6 +1589,12 @@ fn bootforge_qualification_review(
     if !binding_ready_claimed {
         blockers.push("Dossier did not claim qualification-binding readiness".to_string());
     }
+    if !binding_semantics_valid {
+        blockers.push(
+            "Dossier qualification-binding claim is inconsistent with its hash-bound identity/workstation/transport/programmer evidence"
+                .to_string(),
+        );
+    }
     if !qualification_status_pending {
         blockers.push("Qualification status is not pending-physical-review".to_string());
     }
@@ -1546,6 +1619,10 @@ fn bootforge_qualification_review(
             format!("dossier-fingerprint-valid:{}", dossier_fingerprint_valid),
             format!("job-match:{}", recovery_job_matches_expected),
             format!("executor-build-match:{}", executor_build_matches_current),
+            format!("binding-semantics-valid:{}", binding_semantics_valid),
+            format!("live-device-identity-match:{}", live_device_identity_match),
+            format!("transport-observation-ready:{}", transport_observation_ready),
+            format!("programmer-evidence-ready:{}", programmer_evidence_ready),
         ],
     );
 
@@ -1557,6 +1634,11 @@ fn bootforge_qualification_review(
         recovery_job_matches_expected,
         executor_build_matches_current,
         binding_ready_claimed,
+        live_device_identity_match,
+        workstation_evidence_ready,
+        transport_observation_ready,
+        programmer_evidence_ready,
+        binding_semantics_valid,
         qualification_status_pending,
         executor_qualified_claimed,
         execution_enabled_claimed,
@@ -1617,6 +1699,38 @@ mod qualification_binding_tests {
         assert!(!qualification_source_revision_available(""));
         assert!(!qualification_source_revision_available("  "));
         assert!(!qualification_source_revision_available("unavailable"));
+    }
+
+    #[test]
+    fn qualcomm_edl_requires_authorized_programmer_evidence() {
+        let live = transport("usb:05c6:9008:SERIAL", Some("SERIAL"));
+        assert!(!qualification_programmer_evidence_ready(&live, &[]));
+
+        let valid = QualificationProgrammerSnapshot {
+            path: "/authorized/prog_firehose.elf".into(),
+            sha256: "a".repeat(64),
+            bytes: 4096,
+            device_family: Some("SM8550".into()),
+            authorized: true,
+            authorization_source: Some("OEM service package".into()),
+            enrolled_at_unix_ms: Some(1),
+        };
+        assert!(qualification_programmer_evidence_ready(&live, &[valid]));
+
+        let missing_family = QualificationProgrammerSnapshot {
+            path: "/authorized/prog_firehose.elf".into(),
+            sha256: "b".repeat(64),
+            bytes: 4096,
+            device_family: None,
+            authorized: true,
+            authorization_source: Some("OEM service package".into()),
+            enrolled_at_unix_ms: Some(1),
+        };
+        assert!(!qualification_programmer_evidence_ready(&live, &[missing_family]));
+
+        let mut mediatek = live;
+        mediatek.mode = "mediatek-preloader".into();
+        assert!(qualification_programmer_evidence_ready(&mediatek, &[]));
     }
 
     #[test]
@@ -1700,11 +1814,14 @@ fn bootforge_qualification_export(
         &input.device,
     );
     let transport_observation_ready = transport_findings.is_empty();
+    let programmer_evidence_ready =
+        qualification_programmer_evidence_ready(&input.device, &input.authorized_programmers);
     let qualification_binding_ready = fingerprint_valid
         && source_revision_available
         && device_identity_match
         && workstation_evidence_ready
-        && transport_observation_ready;
+        && transport_observation_ready
+        && programmer_evidence_ready;
     let mut binding_blockers = Vec::new();
     if !fingerprint_valid {
         binding_blockers.push(
@@ -1756,6 +1873,12 @@ fn bootforge_qualification_export(
         );
     }
     binding_blockers.extend(transport_findings.iter().cloned());
+    if !programmer_evidence_ready {
+        binding_blockers.push(
+            "Qualcomm EDL qualification requires an authorized programmer record with valid SHA-256, nonzero size, declared device family, and authorization source"
+                .to_string(),
+        );
+    }
 
     let required_physical_checks = vec![
         "Repeat USB enumeration without identity drift",
@@ -1779,6 +1902,7 @@ fn bootforge_qualification_export(
         "liveDeviceIdentityMatch": device_identity_match,
         "workstationEvidenceReady": workstation_evidence_ready,
         "transportObservationReady": transport_observation_ready,
+        "programmerEvidenceReady": programmer_evidence_ready,
         "transportObservation": input.transport_observation,
         "transportFindings": transport_findings,
         "executorBuildFingerprint": executor_build_fingerprint,
@@ -1810,6 +1934,7 @@ fn bootforge_qualification_export(
         "liveDeviceIdentityMatch": device_identity_match,
         "workstationEvidenceReady": workstation_evidence_ready,
         "transportObservationReady": transport_observation_ready,
+        "programmerEvidenceReady": programmer_evidence_ready,
         "executorBuild": build_identity,
         "device": input.device,
         "workstation": input.workstation,
@@ -1837,6 +1962,7 @@ fn bootforge_qualification_export(
             format!("live-device-identity-match:{}", device_identity_match),
             format!("workstation-evidence-ready:{}", workstation_evidence_ready),
             format!("transport-observation-ready:{}", transport_observation_ready),
+            format!("programmer-evidence-ready:{}", programmer_evidence_ready),
             format!("qualification-binding-ready:{}", qualification_binding_ready),
             format!("executor-build-fingerprint:{}", executor_build_fingerprint),
         ],
@@ -1988,6 +2114,7 @@ struct QualifiedFlashApprovalInput {
     dossierPath: String,
     benchEvidencePath: Option<String>,
     reviewDecisionPath: Option<String>,
+    auditBundlePath: Option<String>,
     expectedRecoveryJobFingerprint: String,
     deviceSerial: String,
     partitions: Vec<FlashPartition>,
@@ -3374,6 +3501,7 @@ fn qualified_flash_grant_material(grant: &QualifiedFlashGrant) -> Result<Vec<u8>
         "issuedAtUnixSeconds": grant.issuedAtUnixSeconds,
         "expiresAtUnixSeconds": grant.expiresAtUnixSeconds,
         "dossierFingerprint": grant.dossierFingerprint,
+        "auditBundleFingerprint": grant.auditBundleFingerprint,
     });
     serde_json::to_vec(&value)
         .map_err(|e| format!("Could not serialize qualified flash grant material: {e}"))
@@ -3521,6 +3649,7 @@ fn bootforge_issue_qualification_trial_grant(
         issuedAtUnixSeconds: issued_at,
         expiresAtUnixSeconds: expires_at,
         dossierFingerprint: dossier_fingerprint,
+        auditBundleFingerprint: None,
         grantMac: String::new(),
     };
     grant.grantMac = qualified_flash_grant_mac(&state.qualification_grant_secret, &grant)?;
@@ -3600,6 +3729,34 @@ fn bootforge_issue_qualified_flash_grant(
     if !build.qualified_flash_compiled {
         return Err("This build does not contain the qualified destructive writer".to_string());
     }
+
+    let audit_bundle_path = input
+        .auditBundlePath
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            "Production-qualified grant requires a verified qualification audit bundle"
+                .to_string()
+        })?;
+    let audit_bundle_review = bootforge_qualification_audit_bundle_review(
+        audit_bundle_path.to_string(),
+        Some(recovery_job_fingerprint.clone()),
+    )?;
+    if !audit_bundle_review.safe_to_review {
+        return Err(format!(
+            "Qualification audit bundle is not safe to approve: {}",
+            audit_bundle_review.blockers.join("; ")
+        ));
+    }
+
+    let audit_bundle_fingerprint = audit_bundle_review
+        .bundle_fingerprint
+        .clone()
+        .filter(|value| valid_sha256_hex(value))
+        .ok_or_else(|| {
+            "Verified qualification audit bundle is missing a valid fingerprint".to_string()
+        })?;
 
     let decision_path = input
         .reviewDecisionPath
@@ -3719,6 +3876,7 @@ fn bootforge_issue_qualified_flash_grant(
         issuedAtUnixSeconds: issued_at,
         expiresAtUnixSeconds: expires_at,
         dossierFingerprint: dossier_fingerprint,
+        auditBundleFingerprint: Some(audit_bundle_fingerprint.clone()),
         grantMac: String::new(),
     };
     grant.grantMac = qualified_flash_grant_mac(&state.qualification_grant_secret, &grant)?;
@@ -3776,6 +3934,17 @@ fn validate_qualified_flash_config(config: &FlashJobConfig, grant_secret: &str) 
     }
     if !valid_sha256_hex(&grant.dossierFingerprint) {
         return Err("Qualified flash grant dossier fingerprint is invalid".to_string());
+    }
+    if is_approved {
+        let audit_fingerprint = grant
+            .auditBundleFingerprint
+            .as_deref()
+            .ok_or_else(|| "Production-qualified grant is missing its audit-bundle fingerprint".to_string())?;
+        if !valid_sha256_hex(audit_fingerprint) {
+            return Err("Production-qualified grant audit-bundle fingerprint is invalid".to_string());
+        }
+    } else if grant.auditBundleFingerprint.is_some() {
+        return Err("Bench qualification trial must not carry production audit-bundle authority".to_string());
     }
     if is_trial {
         if config.partitions.len() != 1 || grant.approvedPartitions.len() != 1 {
@@ -4988,6 +5157,7 @@ mod qualified_flash_grant_tests {
                 issuedAtUnixSeconds: 1,
                 expiresAtUnixSeconds: u64::MAX,
                 dossierFingerprint: "c".repeat(64),
+                auditBundleFingerprint: Some("d".repeat(64)),
                 grantMac: String::new(),
             },
         };
@@ -5018,6 +5188,7 @@ mod qualified_flash_grant_tests {
         let mut config = valid_config();
         config.qualificationGrant.qualificationStatus = "qualification-trial".into();
         config.qualificationGrant.executorQualified = false;
+        config.qualificationGrant.auditBundleFingerprint = None;
         config.qualificationGrant.grantMac =
             qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
         assert!(validate_qualified_flash_config(&config, "test-secret").is_ok());
@@ -5030,6 +5201,7 @@ mod qualified_flash_grant_tests {
         config.partitions[0].name = "bootloader".into();
         config.qualificationGrant.qualificationStatus = "qualification-trial".into();
         config.qualificationGrant.executorQualified = false;
+        config.qualificationGrant.auditBundleFingerprint = None;
         config.qualificationGrant.approvedPartitions[0].name = "bootloader".into();
         config.qualificationGrant.grantMac =
             qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
@@ -5280,6 +5452,7 @@ fn main() {
             driver_binding_snapshot,
             driver_binding_rollback_plan,
             driver_binding_stability_test,
+            driver_binding_elevation_status,
             driver_binding_inspect_inf,
             driver_binding_stage_and_relatch,
             firmware_provenance_write,
