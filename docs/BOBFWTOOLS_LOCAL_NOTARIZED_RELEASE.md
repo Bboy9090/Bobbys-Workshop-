@@ -4,7 +4,9 @@ This lane keeps the Developer ID private key in the Mac login keychain instead o
 
 ## One-time notarization profile
 
-Create an Apple app-specific password for the Apple ID that belongs to team `86NUJ8M3B8`, then run in a local shell without committing the values:
+Use either Apple ID authentication or an App Store Connect API key. Nothing is committed to the repository; `notarytool` stores the resulting profile in the macOS keychain.
+
+Apple ID + app-specific password:
 
 ```bash
 export BOBFW_APPLE_ID='your-apple-id@example.com'
@@ -14,7 +16,16 @@ bash scripts/configure-bobfwtools-notary-profile.sh BobFWTools
 unset BOBFW_APPLE_ID BOBFW_APP_SPECIFIC_PASSWORD
 ```
 
-`notarytool` stores the credential in the macOS keychain under the `BobFWTools` profile.
+App Store Connect API key:
+
+```bash
+export BOBFW_NOTARY_KEY_PATH="$HOME/private/AuthKey_XXXXXXXXXX.p8"
+export BOBFW_NOTARY_KEY_ID='XXXXXXXXXX'
+export BOBFW_NOTARY_ISSUER_ID='00000000-0000-0000-0000-000000000000'
+export BOBFW_EXPECTED_TEAM_ID='86NUJ8M3B8'
+bash scripts/configure-bobfwtools-notary-profile.sh BobFWTools
+unset BOBFW_NOTARY_KEY_PATH BOBFW_NOTARY_KEY_ID BOBFW_NOTARY_ISSUER_ID
+```
 
 ## Prerequisite check
 

@@ -51,6 +51,10 @@ describe('BobFWTools macOS signed release contract', () => {
     expect(localRelease).toContain('scripts/verify-bobfwtools-macos-release-preflight.sh');
     expect(profileSetup).toContain('notarytool store-credentials');
     expect(profileSetup).toContain('BOBFW_APP_SPECIFIC_PASSWORD');
+    expect(profileSetup).toContain('BOBFW_NOTARY_KEY_PATH');
+    expect(profileSetup).toContain('--key-id');
+    expect(profileSetup).toContain('--issuer');
     expect(runbook).toContain('keeps the Developer ID private key in the Mac login keychain');
+    expect(runbook).toContain('App Store Connect API key');
   });
 });
