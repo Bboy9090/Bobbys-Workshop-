@@ -901,6 +901,16 @@ export type HardwareFlowReadinessLane = {
   nextSteps: string[];
 };
 
+export type HardwareQualificationTask = {
+  workflowId: string;
+  category: string;
+  risk: WorkflowRiskLevel;
+  softwareImplemented: boolean;
+  physicallyQualified: boolean;
+  requiredEvidence: string[];
+  notes: string;
+};
+
 export type HardwareApprovalGate = {
   id: string;
   title: string;
@@ -915,6 +925,7 @@ export type HardwareFlowReadinessReport = {
   physicalApprovalRequired: boolean;
   approvalGates: HardwareApprovalGate[];
   workflowPolicies: WorkflowPolicy[];
+  qualificationQueue: HardwareQualificationTask[];
   workstation: WorkstationReadiness;
   adbDevices: AdbDeviceRecord[];
   fastbootSerials: string[];
@@ -1134,6 +1145,29 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     unmatchedDrivers.length === 0 &&
     lanes.some((lane) => lane.state !== 'blocked');
 
+  const qualificationQueue: HardwareQualificationTask[] = workflowPolicies
+    .filter((policy) => policy.activeInBobfwtools && !policy.physicallyQualified)
+    .map((policy) => {
+      const requiredEvidence = [
+        ...(policy.authorizationRequired ? ['Operator/device authorization evidence'] : []),
+        ...(policy.deviceIdentityVerification ? ['Exact target identity evidence immediately before execution'] : []),
+        ...(policy.dryRunSupported ? ['Dry-run / planning receipt using the exact intended inputs'] : []),
+        ...(policy.backupOrRollbackRequired ? ['Verified backup or rollback evidence'] : []),
+        ...(policy.auditLoggingRequired ? ['Audit ledger evidence with input/output fingerprints'] : []),
+        ...(policy.explicitConfirmationRequired ? ['Explicit human confirmation tied to the exact target'] : []),
+        'Designated physical-device bench result with post-operation verification',
+      ];
+      return {
+        workflowId: policy.id,
+        category: policy.category,
+        risk: policy.risk,
+        softwareImplemented: policy.activeInBobfwtools,
+        physicallyQualified: policy.physicallyQualified,
+        requiredEvidence,
+        notes: policy.notes,
+      };
+    });
+
   const packageBoundFirmwareReady = verifiedBundles.length > 0;
   const approvalGates: HardwareApprovalGate[] = [
     {
@@ -1227,6 +1261,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     physicalApprovalRequired: lanes.some((lane) => lane.automation === 'qualified-destructive' && lane.detected),
     approvalGates,
     workflowPolicies,
+    qualificationQueue,
     workstation,
     adbDevices,
     fastbootSerials,
