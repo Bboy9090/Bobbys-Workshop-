@@ -516,6 +516,114 @@ fn bootforgeusb_scan() -> Result<Vec<bootforgeusb::model::DeviceRecord>, String>
     bootforgeusb::scan().map_err(|e| format!("USB scan failed: {e}"))
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HardwareExecutorCapability {
+    id: &'static str,
+    protocol: &'static str,
+    implementation_state: &'static str,
+    compiled: bool,
+    destructive: bool,
+    physical_qualification_required: bool,
+    detail: &'static str,
+}
+
+#[tauri::command]
+fn hardware_executor_capabilities() -> Vec<HardwareExecutorCapability> {
+    vec![
+        HardwareExecutorCapability {
+            id: "android-adb",
+            protocol: "adb",
+            implementation_state: "implemented",
+            compiled: true,
+            destructive: false,
+            physical_qualification_required: false,
+            detail: "Authorized ADB diagnostics/service actions are implemented and exact-serial scoped.",
+        },
+        HardwareExecutorCapability {
+            id: "fastboot-mode-control",
+            protocol: "fastboot",
+            implementation_state: "implemented",
+            compiled: true,
+            destructive: false,
+            physical_qualification_required: false,
+            detail: "Fastboot mode/reboot control is implemented; this does not grant flash authority.",
+        },
+        HardwareExecutorCapability {
+            id: "qualified-fastboot-writer",
+            protocol: "fastboot",
+            implementation_state: if cfg!(feature = "qualified-flash") { "feature-gated-implemented" } else { "feature-gated-disabled" },
+            compiled: cfg!(feature = "qualified-flash"),
+            destructive: true,
+            physical_qualification_required: true,
+            detail: "Destructive Fastboot writer exists only in the qualified-flash build and requires the full evidence/grant chain.",
+        },
+        HardwareExecutorCapability {
+            id: "samsung-odin-writer",
+            protocol: "samsung-odin",
+            implementation_state: "planning-only",
+            compiled: false,
+            destructive: true,
+            physical_qualification_required: true,
+            detail: "Firmware inspection and guarded planning exist; no production Samsung write executor is enabled.",
+        },
+        HardwareExecutorCapability {
+            id: "qualcomm-firehose-writer",
+            protocol: "qualcomm-sahara-firehose",
+            implementation_state: "planning-only",
+            compiled: false,
+            destructive: true,
+            physical_qualification_required: true,
+            detail: "EDL discovery, authorized programmer inventory, package planning, and dry-run write math exist; no production Firehose write executor is enabled.",
+        },
+        HardwareExecutorCapability {
+            id: "mediatek-download-writer",
+            protocol: "mediatek-download-agent",
+            implementation_state: "planning-only",
+            compiled: false,
+            destructive: true,
+            physical_qualification_required: true,
+            detail: "BROM/Preloader detection and legitimate DA/auth planning exist; no production MediaTek write executor is enabled.",
+        },
+        HardwareExecutorCapability {
+            id: "calibration-backup-reader",
+            protocol: "authorized-block-read",
+            implementation_state: "implemented",
+            compiled: true,
+            destructive: false,
+            physical_qualification_required: false,
+            detail: "Allowlisted calibration backup is implemented when legitimate block/service access is proven.",
+        },
+        HardwareExecutorCapability {
+            id: "calibration-restore-writer",
+            protocol: "same-device-block-restore",
+            implementation_state: "preflight-only",
+            compiled: false,
+            destructive: true,
+            physical_qualification_required: true,
+            detail: "Same-device restore validation exists, but no production calibration restore executor is enabled.",
+        },
+        HardwareExecutorCapability {
+            id: "hardware-storage-service",
+            protocol: "isp-jtag-emmc-ufs",
+            implementation_state: "planning-only",
+            compiled: false,
+            destructive: true,
+            physical_qualification_required: true,
+            detail: "Hardware-service profile validation/planning exists; invasive storage execution remains bench-only and is not automated.",
+        },
+        HardwareExecutorCapability {
+            id: "bootforge-media-writer",
+            protocol: "removable-media",
+            implementation_state: "planning-only",
+            compiled: false,
+            destructive: true,
+            physical_qualification_required: true,
+            detail: "BobFWTools policy recognizes destructive media provisioning, but this desktop lane does not expose a production-qualified media writer.",
+        },
+    ]
+}
+
 #[tauri::command]
 fn hardware_approval_gap_export(
     report: serde_json::Value,
@@ -5483,6 +5591,7 @@ fn main() {
             get_backend_status,
             get_app_version,
             bootforgeusb_scan,
+            hardware_executor_capabilities,
             hardware_approval_gap_export,
             workflow_policy_catalog,
             calibration_partition_allowlist,
