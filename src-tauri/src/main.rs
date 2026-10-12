@@ -625,6 +625,76 @@ fn hardware_executor_capabilities() -> Vec<HardwareExecutorCapability> {
 }
 
 #[tauri::command]
+fn hardware_qualification_candidate_export(
+    candidate: serde_json::Value,
+    destination_path: String,
+) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+
+    let destination = std::path::PathBuf::from(destination_path.trim());
+    if destination.as_os_str().is_empty() {
+        return Err("Qualification candidate destination is required".to_string());
+    }
+
+    let flow_id = candidate
+        .get("flowId")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "Qualification candidate requires flowId".to_string())?;
+
+    let executor_state = candidate
+        .get("executorState")
+        .and_then(|value| value.as_str())
+        .unwrap_or("unknown");
+
+    let generated_unix_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+
+    let material = serde_json::json!({
+        "schema": "com.bobbyblanco.bobfwtools.hardware-qualification-candidate.v1",
+        "generatedUnixSeconds": generated_unix_seconds,
+        "flowId": flow_id,
+        "executorState": executor_state,
+        "grantsExecutionAuthority": false,
+        "executionPerformed": false,
+        "qualificationStatus": "candidate-only",
+        "candidate": candidate,
+    });
+    let material_bytes = serde_json::to_vec(&material)
+        .map_err(|e| format!("Could not serialize qualification candidate: {e}"))?;
+    let candidate_fingerprint = format!("{:x}", Sha256::digest(&material_bytes));
+
+    let receipt = serde_json::json!({
+        "candidateFingerprint": candidate_fingerprint,
+        "material": material,
+    });
+    let bytes = serde_json::to_vec_pretty(&receipt)
+        .map_err(|e| format!("Could not serialize qualification candidate receipt: {e}"))?;
+    std::fs::write(&destination, bytes)
+        .map_err(|e| format!("Could not write qualification candidate {}: {e}", destination.display()))?;
+
+    let _ = crate::audit::record(
+        "HardwareApproval",
+        "export-qualification-candidate",
+        "read-only",
+        "candidate-only-no-execution",
+        None,
+        "Hardware qualification candidate exported; receipt grants no execution authority.",
+        vec![
+            format!("flow-id:{}", flow_id),
+            format!("executor-state:{}", executor_state),
+            format!("candidate-fingerprint:{}", candidate_fingerprint),
+            format!("destination:{}", destination.display()),
+        ],
+    );
+
+    Ok(destination.display().to_string())
+}
+
+#[tauri::command]
 fn hardware_approval_gap_export(
     report: serde_json::Value,
     destination_path: String,
@@ -5592,6 +5662,7 @@ fn main() {
             get_app_version,
             bootforgeusb_scan,
             hardware_executor_capabilities,
+            hardware_qualification_candidate_export,
             hardware_approval_gap_export,
             workflow_policy_catalog,
             calibration_partition_allowlist,
