@@ -184,6 +184,35 @@ export default function HardwareFlowReadiness() {
             ))}
           </div>
 
+          {report.qualificationQueue.length > 0 && (
+            <div className="mt-3 rounded border border-orange-900/50 bg-orange-950/10 p-3">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-orange-400">Physical qualification queue</div>
+              <div className="mt-1 text-[10px] leading-4 text-slate-500">
+                These workflows are implemented in software but are not yet allowed to claim physical qualification.
+              </div>
+              <div className="mt-2 grid gap-2 lg:grid-cols-2">
+                {report.qualificationQueue.map((task) => (
+                  <div key={task.workflowId} className="rounded border border-slate-800 bg-slate-950/70 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-xs font-semibold text-white">{task.workflowId}</div>
+                        <div className="mt-1 text-[10px] text-slate-600">{task.category} · {task.risk}</div>
+                      </div>
+                      <span className="rounded border border-amber-900/60 bg-amber-950/20 px-2 py-1 text-[10px] text-amber-300">
+                        BENCH PENDING
+                      </span>
+                    </div>
+                    <div className="mt-2 text-[10px] text-slate-500">{task.notes}</div>
+                    <div className="mt-2 text-[10px] font-semibold text-slate-400">Evidence required</div>
+                    {task.requiredEvidence.map((item) => (
+                      <div key={item} className="mt-1 text-[10px] leading-4 text-slate-600">• {item}</div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {report.workflowPolicies.some((policy) => !policy.activeInBobfwtools) && (
             <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
               <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Reserved / inactive workflows</div>
