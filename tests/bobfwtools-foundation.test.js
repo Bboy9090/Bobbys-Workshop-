@@ -550,7 +550,7 @@ describe('hardware flow approval orchestrator', () => {
     }
 
     expect(panel).toContain('bench-gated');
-    expect(panel).toContain('complete the designated-device bench qualification');
+    expect(panel).toContain('implement a separately qualified Samsung executor');
     expect(panel).toContain('do not convert this gate into a software-only approval');
     expect(panel).toContain('No destructive command is executed by this panel');
   });
@@ -560,7 +560,7 @@ describe('hardware flow approval orchestrator', () => {
 
     expect(panel).toContain('bundle.planningReady && bundle.vendorHint === \'qualcomm\' && Boolean(bundle.packageFingerprint)');
     expect(panel).toContain('bundle.planningReady && bundle.vendorHint === \'mediatek\' && Boolean(bundle.packageFingerprint)');
-    expect(panel).toContain('one-partition bench-write');
+    expect(panel).toContain('Firehose is dry-run-only');
     expect(panel).toContain('dossier → one-partition bench trial → bench evidence → human decision → audit bundle → short-lived production grant');
     expect(panel).toContain('restricted/bypass-class workflow exposure');
   });
