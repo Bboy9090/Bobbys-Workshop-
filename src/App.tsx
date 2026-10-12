@@ -1878,11 +1878,13 @@ export default function App() {
                         disabled={recoveryBusy}
                         className="rounded bg-cyan-800 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40 hover:bg-cyan-700"
                       >
-                        Lock exact identity
+                        Set planning identity
                       </button>
-                      <span className={lockedRecoveryIdentity ? 'text-[10px] text-emerald-300' : 'text-[10px] text-amber-300'}>
+                      <span className={lockedRecoveryIdentity?.trustedForWrite ? 'text-[10px] text-emerald-300' : 'text-[10px] text-amber-300'}>
                         {lockedRecoveryIdentity
-                          ? `LOCKED · ${lockedRecoveryIdentity.model} · ${lockedRecoveryIdentity.board} · ${lockedRecoveryIdentity.sku} · ${lockedRecoveryIdentity.source}`
+                          ? lockedRecoveryIdentity.trustedForWrite
+                            ? `WRITE-QUALIFIED · ${lockedRecoveryIdentity.model} · ${lockedRecoveryIdentity.board} · ${lockedRecoveryIdentity.sku} · ${lockedRecoveryIdentity.source}`
+                            : `PLANNING ONLY · ${lockedRecoveryIdentity.model} · ${lockedRecoveryIdentity.board} · ${lockedRecoveryIdentity.sku} · ${lockedRecoveryIdentity.source} · independently capture identity before write handoff`
                           : 'NOT LOCKED — verified firmware remains withheld'}
                       </span>
                     </div>
