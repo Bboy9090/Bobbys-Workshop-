@@ -138,6 +138,14 @@ export default function HardwareFlowReadiness() {
                 <div className="mt-2 text-[10px] text-slate-500">
                   detected {lane.detected ? 'yes' : 'no'} · devices {lane.applicableDevices.length} · verified firmware {lane.firmwareCandidates.length}
                 </div>
+                {lane.workflowPolicyId && (
+                  <div className="mt-1 text-[10px] text-slate-500">
+                    policy {lane.workflowPolicyId} · physical qualification{' '}
+                    <span className={lane.physicallyQualified ? 'text-emerald-300' : 'text-amber-300'}>
+                      {lane.physicallyQualified ? 'complete' : 'pending'}
+                    </span>
+                  </div>
+                )}
 
                 {lane.applicableDevices.length > 0 && (
                   <div className="mt-2">
