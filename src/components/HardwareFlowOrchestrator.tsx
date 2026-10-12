@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   diagnosePhone,
   exportHardwareApprovalGapReport,
+  exportHardwareQualificationCandidate,
   getCalibrationPartitionAllowlist,
   getDriverConflictPlan,
   getDriverElevationStatus,
@@ -127,6 +128,7 @@ export default function HardwareFlowOrchestrator() {
   const [automationResults, setAutomationResults] = useState<WorkflowJobRecord[]>([]);
   const [automationNote, setAutomationNote] = useState<string | null>(null);
   const [gapReportPath, setGapReportPath] = useState<string | null>(null);
+  const [candidatePaths, setCandidatePaths] = useState<Record<string, string>>({});
 
   const collectSweep = async () => {
     const errors: string[] = [];
@@ -663,6 +665,74 @@ export default function HardwareFlowOrchestrator() {
     }
   };
 
+  const exportQualificationCandidate = async (flow: FlowRow) => {
+    if (!nativeRuntime || busy || flow.state !== 'executor-gated') return;
+    const executorIdByFlow: Record<string, string> = {
+      samsung: 'samsung-odin-writer',
+      qualcomm: 'qualcomm-firehose-writer',
+      mediatek: 'mediatek-download-writer',
+      'calibration-restore': 'calibration-restore-writer',
+      'chip-off': 'hardware-storage-service',
+      'bootforge-media': 'bootforge-media-writer',
+    };
+    const executor = snapshot.executors.find((item) => item.id === executorIdByFlow[flow.id]);
+    const packageFingerprints = snapshot.firmware?.bundles
+      .filter((bundle) => {
+        if (!bundle.packageFingerprint) return false;
+        if (flow.id === 'qualcomm') return bundle.vendorHint === 'qualcomm';
+        if (flow.id === 'mediatek') return bundle.vendorHint === 'mediatek';
+        return false;
+      })
+      .map((bundle) => bundle.packageFingerprint!)
+      ?? [];
+
+    const deviceEvidence = snapshot.transports.map(
+      (device) =>
+        `${device.deviceUid}|${device.mode}|${device.vendorId.toString(16).padStart(4, '0')}:${device.productId.toString(16).padStart(4, '0')}|${device.serialNumber || '<none>'}`,
+    );
+    const driverEvidence = [
+      ...snapshot.driverBindings.map(
+        (binding) => `${binding.instanceId}|${binding.bindingState}|${binding.claimMatchScope}`,
+      ),
+      ...Object.values(snapshot.driverStability).map(
+        (report) => `${report.requestedInstanceId}|stable=${report.stable}|changes=${report.claimChanges}|disappearances=${report.disappearanceEvents}`,
+      ),
+    ];
+
+    const requiredPhysicalChecks = [
+      'Repeated exact-device enumeration stability',
+      'Expected service/recovery mode confirmed',
+      'Endpoint or transport stability confirmed',
+      'Exact firmware target identity including partition layout',
+      'Backup/rollback evidence captured where required',
+      'Partition/range bounds independently verified',
+      'One designated-device bench trial if a qualified executor exists',
+      'Post-write verification before production authority',
+    ];
+
+    setBusy('export');
+    try {
+      const path = await exportHardwareQualificationCandidate({
+        flowId: flow.id,
+        executorState: executor?.implementationState || 'unknown',
+        deviceEvidence,
+        packageFingerprints,
+        workstationReady: Boolean(snapshot.workstation?.readyForDiagnostics),
+        driverEvidence,
+        requiredPhysicalChecks,
+        blockers: [
+          flow.next,
+          ...(executor?.compiled ? [] : ['Production executor is not compiled/enabled for this flow.']),
+        ],
+      });
+      if (path) {
+        setCandidatePaths((current) => ({ ...current, [flow.id]: path }));
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <section className="mb-4 rounded-lg border border-violet-900/60 bg-violet-950/10 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -753,6 +823,23 @@ export default function HardwareFlowOrchestrator() {
                 <div className="mt-2 text-[11px] leading-5 text-slate-400">
                   <span className="font-semibold text-slate-300">Next:</span> {flow.next}
                 </div>
+                {flow.state === 'executor-gated' && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={Boolean(busy)}
+                      onClick={() => void exportQualificationCandidate(flow)}
+                      className="rounded border border-fuchsia-800 px-2 py-1 text-[10px] font-semibold text-fuchsia-300 disabled:opacity-40 hover:bg-fuchsia-950/30"
+                    >
+                      Export qualification candidate
+                    </button>
+                    {candidatePaths[flow.id] && (
+                      <span className="break-all font-mono text-[9px] text-slate-600">
+                        {candidatePaths[flow.id]}
+                      </span>
+                    )}
+                  </div>
+                )}
                 {flow.evidence.length > 0 && (
                   <div className="mt-2 break-all font-mono text-[9px] leading-4 text-slate-600">
                     {flow.evidence.join(' · ')}
