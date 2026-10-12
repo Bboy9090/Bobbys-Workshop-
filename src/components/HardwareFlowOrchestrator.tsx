@@ -3,6 +3,7 @@ import {
   diagnosePhone,
   exportHardwareApprovalGapReport,
   getDriverElevationStatus,
+  getHardwareExecutorCapabilities,
   getFastbootModeDevices,
   getQualificationBuildIdentity,
   getQualifiedFastbootDevices,
@@ -22,6 +23,7 @@ import {
   type DeviceCapabilityMatrix,
   type DriverBindingRecord,
   type FirmwareLibraryReport,
+  type HardwareExecutorCapability,
   type PhoneDiagnosticReport,
   type QualificationBuildIdentity,
   type RecoveryCandidate,
@@ -55,6 +57,7 @@ type SweepSnapshot = {
   qualifiedFastbootDevices: string[];
   driverBindings: DriverBindingRecord[];
   policies: WorkflowPolicy[];
+  executors: HardwareExecutorCapability[];
   authorizedProgrammers: number;
   adminRequired: boolean;
   adminReady: boolean;
@@ -74,6 +77,7 @@ const emptySnapshot = (): SweepSnapshot => ({
   qualifiedFastbootDevices: [],
   driverBindings: [],
   policies: [],
+  executors: [],
   authorizedProgrammers: 0,
   adminRequired: false,
   adminReady: true,
@@ -128,6 +132,7 @@ export default function HardwareFlowOrchestrator() {
       qualifiedFastbootDevices,
       driverBindings,
       policies,
+      executors,
       programmers,
       elevation,
       adbDevices,
@@ -143,6 +148,7 @@ export default function HardwareFlowOrchestrator() {
       safeCall('qualified fastboot scan', getQualifiedFastbootDevices, errors),
       safeCall('driver claim scan', scanDriverBindings, errors),
       safeCall('workflow policy catalog', getWorkflowPolicyCatalog, errors),
+      safeCall('hardware executor capability inventory', getHardwareExecutorCapabilities, errors),
       safeCall('authorized programmer inventory', listEdlProgrammers, errors),
       safeCall('Windows elevation readiness', getDriverElevationStatus, errors),
       safeCall('ADB scan', scanAdbDevices, errors),
@@ -166,6 +172,7 @@ export default function HardwareFlowOrchestrator() {
       qualifiedFastbootDevices: qualifiedFastbootDevices ?? [],
       driverBindings: driverBindings ?? [],
       policies: policies ?? [],
+      executors: executors ?? [],
       authorizedProgrammers: (programmers ?? []).filter((item) => item.authorized).length,
       adminRequired: elevation?.required ?? false,
       adminReady: elevation?.elevated ?? true,
@@ -254,6 +261,15 @@ export default function HardwareFlowOrchestrator() {
     );
     const driverMismatches = snapshot.driverBindings.filter((binding) => binding.bindingState !== 'matched');
     const enabledOneClick = snapshot.capabilities?.workflows.filter((workflow) => workflow.enabled).length ?? 0;
+    const executorById = (id: string) => snapshot.executors.find((executor) => executor.id === id);
+    const samsungExecutor = executorById('samsung-odin-writer');
+    const qcomExecutor = executorById('qualcomm-firehose-writer');
+    const mtkExecutor = executorById('mediatek-download-writer');
+    const qualifiedFastbootExecutor = executorById('qualified-fastboot-writer');
+    const calibrationBackupExecutor = executorById('calibration-backup-reader');
+    const calibrationRestoreExecutor = executorById('calibration-restore-writer');
+    const hardwareStorageExecutor = executorById('hardware-storage-service');
+    const bootforgeMediaExecutor = executorById('bootforge-media-writer');
 
     const rows: FlowRow[] = [];
 
@@ -305,9 +321,11 @@ export default function HardwareFlowOrchestrator() {
     rows.push({
       id: 'samsung',
       label: 'Samsung Download Mode',
-      state: samsungDetected ? 'executor-gated' : 'blocked',
+      state: samsungDetected
+        ? (samsungExecutor?.compiled ? 'bench-gated' : 'executor-gated')
+        : 'blocked',
       summary: samsungDetected
-        ? 'Samsung Download Mode is physically detected. Firmware inspection/planning may proceed.'
+        ? `Samsung Download Mode is physically detected. Executor state: ${samsungExecutor?.implementationState || 'unknown'}.`
         : 'No Samsung Download Mode target is currently detected.',
       next: samsungDetected
         ? 'The Samsung lane is planning-only today (executionEnabled=false). Finish exact model/package verification and implement a separately qualified Samsung executor before physical bench qualification can authorize writes.'
@@ -318,7 +336,7 @@ export default function HardwareFlowOrchestrator() {
     });
 
     const qcomState: FlowState = qcomCandidate && qcomBundle && snapshot.authorizedProgrammers > 0
-      ? 'executor-gated'
+      ? (qcomExecutor?.compiled ? 'bench-gated' : 'executor-gated')
       : qcomCandidate || qcomBundle
         ? 'planning-ready'
         : 'blocked';
@@ -326,7 +344,7 @@ export default function HardwareFlowOrchestrator() {
       id: 'qualcomm',
       label: 'Qualcomm EDL / Firehose',
       state: qcomState,
-      summary: `EDL target=${qcomCandidate}; verified Qualcomm bundle=${qcomBundle}; authorized programmer(s)=${snapshot.authorizedProgrammers}.`,
+      summary: `EDL target=${qcomCandidate}; verified Qualcomm bundle=${qcomBundle}; authorized programmer(s)=${snapshot.authorizedProgrammers}; executor=${qcomExecutor?.implementationState || 'unknown'}.`,
       next: qcomState === 'executor-gated'
         ? 'Software evidence is assembled, but Qualcomm recovery execution is still disabled and Firehose is dry-run-only. Implement and separately qualify an authenticated executor before any bench write.'
         : 'Connect the exact EDL target, import an official/authorized hash-bound bundle, and enroll a legitimate authorized programmer.',
@@ -337,12 +355,16 @@ export default function HardwareFlowOrchestrator() {
       ],
     });
 
-    const mtkState: FlowState = mtkCandidate && mtkBundle ? 'executor-gated' : mtkCandidate || mtkBundle ? 'planning-ready' : 'blocked';
+    const mtkState: FlowState = mtkCandidate && mtkBundle
+      ? (mtkExecutor?.compiled ? 'bench-gated' : 'executor-gated')
+      : mtkCandidate || mtkBundle
+        ? 'planning-ready'
+        : 'blocked';
     rows.push({
       id: 'mediatek',
       label: 'MediaTek BROM / Preloader',
       state: mtkState,
-      summary: `MediaTek recovery target=${mtkCandidate}; verified MediaTek bundle=${mtkBundle}.`,
+      summary: `MediaTek recovery target=${mtkCandidate}; verified MediaTek bundle=${mtkBundle}; executor=${mtkExecutor?.implementationState || 'unknown'}.`,
       next: mtkState === 'executor-gated'
         ? 'Use only legitimate OEM/service DA/auth material. The current MediaTek lane is planning-only; implement and qualify a real authenticated executor before destructive bench qualification.'
         : 'Connect the target in BROM/Preloader and import an official/authorized hash-bound package.',
@@ -394,10 +416,14 @@ export default function HardwareFlowOrchestrator() {
     rows.push({
       id: 'qualified-writer',
       label: 'Qualified destructive writer',
-      state: buildQualified && qFastbootPresent ? 'bench-gated' : buildQualified ? 'planning-ready' : 'blocked',
+      state: buildQualified && qFastbootPresent && qualifiedFastbootExecutor?.compiled
+        ? 'bench-gated'
+        : buildQualified
+          ? 'planning-ready'
+          : 'blocked',
       summary: buildQualified
-        ? `Qualified writer is compiled; ${snapshot.qualifiedFastbootDevices.length} qualified Fastboot target(s) currently detected.`
-        : 'This build does not expose the qualified destructive writer.',
+        ? `Qualified writer is compiled; ${snapshot.qualifiedFastbootDevices.length} qualified Fastboot target(s) currently detected; executor=${qualifiedFastbootExecutor?.implementationState || 'unknown'}.`
+        : `This build does not expose the qualified destructive writer; executor=${qualifiedFastbootExecutor?.implementationState || 'unknown'}.`,
       next: buildQualified && qFastbootPresent
         ? 'Complete dossier → one-partition bench trial → bench evidence → human decision → audit bundle → short-lived production grant.'
         : buildQualified
@@ -428,7 +454,9 @@ export default function HardwareFlowOrchestrator() {
     rows.push({
       id: 'calibration-backup',
       label: 'Calibration / identity partition backup',
-      state: calibrationBackup?.activeInBobfwtools ? 'planning-ready' : 'blocked',
+      state: calibrationBackup?.activeInBobfwtools
+        ? (calibrationBackupExecutor?.compiled ? 'ready' : 'planning-ready')
+        : 'blocked',
       summary: calibrationBackup?.activeInBobfwtools
         ? 'Allowlisted calibration backup policy is active, read-oriented, audit-logged, and requires legitimate block/service access.'
         : 'Calibration backup policy is not active.',
@@ -443,7 +471,7 @@ export default function HardwareFlowOrchestrator() {
       id: 'calibration-restore',
       label: 'Calibration restore',
       state: calibrationRestore?.activeInBobfwtools
-        ? (calibrationRestore.physicallyQualified ? 'bench-gated' : 'executor-gated')
+        ? (calibrationRestoreExecutor?.compiled ? 'bench-gated' : 'executor-gated')
         : 'blocked',
       summary: calibrationRestore?.activeInBobfwtools
         ? 'Same-device restore policy is active, destructive, and still not physically qualified.'
@@ -458,7 +486,9 @@ export default function HardwareFlowOrchestrator() {
     rows.push({
       id: 'storage-identify',
       label: 'ISP / JTAG / eMMC / UFS storage identification',
-      state: storageIdentify?.activeInBobfwtools ? 'planning-ready' : 'blocked',
+      state: storageIdentify?.activeInBobfwtools
+        ? (hardwareStorageExecutor?.compiled ? 'bench-gated' : 'planning-ready')
+        : 'blocked',
       summary: storageIdentify?.activeInBobfwtools
         ? 'Hardware-service planning is active and intentionally begins read-only.'
         : 'Hardware storage-identification planning is inactive.',
@@ -472,7 +502,9 @@ export default function HardwareFlowOrchestrator() {
     rows.push({
       id: 'chip-off',
       label: 'Chip-off / reball planning',
-      state: chipOff?.activeInBobfwtools ? 'executor-gated' : 'blocked',
+      state: chipOff?.activeInBobfwtools
+        ? (hardwareStorageExecutor?.compiled ? 'bench-gated' : 'executor-gated')
+        : 'blocked',
       summary: chipOff?.activeInBobfwtools
         ? 'Chip-off/reball is planning-only and not physically qualified.'
         : 'Chip-off/reball planning is inactive.',
@@ -487,7 +519,7 @@ export default function HardwareFlowOrchestrator() {
       id: 'bootforge-media',
       label: 'BootForge removable-media provisioning',
       state: bootforgeMedia?.activeInBobfwtools
-        ? (bootforgeMedia.physicallyQualified ? 'bench-gated' : 'executor-gated')
+        ? (bootforgeMediaExecutor?.compiled ? 'bench-gated' : 'executor-gated')
         : 'blocked',
       summary: bootforgeMedia?.activeInBobfwtools
         ? 'Destructive removable-media provisioning is active in policy but remains physically unqualified.'
