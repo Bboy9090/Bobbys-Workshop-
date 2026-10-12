@@ -890,6 +890,8 @@ export async function initializeWorkstation(): Promise<WorkstationReadiness> {
 export type HardwareFlowReadinessLane = {
   id: string;
   title: string;
+  workflowPolicyId?: string | null;
+  physicallyQualified?: boolean | null;
   state: 'ready' | 'guided' | 'blocked';
   automation: 'automatic-read-only' | 'guided-safe-action' | 'qualified-destructive';
   detected: boolean;
@@ -912,6 +914,7 @@ export type HardwareFlowReadinessReport = {
   softwareReady: boolean;
   physicalApprovalRequired: boolean;
   approvalGates: HardwareApprovalGate[];
+  workflowPolicies: WorkflowPolicy[];
   workstation: WorkstationReadiness;
   adbDevices: AdbDeviceRecord[];
   fastbootSerials: string[];
@@ -936,6 +939,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     firmware,
     driverBindings,
     driverElevation,
+    workflowPolicies,
   ] = await Promise.all([
     getWorkstationReadiness(),
     scanAdbDevices(),
@@ -946,9 +950,12 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     scanFirmwareLibrary(),
     scanDriverBindings(),
     getDriverElevationStatus(),
+    getWorkflowPolicyCatalog(),
   ]);
 
   const bundles = firmware?.bundles ?? [];
+  const workflowPolicy = (id: string) => workflowPolicies.find((policy) => policy.id === id) || null;
+
   const verifiedBundles = bundles.filter(
     (bundle) => bundle.planningReady && Boolean(bundle.packageFingerprint),
   );
@@ -973,6 +980,8 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     {
       id: 'adb-service',
       title: 'ADB authorized service',
+      workflowPolicyId: 'android.adb-authorized',
+      physicallyQualified: workflowPolicy('android.adb-authorized')?.physicallyQualified ?? null,
       state: authorizedAdb.length && workstation.readyForAndroidService ? 'ready' : 'blocked',
       automation: 'automatic-read-only',
       detected: adbDevices.length > 0,
@@ -1017,6 +1026,8 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     {
       id: 'samsung-download',
       title: 'Samsung Download Mode',
+      workflowPolicyId: 'samsung.odin-plan',
+      physicallyQualified: workflowPolicy('samsung.odin-plan')?.physicallyQualified ?? null,
       state: samsungDevices.length ? 'guided' : 'blocked',
       automation: 'qualified-destructive',
       detected: samsungDevices.length > 0,
@@ -1030,6 +1041,8 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     {
       id: 'qualcomm-edl',
       title: 'Qualcomm EDL / Sahara / Firehose',
+      workflowPolicyId: 'qualcomm.edl-plan',
+      physicallyQualified: workflowPolicy('qualcomm.edl-plan')?.physicallyQualified ?? null,
       state: qualcommRecovery.length && qualcommBundles.length ? 'guided' : 'blocked',
       automation: 'qualified-destructive',
       detected: qualcommRecovery.length > 0,
@@ -1047,6 +1060,8 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     {
       id: 'mediatek-download',
       title: 'MediaTek Preloader / Download',
+      workflowPolicyId: 'mediatek.brom-plan',
+      physicallyQualified: workflowPolicy('mediatek.brom-plan')?.physicallyQualified ?? null,
       state: mediatekRecovery.length && mediatekBundles.length ? 'guided' : 'blocked',
       automation: 'qualified-destructive',
       detected: mediatekRecovery.length > 0,
@@ -1185,6 +1200,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     softwareReady,
     physicalApprovalRequired: lanes.some((lane) => lane.automation === 'qualified-destructive' && lane.detected),
     approvalGates,
+    workflowPolicies,
     workstation,
     adbDevices,
     fastbootSerials,
