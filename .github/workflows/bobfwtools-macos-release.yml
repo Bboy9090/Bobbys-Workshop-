@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: bobfwtools-macos-release
+  cancel-in-progress: false
+
 env:
   BOBFWTOOLS_SOURCE_REVISION: ${{ github.sha }}
 
@@ -27,7 +31,7 @@ jobs:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Validate release label
         shell: bash
@@ -41,9 +45,10 @@ jobs:
           fi
 
       - name: Use Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "24.x"
+          package-manager-cache: false
 
       - name: Validate release secrets
         shell: bash
@@ -63,7 +68,7 @@ jobs:
           fi
 
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci
 
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -227,8 +232,24 @@ jobs:
 
           cat "$RECEIPT"
 
+      - name: Write JSON release provenance receipt
+        shell: bash
+        env:
+          BOBFWTOOLS_RELEASE_LABEL: ${{ inputs.release_label }}
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/release"
+          APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app"
+          DMG="$OUT/BobFWTools-${{ inputs.release_label }}-universal-macOS.dmg"
+          bash scripts/create-bobfwtools-release-receipt.sh \
+            "$APP" \
+            "$DMG" \
+            "$OUT/APP-NOTARIZATION.json" \
+            "$OUT/DMG-NOTARIZATION.json" \
+            "$OUT/RELEASE-RECEIPT.json"
+
       - name: Upload signed notarized macOS release
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: BobFWTools-${{ inputs.release_label }}-signed-notarized-macOS
           path: |
@@ -237,6 +258,7 @@ jobs:
             ${{ runner.temp }}/release/APP-NOTARIZATION.json
             ${{ runner.temp }}/release/DMG-NOTARIZATION.json
             ${{ runner.temp }}/release/RELEASE-RECEIPT.txt
+            ${{ runner.temp }}/release/RELEASE-RECEIPT.json
           if-no-files-found: error
 
       - name: Remove temporary signing material

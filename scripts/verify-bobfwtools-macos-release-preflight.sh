@@ -17,6 +17,21 @@ bash scripts/verify-bobfwtools-macos-app.sh "$APP_PATH"
 [[ -f "$ENTITLEMENTS" ]] || fail "macOS entitlements file is missing"
 plutil -lint "$ENTITLEMENTS" >/dev/null
 
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+config = json.loads(Path("src-tauri/tauri.conf.json").read_text())
+bundle = config.get("bundle", {})
+resources = bundle.get("resources", [])
+external_bin = bundle.get("externalBin")
+
+if resources:
+    raise SystemExit(f"release config must not bundle legacy resources: {resources!r}")
+if external_bin:
+    raise SystemExit(f"release config must not declare external binaries: {external_bin!r}")
+PY
+
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PLIST")" == "com.bobbyblanco.bobfwtools" ]]   || fail "release bundle identifier drifted"
 
 ARCHS="$(lipo -archs "$BIN")"
