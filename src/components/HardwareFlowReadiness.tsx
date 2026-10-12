@@ -184,6 +184,25 @@ export default function HardwareFlowReadiness() {
             ))}
           </div>
 
+          {report.workflowPolicies.some((policy) => !policy.activeInBobfwtools) && (
+            <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Reserved / inactive workflows</div>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                {report.workflowPolicies
+                  .filter((policy) => !policy.activeInBobfwtools)
+                  .map((policy) => (
+                    <div key={policy.id} className="rounded border border-slate-800 bg-slate-950/70 p-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[10px] font-semibold text-slate-300">{policy.category} · {policy.id}</div>
+                        <span className="text-[10px] text-slate-500">RESERVED</span>
+                      </div>
+                      <div className="mt-1 text-[10px] leading-4 text-slate-600">{policy.notes}</div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
           <div className="mt-3 rounded border border-cyan-900/50 bg-cyan-950/10 p-3 text-[10px] leading-4 text-cyan-100">
             Read-only and evidence-building steps may be automated. Firmware selection is restricted to verified,
             vendor-matching packages. Driver relatch is hardware-ID gated. Destructive firmware writes remain blocked
