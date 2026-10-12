@@ -160,6 +160,13 @@ export default function RepairCommandCenter() {
     return [...adbTargets, ...recoveryTargets];
   }, [adbDevices, transportDevices]);
 
+  useEffect(() => {
+    setSelectedTargetKey((current) => {
+      if (current && targets.some((target) => target.key === current)) return current;
+      return targets.length === 1 ? targets[0].key : '';
+    });
+  }, [targets]);
+
   const selectedTarget = useMemo(
     () => targets.find((target) => target.key === selectedTargetKey) || null,
     [targets, selectedTargetKey],
