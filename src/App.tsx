@@ -1814,6 +1814,72 @@ export default function App() {
                   <div className="mt-1 text-xs leading-5 text-slate-400">
                     Use a package that already passed provenance, exact model/board/SKU binding, chipset consistency, completeness, and SHA-256 verification.
                   </div>
+
+                  <div className="mt-3 rounded border border-cyan-900/40 bg-black/20 p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-400">Exact device firmware identity</div>
+                        <div className="mt-1 text-[10px] leading-4 text-slate-500">
+                          Firmware stays hidden until model, board, and SKU are locked for this device. Capture from authorized ADB before changing modes when possible.
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void captureRecoveryIdentityFromAdb()}
+                        disabled={!adbSelectedSerial || recoveryBusy}
+                        className="rounded border border-cyan-800 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-40 hover:bg-cyan-950/30"
+                      >
+                        Fill from authorized ADB
+                      </button>
+                    </div>
+
+                    <div className="mt-2 grid gap-2 md:grid-cols-3">
+                      <input
+                        value={recoveryIdentityDraft.model}
+                        onChange={(event) => {
+                          setRecoveryIdentityDraft((current) => ({ ...current, model: event.target.value }));
+                          setLockedRecoveryIdentity(null);
+                        }}
+                        placeholder="Exact model"
+                        className="rounded border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-white"
+                      />
+                      <input
+                        value={recoveryIdentityDraft.board}
+                        onChange={(event) => {
+                          setRecoveryIdentityDraft((current) => ({ ...current, board: event.target.value }));
+                          setLockedRecoveryIdentity(null);
+                        }}
+                        placeholder="Exact board"
+                        className="rounded border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-white"
+                      />
+                      <input
+                        value={recoveryIdentityDraft.sku}
+                        onChange={(event) => {
+                          setRecoveryIdentityDraft((current) => ({ ...current, sku: event.target.value }));
+                          setLockedRecoveryIdentity(null);
+                        }}
+                        placeholder="Exact SKU / device code"
+                        className="rounded border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-white"
+                      />
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={lockRecoveryIdentity}
+                        disabled={recoveryBusy}
+                        className="rounded bg-cyan-800 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40 hover:bg-cyan-700"
+                      >
+                        Lock exact identity
+                      </button>
+                      <span className={lockedRecoveryIdentity ? 'text-[10px] text-emerald-300' : 'text-[10px] text-amber-300'}>
+                        {lockedRecoveryIdentity
+                          ? `LOCKED · ${lockedRecoveryIdentity.model} · ${lockedRecoveryIdentity.board} · ${lockedRecoveryIdentity.sku} · ${lockedRecoveryIdentity.source}`
+                          : 'NOT LOCKED — verified firmware remains withheld'}
+                      </span>
+                    </div>
+                  </div>
+
                   <div className="mt-3 grid gap-2 lg:grid-cols-[1fr_auto]">
                     <select
                       value={selectedVerifiedBundle}
