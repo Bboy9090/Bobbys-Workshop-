@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   diagnosePhone,
+  exportHardwareApprovalGapReport,
   getDriverElevationStatus,
   getFastbootModeDevices,
   getQualificationBuildIdentity,
@@ -107,9 +108,10 @@ async function safeCall<T>(label: string, fn: () => Promise<T>, errors: string[]
 export default function HardwareFlowOrchestrator() {
   const nativeRuntime = useMemo(() => isTauriRuntime(), []);
   const [snapshot, setSnapshot] = useState<SweepSnapshot>(emptySnapshot);
-  const [busy, setBusy] = useState<'sweep' | 'setup' | 'automation' | null>(null);
+  const [busy, setBusy] = useState<'sweep' | 'setup' | 'automation' | 'export' | null>(null);
   const [automationResults, setAutomationResults] = useState<WorkflowJobRecord[]>([]);
   const [automationNote, setAutomationNote] = useState<string | null>(null);
+  const [gapReportPath, setGapReportPath] = useState<string | null>(null);
 
   const collectSweep = async () => {
     const errors: string[] = [];
@@ -530,6 +532,22 @@ export default function HardwareFlowOrchestrator() {
     blocked: flows.filter((flow) => flow.state === 'blocked').length,
   }), [flows]);
 
+  const exportGapReport = async () => {
+    if (!nativeRuntime || busy || snapshot.scannedAt === 0) return;
+    setBusy('export');
+    try {
+      const path = await exportHardwareApprovalGapReport({
+        scannedAt: snapshot.scannedAt,
+        counts,
+        flows,
+        sweepErrors: snapshot.errors,
+      });
+      if (path) setGapReportPath(path);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <section className="mb-4 rounded-lg border border-violet-900/60 bg-violet-950/10 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -564,6 +582,14 @@ export default function HardwareFlowOrchestrator() {
             className="rounded border border-cyan-700 px-3 py-2 text-xs font-semibold text-cyan-200 disabled:opacity-40 hover:bg-cyan-950/40"
           >
             {busy === 'automation' ? 'Running safe checks…' : 'Run all safe automated checks'}
+          </button>
+          <button
+            type="button"
+            disabled={!nativeRuntime || Boolean(busy) || snapshot.scannedAt === 0}
+            onClick={() => void exportGapReport()}
+            className="rounded border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 disabled:opacity-40 hover:bg-slate-800"
+          >
+            {busy === 'export' ? 'Exporting…' : 'Export approval gap report'}
           </button>
         </div>
       </div>
@@ -620,6 +646,13 @@ export default function HardwareFlowOrchestrator() {
               </div>
             ))}
           </div>
+
+          {gapReportPath && (
+            <div className="mt-4 rounded border border-emerald-900/50 bg-emerald-950/20 p-3 text-xs text-emerald-300">
+              Approval gap report saved: <span className="break-all font-mono">{gapReportPath}</span>
+              <div className="mt-1 text-[10px] text-slate-500">Evidence only. The report grants no execution authority.</div>
+            </div>
+          )}
 
           {snapshot.errors.length > 0 && (
             <div className="mt-4 rounded border border-amber-900/50 bg-amber-950/20 p-3">
