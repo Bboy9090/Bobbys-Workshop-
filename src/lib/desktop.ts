@@ -899,10 +899,19 @@ export type HardwareFlowReadinessLane = {
   nextSteps: string[];
 };
 
+export type HardwareApprovalGate = {
+  id: string;
+  title: string;
+  satisfied: boolean;
+  requiredForWrites: boolean;
+  detail: string;
+};
+
 export type HardwareFlowReadinessReport = {
   generatedAtMs: number;
   softwareReady: boolean;
   physicalApprovalRequired: boolean;
+  approvalGates: HardwareApprovalGate[];
   workstation: WorkstationReadiness;
   adbDevices: AdbDeviceRecord[];
   fastbootSerials: string[];
@@ -1080,10 +1089,98 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     unmatchedDrivers.length === 0 &&
     lanes.some((lane) => lane.state !== 'blocked');
 
+  const packageBoundFirmwareReady = verifiedBundles.length > 0;
+  const approvalGates: HardwareApprovalGate[] = [
+    {
+      id: 'workstation',
+      title: 'Workstation diagnostics ready',
+      satisfied: workstation.readyForDiagnostics,
+      requiredForWrites: true,
+      detail: workstation.readyForDiagnostics
+        ? 'Required host tooling/workspace checks are satisfied.'
+        : workstation.blockers.join(' · ') || 'Host diagnostics readiness is incomplete.',
+    },
+    {
+      id: 'driver-claim',
+      title: 'Exact USB driver claim resolved',
+      satisfied: unmatchedDrivers.length === 0,
+      requiredForWrites: true,
+      detail: unmatchedDrivers.length
+        ? `${unmatchedDrivers.length} present Windows USB interface(s) still have an unresolved driver claim.`
+        : 'No unresolved present Windows USB driver claims were found.',
+    },
+    {
+      id: 'device-identity',
+      title: 'Exact hardware identity',
+      satisfied: recoveryCandidates.length > 0 || authorizedAdb.length > 0 || fastbootSerials.length > 0,
+      requiredForWrites: true,
+      detail: 'Write lanes must bind to one exact live device identity; transport presence alone does not certify model/board/SKU.',
+    },
+    {
+      id: 'verified-firmware',
+      title: 'Verified package + package fingerprint',
+      satisfied: packageBoundFirmwareReady,
+      requiredForWrites: true,
+      detail: packageBoundFirmwareReady
+        ? `${verifiedBundles.length} planning-ready bundle(s) have deterministic package fingerprints.`
+        : 'No planning-ready firmware bundle with a deterministic package fingerprint is available.',
+    },
+    {
+      id: 'recovery-job',
+      title: 'Package-bound recovery job',
+      satisfied: false,
+      requiredForWrites: true,
+      detail: 'Satisfied only after a verified bundle is bound into a prepared recovery job whose job fingerprint validates.',
+    },
+    {
+      id: 'backup-rollback',
+      title: 'Backup / rollback evidence',
+      satisfied: false,
+      requiredForWrites: true,
+      detail: 'Satisfied only after the target-specific backup/rollback path is exported and reviewable.',
+    },
+    {
+      id: 'qualification-dossier',
+      title: 'Designated-device qualification dossier',
+      satisfied: false,
+      requiredForWrites: true,
+      detail: 'Must prove exact device, workstation, transport stability, authorized programmer/service evidence, and current executor build.',
+    },
+    {
+      id: 'bench-evidence',
+      title: 'One-partition bench evidence',
+      satisfied: false,
+      requiredForWrites: true,
+      detail: 'Exactly one approved trial partition must complete with post-write verification before production authority.',
+    },
+    {
+      id: 'human-decision',
+      title: 'Human qualification decision',
+      satisfied: false,
+      requiredForWrites: true,
+      detail: 'A reviewer decision must explicitly accept the physical qualification evidence.',
+    },
+    {
+      id: 'audit-bundle',
+      title: 'Verified audit bundle',
+      satisfied: false,
+      requiredForWrites: true,
+      detail: 'The final audit bundle must recompute and match all qualification fingerprints.',
+    },
+    {
+      id: 'write-authority',
+      title: 'Short-lived production write authority',
+      satisfied: false,
+      requiredForWrites: true,
+      detail: 'Production grant is intentionally unavailable until all prior hardware gates are satisfied.',
+    },
+  ];
+
   return {
     generatedAtMs: Date.now(),
     softwareReady,
     physicalApprovalRequired: lanes.some((lane) => lane.automation === 'qualified-destructive' && lane.detected),
+    approvalGates,
     workstation,
     adbDevices,
     fastbootSerials,
