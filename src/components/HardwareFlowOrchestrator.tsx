@@ -133,6 +133,15 @@ export default function HardwareFlowOrchestrator() {
   const collectSweep = async () => {
     const errors: string[] = [];
 
+    const executors = await safeCall(
+      'hardware executor capability inventory',
+      getHardwareExecutorCapabilities,
+      errors,
+    );
+    const qualifiedWriterCompiled = Boolean(
+      executors?.find((item) => item.id === 'qualified-fastboot-writer')?.compiled,
+    );
+
     const [
       workstation,
       capabilities,
@@ -146,7 +155,6 @@ export default function HardwareFlowOrchestrator() {
       driverBindings,
       calibrationAllowlist,
       policies,
-      executors,
       programmers,
       elevation,
       adbDevices,
@@ -159,11 +167,12 @@ export default function HardwareFlowOrchestrator() {
       safeCall('firmware library scan', scanFirmwareLibrary, errors),
       safeCall('qualified writer build identity', getQualificationBuildIdentity, errors),
       safeCall('fastboot scan', getFastbootModeDevices, errors),
-      safeCall('qualified fastboot scan', getQualifiedFastbootDevices, errors),
+      qualifiedWriterCompiled
+        ? safeCall('qualified fastboot scan', getQualifiedFastbootDevices, errors)
+        : Promise.resolve<string[] | null>([]),
       safeCall('driver claim scan', scanDriverBindings, errors),
       safeCall('calibration partition allowlist', getCalibrationPartitionAllowlist, errors),
       safeCall('workflow policy catalog', getWorkflowPolicyCatalog, errors),
-      safeCall('hardware executor capability inventory', getHardwareExecutorCapabilities, errors),
       safeCall('authorized programmer inventory', listEdlProgrammers, errors),
       safeCall('Windows elevation readiness', getDriverElevationStatus, errors),
       safeCall('ADB scan', scanAdbDevices, errors),
