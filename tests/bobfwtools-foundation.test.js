@@ -671,3 +671,18 @@ describe('backend hardware executor capability inventory', () => {
     expect(panel).toContain("executorById('samsung-odin-writer')");
   });
 });
+
+
+describe('automated read-only Windows driver prequalification', () => {
+  it('samples matched claims for stability and builds conflict plans for mismatches', () => {
+    const panel = read('src/components/HardwareFlowOrchestrator.tsx');
+
+    expect(panel).toContain('runDriverClaimStabilityTest');
+    expect(panel).toContain('getDriverConflictPlan');
+    expect(panel).toContain("binding.bindingState === 'matched'");
+    expect(panel).toContain('driverStability');
+    expect(panel).toContain('driverConflicts');
+    expect(panel).toContain('CLAIM STABLE');
+    expect(panel).toContain('competing-driver claim churn');
+  });
+});
