@@ -1191,9 +1191,9 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     {
       id: 'device-identity',
       title: 'Exact hardware identity',
-      satisfied: recoveryCandidates.length > 0 || authorizedAdb.length > 0 || fastbootSerials.length > 0,
+      satisfied: false,
       requiredForWrites: true,
-      detail: 'Write lanes must bind to one exact live device identity; transport presence alone does not certify model/board/SKU.',
+      detail: 'Transport detection is not exact identity proof. This gate stays missing until one live target is explicitly locked to verified model/board/SKU evidence in the recovery handoff.',
     },
     {
       id: 'verified-firmware',
