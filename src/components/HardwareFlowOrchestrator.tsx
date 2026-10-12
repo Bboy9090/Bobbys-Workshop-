@@ -17,6 +17,7 @@ import {
   scanFirmwareLibrary,
   scanRecoveryCandidates,
   scanTransportDevices,
+  startWorkflowJob,
   type DeviceCapabilityMatrix,
   type DriverBindingRecord,
   type FirmwareLibraryReport,
@@ -26,6 +27,7 @@ import {
   type TransportDevice,
   type WorkflowPolicy,
   type WorkstationReadiness,
+  type WorkflowJobRecord,
 } from '../lib/desktop';
 
 type FlowState = 'ready' | 'planning-ready' | 'bench-gated' | 'blocked';
@@ -103,7 +105,9 @@ async function safeCall<T>(label: string, fn: () => Promise<T>, errors: string[]
 export default function HardwareFlowOrchestrator() {
   const nativeRuntime = useMemo(() => isTauriRuntime(), []);
   const [snapshot, setSnapshot] = useState<SweepSnapshot>(emptySnapshot);
-  const [busy, setBusy] = useState<'sweep' | 'setup' | null>(null);
+  const [busy, setBusy] = useState<'sweep' | 'setup' | 'automation' | null>(null);
+  const [automationResults, setAutomationResults] = useState<WorkflowJobRecord[]>([]);
+  const [automationNote, setAutomationNote] = useState<string | null>(null);
 
   const collectSweep = async () => {
     const errors: string[] = [];
@@ -181,6 +185,39 @@ export default function HardwareFlowOrchestrator() {
     try {
       await initializeWorkstation();
       await prepareAdb();
+      await collectSweep();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runAllSafeAutomations = async () => {
+    if (!nativeRuntime || busy) return;
+    setBusy('automation');
+    setAutomationResults([]);
+    setAutomationNote(null);
+    const results: WorkflowJobRecord[] = [];
+    try {
+      results.push(await startWorkflowJob('diagnose-phone'));
+      results.push(await startWorkflowJob('usb-cable-doctor'));
+
+      const adb = await scanAdbDevices();
+      const authorized = adb.filter((device) => device.authorized);
+      if (authorized.length === 1) {
+        const serial = authorized[0].serial;
+        for (const workflowId of ['adb-device-info', 'adb-battery-info', 'adb-logcat']) {
+          results.push(await startWorkflowJob(workflowId, serial));
+        }
+        setAutomationNote(`Safe ADB checks were bound to exact authorized serial ${serial}.`);
+      } else if (authorized.length > 1) {
+        setAutomationNote(
+          `Found ${authorized.length} authorized ADB devices. Device-specific safe jobs were not auto-run because BobFWTools will not guess which serial to use.`,
+        );
+      } else {
+        setAutomationNote('No authorized ADB target was present, so device-specific ADB checks were skipped.');
+      }
+
+      setAutomationResults(results);
       await collectSweep();
     } finally {
       setBusy(null);
@@ -441,6 +478,14 @@ export default function HardwareFlowOrchestrator() {
           >
             {busy === 'setup' ? 'Setting up…' : 'Automate safe setup'}
           </button>
+          <button
+            type="button"
+            disabled={!nativeRuntime || Boolean(busy)}
+            onClick={() => void runAllSafeAutomations()}
+            className="rounded border border-cyan-700 px-3 py-2 text-xs font-semibold text-cyan-200 disabled:opacity-40 hover:bg-cyan-950/40"
+          >
+            {busy === 'automation' ? 'Running safe checks…' : 'Run all safe automated checks'}
+          </button>
         </div>
       </div>
 
@@ -502,6 +547,31 @@ export default function HardwareFlowOrchestrator() {
             </div>
           )}
         </>
+      )}
+
+      {(automationResults.length > 0 || automationNote) && (
+        <div className="mt-4 rounded border border-cyan-900/50 bg-cyan-950/10 p-3">
+          <div className="text-xs font-semibold text-cyan-200">Safe automation batch</div>
+          {automationNote && <div className="mt-1 text-[11px] leading-5 text-slate-400">{automationNote}</div>}
+          {automationResults.length > 0 && (
+            <div className="mt-2 grid gap-2 lg:grid-cols-2">
+              {automationResults.map((job) => (
+                <div key={job.id} className="rounded border border-slate-800 bg-black/20 p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-[10px] text-slate-300">{job.workflowId}</span>
+                    <span className={job.verified ? 'text-[10px] text-emerald-300' : 'text-[10px] text-amber-300'}>
+                      {job.state}{job.verified ? ' · verified' : ''}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[10px] leading-4 text-slate-500">{job.summary}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="mt-2 text-[10px] leading-4 text-slate-600">
+            This batch excludes reboot/mode-change, settings, firmware writes, calibration restore, and every destructive/restricted workflow.
+          </div>
+        </div>
       )}
 
       {snapshot.scannedAt === 0 && (
