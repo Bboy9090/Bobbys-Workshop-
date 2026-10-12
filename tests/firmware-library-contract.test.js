@@ -985,3 +985,21 @@ describe('Exact device identity gate for verified firmware', () => {
     expect(app).toContain('The selected firmware bundle does not exactly match the locked device model/board/SKU identity.');
   });
 });
+
+
+describe('Pending physical qualification queue', () => {
+  it('derives bench evidence tasks from every active unqualified workflow policy', () => {
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/HardwareFlowReadiness.tsx');
+
+    expect(desktop).toContain('qualificationQueue');
+    expect(desktop).toContain('policy.activeInBobfwtools && !policy.physicallyQualified');
+    expect(desktop).toContain('Designated physical-device bench result with post-operation verification');
+    expect(desktop).toContain('Verified backup or rollback evidence');
+    expect(desktop).toContain('Audit ledger evidence with input/output fingerprints');
+
+    expect(ui).toContain('Physical qualification queue');
+    expect(ui).toContain('BENCH PENDING');
+    expect(ui).toContain('Evidence required');
+  });
+});
