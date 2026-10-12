@@ -94,6 +94,25 @@ export default function HardwareFlowReadiness() {
             </div>
           </div>
 
+          <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Hardware write approval gates</div>
+            <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {report.approvalGates.map((gate) => (
+                <div key={gate.id} className={gate.satisfied
+                  ? 'rounded border border-emerald-900/50 bg-emerald-950/10 p-2'
+                  : 'rounded border border-slate-800 bg-slate-950/70 p-2'}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[10px] font-semibold text-slate-300">{gate.title}</div>
+                    <span className={gate.satisfied ? 'text-[10px] text-emerald-300' : 'text-[10px] text-amber-300'}>
+                      {gate.satisfied ? 'PROVEN' : 'MISSING'}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[10px] leading-4 text-slate-600">{gate.detail}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {report.blockers.length > 0 && (
             <div className="mt-3 rounded border border-amber-900/50 bg-amber-950/20 p-3">
               <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-400">Global blockers</div>
