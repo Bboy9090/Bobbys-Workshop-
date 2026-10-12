@@ -27,6 +27,11 @@ jobs:
     - name: Install packaged API dependencies
       run: npm ci --prefix src-tauri/resources/server --ignore-scripts
 
+    - name: Audit dormant server dependency trees
+      run: |
+        npm audit --prefix src-tauri/resources/server --audit-level=moderate
+        npm audit --prefix src-tauri/bundle/resources/server --audit-level=moderate
+
     - name: Production Reality Gate
       run: npm run verify:reality
 
