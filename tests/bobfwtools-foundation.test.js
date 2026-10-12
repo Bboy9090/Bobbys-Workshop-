@@ -741,3 +741,15 @@ describe('calibration backup prequalification', () => {
     expect(panel).toContain('backup evidence captured=false unless a verified manifest is explicitly created');
   });
 });
+
+
+describe('qualified Fastboot feature-aware sweep', () => {
+  it('does not call the qualified Fastboot command when that writer is not compiled', () => {
+    const panel = read('src/components/HardwareFlowOrchestrator.tsx');
+
+    expect(panel).toContain('qualifiedWriterCompiled');
+    expect(panel).toContain("item.id === 'qualified-fastboot-writer'");
+    expect(panel).toContain("qualifiedWriterCompiled\n        ? safeCall('qualified fastboot scan'");
+    expect(panel).toContain('Promise.resolve<string[] | null>([])');
+  });
+});
