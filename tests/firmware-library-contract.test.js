@@ -988,7 +988,12 @@ describe('Exact device identity gate for verified firmware', () => {
     expect(app).toContain('sameIdentityValue(bundle.model, lockedRecoveryIdentity.model)');
     expect(app).toContain('sameIdentityValue(bundle.board, lockedRecoveryIdentity.board)');
     expect(app).toContain('sameIdentityValue(bundle.sku, lockedRecoveryIdentity.sku)');
+    expect(app).toContain('trustedForWrite: true');
+    expect(app).toContain('trustedForWrite: false');
+    expect(app).toContain('PLANNING ONLY');
+    expect(app).toContain('WRITE-QUALIFIED');
     expect(app).toContain('NOT LOCKED — verified firmware remains withheld');
+    expect(app).toContain('Write-qualified recovery requires independently captured exact device identity.');
     expect(app).toContain('The selected firmware bundle does not exactly match the locked device model/board/SKU identity.');
   });
 });
