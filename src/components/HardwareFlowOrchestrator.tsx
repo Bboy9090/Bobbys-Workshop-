@@ -292,6 +292,16 @@ export default function HardwareFlowOrchestrator() {
     const driverMismatches = snapshot.driverBindings.filter((binding) => binding.bindingState !== 'matched');
     const unstableDriverClaims = Object.values(snapshot.driverStability).filter((report) => !report.stable);
     const enabledOneClick = snapshot.capabilities?.workflows.filter((workflow) => workflow.enabled).length ?? 0;
+    const observedDeviceModel = diag?.device.model?.trim() || null;
+    const exactModelBundles = observedDeviceModel
+      ? (firmware?.bundles.filter(
+          (bundle) =>
+            bundle.planningReady &&
+            Boolean(bundle.packageFingerprint) &&
+            Boolean(bundle.model) &&
+            bundle.model!.trim().toLowerCase() === observedDeviceModel.toLowerCase(),
+        ) ?? [])
+      : [];
     const executorById = (id: string) => snapshot.executors.find((executor) => executor.id === id);
     const samsungExecutor = executorById('samsung-odin-writer');
     const qcomExecutor = executorById('qualcomm-firehose-writer');
@@ -413,6 +423,23 @@ export default function HardwareFlowOrchestrator() {
         ? 'Verified packages can feed package-bound recovery jobs.'
         : 'Import official/authorized firmware and build exact provenance for model/board/SKU.',
       evidence: [`blocked artifacts=${firmware?.blockedCount ?? 0}`],
+    });
+
+    rows.push({
+      id: 'target-identity',
+      label: 'Exact firmware target identity preflight',
+      state: observedDeviceModel && exactModelBundles.length > 0 ? 'planning-ready' : 'blocked',
+      summary: observedDeviceModel
+        ? `Observed device model=${observedDeviceModel}; exact-model verified bundle candidates=${exactModelBundles.length}.`
+        : 'No independently observed device model is currently available for firmware target matching.',
+      next: observedDeviceModel && exactModelBundles.length > 0
+        ? 'Model evidence is only the first gate. Obtain independently verified bootloader revision and partition-layout identity, then run firmware_target_preflight with destructive=true before any write authority can be issued.'
+        : 'Connect/authorize the device, obtain independent device identity evidence, and require an exact verified package match.',
+      evidence: [
+        `device model=${observedDeviceModel || '<unavailable>'}`,
+        `exact-model verified packages=${exactModelBundles.length}`,
+        'destructive layout identity is never inferred from chipset/model alone',
+      ],
     });
 
     rows.push({
