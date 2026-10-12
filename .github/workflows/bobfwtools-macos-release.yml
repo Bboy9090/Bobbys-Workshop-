@@ -1,0 +1,151 @@
+name: BobFWTools macOS Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_label:
+        description: "Release label for the notarized artifact"
+        required: true
+        default: "manual"
+
+permissions:
+  contents: read
+
+env:
+  BOBFWTOOLS_SOURCE_REVISION: ${{ github.sha }}
+
+jobs:
+  signed-notarized-release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Use Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24.x"
+          package-manager-cache: false
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Sanitize release label
+        id: release_label
+        env:
+          RAW_RELEASE_LABEL: ${{ inputs.release_label }}
+        run: |
+          set -euo pipefail
+          SAFE_LABEL="$(printf '%s' "$RAW_RELEASE_LABEL" | tr -cs 'A-Za-z0-9._-' '-' | sed 's/^-*//; s/-*$//' | cut -c1-64)"
+          test -n "$SAFE_LABEL" || { echo "Release label becomes empty after sanitization"; exit 1; }
+          echo "safe=$SAFE_LABEL" >> "$GITHUB_OUTPUT"
+
+      - name: Preflight release credentials
+        env:
+          P12_B64: ${{ secrets.BOBFW_DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.BOBFW_DEVELOPER_ID_P12_PASSWORD }}
+          SIGNING_IDENTITY: ${{ secrets.BOBFW_DEVELOPER_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          for item in P12_B64 P12_PASSWORD SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            test -n "${!item:-}" || { echo "Missing required release credential: $item"; exit 1; }
+          done
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Validate release source
+        run: |
+          plutil -lint src-tauri/entitlements.mac.plist
+          npm run verify:reality
+          npm run typecheck
+          npm test
+          npm run test:workflows
+          cargo test --manifest-path libs/bootforgeusb/Cargo.toml
+
+      - name: Build universal standard app
+        run: npm run tauri:build:macos:ci
+
+      - name: Verify unsigned build
+        run: bash scripts/verify-bobfwtools-macos-app.sh
+
+      - name: Import Developer ID certificate
+        env:
+          P12_B64: ${{ secrets.BOBFW_DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.BOBFW_DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/bobfwtools-release.keychain-db"
+          P12="$RUNNER_TEMP/bobfwtools-developer-id.p12"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          printf '%s' "$P12_B64" | base64 --decode > "$P12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$P12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          echo "BOBFW_RELEASE_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          rm -f "$P12"
+
+      - name: Sign with Developer ID
+        env:
+          BOBFW_DEVELOPER_IDENTITY: ${{ secrets.BOBFW_DEVELOPER_IDENTITY }}
+          BOBFW_EXPECTED_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          bash scripts/sign-bobfwtools-developer-id.sh             src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app             src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools-DeveloperID.app
+
+      - name: Notarize and staple
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          bash scripts/notarize-bobfwtools.sh             src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools-DeveloperID.app             bobfwtools-notarization-receipt.json
+
+      - name: Verify notarized universal app
+        run: |
+          set -euo pipefail
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools-DeveloperID.app
+          BIN="$APP/Contents/MacOS/bobfwtools"
+          bash scripts/verify-bobfwtools-macos-app.sh "$APP"
+          codesign -dv --verbose=4 "$APP" 2>&1 | grep -F "Authority=Developer ID Application"
+          xcrun stapler validate "$APP"
+          spctl -a -vv --type execute "$APP"
+          lipo -info "$BIN"
+          strings "$BIN" | grep -F "$GITHUB_SHA"
+
+      - name: Create release provenance receipt
+        env:
+          BOBFWTOOLS_RELEASE_LABEL: ${{ steps.release_label.outputs.safe }}
+        run: |
+          set -euo pipefail
+          bash scripts/create-bobfwtools-release-receipt.sh \
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools-DeveloperID.app \
+            bobfwtools-notarization-receipt.json \
+            bobfwtools-release-receipt.json
+
+      - name: Upload notarized release artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: BobFWTools-macOS-notarized-${{ steps.release_label.outputs.safe }}
+          path: |
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools-DeveloperID.app
+            bobfwtools-notarization-receipt.json
+            bobfwtools-release-receipt.json
+          if-no-files-found: error
+
+      - name: Cleanup temporary signing material
+        if: always()
+        run: |
+          set +e
+          if [ -n "${BOBFW_RELEASE_KEYCHAIN:-}" ]; then
+            security delete-keychain "$BOBFW_RELEASE_KEYCHAIN"
+          fi
+          rm -f "$RUNNER_TEMP/bobfwtools-developer-id.p12"
