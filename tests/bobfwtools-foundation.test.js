@@ -620,3 +620,25 @@ describe('executor implementation gate truthfulness', () => {
     expect(panel).toContain("policyById('bootforge.media')");
   });
 });
+
+
+describe('hardware approval gap report', () => {
+  it('exports a fingerprinted authority-free receipt for every current hardware lane', () => {
+    const main = read('src-tauri/src/main.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const panel = read('src/components/HardwareFlowOrchestrator.tsx');
+
+    expect(main).toContain('hardware_approval_gap_export');
+    expect(main).toContain('hardware-approval-gap.v1');
+    expect(main).toContain('"grantsExecutionAuthority": false');
+    expect(main).toContain('"executionPerformed": false');
+    expect(main).toContain('reportFingerprint');
+    expect(main).toContain('export-gap-report');
+    expect(main).toContain('completed-no-execution');
+
+    expect(desktop).toContain('HardwareApprovalGapReportInput');
+    expect(desktop).toContain('exportHardwareApprovalGapReport');
+    expect(panel).toContain('Export approval gap report');
+    expect(panel).toContain('Evidence only. The report grants no execution authority.');
+  });
+});
