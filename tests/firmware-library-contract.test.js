@@ -970,3 +970,18 @@ describe('Hardware readiness catalog completeness', () => {
     expect(ui).toContain('RESERVED');
   });
 });
+
+
+describe('Exact device identity gate for verified firmware', () => {
+  it('withholds firmware until model board and SKU are locked and exactly matched', () => {
+    const app = read('src/App.tsx');
+
+    expect(app).toContain('captureRecoveryIdentityFromAdb');
+    expect(app).toContain('lockRecoveryIdentity');
+    expect(app).toContain('sameIdentityValue(bundle.model, lockedRecoveryIdentity.model)');
+    expect(app).toContain('sameIdentityValue(bundle.board, lockedRecoveryIdentity.board)');
+    expect(app).toContain('sameIdentityValue(bundle.sku, lockedRecoveryIdentity.sku)');
+    expect(app).toContain('NOT LOCKED — verified firmware remains withheld');
+    expect(app).toContain('The selected firmware bundle does not exactly match the locked device model/board/SKU identity.');
+  });
+});
