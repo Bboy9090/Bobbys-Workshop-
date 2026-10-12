@@ -642,3 +642,32 @@ describe('hardware approval gap report', () => {
     expect(panel).toContain('Evidence only. The report grants no execution authority.');
   });
 });
+
+
+describe('backend hardware executor capability inventory', () => {
+  it('is the source of truth for implemented, feature-gated, and planning-only writers', () => {
+    const main = read('src-tauri/src/main.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const panel = read('src/components/HardwareFlowOrchestrator.tsx');
+
+    expect(main).toContain('hardware_executor_capabilities');
+    expect(main).toContain('qualified-fastboot-writer');
+    expect(main).toContain('samsung-odin-writer');
+    expect(main).toContain('qualcomm-firehose-writer');
+    expect(main).toContain('mediatek-download-writer');
+    expect(main).toContain('calibration-backup-reader');
+    expect(main).toContain('calibration-restore-writer');
+    expect(main).toContain('hardware-storage-service');
+    expect(main).toContain('bootforge-media-writer');
+    expect(main).toContain('planning-only');
+    expect(main).toContain('feature-gated-implemented');
+    expect(main).toContain('feature-gated-disabled');
+
+    expect(desktop).toContain('HardwareExecutorCapability');
+    expect(desktop).toContain('getHardwareExecutorCapabilities');
+    expect(panel).toContain('hardware executor capability inventory');
+    expect(panel).toContain("executorById('qualcomm-firehose-writer')");
+    expect(panel).toContain("executorById('mediatek-download-writer')");
+    expect(panel).toContain("executorById('samsung-odin-writer')");
+  });
+});
