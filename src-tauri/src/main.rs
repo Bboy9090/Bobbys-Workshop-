@@ -517,6 +517,68 @@ fn bootforgeusb_scan() -> Result<Vec<bootforgeusb::model::DeviceRecord>, String>
 }
 
 #[tauri::command]
+fn hardware_approval_gap_export(
+    report: serde_json::Value,
+    destination_path: String,
+) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+
+    let destination = std::path::PathBuf::from(destination_path.trim());
+    if destination.as_os_str().is_empty() {
+        return Err("Approval gap report destination is required".to_string());
+    }
+
+    let flows = report
+        .get("flows")
+        .and_then(|value| value.as_array())
+        .ok_or_else(|| "Approval gap report requires a flows array".to_string())?;
+    if flows.is_empty() {
+        return Err("Approval gap report cannot be empty".to_string());
+    }
+
+    let generated_unix_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+
+    let material = serde_json::json!({
+        "schema": "com.bobbyblanco.bobfwtools.hardware-approval-gap.v1",
+        "generatedUnixSeconds": generated_unix_seconds,
+        "grantsExecutionAuthority": false,
+        "executionPerformed": false,
+        "report": report,
+    });
+    let material_bytes = serde_json::to_vec(&material)
+        .map_err(|e| format!("Could not serialize approval gap material: {e}"))?;
+    let report_fingerprint = format!("{:x}", Sha256::digest(&material_bytes));
+
+    let receipt = serde_json::json!({
+        "reportFingerprint": report_fingerprint,
+        "material": material,
+    });
+    let bytes = serde_json::to_vec_pretty(&receipt)
+        .map_err(|e| format!("Could not serialize approval gap report: {e}"))?;
+    std::fs::write(&destination, bytes)
+        .map_err(|e| format!("Could not write approval gap report {}: {e}", destination.display()))?;
+
+    let _ = crate::audit::record(
+        "HardwareApproval",
+        "export-gap-report",
+        "read-only",
+        "completed-no-execution",
+        None,
+        "Hardware approval gap report exported; report grants no execution authority.",
+        vec![
+            format!("destination:{}", destination.display()),
+            format!("report-fingerprint:{}", report_fingerprint),
+            format!("flow-count:{}", flows.len()),
+        ],
+    );
+
+    Ok(destination.display().to_string())
+}
+
+#[tauri::command]
 fn workflow_policy_catalog() -> Vec<bootforgeusb::workflow_catalog::WorkflowPolicy> {
     bootforgeusb::workflow_catalog::workflow_catalog()
 }
@@ -5421,6 +5483,7 @@ fn main() {
             get_backend_status,
             get_app_version,
             bootforgeusb_scan,
+            hardware_approval_gap_export,
             workflow_policy_catalog,
             calibration_partition_allowlist,
             edl_9008_devices,
