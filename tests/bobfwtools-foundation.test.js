@@ -706,3 +706,38 @@ describe('exact firmware target identity gate', () => {
     expect(preflight).toContain('bootloader rollback blocked');
   });
 });
+
+
+describe('hardware qualification candidate receipts', () => {
+  it('binds prequalification evidence without granting execution authority', () => {
+    const main = read('src-tauri/src/main.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const panel = read('src/components/HardwareFlowOrchestrator.tsx');
+
+    expect(main).toContain('hardware_qualification_candidate_export');
+    expect(main).toContain('hardware-qualification-candidate.v1');
+    expect(main).toContain('"grantsExecutionAuthority": false');
+    expect(main).toContain('"executionPerformed": false');
+    expect(main).toContain('"qualificationStatus": "candidate-only"');
+    expect(main).toContain('candidate-only-no-execution');
+
+    expect(desktop).toContain('HardwareQualificationCandidateInput');
+    expect(desktop).toContain('exportHardwareQualificationCandidate');
+    expect(panel).toContain('Export qualification candidate');
+    expect(panel).toContain('Production executor is not compiled/enabled for this flow.');
+    expect(panel).toContain('Repeated exact-device enumeration stability');
+    expect(panel).toContain('Exact firmware target identity including partition layout');
+    expect(panel).toContain('Backup/rollback evidence captured where required');
+  });
+});
+
+describe('calibration backup prequalification', () => {
+  it('inventories the allowlist without silently reading protected partitions', () => {
+    const panel = read('src/components/HardwareFlowOrchestrator.tsx');
+
+    expect(panel).toContain('getCalibrationPartitionAllowlist');
+    expect(panel).toContain('calibrationAllowlist');
+    expect(panel).toContain('The sweep does not auto-read protected partitions');
+    expect(panel).toContain('backup evidence captured=false unless a verified manifest is explicitly created');
+  });
+});
