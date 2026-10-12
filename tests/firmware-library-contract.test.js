@@ -936,3 +936,21 @@ describe('Automatic target selection and exact-device firmware withholding', () 
     expect(desktop).toContain("firmwareCandidates: []");
   });
 });
+
+
+describe('Hardware readiness workflow policy binding', () => {
+  it('shows authoritative physical qualification state per supported lane', () => {
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/HardwareFlowReadiness.tsx');
+
+    expect(desktop).toContain('workflowPolicies');
+    expect(desktop).toContain("workflowPolicyId: 'android.adb-authorized'");
+    expect(desktop).toContain("workflowPolicyId: 'samsung.odin-plan'");
+    expect(desktop).toContain("workflowPolicyId: 'qualcomm.edl-plan'");
+    expect(desktop).toContain("workflowPolicyId: 'mediatek.brom-plan'");
+    expect(desktop).toContain("physicallyQualified: workflowPolicy('qualcomm.edl-plan')?.physicallyQualified ?? null");
+
+    expect(ui).toContain('physical qualification');
+    expect(ui).toContain("lane.physicallyQualified ? 'complete' : 'pending'");
+  });
+});
