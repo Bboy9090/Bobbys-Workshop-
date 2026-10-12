@@ -995,12 +995,14 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     {
       id: 'mtp-usb',
       title: 'MTP / USB file service',
-      state: mtp.connected ? 'ready' : 'blocked',
+      state: mtp?.connected ? 'ready' : 'blocked',
       automation: 'automatic-read-only',
-      detected: mtp.connected,
-      applicableDevices: mtp.deviceName ? [mtp.deviceName] : [],
+      detected: Boolean(mtp?.connected),
+      applicableDevices: mtp?.connected
+        ? [mtp.model || mtp.manufacturer || mtp.serialNumber || 'MTP device']
+        : [],
       firmwareCandidates: [],
-      blockers: mtp.connected ? [] : ['No MTP device is currently connected.'],
+      blockers: mtp?.connected ? [] : ['No MTP device is currently connected.'],
       nextSteps: ['Allow automated browse/copy/upload operations that do not alter protected device security state.'],
     },
     {
@@ -1085,7 +1087,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     workstation,
     adbDevices,
     fastbootSerials,
-    mtpConnected: mtp.connected,
+    mtpConnected: Boolean(mtp?.connected),
     transportDevices,
     recoveryCandidates,
     firmwareBundles: verifiedBundles,
