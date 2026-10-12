@@ -105,9 +105,7 @@ export default function HardwareFlowOrchestrator() {
   const [snapshot, setSnapshot] = useState<SweepSnapshot>(emptySnapshot);
   const [busy, setBusy] = useState<'sweep' | 'setup' | null>(null);
 
-  const runSweep = async () => {
-    if (!nativeRuntime || busy) return;
-    setBusy('sweep');
+  const collectSweep = async () => {
     const errors: string[] = [];
 
     const [
@@ -165,7 +163,16 @@ export default function HardwareFlowOrchestrator() {
       adminReady: elevation?.elevated ?? true,
       errors,
     });
-    setBusy(null);
+  };
+
+  const runSweep = async () => {
+    if (!nativeRuntime || busy) return;
+    setBusy('sweep');
+    try {
+      await collectSweep();
+    } finally {
+      setBusy(null);
+    }
   };
 
   const automateSafeSetup = async () => {
@@ -174,10 +181,10 @@ export default function HardwareFlowOrchestrator() {
     try {
       await initializeWorkstation();
       await prepareAdb();
+      await collectSweep();
     } finally {
       setBusy(null);
     }
-    await runSweep();
   };
 
   const flows = useMemo<FlowRow[]>(() => {
