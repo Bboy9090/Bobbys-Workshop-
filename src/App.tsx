@@ -85,6 +85,17 @@ function hex(value: number): string {
   return value.toString(16).padStart(4, '0').toUpperCase();
 }
 
+type LockedRecoveryFirmwareIdentity = {
+  model: string;
+  board: string;
+  sku: string;
+  source: string;
+};
+
+function sameIdentityValue(a?: string | null, b?: string | null): boolean {
+  return Boolean(a && b && a.trim().toLowerCase() === b.trim().toLowerCase());
+}
+
 export default function App() {
   const [usbDevices, setUsbDevices] = useState<UsbDeviceRecord[]>([]);
   const [mtp, setMtp] = useState<MtpStatus | null>(null);
@@ -125,6 +136,8 @@ export default function App() {
   const [recoveryCertificateReview, setRecoveryCertificateReview] = useState<RecoveryReadinessCertificateReview | null>(null);
   const [verifiedFirmwareBundles, setVerifiedFirmwareBundles] = useState<FirmwareBundleSummary[]>([]);
   const [selectedVerifiedBundle, setSelectedVerifiedBundle] = useState('');
+  const [recoveryIdentityDraft, setRecoveryIdentityDraft] = useState({ model: '', board: '', sku: '' });
+  const [lockedRecoveryIdentity, setLockedRecoveryIdentity] = useState<LockedRecoveryFirmwareIdentity | null>(null);
   const nativeRuntime = useMemo(() => isTauriRuntime(), []);
   const filteredPackages = useMemo(() => {
     const q = packageQuery.trim().toLowerCase();
@@ -140,12 +153,17 @@ export default function App() {
     ? 'qualcomm'
     : 'mediatek';
 
-  const laneVerifiedFirmwareBundles = useMemo(
-    () => verifiedFirmwareBundles.filter(
-      (bundle) => bundle.planningReady && bundle.vendorHint === expectedRecoveryVendor,
-    ),
-    [verifiedFirmwareBundles, expectedRecoveryVendor],
-  );
+  const laneVerifiedFirmwareBundles = useMemo(() => {
+    if (!lockedRecoveryIdentity) return [];
+    return verifiedFirmwareBundles.filter(
+      (bundle) =>
+        bundle.planningReady &&
+        bundle.vendorHint === expectedRecoveryVendor &&
+        sameIdentityValue(bundle.model, lockedRecoveryIdentity.model) &&
+        sameIdentityValue(bundle.board, lockedRecoveryIdentity.board) &&
+        sameIdentityValue(bundle.sku, lockedRecoveryIdentity.sku),
+    );
+  }, [verifiedFirmwareBundles, expectedRecoveryVendor, lockedRecoveryIdentity]);
 
   useEffect(() => {
     setSelectedVerifiedBundle((current) => {
@@ -155,6 +173,54 @@ export default function App() {
       return laneVerifiedFirmwareBundles[0]?.directory ?? '';
     });
   }, [laneVerifiedFirmwareBundles]);
+
+  const captureRecoveryIdentityFromAdb = async () => {
+    if (!adbSelectedSerial) {
+      setNativeError('Select an authorized ADB device before capturing exact firmware identity.');
+      return;
+    }
+    const adb = adbDevices.find((device) => device.serial === adbSelectedSerial && device.authorized);
+    if (!adb) {
+      setNativeError('The selected ADB device is not currently authorized.');
+      return;
+    }
+
+    try {
+      const info = await getAdbDeviceInfo(adbSelectedSerial);
+      const props = info.properties;
+      const first = (...keys: string[]) => keys.map((key) => props[key]?.trim()).find(Boolean) || '';
+      const model = first('ro.product.model', 'ro.product.vendor.model', 'ro.product.system.model');
+      const board = first('ro.product.board', 'ro.board.platform', 'ro.hardware');
+      const sku = first('ro.boot.hardware.sku', 'ro.boot.product.hardware.sku', 'ro.product.vendor.device', 'ro.product.device');
+
+      setRecoveryIdentityDraft({ model, board, sku });
+      if (model && board && sku) {
+        setLockedRecoveryIdentity({
+          model,
+          board,
+          sku,
+          source: `adb:${adbSelectedSerial}`,
+        });
+      } else {
+        setLockedRecoveryIdentity(null);
+        setNativeError('ADB identity was only partially available. Verify/fill model, board, and SKU, then lock the exact identity manually.');
+      }
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const lockRecoveryIdentity = () => {
+    const model = recoveryIdentityDraft.model.trim();
+    const board = recoveryIdentityDraft.board.trim();
+    const sku = recoveryIdentityDraft.sku.trim();
+    if (!model || !board || !sku) {
+      setNativeError('Exact firmware identity requires model, board, and SKU before a package can be selected.');
+      return;
+    }
+    setLockedRecoveryIdentity({ model, board, sku, source: 'operator-verified' });
+    setNativeError(null);
+  };
 
   const selectedDiagnosticUsb = useMemo(
     () => diagnostic?.usbConnections.find((item) => item.deviceUid === selectedDiagnosticUid) || null,
@@ -870,6 +936,16 @@ export default function App() {
       }
       if (!bundle.packageFingerprint) {
         throw new Error('The selected firmware bundle has no deterministic package fingerprint. Rescan or rebuild provenance before recovery handoff.');
+      }
+      if (!lockedRecoveryIdentity) {
+        throw new Error('Lock the exact device model/board/SKU identity before selecting firmware for recovery.');
+      }
+      if (
+        !sameIdentityValue(bundle.model, lockedRecoveryIdentity.model) ||
+        !sameIdentityValue(bundle.board, lockedRecoveryIdentity.board) ||
+        !sameIdentityValue(bundle.sku, lockedRecoveryIdentity.sku)
+      ) {
+        throw new Error('The selected firmware bundle does not exactly match the locked device model/board/SKU identity.');
       }
 
       const expectedVendor = (selectedRecoveryCandidate?.workflow ?? recoveryKind) === 'qualcomm-edl'
