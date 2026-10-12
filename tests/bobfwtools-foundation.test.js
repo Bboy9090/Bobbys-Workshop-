@@ -565,3 +565,22 @@ describe('hardware flow approval orchestrator', () => {
     expect(panel).toContain('restricted/bypass-class workflow exposure');
   });
 });
+
+
+describe('safe automation batch boundaries', () => {
+  it('auto-runs only non-destructive evidence workflows and refuses ambiguous ADB targets', () => {
+    const panel = read('src/components/HardwareFlowOrchestrator.tsx');
+
+    expect(panel).toContain('Run all safe automated checks');
+    expect(panel).toContain("startWorkflowJob('diagnose-phone')");
+    expect(panel).toContain("startWorkflowJob('usb-cable-doctor')");
+    expect(panel).toContain("'adb-device-info', 'adb-battery-info', 'adb-logcat'");
+    expect(panel).toContain('authorized.length === 1');
+    expect(panel).toContain('will not guess which serial to use');
+    expect(panel).toContain('excludes reboot/mode-change, settings, firmware writes, calibration restore, and every destructive/restricted workflow');
+
+    expect(panel).not.toContain("startWorkflowJob('adb-reboot-recovery')");
+    expect(panel).not.toContain("startWorkflowJob('adb-reboot-bootloader')");
+    expect(panel).not.toContain("startWorkflowJob('adb-factory-reset-settings')");
+  });
+});
