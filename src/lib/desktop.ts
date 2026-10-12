@@ -1078,6 +1078,32 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     },
   ];
 
+  const representedPolicyIds = new Set(
+    lanes.map((lane) => lane.workflowPolicyId).filter((value): value is string => Boolean(value)),
+  );
+
+  for (const policy of workflowPolicies.filter(
+    (item) => item.activeInBobfwtools && !representedPolicyIds.has(item.id),
+  )) {
+    const destructiveLike = policy.risk === 'destructive' || policy.risk === 'restricted' || policy.risk === 'elevated';
+    lanes.push({
+      id: `catalog:${policy.id}`,
+      title: policy.category + ' · ' + policy.id,
+      workflowPolicyId: policy.id,
+      physicallyQualified: policy.physicallyQualified,
+      state: policy.physicallyQualified ? 'guided' : 'blocked',
+      automation: destructiveLike ? 'qualified-destructive' : 'guided-safe-action',
+      detected: false,
+      applicableDevices: [],
+      firmwareCandidates: [],
+      blockers: [
+        'This catalog workflow has no dedicated auto-detection binding in the current readiness sweep; target/evidence selection remains guided.',
+        ...(!policy.physicallyQualified ? ['Physical qualification is still pending for this workflow.'] : []),
+      ],
+      nextSteps: [policy.notes],
+    });
+  }
+
   if (unmatchedDrivers.length) {
     lanes.push({
       id: 'windows-driver-claim',
