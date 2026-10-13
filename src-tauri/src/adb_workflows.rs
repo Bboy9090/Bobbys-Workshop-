@@ -76,7 +76,7 @@ pub struct AdbFileResult {
 }
 
 fn run_adb(args: &[&str]) -> Result<Output, String> {
-    Command::new("adb")
+    crate::adb_command::new_adb_command()
         .args(args)
         .output()
         .map_err(|e| format!("Failed to launch adb: {e}"))

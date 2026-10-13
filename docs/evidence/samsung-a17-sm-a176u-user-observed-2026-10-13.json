@@ -1,0 +1,20 @@
+{
+  "record_date": "2026-10-13",
+  "evidence_source": "user-reported values from phone settings; not independently verified over ADB",
+  "device_family": "Samsung Galaxy A17",
+  "model": "SM-A176U",
+  "one_ui_version": "8.5",
+  "android_version": "16",
+  "baseband_as_reported": "A176USQS7BZH9",
+  "security_software_as_reported": "v9.5",
+  "security_software_release_as_reported": "2026-04-01",
+  "setup_state_as_reported": "home screen accessible after prior setup restriction",
+  "frp_state": "unknown; setup access does not prove owner-account restriction removed",
+  "usb_observation": "Samsung Android USB VID:PID 04e8:6860; cannot uniquely assign previous USB snapshot to A17 without a device-side identification handshake",
+  "adb_status": "previous USB interface plugin failure e00002be; model not read from adb",
+  "flash_status": "not attempted",
+  "reset_status": "not attempted",
+  "qualification": "diagnostics only; firmware writes not approved",
+  "inherited_family_evidence": "none approved for device-specific flashing",
+  "serial_or_account_data": "not collected"
+}

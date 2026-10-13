@@ -1,0 +1,17 @@
+{
+  "observed_at": "2026-10-13",
+  "device_model": "unverified (user reports Galaxy A17; previous device Galaxy A16)",
+  "usb_product": "SAMSUNG_Android",
+  "usb_vendor_id": "04e8",
+  "usb_product_id": "6860",
+  "macos_usb_exclusive_owner": "SamsungComposite",
+  "adb": "daemon startup failed: unable to create USB interface plug-in (e00002be)",
+  "heimdall": "no compatible download-mode device detected",
+  "fastboot": "no device reported",
+  "frp_state": "not assessed",
+  "flashing_attempted": false,
+  "reset_attempted": false,
+  "serial_number": "excluded",
+  "next_safe_step": "verify physical device model on device; examine SamsungComposite USB interface ownership before any driver changes",
+  "evidence_scope": "read-only USB diagnostics; does not prove model identity, FRP state or flashing eligibility"
+}
