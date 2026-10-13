@@ -1458,11 +1458,17 @@ fn hardware_qualification_packet_export(
         .unwrap_or("unknown")
         .to_string();
 
+    let packet_bytes = serde_json::to_vec(&packet)
+        .map_err(|e| format!("Could not canonicalize qualification packet: {e}"))?;
+    use sha2::Digest;
+    let packet_fingerprint = format!("{:x}", sha2::Sha256::digest(&packet_bytes));
+
     let receipt = serde_json::json!({
         "schema": "com.bobbyblanco.bobfwtools.hardware-qualification-packet.v1",
         "generatedUnixSeconds": generated_unix_seconds,
         "executionPerformed": false,
         "qualificationStatus": "bench-pending",
+        "packetFingerprint": packet_fingerprint,
         "packet": packet,
         "policy": {
             "packetDoesNotGrantWriteAuthority": true,
@@ -1486,6 +1492,7 @@ fn hardware_qualification_packet_export(
         vec![
             format!("workflow-id:{}", workflow_id),
             format!("path:{}", destination.display()),
+            format!("packet-fingerprint:{}", packet_fingerprint),
             "write-authority-granted:false".to_string(),
         ],
     );
@@ -1494,6 +1501,122 @@ fn hardware_qualification_packet_export(
 }
 
 
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HardwareQualificationPacketReview {
+    path: String,
+    schema_valid: bool,
+    packet_fingerprint_valid: bool,
+    qualification_status_bench_pending: bool,
+    execution_performed_claimed: bool,
+    write_authority_claimed: bool,
+    safe_to_review: bool,
+    blockers: Vec<String>,
+    workflow_id: Option<String>,
+    packet_fingerprint: Option<String>,
+}
+
+#[tauri::command]
+fn hardware_qualification_packet_review(path: String) -> Result<HardwareQualificationPacketReview, String> {
+    let path_buf = std::path::PathBuf::from(&path);
+    if !path_buf.is_file() {
+        return Err(format!("Qualification packet not found: {}", path_buf.display()));
+    }
+
+    let bytes = std::fs::read(&path_buf)
+        .map_err(|e| format!("Could not read qualification packet {}: {e}", path_buf.display()))?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Qualification packet is not valid JSON: {e}"))?;
+
+    let schema_valid = value
+        .get("schema")
+        .and_then(|v| v.as_str())
+        == Some("com.bobbyblanco.bobfwtools.hardware-qualification-packet.v1");
+
+    let packet = value
+        .get("packet")
+        .cloned()
+        .ok_or_else(|| "Qualification packet is missing packet payload".to_string())?;
+    let packet_bytes = serde_json::to_vec(&packet)
+        .map_err(|e| format!("Could not canonicalize qualification packet payload: {e}"))?;
+    use sha2::Digest;
+    let recomputed_fingerprint = format!("{:x}", sha2::Sha256::digest(&packet_bytes));
+    let packet_fingerprint = value
+        .get("packetFingerprint")
+        .and_then(|v| v.as_str())
+        .map(str::to_ascii_lowercase);
+    let packet_fingerprint_valid = packet_fingerprint
+        .as_deref()
+        .map(|actual| actual == recomputed_fingerprint)
+        .unwrap_or(false);
+
+    let qualification_status_bench_pending = value
+        .get("qualificationStatus")
+        .and_then(|v| v.as_str())
+        == Some("bench-pending");
+    let execution_performed_claimed = value
+        .get("executionPerformed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let write_authority_claimed = value
+        .get("policy")
+        .and_then(|v| v.get("packetDoesNotGrantWriteAuthority"))
+        .and_then(|v| v.as_bool())
+        .map(|does_not_grant| !does_not_grant)
+        .unwrap_or(true);
+    let workflow_id = packet
+        .get("workflowId")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    let mut blockers = Vec::new();
+    if !schema_valid {
+        blockers.push("Qualification packet schema is not recognized".to_string());
+    }
+    if !packet_fingerprint_valid {
+        blockers.push("Qualification packet fingerprint does not match its payload".to_string());
+    }
+    if !qualification_status_bench_pending {
+        blockers.push("Qualification packet status is not bench-pending".to_string());
+    }
+    if execution_performed_claimed {
+        blockers.push("Qualification packet improperly claims execution was performed".to_string());
+    }
+    if write_authority_claimed {
+        blockers.push("Qualification packet improperly claims write authority".to_string());
+    }
+
+    let safe_to_review = blockers.is_empty();
+
+    let _ = crate::audit::record(
+        "Qualification",
+        "review-hardware-qualification-packet",
+        "elevated",
+        if safe_to_review { "reviewable" } else { "blocked" },
+        None,
+        "Hardware qualification packet integrity reviewed; review never grants write authority.",
+        vec![
+            format!("path:{}", path_buf.display()),
+            format!("schema-valid:{}", schema_valid),
+            format!("packet-fingerprint-valid:{}", packet_fingerprint_valid),
+            format!("safe-to-review:{}", safe_to_review),
+        ],
+    );
+
+    Ok(HardwareQualificationPacketReview {
+        path: path_buf.display().to_string(),
+        schema_valid,
+        packet_fingerprint_valid,
+        qualification_status_bench_pending,
+        execution_performed_claimed,
+        write_authority_claimed,
+        safe_to_review,
+        blockers,
+        workflow_id,
+        packet_fingerprint,
+    })
+}
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -5527,6 +5650,7 @@ bootforgeusb_transport_scan,
             bootforge_qualification_export,
             bootforge_qualification_build_identity,
             hardware_qualification_packet_export,
+            hardware_qualification_packet_review,
             bootforge_qualification_review,
             #[cfg(feature = "qualified-flash")]
             bootforge_qualified_fastboot_devices,
