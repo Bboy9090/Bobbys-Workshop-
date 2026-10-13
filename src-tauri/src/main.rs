@@ -1438,6 +1438,62 @@ fn bootforge_qualification_build_identity() -> QualificationBuildIdentity {
     qualification_build_identity_snapshot()
 }
 
+#[tauri::command]
+fn hardware_qualification_packet_export(
+    packet: serde_json::Value,
+    destination_path: String,
+) -> Result<String, String> {
+    let destination = std::path::PathBuf::from(&destination_path);
+    if destination.as_os_str().is_empty() {
+        return Err("Qualification packet destination is required".to_string());
+    }
+    let generated_unix_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+
+    let workflow_id = packet
+        .get("workflowId")
+        .and_then(|value| value.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let receipt = serde_json::json!({
+        "schema": "com.bobbyblanco.bobfwtools.hardware-qualification-packet.v1",
+        "generatedUnixSeconds": generated_unix_seconds,
+        "executionPerformed": false,
+        "qualificationStatus": "bench-pending",
+        "packet": packet,
+        "policy": {
+            "packetDoesNotGrantWriteAuthority": true,
+            "physicalBenchEvidenceRequired": true,
+            "humanQualificationDecisionRequired": true
+        }
+    });
+
+    let bytes = serde_json::to_vec_pretty(&receipt)
+        .map_err(|e| format!("Could not serialize qualification packet: {e}"))?;
+    std::fs::write(&destination, bytes)
+        .map_err(|e| format!("Could not write qualification packet {}: {e}", destination.display()))?;
+
+    let _ = crate::audit::record(
+        "Qualification",
+        "export-hardware-qualification-packet",
+        "elevated",
+        "exported",
+        None,
+        format!("Exported bench-pending qualification packet for {}", workflow_id),
+        vec![
+            format!("workflow-id:{}", workflow_id),
+            format!("path:{}", destination.display()),
+            "write-authority-granted:false".to_string(),
+        ],
+    );
+
+    Ok(destination.display().to_string())
+}
+
+
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -5470,6 +5526,7 @@ bootforgeusb_transport_scan,
             bootforge_recovery_review_readiness_certificate,
             bootforge_qualification_export,
             bootforge_qualification_build_identity,
+            hardware_qualification_packet_export,
             bootforge_qualification_review,
             #[cfg(feature = "qualified-flash")]
             bootforge_qualified_fastboot_devices,
