@@ -2311,6 +2311,7 @@ struct QualifiedFlashApprovalInput {
 #[derive(Debug, Clone, Deserialize)]
 struct QualificationBenchEvidenceInput {
     dossierPath: String,
+    qualificationPacketPath: String,
     expectedRecoveryJobFingerprint: String,
     deviceSerial: String,
     reviewer: String,
@@ -2333,6 +2334,7 @@ struct QualificationBenchEvidenceReceipt {
     dossier_fingerprint: String,
     recovery_job_fingerprint: String,
     executor_build_fingerprint: String,
+    qualification_packet_fingerprint: String,
     partitions: Vec<FlashPartition>,
     physical_checks: QualifiedFlashPhysicalChecks,
     generated_unix_seconds: u64,
@@ -2354,6 +2356,7 @@ fn qualification_bench_evidence_material(
         "dossierFingerprint": receipt.dossier_fingerprint,
         "recoveryJobFingerprint": receipt.recovery_job_fingerprint,
         "executorBuildFingerprint": receipt.executor_build_fingerprint,
+        "qualificationPacketFingerprint": receipt.qualification_packet_fingerprint,
         "partitions": receipt.partitions,
         "physicalChecks": receipt.physical_checks,
         "generatedUnixSeconds": receipt.generated_unix_seconds,
@@ -2422,6 +2425,12 @@ fn load_and_verify_qualification_bench_evidence(
             "Qualification bench evidence executor-build fingerprint does not match".to_string(),
         );
     }
+    if !valid_sha256_hex(&receipt.qualification_packet_fingerprint) {
+        return Err(
+            "Qualification bench evidence qualification-packet fingerprint is missing or malformed"
+                .to_string(),
+        );
+    }
     if receipt.partitions.is_empty() {
         return Err("Qualification bench evidence has no inspected partition images".to_string());
     }
@@ -2488,6 +2497,17 @@ fn bootforge_qualification_bench_evidence_export(
         );
     }
 
+    let packet_review = hardware_qualification_packet_review(input.qualificationPacketPath.clone())?;
+    if !packet_review.safe_to_review {
+        return Err(format!(
+            "Cannot record bench evidence for a blocked hardware qualification packet: {}",
+            packet_review.blockers.join("; ")
+        ));
+    }
+    let qualification_packet_fingerprint = packet_review
+        .packet_fingerprint
+        .ok_or_else(|| "Verified hardware qualification packet fingerprint is unavailable".to_string())?;
+
     let review = bootforge_qualification_review(
         input.dossierPath.clone(),
         Some(input.expectedRecoveryJobFingerprint.clone()),
@@ -2544,6 +2564,7 @@ fn bootforge_qualification_bench_evidence_export(
         dossier_fingerprint,
         recovery_job_fingerprint,
         executor_build_fingerprint: build.executor_build_fingerprint,
+        qualification_packet_fingerprint,
         partitions: input.partitions,
         physical_checks: input.physicalChecks,
         generated_unix_seconds,
@@ -2576,6 +2597,10 @@ fn bootforge_qualification_bench_evidence_export(
             format!(
                 "executor-build-fingerprint:{}",
                 receipt.executor_build_fingerprint
+            ),
+            format!(
+                "qualification-packet-fingerprint:{}",
+                receipt.qualification_packet_fingerprint
             ),
             format!("partition-count:{}", receipt.partitions.len()),
         ],
