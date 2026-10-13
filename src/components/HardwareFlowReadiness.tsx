@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   buildHardwareFlowReadinessReport,
+  exportHardwareQualificationPacket,
   type HardwareFlowReadinessReport,
 } from '../lib/desktop';
 
@@ -13,6 +14,8 @@ function stateClasses(state: 'ready' | 'guided' | 'blocked'): string {
 export default function HardwareFlowReadiness() {
   const [report, setReport] = useState<HardwareFlowReadinessReport | null>(null);
   const [busy, setBusy] = useState(false);
+  const [exportingWorkflowId, setExportingWorkflowId] = useState<string | null>(null);
+  const [exportedPacketPath, setExportedPacketPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const runAudit = async () => {
@@ -25,6 +28,20 @@ export default function HardwareFlowReadiness() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const exportPacket = async (task: HardwareFlowReadinessReport['qualificationQueue'][number]) => {
+    if (exportingWorkflowId) return;
+    setExportingWorkflowId(task.workflowId);
+    setError(null);
+    try {
+      const path = await exportHardwareQualificationPacket(task);
+      if (path) setExportedPacketPath(path);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExportingWorkflowId(null);
     }
   };
 
@@ -198,9 +215,19 @@ export default function HardwareFlowReadiness() {
                         <div className="text-xs font-semibold text-white">{task.workflowId}</div>
                         <div className="mt-1 text-[10px] text-slate-600">{task.category} · {task.risk}</div>
                       </div>
-                      <span className="rounded border border-amber-900/60 bg-amber-950/20 px-2 py-1 text-[10px] text-amber-300">
-                        BENCH PENDING
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="rounded border border-amber-900/60 bg-amber-950/20 px-2 py-1 text-[10px] text-amber-300">
+                          BENCH PENDING
+                        </span>
+                        <button
+                          type="button"
+                          disabled={Boolean(exportingWorkflowId)}
+                          onClick={() => void exportPacket(task)}
+                          className="rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-slate-300 disabled:opacity-40 hover:bg-slate-800"
+                        >
+                          {exportingWorkflowId === task.workflowId ? 'Exporting…' : 'Export packet'}
+                        </button>
+                      </div>
                     </div>
                     <div className="mt-2 text-[10px] text-slate-500">{task.notes}</div>
 
@@ -239,6 +266,11 @@ export default function HardwareFlowReadiness() {
                   </div>
                 ))}
               </div>
+              {exportedPacketPath && (
+                <div className="mt-2 rounded border border-emerald-900/50 bg-emerald-950/10 p-2 text-[10px] text-emerald-300">
+                  Qualification packet exported: <span className="font-mono">{exportedPacketPath}</span>
+                </div>
+              )}
             </div>
           )}
 
