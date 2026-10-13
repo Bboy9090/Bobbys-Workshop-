@@ -989,6 +989,22 @@ function qualificationPacketForWorkflow(workflowId: string) {
   return packets[workflowId] ?? generic;
 }
 
+export async function exportHardwareQualificationPacket(
+  task: HardwareQualificationTask,
+): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const destinationPath = await save({
+    title: 'Export hardware qualification packet',
+    defaultPath: `${task.workflowId.replace(/[^a-zA-Z0-9._-]+/g, '-')}-qualification-packet.json`,
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  });
+  if (typeof destinationPath !== 'string' || !destinationPath.trim()) return null;
+  return invoke<string>('hardware_qualification_packet_export', {
+    packet: task,
+    destinationPath,
+  });
+}
+
 export type HardwareApprovalGate = {
   id: string;
   title: string;
