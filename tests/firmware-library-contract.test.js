@@ -1037,5 +1037,30 @@ describe('Pending physical qualification queue', () => {
     expect(ui).toContain('Designated bench action');
     expect(ui).toContain('Post-operation verification');
     expect(ui).toContain('Policy evidence required');
+    expect(ui).toContain('Export packet');
+    expect(ui).toContain('Qualification packet exported');
+    expect(desktop).toContain('exportHardwareQualificationPacket');
+    expect(desktop).toContain('hardware_qualification_packet_export');
+  });
+});
+
+
+describe('Machine-readable hardware qualification packet export', () => {
+  it('exports bench-pending evidence without granting write authority', () => {
+    const backend = read('src-tauri/src/main.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/HardwareFlowReadiness.tsx');
+
+    expect(backend).toContain('hardware_qualification_packet_export');
+    expect(backend).toContain('com.bobbyblanco.bobfwtools.hardware-qualification-packet.v1');
+    expect(backend).toContain('"executionPerformed": false');
+    expect(backend).toContain('"qualificationStatus": "bench-pending"');
+    expect(backend).toContain('"packetDoesNotGrantWriteAuthority": true');
+    expect(backend).toContain('write-authority-granted:false');
+    expect(backend).toContain('hardware_qualification_packet_export,');
+
+    expect(desktop).toContain('exportHardwareQualificationPacket');
+    expect(desktop).toContain("title: 'Export hardware qualification packet'");
+    expect(ui).toContain('Export packet');
   });
 });
