@@ -28,6 +28,7 @@ mod py_client;
 #[cfg(feature = "legacy-backends")]
 mod fastapi_backend;
 mod mtp_backend;
+mod adb_command;
 mod adb_workflows;
 mod audit;
 mod workflow_capabilities;

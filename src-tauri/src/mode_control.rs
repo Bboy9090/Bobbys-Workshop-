@@ -63,7 +63,7 @@ pub struct ModeTransitionVerification {
 }
 
 fn adb_devices_with_state() -> Result<Vec<(String, String)>, String> {
-    let mut command = Command::new("adb");
+    let mut command = crate::adb_command::new_adb_command();
     command.args(["devices", "-l"]);
     #[cfg(target_os = "windows")]
     {
@@ -91,7 +91,7 @@ fn adb_devices_with_state() -> Result<Vec<(String, String)>, String> {
 }
 
 fn adb_property(serial: &str, property: &str) -> Option<String> {
-    let mut command = Command::new("adb");
+    let mut command = crate::adb_command::new_adb_command();
     command.args(["-s", serial, "shell", "getprop", property]);
     #[cfg(target_os = "windows")]
     {
