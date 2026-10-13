@@ -1,0 +1,23 @@
+{
+  "date": "2026-10-13",
+  "evidence_source": "live authorized ADB getprop via ADB_LIBUSB=1 on macOS",
+  "model": "SM-A176U",
+  "device": "a17x",
+  "product": "a17xsq",
+  "android_version": "16",
+  "android_api": 36,
+  "one_ui_raw": "80500",
+  "one_ui_interpreted": "8.5",
+  "android_security_patch": "2026-08-05",
+  "build_id": "BP4A.251205.006.A176USQS7BZH9",
+  "incremental": "A176USQS7BZH9",
+  "bootloader": "A176USQS7BZH9",
+  "baseband": "A176USQS7BZH9,A176USQS7BZH9",
+  "adb_state": "device (authorized)",
+  "usb_backend": "libusb",
+  "frp_state": "not assessed; setup home screen access does not imply FRP removal",
+  "flashing_performed": false,
+  "reset_performed": false,
+  "serial_number": "excluded",
+  "firmware_write_qualification": "not established"
+}
