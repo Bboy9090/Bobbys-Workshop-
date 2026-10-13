@@ -196,7 +196,7 @@ fn run_tool_lines(
 }
 
 fn run_adb_devices() -> Result<Vec<String>, String> {
-    let mut cmd = Command::new("adb");
+    let mut cmd = crate::adb_command::new_adb_command();
     cmd.args(["devices", "-l"]);
     #[cfg(target_os = "windows")]
     {
