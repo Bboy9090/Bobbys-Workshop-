@@ -1056,8 +1056,13 @@ describe('Machine-readable hardware qualification packet export', () => {
     expect(backend).toContain('"executionPerformed": false');
     expect(backend).toContain('"qualificationStatus": "bench-pending"');
     expect(backend).toContain('"packetDoesNotGrantWriteAuthority": true');
+    expect(backend).toContain('"packetFingerprint": packet_fingerprint');
     expect(backend).toContain('write-authority-granted:false');
     expect(backend).toContain('hardware_qualification_packet_export,');
+    expect(backend).toContain('hardware_qualification_packet_review');
+    expect(backend).toContain('Qualification packet fingerprint does not match its payload');
+    expect(backend).toContain('review never grants write authority');
+    expect(backend).toContain('hardware_qualification_packet_review,');
 
     expect(desktop).toContain('exportHardwareQualificationPacket');
     expect(desktop).toContain("title: 'Export hardware qualification packet'");
