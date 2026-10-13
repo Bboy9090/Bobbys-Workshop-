@@ -203,7 +203,36 @@ export default function HardwareFlowReadiness() {
                       </span>
                     </div>
                     <div className="mt-2 text-[10px] text-slate-500">{task.notes}</div>
-                    <div className="mt-2 text-[10px] font-semibold text-slate-400">Evidence required</div>
+
+                    <div className="mt-2 rounded border border-slate-800 bg-black/20 p-2">
+                      <div className="text-[10px] font-semibold text-slate-400">Exact target evidence</div>
+                      {task.targetEvidence.map((item) => (
+                        <div key={item} className="mt-1 text-[10px] leading-4 text-slate-600">• {item}</div>
+                      ))}
+                    </div>
+
+                    <div className="mt-2 rounded border border-slate-800 bg-black/20 p-2">
+                      <div className="text-[10px] font-semibold text-slate-400">Host / tooling requirements</div>
+                      {task.hostRequirements.map((item) => (
+                        <div key={item} className="mt-1 text-[10px] leading-4 text-slate-600">• {item}</div>
+                      ))}
+                    </div>
+
+                    <div className="mt-2 text-[10px] font-semibold text-slate-400">Dry-run artifact</div>
+                    <div className="mt-1 text-[10px] leading-4 text-slate-600">{task.dryRunArtifact}</div>
+
+                    <div className="mt-2 text-[10px] font-semibold text-slate-400">Backup / rollback requirement</div>
+                    <div className="mt-1 text-[10px] leading-4 text-slate-600">{task.rollbackRequirement}</div>
+
+                    <div className="mt-2 text-[10px] font-semibold text-slate-400">Designated bench action</div>
+                    <div className="mt-1 text-[10px] leading-4 text-slate-600">{task.benchAction}</div>
+
+                    <div className="mt-2 text-[10px] font-semibold text-slate-400">Post-operation verification</div>
+                    {task.postVerification.map((item) => (
+                      <div key={item} className="mt-1 text-[10px] leading-4 text-slate-600">• {item}</div>
+                    ))}
+
+                    <div className="mt-2 text-[10px] font-semibold text-slate-400">Policy evidence required</div>
                     {task.requiredEvidence.map((item) => (
                       <div key={item} className="mt-1 text-[10px] leading-4 text-slate-600">• {item}</div>
                     ))}
