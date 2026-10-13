@@ -1586,6 +1586,38 @@ export async function reviewQualificationDossierPath(
 }
 
 
+export type HardwareQualificationPacketReview = {
+  path: string;
+  schemaValid: boolean;
+  packetFingerprintValid: boolean;
+  qualificationStatusBenchPending: boolean;
+  executionPerformedClaimed: boolean;
+  writeAuthorityClaimed: boolean;
+  safeToReview: boolean;
+  blockers: string[];
+  workflowId?: string | null;
+  packetFingerprint?: string | null;
+};
+
+export async function reviewHardwareQualificationPacket(): Promise<HardwareQualificationPacketReview | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: 'Review hardware qualification packet',
+    filters: [{ name: 'JSON qualification packet', extensions: ['json'] }],
+  });
+  if (!selected || Array.isArray(selected)) return null;
+  return invoke<HardwareQualificationPacketReview>('hardware_qualification_packet_review', { path: selected });
+}
+
+export async function reviewHardwareQualificationPacketPath(
+  path: string,
+): Promise<HardwareQualificationPacketReview | null> {
+  if (!isTauriRuntime() || !path.trim()) return null;
+  return invoke<HardwareQualificationPacketReview>('hardware_qualification_packet_review', { path: path.trim() });
+}
+
 export type QualifiedFlashPartition = {
   name: string;
   imagePath: string;
@@ -1646,6 +1678,7 @@ export type QualifiedFlashApprovalInput = {
 
 export type QualificationBenchEvidenceInput = {
   dossierPath: string;
+  qualificationPacketPath: string;
   expectedRecoveryJobFingerprint: string;
   deviceSerial: string;
   reviewer: string;
