@@ -1069,3 +1069,27 @@ describe('Machine-readable hardware qualification packet export', () => {
     expect(ui).toContain('Export packet');
   });
 });
+
+
+describe('Bench evidence binds the workflow qualification packet', () => {
+  it('requires an integrity-reviewed packet and freezes its fingerprint into bench evidence', () => {
+    const backend = read('src-tauri/src/main.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const consoleUi = read('src/components/QualifiedFlashConsole.tsx');
+
+    expect(backend).toContain('qualificationPacketPath: String');
+    expect(backend).toContain('hardware_qualification_packet_review(input.qualificationPacketPath.clone())');
+    expect(backend).toContain('qualification_packet_fingerprint: String');
+    expect(backend).toContain('"qualificationPacketFingerprint": receipt.qualification_packet_fingerprint');
+    expect(backend).toContain('Qualification bench evidence qualification-packet fingerprint is missing or malformed');
+    expect(backend).toContain('qualification-packet-fingerprint:{}');
+
+    expect(desktop).toContain('reviewHardwareQualificationPacket');
+    expect(desktop).toContain('qualificationPacketPath: string');
+
+    expect(consoleUi).toContain('Select + verify qualification packet');
+    expect(consoleUi).toContain('PACKET VERIFIED');
+    expect(consoleUi).toContain('qualificationPacketReview?.safeToReview');
+    expect(consoleUi).toContain('qualificationPacketPath: qualificationPacketReview.path');
+  });
+});
