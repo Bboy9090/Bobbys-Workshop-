@@ -1012,9 +1012,30 @@ describe('Pending physical qualification queue', () => {
     expect(desktop).toContain('Designated physical-device bench result with post-operation verification');
     expect(desktop).toContain('Verified backup or rollback evidence');
     expect(desktop).toContain('Audit ledger evidence with input/output fingerprints');
+    expect(desktop).toContain('qualificationPacketForWorkflow');
+    for (const workflowId of [
+      'qualcomm.edl-plan',
+      'mediatek.brom-plan',
+      'calibration.backup',
+      'calibration.restore',
+      'hardware.storage-identify',
+      'hardware.chip-off-plan',
+      'bootforge.media',
+    ]) {
+      expect(desktop).toContain(`'${workflowId}'`);
+    }
+    expect(desktop).toContain('Execute only the designated one-partition qualification trial');
+    expect(desktop).toContain('manual specialist procedure');
+    expect(desktop).toContain('destination media identity');
 
     expect(ui).toContain('Physical qualification queue');
     expect(ui).toContain('BENCH PENDING');
-    expect(ui).toContain('Evidence required');
+    expect(ui).toContain('Exact target evidence');
+    expect(ui).toContain('Host / tooling requirements');
+    expect(ui).toContain('Dry-run artifact');
+    expect(ui).toContain('Backup / rollback requirement');
+    expect(ui).toContain('Designated bench action');
+    expect(ui).toContain('Post-operation verification');
+    expect(ui).toContain('Policy evidence required');
   });
 });
