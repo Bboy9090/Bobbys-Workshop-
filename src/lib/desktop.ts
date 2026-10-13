@@ -908,8 +908,86 @@ export type HardwareQualificationTask = {
   softwareImplemented: boolean;
   physicallyQualified: boolean;
   requiredEvidence: string[];
+  targetEvidence: string[];
+  hostRequirements: string[];
+  dryRunArtifact: string;
+  rollbackRequirement: string;
+  benchAction: string;
+  postVerification: string[];
   notes: string;
 };
+
+function qualificationPacketForWorkflow(workflowId: string) {
+  const generic = {
+    targetEvidence: ['Exact live device identity and transport evidence captured immediately before the bench action.'],
+    hostRequirements: ['Required workstation tooling present, exact USB/interface ownership resolved, and current BobFWTools build recorded.'],
+    dryRunArtifact: 'Export a dry-run/planning receipt using the exact intended target and inputs before any physical action.',
+    rollbackRequirement: 'Document the workflow-specific rollback or recovery path before proceeding.',
+    benchAction: 'Run the smallest authorized physical bench action that proves this workflow without broadening scope.',
+    postVerification: ['Re-detect the same target.', 'Verify expected state/output.', 'Attach audit fingerprints and operator decision.'],
+  };
+
+  const packets: Record<string, typeof generic> = {
+    'qualcomm.edl-plan': {
+      targetEvidence: ['Qualcomm EDL 9008 target identity, VID/PID, USB path, serial when exposed, and independently proven model/board/SKU.', 'Authorized Firehose programmer/service-loader record bound to the intended device family.'],
+      hostRequirements: ['Stable EDL transport with exact driver claim.', 'Qualified Firehose planning path and current recovery executor build recorded.'],
+      dryRunArtifact: 'Export the package-bound EDL recovery job and Firehose dry-run/write plan with deterministic firmware and job fingerprints.',
+      rollbackRequirement: 'Verified target-specific backup/restore or OEM recovery path must be reviewable before trial authority.',
+      benchAction: 'Execute only the designated one-partition qualification trial under qualification-trial authority; no wipe, no automatic reboot, no production grant.',
+      postVerification: ['Re-enumerate the exact EDL target.', 'Read back or otherwise verify the trial partition result against the expected digest/size.', 'Export audit bundle and reviewer decision before any production authority.'],
+    },
+    'mediatek.brom-plan': {
+      targetEvidence: ['MediaTek Preloader/BROM target identity, VID/PID, USB path, serial when exposed, and independently proven model/board/SKU.', 'Legitimate OEM/service DA/auth evidence applicable to the exact target.'],
+      hostRequirements: ['Stable MediaTek USB transport with exact driver ownership.', 'Current scatter/package inputs and executor build recorded.'],
+      dryRunArtifact: 'Export a package-bound MediaTek recovery plan with parsed scatter/partition map, deterministic package fingerprint, and intended single trial partition.',
+      rollbackRequirement: 'Verified backup or OEM recovery path for the exact target must exist before trial authority.',
+      benchAction: 'Run one explicitly approved partition trial only; do not format, erase broad regions, or escalate around DA/auth requirements.',
+      postVerification: ['Re-detect the same target and transport mode.', 'Verify the trial partition result against expected size/hash where readable.', 'Export audit bundle and reviewer decision before production authority.'],
+    },
+    'calibration.backup': {
+      targetEvidence: ['Authorized device identity plus resolved calibration partition/block path from the allowlist.'],
+      hostRequirements: ['Required root/service read access verified without bypassing device security controls.', 'Destination storage has enough capacity and is writable.'],
+      dryRunArtifact: 'Generate the calibration backup plan showing exact partitions, expected byte counts, destination, and access mode.',
+      rollbackRequirement: 'Backup itself is the rollback artifact; its manifest and SHA-256 must be retained with the device identity.',
+      benchAction: 'Read and export one approved calibration partition without modifying the device.',
+      postVerification: ['Backup byte count matches expectation.', 'Backup SHA-256 is recorded.', 'Manifest binds device UID, partition, path, size, and hash and can pass restore preflight later.'],
+    },
+    'calibration.restore': {
+      targetEvidence: ['Exact live device UID and partition identity matching a previously verified calibration backup manifest.'],
+      hostRequirements: ['Required service/write access verified and exact partition allowlist binding intact.'],
+      dryRunArtifact: 'Run restore preflight against manifest, live device UID, partition, byte count, and SHA-256 before write authority.',
+      rollbackRequirement: 'Preserve the original verified backup plus a second copy or independently verified recovery source before restore.',
+      benchAction: 'Restore only the explicitly approved calibration partition bound to the exact manifest and target.',
+      postVerification: ['Read back and verify size/hash when supported.', 'Confirm device re-detection and expected calibration/service state.', 'Export audit record tying restore result to the original manifest.'],
+    },
+    'hardware.storage-identify': {
+      targetEvidence: ['Exact physical target identity plus storage bus/device identification evidence.'],
+      hostRequirements: ['Read-only identification tooling available and no conflicting USB/storage driver claim.'],
+      dryRunArtifact: 'Export a read-only storage identification report before any service action.',
+      rollbackRequirement: 'No write action is permitted in this qualification; rollback is not applicable unless a later destructive workflow is opened.',
+      benchAction: 'Identify the storage technology/controller and geometry using read-only probes only.',
+      postVerification: ['Repeat identification produces the same target/controller result.', 'Attach device identity, transport, and evidence source to the audit record.'],
+    },
+    'hardware.chip-off-plan': {
+      targetEvidence: ['Exact board/device identity, storage package identification, and board-level service authorization.'],
+      hostRequirements: ['Documented bench equipment profile, adapter/socket compatibility, and operator safety checklist.'],
+      dryRunArtifact: 'Generate a chip-off service plan only; no physical removal or write operation is automated by BobFWTools.',
+      rollbackRequirement: 'Document board rework/reassembly and donor/backup strategy before any physical bench procedure.',
+      benchAction: 'Qualification is limited to validating the planning packet and hardware identification against a designated bench sample; physical chip removal remains a manual specialist procedure.',
+      postVerification: ['Reviewer confirms package/board match and equipment plan.', 'Audit bundle records that BobFWTools performed planning/evidence only, not automated chip removal.'],
+    },
+    'bootforge.media': {
+      targetEvidence: ['Exact destination media identity, capacity, removable status, and selected source image identity.'],
+      hostRequirements: ['Exclusive destination claim, source image verification, and sufficient host permissions for raw-media service.'],
+      dryRunArtifact: 'Export the media-write plan with source hash, destination identity/capacity, partition/layout intent, and no-execution receipt.',
+      rollbackRequirement: 'Confirm the destination is disposable/recoverable and preserve any required user data before qualification.',
+      benchAction: 'Write only to the designated removable qualification medium using the approved image and verify no other disk is addressable by the job.',
+      postVerification: ['Re-scan the same media identity.', 'Verify resulting partition/layout and source-derived hashes where applicable.', 'Record safe eject/remount result and audit fingerprints.'],
+    },
+  };
+
+  return packets[workflowId] ?? generic;
+}
 
 export type HardwareApprovalGate = {
   id: string;
@@ -1157,6 +1235,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
         ...(policy.explicitConfirmationRequired ? ['Explicit human confirmation tied to the exact target'] : []),
         'Designated physical-device bench result with post-operation verification',
       ];
+      const packet = qualificationPacketForWorkflow(policy.id);
       return {
         workflowId: policy.id,
         category: policy.category,
@@ -1164,6 +1243,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
         softwareImplemented: policy.activeInBobfwtools,
         physicallyQualified: policy.physicallyQualified,
         requiredEvidence,
+        ...packet,
         notes: policy.notes,
       };
     });
