@@ -4427,6 +4427,12 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                     return;
                 }
             }
+            // Never begin a destructive qualified partition write if its
+            // mandatory post-write target check has been disabled.
+            if !config.verifyAfterFlash {
+                set_job_status("failed", "Post-write target verification required before flashing");
+                return;
+            }
             let current_hash = match sha256_file(std::path::Path::new(&p.imagePath)) {
                 Ok(hash) => hash,
                 Err(err) => {
@@ -4551,13 +4557,6 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                 }
             }
 
-            if !config.verifyAfterFlash {
-                if let Err(e) = append_transition(&journal_path, RecoveryState::AwaitingReenumeration, RecoveryState::BlockedRequiresReview) {
-                    push_log(&format!("[tauri-fastboot] cannot persist unverified write state: {e}"));
-                }
-                set_job_status("failed", "Post-write verification was disabled; manual review required");
-                return;
-            }
             completed_steps += 1;
             complete_step(completed_steps, total_steps_local);
         }
