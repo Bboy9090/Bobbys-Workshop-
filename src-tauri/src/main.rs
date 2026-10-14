@@ -3915,6 +3915,14 @@ fn bootforge_issue_qualified_flash_grant(
     Ok(grant)
 }
 
+// Single construction seam for the qualified executor; tests inspect argv without execution.
+#[cfg(feature = "qualified-flash")]
+fn qualified_fastboot_flash_command(serial: &str, partition: &str, image: &str) -> Command {
+    let mut cmd = Command::new("fastboot");
+    cmd.arg("-s").arg(serial).arg("flash").arg(partition).arg(image);
+    cmd
+}
+
 #[cfg(feature = "qualified-flash")]
 fn validate_qualified_flash_config(config: &FlashJobConfig, grant_secret: &str) -> Result<(), String> {
     let grant = &config.qualificationGrant;
@@ -4405,9 +4413,7 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
             set_job_status("running", &format!("Flashing {}", p.name));
             push_log(&format!("[tauri-fastboot] fastboot flash {} {}", p.name, p.imagePath));
 
-            let mut cmd = Command::new("fastboot");
-            cmd.arg("-s").arg(&config.deviceSerial);
-            cmd.arg("flash").arg(&p.name).arg(&p.imagePath);
+            let mut cmd = qualified_fastboot_flash_command(&config.deviceSerial, &p.name, &p.imagePath);
             #[cfg(target_os = "windows")]
             {
                 cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
@@ -5296,6 +5302,61 @@ mod qualified_flash_grant_tests {
         assert!(consume_qualification_grant(&mut consumed, &grant_mac)
             .unwrap_err()
             .contains("already been consumed"));
+    }
+
+    // Virtual-partition rehearsal only. No fastboot, USB, or physical device is accessed.
+    #[test]
+    fn simulated_partition_write_verifies_hash_and_detects_corruption() {
+        let config = valid_config();
+        let source = std::path::Path::new(&config.partitions[0].imagePath);
+        let virtual_partition = std::env::temp_dir().join(format!(
+            "bobfwtools-virtual-partition-{}.img", uuid::Uuid::new_v4()
+        ));
+        assert!(validate_qualified_flash_config(&config, "test-secret").is_ok());
+        std::fs::copy(source, &virtual_partition).unwrap();
+        assert_eq!(
+            sha256_file(&virtual_partition).unwrap(),
+            config.partitions[0].expectedSha256,
+            "virtual partition must match approved firmware hash after simulated write"
+        );
+        std::fs::write(&virtual_partition, b"corrupted-virtual-partition").unwrap();
+        assert_ne!(
+            sha256_file(&virtual_partition).unwrap(),
+            config.partitions[0].expectedSha256,
+            "simulated post-write verification must reject corruption"
+        );
+        let _ = std::fs::remove_file(source);
+        let _ = std::fs::remove_file(virtual_partition);
+    }
+
+    // Isolated state-machine rehearsal: no OS commands, fastboot, USB or phone access.
+    #[test]
+    fn simulated_write_state_machine_reports_failure_and_cancellation() {
+        #[derive(Debug, PartialEq, Eq)]
+        enum Phase { Preflight, Writing, Verifying, Complete, Failed, Cancelled }
+        fn simulate(cancel_at: Option<usize>, fail_at: Option<usize>) -> (Phase, Vec<Phase>) {
+            let mut timeline = vec![Phase::Preflight];
+            for (i, phase) in [Phase::Writing, Phase::Verifying, Phase::Complete]
+                .into_iter().enumerate() {
+                if cancel_at == Some(i) { timeline.push(Phase::Cancelled); return (Phase::Cancelled, timeline); }
+                if fail_at == Some(i) { timeline.push(Phase::Failed); return (Phase::Failed, timeline); }
+                timeline.push(phase);
+            }
+            (Phase::Complete, timeline)
+        }
+        assert_eq!(simulate(None, None).0, Phase::Complete);
+        assert_eq!(simulate(Some(1), None).1, vec![Phase::Preflight, Phase::Writing, Phase::Cancelled]);
+        assert_eq!(simulate(None, Some(1)).1, vec![Phase::Preflight, Phase::Writing, Phase::Failed]);
+        assert_eq!(simulate(Some(0), None).1, vec![Phase::Preflight, Phase::Cancelled]);
+    }
+
+    #[test]
+    fn qualified_flash_command_has_exact_serial_partition_and_image_args() {
+        let cmd = qualified_fastboot_flash_command("BENCH-DEVICE", "boot", "/tmp/mock.img");
+        let args: Vec<_> = cmd.get_args().map(|arg| arg.to_string_lossy().into_owned()).collect();
+        assert_eq!(cmd.get_program().to_string_lossy(), "fastboot");
+        assert_eq!(args, ["-s", "BENCH-DEVICE", "flash", "boot", "/tmp/mock.img"]);
+        // Command construction only; no executable or device is invoked.
     }
 
     #[test]
