@@ -3923,6 +3923,21 @@ fn qualified_fastboot_flash_command(serial: &str, partition: &str, image: &str) 
     cmd
 }
 
+// Pure fastboot result classification. A successful process exit with a protocol FAIL is still failure.
+#[cfg(feature = "qualified-flash")]
+fn qualified_fastboot_write_result(exit_success: bool, stdout: &str, stderr: &str) -> Result<(), String> {
+    if !exit_success {
+        return Err("Fastboot write exited unsuccessfully".into());
+    }
+    if stdout.lines().chain(stderr.lines()).any(|line| {
+        let normalized = line.trim().to_ascii_uppercase();
+        normalized.starts_with("FAILED (") || normalized.starts_with("FAILED:") || normalized.starts_with("FAIL (")
+    }) {
+        return Err("Fastboot reported a write failure".into());
+    }
+    Ok(())
+}
+
 #[cfg(feature = "qualified-flash")]
 fn validate_qualified_flash_config(config: &FlashJobConfig, grant_secret: &str) -> Result<(), String> {
     let grant = &config.qualificationGrant;
@@ -4428,7 +4443,10 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                             push_log(line);
                         }
                     }
-                    if !out.status.success() {
+                    if let Err(reason) = qualified_fastboot_write_result(
+                        out.status.success(), &String::from_utf8_lossy(&out.stdout), &String::from_utf8_lossy(&out.stderr),
+                    ) {
+                        push_log(&format!("[tauri-fastboot] rejected flash result: {reason}"));
                         set_job_status("failed", &format!("Flash failed: {}", p.name));
                         emit_flash_update(
                             &app_for_thread,
@@ -5357,6 +5375,15 @@ mod qualified_flash_grant_tests {
         assert_eq!(cmd.get_program().to_string_lossy(), "fastboot");
         assert_eq!(args, ["-s", "BENCH-DEVICE", "flash", "boot", "/tmp/mock.img"]);
         // Command construction only; no executable or device is invoked.
+    }
+
+    #[test]
+    fn qualified_fastboot_write_result_handles_mocked_transport_responses() {
+        assert!(qualified_fastboot_write_result(true, "Sending 'boot' OKAY\nWriting 'boot' OKAY", "").is_ok());
+        assert!(qualified_fastboot_write_result(false, "", "connection lost").is_err());
+        assert!(qualified_fastboot_write_result(true, "", "FAILED (remote: partition write rejected)").is_err());
+        assert!(qualified_fastboot_write_result(true, "FAILED: device disconnected", "").is_err());
+        assert!(qualified_fastboot_write_result(true, "", "FAIL (timeout)").is_err());
     }
 
     #[test]
