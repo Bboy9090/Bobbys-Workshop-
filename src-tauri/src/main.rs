@@ -4345,6 +4345,14 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
             return;
         }
 
+        // Qualified userdata wipe is destructive and is not yet covered by
+        // the per-partition recovery journal. Block it until a separately
+        // qualified wipe transaction recorder is integrated.
+        if config.wipeUserData {
+            set_job_status("failed", "Qualified userdata wipe requires dedicated recovery evidence");
+            return;
+        }
+
         // Optional wipe
         if config.wipeUserData {
             if cancel_requested() {
