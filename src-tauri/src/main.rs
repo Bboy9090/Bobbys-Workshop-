@@ -5451,6 +5451,21 @@ mod qualified_flash_grant_tests {
         }
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn interrupted_virtual_write_never_starts_post_write_verification() {
+        let mut verify_calls = 0;
+        let command = qualified_fastboot_flash_command("LAB", "boot", "/tmp/lab.img");
+        let outcome = execute_qualified_fastboot_write(command, |_| {
+            Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "simulated transport interruption"))
+        }).and_then(|_| verify_fastboot_target_after_write_with("LAB", |_| {
+            verify_calls += 1;
+            Ok(true)
+        }, || {}));
+        assert!(outcome.unwrap_err().contains("simulated transport interruption"));
+        assert_eq!(verify_calls, 0, "a failed write must not start target verification");
+    }
+
     #[test]
     fn grant_rejects_different_executor_build() {
         let mut config = valid_config();
