@@ -223,7 +223,7 @@ mod tests {
     #[test]
     fn truncated_last_record_rejects_append() {
         let p = path();
-        std::fs::write(&p, b"WRITE_IN_PROGRESS\\nAWAITING_REEN").unwrap();
+        std::fs::write(&p, b"WRITE_IN_PROGRESS\nAWAITING_REEN").unwrap();
         assert!(append_transition(&p, RecoveryState::WriteInProgress, RecoveryState::AwaitingReenumeration).is_err());
         let _ = std::fs::remove_file(p);
     }
@@ -255,7 +255,7 @@ mod tests {
     #[test]
     fn unknown_record_token_fails_closed() {
         let p = path();
-        std::fs::write(&p, b"POST_WRITE_VERIFIED\\nUNRECOGNIZED\\n").unwrap();
+        std::fs::write(&p, b"POST_WRITE_VERIFIED\nUNRECOGNIZED\n").unwrap();
         assert_eq!(load_restart_state(&p), RecoveryState::WriteInterruptedUnknownState);
         let _ = std::fs::remove_file(p);
     }
