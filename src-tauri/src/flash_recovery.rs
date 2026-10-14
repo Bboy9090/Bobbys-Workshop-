@@ -80,6 +80,12 @@ pub fn append_transition(path: &Path, prior: RecoveryState, next: RecoveryState)
 
 fn read_last_record(path: &Path) -> Result<RecoveryState, String> {
     let file = File::open(path).map_err(|e| format!("evidence unavailable: {e}"))?;
+    // A torn final append can leave a parseable token without its record terminator.
+    // Treat it as ambiguous evidence rather than a committed transition.
+    let bytes = std::fs::read(path).map_err(|e| format!("evidence unreadable: {e}"))?;
+    if bytes.last() != Some(&b'\n') {
+        return Err("unterminated evidence record".into());
+    }
     let mut previous = None;
     for line in BufReader::new(file).lines() {
         let line = line.map_err(|e| format!("evidence unreadable: {e}"))?;
@@ -279,6 +285,20 @@ mod tests {
         let p = path();
         std::fs::write(&p, b"WRITE_IN_PROGRESS\\nPOST_WRITE_VERIFIED\\n").unwrap();
         assert_eq!(load_restart_state(&p), RecoveryState::WriteInterruptedUnknownState);
+        let _ = std::fs::remove_file(p);
+    }
+    #[test]
+    fn unterminated_success_record_cannot_qualify_restart() {
+        let p = path();
+        std::fs::write(&p, b"WRITE_IN_PROGRESS\\nAWAITING_REENUMERATION\\nPOST_WRITE_VERIFIED").unwrap();
+        assert_eq!(load_restart_state(&p), RecoveryState::WriteInterruptedUnknownState);
+        let _ = std::fs::remove_file(p);
+    }
+    #[test]
+    fn unterminated_record_cannot_be_extended() {
+        let p = path();
+        std::fs::write(&p, b"WRITE_IN_PROGRESS").unwrap();
+        assert!(append_transition(&p, RecoveryState::WriteInProgress, RecoveryState::AwaitingReenumeration).is_err());
         let _ = std::fs::remove_file(p);
     }
     #[test]
