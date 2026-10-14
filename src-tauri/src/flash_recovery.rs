@@ -302,6 +302,37 @@ mod tests {
         let _ = std::fs::remove_file(p);
     }
     #[test]
+    fn exhaustive_216_transition_triples_preserve_fail_closed_policy() {
+        use RecoveryState::*;
+        let states = [Preflight, WriteInProgress, WriteInterruptedUnknownState,
+            AwaitingReenumeration, PostWriteVerified, BlockedRequiresReview];
+        let mut examined = 0;
+        for first in states {
+            for second in states {
+                for third in states {
+                    examined += 1;
+                    // Every automatically resumed write must be denied regardless
+                    // of the original state, intermediate state, or last state.
+                    assert!(!first.can_auto_resume_write());
+                    assert!(!second.can_auto_resume_write());
+                    assert!(!third.can_auto_resume_write());
+                    // A journal must not permit transitions out of terminal success
+                    // or blocked states; ambiguous writes may only become blocked.
+                    if matches!(first, PostWriteVerified | BlockedRequiresReview) {
+                        assert!(!allowed(first, second));
+                    }
+                    if first == WriteInterruptedUnknownState && allowed(first, second) {
+                        assert_eq!(second, BlockedRequiresReview);
+                    }
+                    if matches!(third, Preflight | WriteInProgress | AwaitingReenumeration) {
+                        assert_eq!(third.restart_state(), WriteInterruptedUnknownState);
+                    }
+                }
+            }
+        }
+        assert_eq!(examined, 216);
+    }
+    #[test]
     fn evidence_sink_failure_blocks_transition() {
         let p = path().join("missing-directory").join("journal");
         assert!(append_transition(&p, RecoveryState::Preflight, RecoveryState::WriteInProgress).is_err());
