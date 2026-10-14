@@ -1,5 +1,5 @@
 //! Fail-closed, hardware-free recovery evidence primitives.
-//! Not wired to production flashing. Qualification and integration are separate gates.
+//! Integrated at the qualified partition-write boundary; qualification remains gated.
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
@@ -64,14 +64,16 @@ pub fn append_transition(path: &Path, prior: RecoveryState, next: RecoveryState)
     if !allowed(prior, next) { return Err("disallowed recovery transition".into()); }
     // A caller cannot skip evidence or claim an outdated prior state.
     // The initial record is a PREFLIGHT -> WRITE_IN_PROGRESS or blocked transition.
-    if path.exists() {
+    let mut file = if prior == RecoveryState::Preflight {
+        // Atomic creation: two concurrent attempts cannot both start the same journal.
+        OpenOptions::new().write(true).create_new(true).open(path)
+            .map_err(|e| format!("new evidence journal unavailable or already exists: {e}"))?
+    } else {
         let persisted = read_last_record(path)?;
         if persisted != prior { return Err("journal prior state mismatch".into()); }
-    } else if prior != RecoveryState::Preflight {
-        return Err("missing initial preflight evidence".into());
-    }
-    let mut file = OpenOptions::new().create(true).append(true).open(path)
-        .map_err(|e| format!("evidence journal unavailable: {e}"))?;
+        OpenOptions::new().append(true).open(path)
+            .map_err(|e| format!("evidence journal unavailable: {e}"))?
+    };
     writeln!(file, "{}", next.as_str()).map_err(|e| format!("evidence write failed: {e}"))?;
     file.sync_all().map_err(|e| format!("evidence flush failed: {e}"))
 }
@@ -256,6 +258,14 @@ mod tests {
     fn unknown_record_token_fails_closed() {
         let p = path();
         std::fs::write(&p, b"POST_WRITE_VERIFIED\nUNRECOGNIZED\n").unwrap();
+        assert_eq!(load_restart_state(&p), RecoveryState::WriteInterruptedUnknownState);
+        let _ = std::fs::remove_file(p);
+    }
+    #[test]
+    fn duplicate_first_write_intent_cannot_overwrite_journal() {
+        let p = path();
+        append_transition(&p, RecoveryState::Preflight, RecoveryState::WriteInProgress).unwrap();
+        assert!(append_transition(&p, RecoveryState::Preflight, RecoveryState::WriteInProgress).is_err());
         assert_eq!(load_restart_state(&p), RecoveryState::WriteInterruptedUnknownState);
         let _ = std::fs::remove_file(p);
     }
