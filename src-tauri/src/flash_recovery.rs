@@ -166,6 +166,99 @@ mod tests {
         assert!(append_transition(&p, RecoveryState::Preflight, RecoveryState::WriteInProgress).is_err());
         let _ = std::fs::remove_file(p);
     }
+
+    #[test]
+    fn interruption_state_is_terminal_for_auto_write() {
+        for state in [
+            RecoveryState::Preflight, RecoveryState::WriteInProgress,
+            RecoveryState::WriteInterruptedUnknownState, RecoveryState::AwaitingReenumeration,
+            RecoveryState::PostWriteVerified, RecoveryState::BlockedRequiresReview,
+        ] { assert!(!state.can_auto_resume_write()); }
+    }
+    #[test]
+    fn incomplete_preflight_is_unknown_after_restart() {
+        assert_eq!(RecoveryState::Preflight.restart_state(), RecoveryState::WriteInterruptedUnknownState);
+    }
+    #[test]
+    fn interrupted_reenumeration_is_unknown_after_restart() {
+        assert_eq!(RecoveryState::AwaitingReenumeration.restart_state(), RecoveryState::WriteInterruptedUnknownState);
+    }
+    #[test]
+    fn denied_grant_can_block_from_preflight() {
+        let p = path();
+        append_transition(&p, RecoveryState::Preflight, RecoveryState::BlockedRequiresReview).unwrap();
+        assert_eq!(load_restart_state(&p), RecoveryState::BlockedRequiresReview);
+        let _ = std::fs::remove_file(p);
+    }
+    #[test]
+    fn cannot_skip_write_to_success() {
+        let p = path();
+        assert!(append_transition(&p, RecoveryState::Preflight, RecoveryState::PostWriteVerified).is_err());
+        assert!(!p.exists());
+    }
+    #[test]
+    fn cannot_verify_target_during_write() {
+        let p = path();
+        append_transition(&p, RecoveryState::Preflight, RecoveryState::WriteInProgress).unwrap();
+        assert!(append_transition(&p, RecoveryState::WriteInProgress, RecoveryState::PostWriteVerified).is_err());
+        let _ = std::fs::remove_file(p);
+    }
+    #[test]
+    fn cannot_return_from_ambiguous_write_to_writing() {
+        let p = path();
+        append_transition(&p, RecoveryState::Preflight, RecoveryState::WriteInProgress).unwrap();
+        append_transition(&p, RecoveryState::WriteInProgress, RecoveryState::WriteInterruptedUnknownState).unwrap();
+        assert!(append_transition(&p, RecoveryState::WriteInterruptedUnknownState, RecoveryState::WriteInProgress).is_err());
+        let _ = std::fs::remove_file(p);
+    }
+    #[test]
+    fn cannot_extend_verified_transaction_to_second_write() {
+        let p = path();
+        append_transition(&p, RecoveryState::Preflight, RecoveryState::WriteInProgress).unwrap();
+        append_transition(&p, RecoveryState::WriteInProgress, RecoveryState::AwaitingReenumeration).unwrap();
+        append_transition(&p, RecoveryState::AwaitingReenumeration, RecoveryState::PostWriteVerified).unwrap();
+        assert!(append_transition(&p, RecoveryState::PostWriteVerified, RecoveryState::WriteInProgress).is_err());
+        let _ = std::fs::remove_file(p);
+    }
+    #[test]
+    fn truncated_last_record_rejects_append() {
+        let p = path();
+        std::fs::write(&p, b"WRITE_IN_PROGRESS\\nAWAITING_REEN").unwrap();
+        assert!(append_transition(&p, RecoveryState::WriteInProgress, RecoveryState::AwaitingReenumeration).is_err());
+        let _ = std::fs::remove_file(p);
+    }
+    #[test]
+    fn empty_existing_journal_rejects_append() {
+        let p = path();
+        std::fs::write(&p, b"").unwrap();
+        assert!(append_transition(&p, RecoveryState::Preflight, RecoveryState::WriteInProgress).is_err());
+        let _ = std::fs::remove_file(p);
+    }
+    #[test]
+    fn terminal_block_survives_restart() {
+        assert_eq!(RecoveryState::BlockedRequiresReview.restart_state(), RecoveryState::BlockedRequiresReview);
+    }
+    #[test]
+    fn preflight_cannot_be_entered_from_write() {
+        let p = path();
+        append_transition(&p, RecoveryState::Preflight, RecoveryState::WriteInProgress).unwrap();
+        assert!(append_transition(&p, RecoveryState::WriteInProgress, RecoveryState::Preflight).is_err());
+        let _ = std::fs::remove_file(p);
+    }
+    #[test]
+    fn verification_requires_recorded_reenumeration() {
+        let p = path();
+        append_transition(&p, RecoveryState::Preflight, RecoveryState::WriteInProgress).unwrap();
+        assert!(append_transition(&p, RecoveryState::AwaitingReenumeration, RecoveryState::PostWriteVerified).is_err());
+        let _ = std::fs::remove_file(p);
+    }
+    #[test]
+    fn unknown_record_token_fails_closed() {
+        let p = path();
+        std::fs::write(&p, b"POST_WRITE_VERIFIED\\nUNRECOGNIZED\\n").unwrap();
+        assert_eq!(load_restart_state(&p), RecoveryState::WriteInterruptedUnknownState);
+        let _ = std::fs::remove_file(p);
+    }
     #[test]
     fn evidence_sink_failure_blocks_transition() {
         let p = path().join("missing-directory").join("journal");
