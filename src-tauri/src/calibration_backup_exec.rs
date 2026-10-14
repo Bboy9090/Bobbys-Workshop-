@@ -22,7 +22,7 @@ pub struct CalibrationBackupResult {
 }
 
 fn run_adb(serial: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("adb")
+    let output = crate::adb_command::new_adb_command()
         .arg("-s")
         .arg(serial)
         .args(args)
@@ -137,7 +137,7 @@ pub fn backup_calibration_partition(
     let backup_path = out_dir.join(format!("{base}.img"));
     let manifest_path = out_dir.join(format!("{base}.manifest.json"));
 
-    let mut command = Command::new("adb");
+    let mut command = crate::adb_command::new_adb_command();
     command
         .arg("-s")
         .arg(&adb_serial)
