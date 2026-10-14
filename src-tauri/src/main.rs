@@ -4338,6 +4338,13 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
         let mut completed_steps: u64 = 0;
         let total_steps_local = total_steps;
 
+        // Reject incomplete verification configuration before any destructive phase,
+        // including an optional userdata wipe.
+        if !config.partitions.is_empty() && !config.verifyAfterFlash {
+            set_job_status("failed", "Post-write target verification required before destructive operations");
+            return;
+        }
+
         // Optional wipe
         if config.wipeUserData {
             if cancel_requested() {
