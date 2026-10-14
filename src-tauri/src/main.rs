@@ -5323,6 +5323,27 @@ mod qualified_flash_grant_tests {
         let _ = std::fs::remove_file(virtual_partition);
     }
 
+    // Isolated state-machine rehearsal: no OS commands, fastboot, USB or phone access.
+    #[test]
+    fn simulated_write_state_machine_reports_failure_and_cancellation() {
+        #[derive(Debug, PartialEq, Eq)]
+        enum Phase { Preflight, Writing, Verifying, Complete, Failed, Cancelled }
+        fn simulate(cancel_at: Option<usize>, fail_at: Option<usize>) -> (Phase, Vec<Phase>) {
+            let mut timeline = vec![Phase::Preflight];
+            for (i, phase) in [Phase::Writing, Phase::Verifying, Phase::Complete]
+                .into_iter().enumerate() {
+                if cancel_at == Some(i) { timeline.push(Phase::Cancelled); return (Phase::Cancelled, timeline); }
+                if fail_at == Some(i) { timeline.push(Phase::Failed); return (Phase::Failed, timeline); }
+                timeline.push(phase);
+            }
+            (Phase::Complete, timeline)
+        }
+        assert_eq!(simulate(None, None).0, Phase::Complete);
+        assert_eq!(simulate(Some(1), None).1, vec![Phase::Preflight, Phase::Writing, Phase::Cancelled]);
+        assert_eq!(simulate(None, Some(1)).1, vec![Phase::Preflight, Phase::Writing, Phase::Failed]);
+        assert_eq!(simulate(Some(0), None).1, vec![Phase::Preflight, Phase::Cancelled]);
+    }
+
     #[test]
     fn grant_rejects_different_executor_build() {
         let mut config = valid_config();
