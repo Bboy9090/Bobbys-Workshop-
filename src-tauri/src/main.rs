@@ -2015,27 +2015,30 @@ fn exact_fastboot_device_present(serial: &str) -> Result<bool, String> {
 
 #[cfg(feature = "qualified-flash")]
 fn verify_fastboot_target_after_write(serial: &str) -> Result<(), String> {
+    verify_fastboot_target_after_write_with(serial, exact_fastboot_device_present, || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    })
+}
+
+// Injected enumeration and wait functions allow disconnection tests without USB access.
+#[cfg(feature = "qualified-flash")]
+fn verify_fastboot_target_after_write_with<F, S>(
+    serial: &str, mut enumerate: F, mut sleep: S,
+) -> Result<(), String>
+where
+    F: FnMut(&str) -> Result<bool, String>,
+    S: FnMut(),
+{
     for attempt in 1..=5 {
-        match exact_fastboot_device_present(serial) {
+        match enumerate(serial) {
             Ok(true) => return Ok(()),
-            Ok(false) if attempt < 5 => {
-                std::thread::sleep(std::time::Duration::from_millis(300));
-            }
-            Ok(false) => {
-                return Err("Exact fastboot target did not re-enumerate after destructive write".to_string());
-            }
-            Err(err) if attempt < 5 => {
-                std::thread::sleep(std::time::Duration::from_millis(300));
-                if attempt == 4 {
-                    let _ = err;
-                }
-            }
-            Err(err) => {
-                return Err(format!("Could not verify fastboot target after destructive write: {err}"));
-            }
+            Ok(false) if attempt < 5 => sleep(),
+            Ok(false) => return Err("Exact fastboot target did not re-enumerate after destructive write".into()),
+            Err(_) if attempt < 5 => sleep(),
+            Err(err) => return Err(format!("Could not verify fastboot target after destructive write: {err}")),
         }
     }
-    Err("Post-write fastboot target verification failed".to_string())
+    Err("Post-write fastboot target verification failed".into())
 }
 
 #[cfg(feature = "qualified-flash")]
@@ -5384,6 +5387,34 @@ mod qualified_flash_grant_tests {
         assert!(qualified_fastboot_write_result(true, "", "FAILED (remote: partition write rejected)").is_err());
         assert!(qualified_fastboot_write_result(true, "FAILED: device disconnected", "").is_err());
         assert!(qualified_fastboot_write_result(true, "", "FAIL (timeout)").is_err());
+    }
+
+    #[test]
+    fn post_write_verification_handles_virtual_disconnection_and_recovery() {
+        let mut seen = 0;
+        let mut waited = 0;
+        assert!(verify_fastboot_target_after_write_with("BENCH", |serial| {
+            assert_eq!(serial, "BENCH");
+            seen += 1;
+            Ok(seen == 3)
+        }, || waited += 1).is_ok());
+        assert_eq!((seen, waited), (3, 2));
+
+        let mut attempts = 0;
+        let error = verify_fastboot_target_after_write_with("BENCH", |_| {
+            attempts += 1;
+            Ok(false)
+        }, || {}).unwrap_err();
+        assert_eq!(attempts, 5);
+        assert!(error.contains("did not re-enumerate"));
+
+        let mut attempts = 0;
+        let error = verify_fastboot_target_after_write_with("BENCH", |_| {
+            attempts += 1;
+            Err("transport unavailable".into())
+        }, || {}).unwrap_err();
+        assert_eq!(attempts, 5);
+        assert!(error.contains("transport unavailable"));
     }
 
     #[test]
