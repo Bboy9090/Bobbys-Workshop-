@@ -80,33 +80,31 @@ pub fn append_transition(path: &Path, prior: RecoveryState, next: RecoveryState)
 
 fn read_last_record(path: &Path) -> Result<RecoveryState, String> {
     let file = File::open(path).map_err(|e| format!("evidence unavailable: {e}"))?;
-    let mut last = None;
+    let mut previous = None;
     for line in BufReader::new(file).lines() {
         let line = line.map_err(|e| format!("evidence unreadable: {e}"))?;
         let state = RecoveryState::parse(&line).ok_or("invalid evidence record")?;
-        last = Some(state);
+        match previous {
+            None if !matches!(state, RecoveryState::WriteInProgress | RecoveryState::BlockedRequiresReview) => {
+                return Err("invalid journal opening state".into());
+            }
+            Some(prior) if !allowed(prior, state) => {
+                return Err("invalid persisted recovery transition".into());
+            }
+            _ => {}
+        }
+        previous = Some(state);
     }
-    last.ok_or_else(|| "empty evidence journal".into())
+    previous.ok_or_else(|| "empty evidence journal".into())
 }
 
 /// Corrupt, truncated, or missing journals fail closed.
 /// A terminal success record is only evidence of a *prior recorded state*,
 /// not proof of physical partition integrity.
 pub fn load_restart_state(path: &Path) -> RecoveryState {
-    let file = match File::open(path) {
-        Ok(file) => file,
-        Err(_) => return RecoveryState::WriteInterruptedUnknownState,
-    };
-    let mut last = None;
-    for line in BufReader::new(file).lines() {
-        let line = match line { Ok(v) => v, Err(_) => return RecoveryState::WriteInterruptedUnknownState };
-        let state = match RecoveryState::parse(&line) {
-            Some(v) => v,
-            None => return RecoveryState::WriteInterruptedUnknownState,
-        };
-        last = Some(state);
-    }
-    last.unwrap_or(RecoveryState::WriteInterruptedUnknownState).restart_state()
+    read_last_record(path)
+        .unwrap_or(RecoveryState::WriteInterruptedUnknownState)
+        .restart_state()
 }
 
 #[cfg(test)]
@@ -266,6 +264,20 @@ mod tests {
         let p = path();
         append_transition(&p, RecoveryState::Preflight, RecoveryState::WriteInProgress).unwrap();
         assert!(append_transition(&p, RecoveryState::Preflight, RecoveryState::WriteInProgress).is_err());
+        assert_eq!(load_restart_state(&p), RecoveryState::WriteInterruptedUnknownState);
+        let _ = std::fs::remove_file(p);
+    }
+    #[test]
+    fn forged_success_without_valid_history_fails_closed() {
+        let p = path();
+        std::fs::write(&p, b"POST_WRITE_VERIFIED\\n").unwrap();
+        assert_eq!(load_restart_state(&p), RecoveryState::WriteInterruptedUnknownState);
+        let _ = std::fs::remove_file(p);
+    }
+    #[test]
+    fn impossible_recorded_transition_fails_closed() {
+        let p = path();
+        std::fs::write(&p, b"WRITE_IN_PROGRESS\\nPOST_WRITE_VERIFIED\\n").unwrap();
         assert_eq!(load_restart_state(&p), RecoveryState::WriteInterruptedUnknownState);
         let _ = std::fs::remove_file(p);
     }
