@@ -5298,6 +5298,31 @@ mod qualified_flash_grant_tests {
             .contains("already been consumed"));
     }
 
+    // Virtual-partition rehearsal only. No fastboot, USB, or physical device is accessed.
+    #[test]
+    fn simulated_partition_write_verifies_hash_and_detects_corruption() {
+        let config = valid_config();
+        let source = std::path::Path::new(&config.partitions[0].imagePath);
+        let virtual_partition = std::env::temp_dir().join(format!(
+            "bobfwtools-virtual-partition-{}.img", uuid::Uuid::new_v4()
+        ));
+        assert!(validate_qualified_flash_config(&config, "test-secret").is_ok());
+        std::fs::copy(source, &virtual_partition).unwrap();
+        assert_eq!(
+            sha256_file(&virtual_partition).unwrap(),
+            config.partitions[0].expectedSha256,
+            "virtual partition must match approved firmware hash after simulated write"
+        );
+        std::fs::write(&virtual_partition, b"corrupted-virtual-partition").unwrap();
+        assert_ne!(
+            sha256_file(&virtual_partition).unwrap(),
+            config.partitions[0].expectedSha256,
+            "simulated post-write verification must reject corruption"
+        );
+        let _ = std::fs::remove_file(source);
+        let _ = std::fs::remove_file(virtual_partition);
+    }
+
     #[test]
     fn grant_rejects_different_executor_build() {
         let mut config = valid_config();
