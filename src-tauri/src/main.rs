@@ -5426,6 +5426,31 @@ mod qualified_flash_grant_tests {
         assert!(execute_qualified_fastboot_write(cmd, |_| Err(std::io::Error::other("USB disconnected"))).is_err());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn integrated_virtual_transaction_requires_successful_write_and_target_return() {
+        use std::os::unix::process::ExitStatusExt;
+        // Exercise the actual qualified write-result and post-write re-enumeration helpers.
+        // All transport and time calls are injected; never execute Fastboot or access USB.
+        for (write_ok, target_returns, transaction_ok) in [
+            (true, true, true), (true, false, false), (false, true, false),
+        ] {
+            let command = qualified_fastboot_flash_command("LAB", "boot", "/tmp/lab.img");
+            let write = execute_qualified_fastboot_write(command, |_| Ok(std::process::Output {
+                status: std::process::ExitStatus::from_raw(0),
+                stdout: if write_ok { b"Writing 'boot' OKAY".to_vec() } else { b"FAILED: refused".to_vec() },
+                stderr: Vec::new(),
+            }));
+            let mut verification_calls = 0;
+            let outcome = write.and_then(|_| verify_fastboot_target_after_write_with("LAB", |_| {
+                verification_calls += 1;
+                Ok(target_returns)
+            }, || {}));
+            assert_eq!(outcome.is_ok(), transaction_ok);
+            assert_eq!(verification_calls, if write_ok { if target_returns { 1 } else { 5 } } else { 0 });
+        }
+    }
+
     #[test]
     fn grant_rejects_different_executor_build() {
         let mut config = valid_config();
