@@ -3915,6 +3915,14 @@ fn bootforge_issue_qualified_flash_grant(
     Ok(grant)
 }
 
+// Single construction seam for the qualified executor; tests inspect argv without execution.
+#[cfg(feature = "qualified-flash")]
+fn qualified_fastboot_flash_command(serial: &str, partition: &str, image: &str) -> Command {
+    let mut cmd = Command::new("fastboot");
+    cmd.arg("-s").arg(serial).arg("flash").arg(partition).arg(image);
+    cmd
+}
+
 #[cfg(feature = "qualified-flash")]
 fn validate_qualified_flash_config(config: &FlashJobConfig, grant_secret: &str) -> Result<(), String> {
     let grant = &config.qualificationGrant;
@@ -4405,9 +4413,7 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
             set_job_status("running", &format!("Flashing {}", p.name));
             push_log(&format!("[tauri-fastboot] fastboot flash {} {}", p.name, p.imagePath));
 
-            let mut cmd = Command::new("fastboot");
-            cmd.arg("-s").arg(&config.deviceSerial);
-            cmd.arg("flash").arg(&p.name).arg(&p.imagePath);
+            let mut cmd = qualified_fastboot_flash_command(&config.deviceSerial, &p.name, &p.imagePath);
             #[cfg(target_os = "windows")]
             {
                 cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
@@ -5342,6 +5348,15 @@ mod qualified_flash_grant_tests {
         assert_eq!(simulate(Some(1), None).1, vec![Phase::Preflight, Phase::Writing, Phase::Cancelled]);
         assert_eq!(simulate(None, Some(1)).1, vec![Phase::Preflight, Phase::Writing, Phase::Failed]);
         assert_eq!(simulate(Some(0), None).1, vec![Phase::Preflight, Phase::Cancelled]);
+    }
+
+    #[test]
+    fn qualified_flash_command_has_exact_serial_partition_and_image_args() {
+        let cmd = qualified_fastboot_flash_command("BENCH-DEVICE", "boot", "/tmp/mock.img");
+        let args: Vec<_> = cmd.get_args().map(|arg| arg.to_string_lossy().into_owned()).collect();
+        assert_eq!(cmd.get_program().to_string_lossy(), "fastboot");
+        assert_eq!(args, ["-s", "BENCH-DEVICE", "flash", "boot", "/tmp/mock.img"]);
+        // Command construction only; no executable or device is invoked.
     }
 
     #[test]
