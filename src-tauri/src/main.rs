@@ -21,6 +21,8 @@ use std::collections::HashSet;
 #[cfg(feature = "qualified-flash")]
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[cfg(feature = "qualified-flash")]
+mod flash_recovery;
 #[cfg(feature = "legacy-backends")]
 mod python_backend;
 #[cfg(feature = "legacy-backends")]
