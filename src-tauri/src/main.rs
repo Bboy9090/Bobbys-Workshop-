@@ -3942,6 +3942,15 @@ fn qualified_fastboot_write_result(exit_success: bool, stdout: &str, stderr: &st
 }
 
 #[cfg(feature = "qualified-flash")]
+fn execute_qualified_fastboot_write<F>(command: Command, execute: F) -> Result<std::process::Output, String>
+where F: FnOnce(Command) -> std::io::Result<std::process::Output> {
+    let output = execute(command).map_err(|error| format!("Fastboot command execution failed: {error}"))?;
+    qualified_fastboot_write_result(output.status.success(),
+        &String::from_utf8_lossy(&output.stdout), &String::from_utf8_lossy(&output.stderr))?;
+    Ok(output)
+}
+
+#[cfg(feature = "qualified-flash")]
 fn validate_qualified_flash_config(config: &FlashJobConfig, grant_secret: &str) -> Result<(), String> {
     let grant = &config.qualificationGrant;
     if grant.schema != "com.bobbyblanco.bobfwtools.qualified-flash-grant.v1" {
@@ -4437,37 +4446,16 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                 cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
             }
 
-            match cmd.output() {
+            match execute_qualified_fastboot_write(cmd, |mut command| command.output()) {
                 Ok(out) => {
                     let combined = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
-                    for line in combined.lines() {
-                        let line = line.trim();
-                        if !line.is_empty() {
-                            push_log(line);
-                        }
-                    }
-                    if let Err(reason) = qualified_fastboot_write_result(
-                        out.status.success(), &String::from_utf8_lossy(&out.stdout), &String::from_utf8_lossy(&out.stderr),
-                    ) {
-                        push_log(&format!("[tauri-fastboot] rejected flash result: {reason}"));
-                        set_job_status("failed", &format!("Flash failed: {}", p.name));
-                        emit_flash_update(
-                            &app_for_thread,
-                            &id_for_thread,
-                            "error",
-                            serde_json::json!({ "message": format!("fastboot flash {} failed", p.name) }),
-                        );
-                        return;
-                    }
+                    for line in combined.lines().map(str::trim).filter(|line| !line.is_empty()) { push_log(line); }
                 }
-                Err(e) => {
+                Err(error) => {
+                    push_log(&format!("[tauri-fastboot] write rejected: {error}"));
                     set_job_status("failed", &format!("Flash failed: {}", p.name));
-                    emit_flash_update(
-                        &app_for_thread,
-                        &id_for_thread,
-                        "error",
-                        serde_json::json!({ "message": format!("Failed to run fastboot flash {}: {e}", p.name) }),
-                    );
+                    emit_flash_update(&app_for_thread, &id_for_thread, "error",
+                        serde_json::json!({ "message": format!("fastboot flash {} failed: {error}", p.name) }));
                     return;
                 }
             }
@@ -5415,6 +5403,27 @@ mod qualified_flash_grant_tests {
         }, || {}).unwrap_err();
         assert_eq!(attempts, 5);
         assert!(error.contains("transport unavailable"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn injected_write_executor_rejects_failed_commands_without_running_fastboot() {
+        use std::os::unix::process::ExitStatusExt;
+        let cases = [
+            (0, b"Writing 'boot' OKAY".as_slice(), b"".as_slice(), true),
+            (0, b"".as_slice(), b"FAILED (remote: denied)".as_slice(), false),
+            (1, b"".as_slice(), b"device disconnected".as_slice(), false),
+        ];
+        for (status, stdout, stderr, expected_success) in cases {
+            let cmd = qualified_fastboot_flash_command("BENCH", "boot", "/tmp/test.img");
+            let result = execute_qualified_fastboot_write(cmd, |_| Ok(std::process::Output {
+                status: std::process::ExitStatus::from_raw(status << 8),
+                stdout: stdout.to_vec(), stderr: stderr.to_vec(),
+            }));
+            assert_eq!(result.is_ok(), expected_success);
+        }
+        let cmd = qualified_fastboot_flash_command("BENCH", "boot", "/tmp/test.img");
+        assert!(execute_qualified_fastboot_write(cmd, |_| Err(std::io::Error::other("USB disconnected"))).is_err());
     }
 
     #[test]
