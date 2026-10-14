@@ -62,10 +62,29 @@ fn allowed(from: RecoveryState, to: RecoveryState) -> bool {
 /// never passwords, raw command output, device identifiers, or secrets.
 pub fn append_transition(path: &Path, prior: RecoveryState, next: RecoveryState) -> Result<(), String> {
     if !allowed(prior, next) { return Err("disallowed recovery transition".into()); }
+    // A caller cannot skip evidence or claim an outdated prior state.
+    // The initial record is a PREFLIGHT -> WRITE_IN_PROGRESS or blocked transition.
+    if path.exists() {
+        let persisted = read_last_record(path)?;
+        if persisted != prior { return Err("journal prior state mismatch".into()); }
+    } else if prior != RecoveryState::Preflight {
+        return Err("missing initial preflight evidence".into());
+    }
     let mut file = OpenOptions::new().create(true).append(true).open(path)
         .map_err(|e| format!("evidence journal unavailable: {e}"))?;
     writeln!(file, "{}", next.as_str()).map_err(|e| format!("evidence write failed: {e}"))?;
     file.sync_all().map_err(|e| format!("evidence flush failed: {e}"))
+}
+
+fn read_last_record(path: &Path) -> Result<RecoveryState, String> {
+    let file = File::open(path).map_err(|e| format!("evidence unavailable: {e}"))?;
+    let mut last = None;
+    for line in BufReader::new(file).lines() {
+        let line = line.map_err(|e| format!("evidence unreadable: {e}"))?;
+        let state = RecoveryState::parse(&line).ok_or("invalid evidence record")?;
+        last = Some(state);
+    }
+    last.ok_or_else(|| "empty evidence journal".into())
 }
 
 /// Corrupt, truncated, or missing journals fail closed.
@@ -131,6 +150,21 @@ mod tests {
         let p = path();
         assert!(append_transition(&p, RecoveryState::WriteInterruptedUnknownState, RecoveryState::PostWriteVerified).is_err());
         assert!(!p.exists());
+    }
+    #[test]
+    fn stale_caller_cannot_advance_recorded_transaction() {
+        let p = path();
+        append_transition(&p, RecoveryState::Preflight, RecoveryState::WriteInProgress).unwrap();
+        assert!(append_transition(&p, RecoveryState::Preflight, RecoveryState::BlockedRequiresReview).is_err());
+        assert_eq!(load_restart_state(&p), RecoveryState::WriteInterruptedUnknownState);
+        let _ = std::fs::remove_file(p);
+    }
+    #[test]
+    fn corrupt_journal_cannot_be_extended_as_if_valid() {
+        let p = path();
+        std::fs::write(&p, b"CORRUPTED\n").unwrap();
+        assert!(append_transition(&p, RecoveryState::Preflight, RecoveryState::WriteInProgress).is_err());
+        let _ = std::fs::remove_file(p);
     }
     #[test]
     fn evidence_sink_failure_blocks_transition() {
