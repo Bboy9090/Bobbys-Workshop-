@@ -7,7 +7,8 @@ export function qualifyA176U(evidence = {}) {
   const build = typeof evidence.build === 'string' ? evidence.build.trim().toUpperCase() : '';
   const csc = typeof evidence.csc === 'string' ? evidence.csc.trim().toUpperCase() : '';
   const source = evidence.source === 'device-readonly' ? 'unattested-device-claim' : 'user-reported';
-  // JSON evidence is caller-controlled; only a trusted probe integration may attest hardware.\n  const modelVerified = false;
+  // JSON evidence is caller-controlled; only a trusted probe integration may attest hardware.
+  const modelVerified = false;
   const buildObserved = /^A176U[A-Z0-9]{5,32}$/.test(build);
   const cscObserved = /^[A-Z0-9]{3}$/.test(csc);
   const blockers = [];
