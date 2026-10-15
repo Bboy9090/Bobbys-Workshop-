@@ -6,9 +6,9 @@ test('reported suffix U is never considered device verified', () => {
   expect(r.deviceIdentityVerified).toBe(false);
   expect(r.flashAuthorized).toBe(false);
 });
-test('verified model and plausible build still cannot authorize flash', () => {
+test('claimed device model and plausible build still cannot authorize flash', () => {
   const r = qualifyA176U({model:'SM-A176U',build:'A176USQS1AYK2',csc:'TMB',source:'device-readonly'});
-  expect(r.deviceIdentityVerified).toBe(true);
+  expect(r.deviceIdentityVerified).toBe(false);
   expect(r.installedBuildObserved).toBe(true);
   expect(r.activeCscObserved).toBe(true);
   expect(r.flashAuthorized).toBe(false);
@@ -32,4 +32,11 @@ test('malformed identifiers never authorize an action', () => {
   expect(r.flashAuthorized).toBe(false);
   expect(r.bootloaderUnlockAuthorized).toBe(false);
   expect(r.deviceIdentityVerified).toBe(false);
+});
+
+test('untrusted device-readonly source label cannot attest model identity', () => {
+  const r = qualifyA176U({model:'SM-A176U',source:'device-readonly'});
+  expect(r.identitySource).toBe('unattested-device-claim');
+  expect(r.deviceIdentityVerified).toBe(false);
+  expect(r.flashAuthorized).toBe(false);
 });
