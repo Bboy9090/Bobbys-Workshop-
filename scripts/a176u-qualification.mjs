@@ -6,13 +6,13 @@ export function qualifyA176U(evidence = {}) {
   const model = typeof evidence.model === 'string' ? evidence.model.trim().toUpperCase() : '';
   const build = typeof evidence.build === 'string' ? evidence.build.trim().toUpperCase() : '';
   const csc = typeof evidence.csc === 'string' ? evidence.csc.trim().toUpperCase() : '';
-  const source = evidence.source === 'device-readonly' ? 'device-readonly' : 'user-reported';
-  const modelVerified = model === 'SM-A176U' && source === 'device-readonly';
+  const source = evidence.source === 'device-readonly' ? 'unattested-device-claim' : 'user-reported';
+  // JSON evidence is caller-controlled; only a trusted probe integration may attest hardware.\n  const modelVerified = false;
   const buildObserved = /^A176U[A-Z0-9]{5,32}$/.test(build);
   const cscObserved = /^[A-Z0-9]{3}$/.test(csc);
   const blockers = [];
   if (model !== 'SM-A176U') blockers.push('Exact SM-A176U identity not established');
-  if (!modelVerified) blockers.push('Device identity has not been verified through a read-only interface');
+  if (!modelVerified) blockers.push('Device identity not attested by a trusted read-only probe');
   if (!buildObserved) blockers.push('Exact installed build is missing or has invalid format');
   if (!cscObserved) blockers.push('Exact active CSC has not been supplied');
   blockers.push('Official firmware package, binary revision and regional compatibility not verified');
