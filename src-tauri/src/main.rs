@@ -21,6 +21,8 @@ use std::collections::HashSet;
 #[cfg(feature = "qualified-flash")]
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[cfg(feature = "qualified-flash")]
+mod flash_recovery;
 #[cfg(feature = "legacy-backends")]
 mod python_backend;
 #[cfg(feature = "legacy-backends")]
@@ -4336,6 +4338,21 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
         let mut completed_steps: u64 = 0;
         let total_steps_local = total_steps;
 
+        // Reject incomplete verification configuration before any destructive phase,
+        // including an optional userdata wipe.
+        if !config.partitions.is_empty() && !config.verifyAfterFlash {
+            set_job_status("failed", "Post-write target verification required before destructive operations");
+            return;
+        }
+
+        // Qualified userdata wipe is destructive and is not yet covered by
+        // the per-partition recovery journal. Block it until a separately
+        // qualified wipe transaction recorder is integrated.
+        if config.wipeUserData {
+            set_job_status("failed", "Qualified userdata wipe requires dedicated recovery evidence");
+            return;
+        }
+
         // Optional wipe
         if config.wipeUserData {
             if cancel_requested() {
@@ -4425,6 +4442,12 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                     return;
                 }
             }
+            // Never begin a destructive qualified partition write if its
+            // mandatory post-write target check has been disabled.
+            if !config.verifyAfterFlash {
+                set_job_status("failed", "Post-write target verification required before flashing");
+                return;
+            }
             let current_hash = match sha256_file(std::path::Path::new(&p.imagePath)) {
                 Ok(hash) => hash,
                 Err(err) => {
@@ -4446,12 +4469,46 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                 cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
             }
 
+            // Record intent durably before invoking a destructive command.
+            // Each partition gets a distinct journal; no previous transaction is overwritten.
+            let journal_root = match dirs::data_local_dir() {
+                Some(root) => root.join("bobfwtools").join("qualified-flash-recovery"),
+                None => { set_job_status("failed", "Recovery evidence location unavailable"); return; }
+            };
+            if let Err(e) = std::fs::create_dir_all(&journal_root) {
+                push_log(&format!("[tauri-fastboot] evidence directory unavailable: {e}"));
+                set_job_status("failed", "Could not create recovery evidence directory");
+                return;
+            }
+            let transaction_key = format!("{}:{}:{}:{}", id_for_thread, config.deviceSerial, p.name, p.expectedSha256);
+            let transaction_digest = format!("{:x}", sha2::Sha256::digest(transaction_key.as_bytes()));
+            let journal_path = journal_root.join(format!("{}.journal", transaction_digest));
+            if journal_path.exists() {
+                set_job_status("failed", "Existing transaction evidence requires review; refusing replay");
+                return;
+            }
+            use flash_recovery::{RecoveryState, append_transition};
+            use sha2::Digest;
+            if let Err(e) = append_transition(&journal_path, RecoveryState::Preflight, RecoveryState::WriteInProgress) {
+                push_log(&format!("[tauri-fastboot] recovery evidence failed: {e}"));
+                set_job_status("failed", "Recovery journal unavailable; write blocked");
+                return;
+            }
+
             match execute_qualified_fastboot_write(cmd, |mut command| command.output()) {
                 Ok(out) => {
+                    if let Err(e) = append_transition(&journal_path, RecoveryState::WriteInProgress, RecoveryState::AwaitingReenumeration) {
+                        push_log(&format!("[tauri-fastboot] write may have completed but evidence failed: {e}"));
+                        set_job_status("failed", "Write evidence incomplete; manual recovery required");
+                        return;
+                    }
                     let combined = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
                     for line in combined.lines().map(str::trim).filter(|line| !line.is_empty()) { push_log(line); }
                 }
                 Err(error) => {
+                    if let Err(e) = append_transition(&journal_path, RecoveryState::WriteInProgress, RecoveryState::WriteInterruptedUnknownState) {
+                        push_log(&format!("[tauri-fastboot] could not persist ambiguous write state: {e}"));
+                    }
                     push_log(&format!("[tauri-fastboot] write rejected: {error}"));
                     set_job_status("failed", &format!("Flash failed: {}", p.name));
                     emit_flash_update(&app_for_thread, &id_for_thread, "error",
@@ -4477,6 +4534,11 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                 set_job_status("running", &format!("Verifying target after {}", p.name));
                 match verify_fastboot_target_after_write(&config.deviceSerial) {
                     Ok(()) => {
+                        if let Err(e) = append_transition(&journal_path, RecoveryState::AwaitingReenumeration, RecoveryState::PostWriteVerified) {
+                            push_log(&format!("[tauri-fastboot] post-write evidence failed: {e}"));
+                            set_job_status("failed", "Post-write recovery evidence incomplete");
+                            return;
+                        }
                         push_log(&format!(
                             "[tauri-fastboot] post-write target verification passed for {}",
                             p.name
@@ -4494,6 +4556,9 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                         );
                     }
                     Err(err) => {
+                        if let Err(e) = append_transition(&journal_path, RecoveryState::AwaitingReenumeration, RecoveryState::BlockedRequiresReview) {
+                            push_log(&format!("[tauri-fastboot] could not persist verification failure: {e}"));
+                        }
                         push_log(&format!(
                             "[tauri-fastboot] post-write target verification failed for {}: {}",
                             p.name, err
