@@ -4520,9 +4520,9 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
             audit_qualified_flash_event(
                 &config,
                 &id_for_thread,
-                "qualified-flash-partition-written",
-                "success",
-                format!("Partition {} was written by fastboot.", p.name),
+                "qualified-flash-write-acknowledged",
+                "pending-verification",
+                format!("Fastboot accepted the write for {}; device re-enumeration and partition integrity remain unproven.", p.name),
                 vec![
                     format!("partition:{}", p.name),
                     format!("image-sha256:{}", p.expectedSha256),
