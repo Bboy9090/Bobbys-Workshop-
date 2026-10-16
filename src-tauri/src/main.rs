@@ -4226,8 +4226,15 @@ fn validate_qualified_flash_config(config: &FlashJobConfig, grant_secret: &str) 
         if !valid_sha256_hex(audit_fingerprint) {
             return Err("Production-qualified grant audit-bundle fingerprint is invalid".to_string());
         }
-    } else if grant.auditBundleFingerprint.is_some() {
-        return Err("Bench qualification trial must not carry production audit-bundle authority".to_string());
+        let packet_fingerprint = grant
+            .qualificationPacketFingerprint
+            .as_deref()
+            .ok_or_else(|| "Production-qualified grant is missing its qualification-packet fingerprint".to_string())?;
+        if !valid_sha256_hex(packet_fingerprint) {
+            return Err("Production-qualified grant qualification-packet fingerprint is invalid".to_string());
+        }
+    } else if grant.auditBundleFingerprint.is_some() || grant.qualificationPacketFingerprint.is_some() {
+        return Err("Bench qualification trial must not carry production audit-bundle or qualification-packet authority".to_string());
     }
     if is_trial {
         if config.partitions.len() != 1 || grant.approvedPartitions.len() != 1 {
@@ -4356,6 +4363,14 @@ fn audit_qualified_flash_event(
     evidence.push(format!(
         "executor-build-fingerprint:{}",
         config.qualificationGrant.executorBuildFingerprint
+    ));
+    evidence.push(format!(
+        "qualification-packet-fingerprint:{}",
+        config
+            .qualificationGrant
+            .qualificationPacketFingerprint
+            .clone()
+            .unwrap_or_else(|| "<trial-none>".to_string())
     ));
     let _ = crate::audit::record(
         "Recovery",
@@ -5441,6 +5456,7 @@ mod qualified_flash_grant_tests {
                 expiresAtUnixSeconds: u64::MAX,
                 dossierFingerprint: "c".repeat(64),
                 auditBundleFingerprint: Some("d".repeat(64)),
+                qualificationPacketFingerprint: Some("e".repeat(64)),
                 grantMac: String::new(),
             },
         };
