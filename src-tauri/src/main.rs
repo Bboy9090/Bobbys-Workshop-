@@ -3325,6 +3325,24 @@ fn bootforge_qualification_audit_bundle_review(
                                         .to_string(),
                                 );
                             }
+                            let bundled_bench_packet_fp = bench_entry
+                                .get("qualificationPacketFingerprint")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default();
+                            if !bench
+                                .qualification_packet_fingerprint
+                                .eq_ignore_ascii_case(bundled_bench_packet_fp)
+                                || qualification_packet_fingerprint
+                                    .as_deref()
+                                    .map(|fp| fp.eq_ignore_ascii_case(&bench.qualification_packet_fingerprint))
+                                    != Some(true)
+                            {
+                                source_semantics_valid = false;
+                                source_blockers.push(
+                                    "Audit bundle bench evidence is bound to a different qualification packet"
+                                        .to_string(),
+                                );
+                            }
 
                             match load_and_verify_qualification_decision(
                                 decision_path,
@@ -3362,6 +3380,24 @@ fn bootforge_qualification_audit_bundle_review(
                                         source_semantics_valid = false;
                                         source_blockers.push(
                                             "Audit bundle decision is not bound to the verified bench evidence"
+                                                .to_string(),
+                                        );
+                                    }
+                                    let bundled_decision_packet_fp = decision_entry
+                                        .get("qualificationPacketFingerprint")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or_default();
+                                    if decision
+                                        .qualification_packet_fingerprint
+                                        .as_deref()
+                                        .map(|fp| fp.eq_ignore_ascii_case(&bench.qualification_packet_fingerprint))
+                                        != Some(true)
+                                        || !bundled_decision_packet_fp
+                                            .eq_ignore_ascii_case(&bench.qualification_packet_fingerprint)
+                                    {
+                                        source_semantics_valid = false;
+                                        source_blockers.push(
+                                            "Audit bundle human decision is bound to a different qualification packet"
                                                 .to_string(),
                                         );
                                     }
@@ -3515,6 +3551,29 @@ fn bootforge_qualification_audit_bundle_review(
         if !decision_bench_fingerprint.eq_ignore_ascii_case(&bench.receipt_fingerprint) {
             return Err(
                 "Nested decision does not reference the bundled bench-evidence receipt".to_string(),
+            );
+        }
+        let nested_decision_packet_fingerprint = decision
+            .qualification_packet_fingerprint
+            .as_deref()
+            .ok_or_else(|| "Nested decision is missing qualification-packet fingerprint".to_string())?;
+        if !nested_decision_packet_fingerprint
+            .eq_ignore_ascii_case(&bench.qualification_packet_fingerprint)
+        {
+            return Err(
+                "Nested decision and bench evidence reference different qualification packets"
+                    .to_string(),
+            );
+        }
+        let expected_packet_fingerprint = qualification_packet_fingerprint
+            .as_deref()
+            .ok_or_else(|| "Audit bundle is missing qualification-packet fingerprint".to_string())?;
+        if !expected_packet_fingerprint
+            .eq_ignore_ascii_case(&bench.qualification_packet_fingerprint)
+        {
+            return Err(
+                "Nested bench evidence does not match the audit bundle qualification packet"
+                    .to_string(),
             );
         }
 
