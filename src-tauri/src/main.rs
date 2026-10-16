@@ -2637,6 +2637,7 @@ struct QualificationDecisionReceipt {
     recovery_job_fingerprint: String,
     executor_build_fingerprint: String,
     bench_evidence_fingerprint: Option<String>,
+    qualification_packet_fingerprint: Option<String>,
     physical_checks: QualifiedFlashPhysicalChecks,
     generated_unix_seconds: u64,
     receipt_fingerprint: String,
@@ -2658,6 +2659,7 @@ fn qualification_decision_material(
         "recoveryJobFingerprint": receipt.recovery_job_fingerprint,
         "executorBuildFingerprint": receipt.executor_build_fingerprint,
         "benchEvidenceFingerprint": receipt.bench_evidence_fingerprint,
+        "qualificationPacketFingerprint": receipt.qualification_packet_fingerprint,
         "physicalChecks": receipt.physical_checks,
         "generatedUnixSeconds": receipt.generated_unix_seconds,
     });
@@ -2734,6 +2736,18 @@ fn load_and_verify_qualification_decision(
                 .to_string(),
         );
     }
+    if receipt.decision == "accept-evidence"
+        && !receipt
+            .qualification_packet_fingerprint
+            .as_deref()
+            .map(valid_sha256_hex)
+            .unwrap_or(false)
+    {
+        return Err(
+            "Accepted qualification decision is missing a valid qualification-packet fingerprint"
+                .to_string(),
+        );
+    }
     if !all_physical_flash_checks_passed(&receipt.physical_checks) {
         return Err(
             "Qualification decision does not contain a complete passed physical-check record"
@@ -2802,6 +2816,7 @@ fn bootforge_qualification_decision_export(
         return Err("Qualification decision must be recorded by the qualified bench build".to_string());
     }
 
+    let mut qualification_packet_fingerprint: Option<String> = None;
     let bench_evidence_fingerprint = if input.decision == "accept-evidence" {
         let path = input
             .benchEvidencePath
@@ -2820,6 +2835,7 @@ fn bootforge_qualification_decision_export(
         if bench.physical_checks != input.physicalChecks {
             return Err("Qualification decision checks do not exactly match the bench-evidence receipt".to_string());
         }
+        qualification_packet_fingerprint = Some(bench.qualification_packet_fingerprint.clone());
         Some(bench.receipt_fingerprint)
     } else {
         None
@@ -2842,6 +2858,7 @@ fn bootforge_qualification_decision_export(
         recovery_job_fingerprint,
         executor_build_fingerprint: build.executor_build_fingerprint,
         bench_evidence_fingerprint,
+        qualification_packet_fingerprint,
         physical_checks: input.physicalChecks,
         generated_unix_seconds,
         receipt_fingerprint: String::new(),
@@ -2868,6 +2885,13 @@ fn bootforge_qualification_decision_export(
             format!(
                 "executor-build-fingerprint:{}",
                 receipt.executor_build_fingerprint
+            ),
+            format!(
+                "qualification-packet-fingerprint:{}",
+                receipt
+                    .qualification_packet_fingerprint
+                    .clone()
+                    .unwrap_or_else(|| "<none>".to_string())
             ),
         ],
     );
