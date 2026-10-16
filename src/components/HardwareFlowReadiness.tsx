@@ -86,19 +86,27 @@ export default function HardwareFlowReadiness() {
 
       {report && (
         <>
-          <div className="mt-3 grid gap-2 md:grid-cols-3">
+          <div className="mt-3 grid gap-2 md:grid-cols-4">
             <div className={report.softwareReady
               ? 'rounded border border-emerald-900/60 bg-emerald-950/20 p-3'
               : 'rounded border border-amber-900/60 bg-amber-950/20 p-3'}>
-              <div className="text-[10px] uppercase tracking-wide text-slate-500">Software readiness</div>
+              <div className="text-[10px] uppercase tracking-wide text-slate-500">Diagnostic software readiness</div>
               <div className={report.softwareReady ? 'mt-1 font-semibold text-emerald-300' : 'mt-1 font-semibold text-amber-300'}>
-                {report.softwareReady ? 'SOFTWARE READY' : 'SOFTWARE BLOCKERS REMAIN'}
+                {report.softwareReady ? 'DIAGNOSTICS READY' : 'DIAGNOSTIC BLOCKERS REMAIN'}
               </div>
             </div>
             <div className="rounded border border-slate-800 bg-black/20 p-3">
               <div className="text-[10px] uppercase tracking-wide text-slate-500">Detected hardware</div>
               <div className="mt-1 text-sm font-semibold text-white">
                 {report.transportDevices.length} USB · {report.adbDevices.length} ADB · {report.fastbootSerials.length} Fastboot
+              </div>
+            </div>
+            <div className={report.writeReady
+              ? 'rounded border border-emerald-900/60 bg-emerald-950/20 p-3'
+              : 'rounded border border-rose-900/50 bg-rose-950/10 p-3'}>
+              <div className="text-[10px] uppercase tracking-wide text-slate-500">Destructive write readiness</div>
+              <div className={report.writeReady ? 'mt-1 font-semibold text-emerald-300' : 'mt-1 font-semibold text-rose-300'}>
+                {report.writeReady ? 'WRITE READY' : 'WRITE GATES INCOMPLETE'}
               </div>
             </div>
             <div className={report.physicalApprovalRequired
