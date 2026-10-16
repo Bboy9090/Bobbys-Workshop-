@@ -97,6 +97,7 @@ struct QualifiedFlashGrant {
     expiresAtUnixSeconds: u64,
     dossierFingerprint: String,
     auditBundleFingerprint: Option<String>,
+    qualificationPacketFingerprint: Option<String>,
     grantMac: String,
 }
 
@@ -3103,6 +3104,7 @@ struct QualificationAuditBundleReview {
     bundle_fingerprint: Option<String>,
     recovery_job_fingerprint: Option<String>,
     executor_build_fingerprint: Option<String>,
+    qualification_packet_fingerprint: Option<String>,
 }
 
 #[cfg(feature = "qualified-flash")]
@@ -3170,6 +3172,10 @@ fn bootforge_qualification_audit_bundle_review(
 
     let executor_build_fingerprint = material
         .get("executorBuildFingerprint")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let qualification_packet_fingerprint = material
+        .get("qualificationPacketFingerprint")
         .and_then(|v| v.as_str())
         .map(str::to_string);
     let current_build = qualification_build_identity_snapshot();
@@ -3552,6 +3558,14 @@ fn bootforge_qualification_audit_bundle_review(
     if !executor_build_matches_current {
         blockers.push("Qualification audit bundle was produced by a different executor build".to_string());
     }
+    if !qualification_packet_fingerprint
+        .as_deref()
+        .map(valid_sha256_hex)
+        .unwrap_or(false)
+    {
+        blockers.push("Qualification audit bundle is missing a valid qualification-packet fingerprint".to_string());
+    }
+
     if !source_semantics_valid {
         blockers.push(
             "Qualification audit bundle source semantics did not revalidate".to_string(),
@@ -3599,6 +3613,7 @@ fn bootforge_qualification_audit_bundle_review(
         bundle_fingerprint,
         recovery_job_fingerprint,
         executor_build_fingerprint,
+        qualification_packet_fingerprint,
     })
 }
 
@@ -3633,6 +3648,7 @@ mod qualification_decision_tests {
             recovery_job_fingerprint: "b".repeat(64),
             executor_build_fingerprint: "c".repeat(64),
             bench_evidence_fingerprint: Some("d".repeat(64)),
+            qualification_packet_fingerprint: Some("e".repeat(64)),
             physical_checks: passed_checks(),
             generated_unix_seconds: 1_700_000_000,
             receipt_fingerprint: String::new(),
@@ -3889,6 +3905,7 @@ fn bootforge_issue_qualification_trial_grant(
         expiresAtUnixSeconds: expires_at,
         dossierFingerprint: dossier_fingerprint,
         auditBundleFingerprint: None,
+        qualificationPacketFingerprint: None,
         grantMac: String::new(),
     };
     grant.grantMac = qualified_flash_grant_mac(&state.qualification_grant_secret, &grant)?;
@@ -3996,6 +4013,13 @@ fn bootforge_issue_qualified_flash_grant(
         .ok_or_else(|| {
             "Verified qualification audit bundle is missing a valid fingerprint".to_string()
         })?;
+    let audit_bundle_packet_fingerprint = audit_bundle_review
+        .qualification_packet_fingerprint
+        .clone()
+        .filter(|value| valid_sha256_hex(value))
+        .ok_or_else(|| {
+            "Verified qualification audit bundle is missing qualification-packet fingerprint".to_string()
+        })?;
 
     let decision_path = input
         .reviewDecisionPath
@@ -4049,6 +4073,21 @@ fn bootforge_issue_qualified_flash_grant(
             "Production grant checks do not exactly match the verified bench-evidence receipt"
                 .to_string(),
         );
+    }
+    if !bench_receipt
+        .qualification_packet_fingerprint
+        .eq_ignore_ascii_case(&audit_bundle_packet_fingerprint)
+    {
+        return Err("Production grant audit bundle is bound to a different qualification packet".to_string());
+    }
+    let decision_packet_fingerprint = decision_receipt
+        .qualification_packet_fingerprint
+        .as_deref()
+        .ok_or_else(|| "Accepted qualification decision is missing qualification-packet fingerprint".to_string())?;
+    if !decision_packet_fingerprint
+        .eq_ignore_ascii_case(&bench_receipt.qualification_packet_fingerprint)
+    {
+        return Err("Production grant decision is bound to a different qualification packet".to_string());
     }
 
     let mut expected_bench_partitions = bench_receipt.partitions.clone();
@@ -4116,6 +4155,7 @@ fn bootforge_issue_qualified_flash_grant(
         expiresAtUnixSeconds: expires_at,
         dossierFingerprint: dossier_fingerprint,
         auditBundleFingerprint: Some(audit_bundle_fingerprint.clone()),
+        qualificationPacketFingerprint: Some(bench_receipt.qualification_packet_fingerprint.clone()),
         grantMac: String::new(),
     };
     grant.grantMac = qualified_flash_grant_mac(&state.qualification_grant_secret, &grant)?;
@@ -4135,6 +4175,10 @@ fn bootforge_issue_qualified_flash_grant(
             format!(
                 "qualification-decision-fingerprint:{}",
                 decision_receipt.receipt_fingerprint
+            ),
+            format!(
+                "qualification-packet-fingerprint:{}",
+                bench_receipt.qualification_packet_fingerprint
             ),
             format!("executor-build-fingerprint:{}", grant.executorBuildFingerprint),
             format!("expires-at:{}", grant.expiresAtUnixSeconds),
