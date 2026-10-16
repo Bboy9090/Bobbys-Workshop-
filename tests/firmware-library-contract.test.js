@@ -1128,3 +1128,21 @@ describe('Audit bundle revalidates qualification packet identity', () => {
     expect(backend).toContain('Nested bench evidence does not match the audit bundle qualification packet');
   });
 });
+
+
+describe('Diagnostic readiness is distinct from write readiness', () => {
+  it('never treats general tooling readiness as destructive write approval', () => {
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/HardwareFlowReadiness.tsx');
+
+    expect(desktop).toContain('writeReady: boolean');
+    expect(desktop).toContain("const writeReady = approvalGates");
+    expect(desktop).toContain(".filter((gate) => gate.requiredForWrites)");
+    expect(desktop).toContain(".every((gate) => gate.satisfied)");
+
+    expect(ui).toContain('Diagnostic software readiness');
+    expect(ui).toContain('DIAGNOSTICS READY');
+    expect(ui).toContain('Destructive write readiness');
+    expect(ui).toContain('WRITE GATES INCOMPLETE');
+  });
+});
