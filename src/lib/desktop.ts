@@ -1656,6 +1656,7 @@ export type QualifiedFlashGrant = {
   expiresAtUnixSeconds: number;
   dossierFingerprint: string;
   auditBundleFingerprint?: string | null;
+  qualificationPacketFingerprint?: string | null;
   grantMac: string;
 };
 
@@ -1756,6 +1757,7 @@ export type QualificationAuditBundleReview = {
   bundleFingerprint?: string | null;
   recoveryJobFingerprint?: string | null;
   executorBuildFingerprint?: string | null;
+  qualificationPacketFingerprint?: string | null;
 };
 
 export async function reviewQualificationAuditBundle(
