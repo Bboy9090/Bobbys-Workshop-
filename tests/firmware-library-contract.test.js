@@ -1093,3 +1093,26 @@ describe('Bench evidence binds the workflow qualification packet', () => {
     expect(consoleUi).toContain('qualificationPacketPath: qualificationPacketReview.path');
   });
 });
+
+
+describe('Qualification packet fingerprint survives to production authority', () => {
+  it('binds packet, bench evidence, human decision, audit bundle, grant, and executor validation', () => {
+    const backend = read('src-tauri/src/main.rs');
+    const desktop = read('src/lib/desktop.ts');
+
+    expect(backend).toContain('qualification_packet_fingerprint: Option<String>');
+    expect(backend).toContain('"qualificationPacketFingerprint": receipt.qualification_packet_fingerprint');
+    expect(backend).toContain('Decision and bench evidence are bound to different qualification packets');
+    expect(backend).toContain('"qualificationPacketFingerprint": bench.qualification_packet_fingerprint');
+    expect(backend).toContain('qualification_packet_fingerprint: Option<String>');
+    expect(backend).toContain('qualificationPacketFingerprint: Option<String>');
+    expect(backend).toContain('Production grant audit bundle is bound to a different qualification packet');
+    expect(backend).toContain('Production grant decision is bound to a different qualification packet');
+    expect(backend).toContain('qualificationPacketFingerprint: Some(bench_receipt.qualification_packet_fingerprint.clone())');
+    expect(backend).toContain('Production-qualified grant is missing its qualification-packet fingerprint');
+    expect(backend).toContain('Bench qualification trial must not carry production audit-bundle or qualification-packet authority');
+    expect(backend).toContain('qualification-packet-fingerprint:{}');
+
+    expect(desktop).toContain('qualificationPacketFingerprint?: string | null');
+  });
+});
