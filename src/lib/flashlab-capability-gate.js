@@ -1,6 +1,6 @@
 /**
  * Flash Lab capability gate. Pure policy engine: never invokes a device or a writer.
- * All destructive actions default to blocked. Untrusted input cannot attest devices.
+ * Never authorizes device writes: eligibility is advisory until a trusted execution service validates receipts.
  */
 export const CAPABILITY_STATES = Object.freeze([
   'NOT_IMPLEMENTED', 'SIMULATED', 'READ_ONLY_QUALIFIED', 'PHYSICAL_WRITE_QUALIFIED'
@@ -35,7 +35,7 @@ export function evaluateFlashCapability(request = {}, manifest = {}) {
   // No caller-provided field can override a manifest that is not physically qualified.
   return Object.freeze({schema:'bobfwtools.flashlab.capability.v1', operation,
     protocol, model, status:state, destructive:write,
-    authorized:blockers.length === 0, blockers});
+    policyEligible:blockers.length === 0, authorized:false, blockers});
 }
 
 // No write adapters are qualified by this built-in catalog. Entries are diagnostic-only.
