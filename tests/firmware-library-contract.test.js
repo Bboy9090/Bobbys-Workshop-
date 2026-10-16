@@ -1116,3 +1116,15 @@ describe('Qualification packet fingerprint survives to production authority', ()
     expect(desktop).toContain('qualificationPacketFingerprint?: string | null');
   });
 });
+
+
+describe('Audit bundle revalidates qualification packet identity', () => {
+  it('requires the same packet fingerprint across bundle, bench evidence, and decision', () => {
+    const backend = read('src-tauri/src/main.rs');
+
+    expect(backend).toContain('Audit bundle bench evidence is bound to a different qualification packet');
+    expect(backend).toContain('Audit bundle human decision is bound to a different qualification packet');
+    expect(backend).toContain('Nested decision and bench evidence reference different qualification packets');
+    expect(backend).toContain('Nested bench evidence does not match the audit bundle qualification packet');
+  });
+});
