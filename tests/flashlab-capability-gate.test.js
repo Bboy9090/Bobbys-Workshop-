@@ -25,7 +25,7 @@ test('unsupported unknown model remains blocked despite claimed full controls',(
 });
 test('fully populated synthetic manifest can be policy-eligible without executing writes',()=>{
  const r=evaluateFlashCapability(base,manifest);
- expect(r.authorized).toBe(true);
+ expect(r.policyEligible).toBe(true);expect(r.authorized).toBe(false);
  expect(r.destructive).toBe(true);
 });
 test('catalog permits only supported read-only operations when identity is trusted',()=>{
