@@ -1016,6 +1016,7 @@ export type HardwareApprovalGate = {
 export type HardwareFlowReadinessReport = {
   generatedAtMs: number;
   softwareReady: boolean;
+  writeReady: boolean;
   physicalApprovalRequired: boolean;
   approvalGates: HardwareApprovalGate[];
   workflowPolicies: WorkflowPolicy[];
@@ -1351,9 +1352,14 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     },
   ];
 
+  const writeReady = approvalGates
+    .filter((gate) => gate.requiredForWrites)
+    .every((gate) => gate.satisfied);
+
   return {
     generatedAtMs: Date.now(),
     softwareReady,
+    writeReady,
     physicalApprovalRequired: lanes.some((lane) => lane.automation === 'qualified-destructive' && lane.detected),
     approvalGates,
     workflowPolicies,
