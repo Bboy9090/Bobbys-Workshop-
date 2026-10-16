@@ -2976,6 +2976,13 @@ fn bootforge_qualification_audit_bundle_export(
     if !decision_bench_fingerprint.eq_ignore_ascii_case(&bench.receipt_fingerprint) {
         return Err("Decision and bench-evidence fingerprints do not match".to_string());
     }
+    let decision_packet_fingerprint = decision
+        .qualification_packet_fingerprint
+        .as_deref()
+        .ok_or_else(|| "Accepted decision is missing qualification-packet fingerprint".to_string())?;
+    if !decision_packet_fingerprint.eq_ignore_ascii_case(&bench.qualification_packet_fingerprint) {
+        return Err("Decision and bench evidence are bound to different qualification packets".to_string());
+    }
 
     let readiness = if let Some(path) = input
         .readinessCertificatePath
@@ -3013,11 +3020,13 @@ fn bootforge_qualification_audit_bundle_export(
             "path": input.benchEvidencePath,
             "fileSha256": sha256_file(std::path::Path::new(&input.benchEvidencePath))?,
             "receiptFingerprint": bench.receipt_fingerprint,
+            "qualificationPacketFingerprint": bench.qualification_packet_fingerprint,
         },
         "humanDecision": {
             "path": input.decisionPath,
             "fileSha256": sha256_file(std::path::Path::new(&input.decisionPath))?,
             "receiptFingerprint": decision.receipt_fingerprint,
+            "qualificationPacketFingerprint": decision.qualification_packet_fingerprint,
             "decision": decision.decision,
         },
         "readinessCertificate": readiness,
@@ -3036,6 +3045,7 @@ fn bootforge_qualification_audit_bundle_export(
         "deviceSerial": serial,
         "recoveryJobFingerprint": recovery_job_fingerprint,
         "executorBuildFingerprint": build.executor_build_fingerprint,
+        "qualificationPacketFingerprint": bench.qualification_packet_fingerprint,
         "sourceFiles": source_files,
         "generatedUnixSeconds": generated_unix_seconds,
     });
@@ -3065,6 +3075,7 @@ fn bootforge_qualification_audit_bundle_export(
             format!("reviewer:{}", reviewer),
             format!("bundle-fingerprint:{}", bundle_fingerprint),
             format!("recovery-job-fingerprint:{}", recovery_job_fingerprint),
+            format!("qualification-packet-fingerprint:{}", bench.qualification_packet_fingerprint),
             format!("executor-build-fingerprint:{}", build.executor_build_fingerprint),
         ],
     );
