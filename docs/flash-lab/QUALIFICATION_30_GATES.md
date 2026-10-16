@@ -48,3 +48,54 @@ Baseline: `eb72d680e5ed5dbd8b300ce253bd4ff587f80359`. This is a roadmap, not evi
 - Do not promise a rollback unless an actual supported restore path has been demonstrated.
 - Keep feature flags off by default and use signed, scoped qualification grants.
 - Gate merges on fresh CI for the exact commit; require separate physical qualification for device support.
+
+
+## Execution priorities: writing and flashing adapters (October 2026)
+
+**P0 — Ship a verified, safe write transaction core first.** One common transaction
+contract for every supported backend: exact physical device identity, OEM/model
+capability manifest, target/partition allowlist, verified payload hash and provenance,
+anti-rollback / bootloader policy check, explicit operator consent, durable before-write
+record, non-replayable ambiguous-outcome handling, post-write evidence, and redacted
+audit export. Deny destructive operations when any required field is unknown.
+
+**P1 — Highest-value supported write paths.**
+- Android Fastboot: supported unlocked/authorized devices and qualified partitions;
+  tests must use injected transports before lab hardware.
+- Samsung Download Mode: separate Samsung-compatible protocol adapter and firmware
+  package/CSC/binary-revision matching. Generic Fastboot must never be substituted.
+  SM-A176U stays read-only until exact live identity and supported OEM route are proven.
+- ADB: diagnostics, authorized file push/pull and backup workflows only; no assumption
+  that ADB grants raw partition access.
+- Stock recovery: manufacturer-supported signed update/sideload flows only.
+
+**P2 — Conditional advanced lab support.**
+- Qualcomm EDL and MediaTek service modes: only documented, legitimately authorized
+  service interfaces; do not bypass signed programmer, secure boot or authentication.
+- Partition backup/readback and restoration: feature only where access and restore
+  support can be demonstrated. Model risk of irreversible partition loss.
+- SD card, removable flash media and supported external storage writes: separate
+  device-selection safeguards and destructive-media warnings.
+- Bootloader unlock workflows: OEM-supported only, with data-wipe warning and state
+  revalidation; never imply unlockability on carrier-restricted models.
+
+**P3 — Additional platforms after dedicated device labs.**
+- Pixel factory-image flows; Motorola, OnePlus and other OEM sanctioned paths.
+- Apple restore/update through supported host frameworks, without activation-lock bypass.
+- Cross-platform Windows/macOS adapters, driver checks, firmware caching and package
+  verification; release gates apply to each OS independently.
+
+Each adapter must publish a four-state status: NOT_IMPLEMENTED, SIMULATED,
+READ_ONLY_QUALIFIED, or PHYSICAL_WRITE_QUALIFIED. Never infer the final state from
+a successful CI run. An operator-facing button must remain disabled for unsupported
+states and show the missing evidence.
+
+## Immediate execution order
+1. Inventory actual write executors and prevent one protocol from masquerading as another.
+2. Close journal consistency, replay and concurrent-writer gaps on the shared contract.
+3. Add source-backed firmware compatibility manifests and negative tests.
+4. Implement Samsung read-only model/build/CSC collection via trusted probe output.
+5. Build OEM-specific virtual fault injection suites for Fastboot, Samsung and recovery.
+6. Add operator recovery instructions and redacted evidence export.
+7. Validate each adapter in a supervised sacrificial-device lab.
+8. Enable only that exact model/firmware/partition combination with signed grants.
