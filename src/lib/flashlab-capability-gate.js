@@ -22,6 +22,9 @@ export function evaluateFlashCapability(request = {}, manifest = {}) {
   if (protocol !== string(manifest.protocol)) blockers.push('Protocol does not match qualified adapter');
   if (!Array.isArray(manifest.operations) || !manifest.operations.includes(operation)) blockers.push('Operation absent from capability manifest');
   if (!request.trustedDeviceIdentity) blockers.push('No trusted live device identity attestation');
+  if (!write && state !== 'READ_ONLY_QUALIFIED' && state !== 'PHYSICAL_WRITE_QUALIFIED') {
+    blockers.push('Read-only qualification absent');
+  }
   if (write) {
     if (state !== 'PHYSICAL_WRITE_QUALIFIED') blockers.push('Physical write qualification absent');
     if (!request.explicitConsent) blockers.push('Explicit operator consent missing');
