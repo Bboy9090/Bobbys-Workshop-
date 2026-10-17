@@ -38,3 +38,14 @@ test('untrusted read-only reports cannot claim verified identity',()=>{
  BUILTIN_MANIFESTS['SM-A176U']);
  expect(r.authorized).toBe(false);
 });
+
+test('read-only operations require an explicitly qualified manifest state',()=>{
+ for(const status of ['NOT_IMPLEMENTED','SIMULATED']){
+  const r=evaluateFlashCapability(
+   {operation:'detect',protocol:'samsung-download',model:'SM-A176U',trustedDeviceIdentity:true},
+   {model:'SM-A176U',protocol:'samsung-download',status,operations:['detect']}
+  );
+  expect(r.authorized,status).toBe(false);
+  expect(r.blockers,status).toContain('Read-only qualification absent');
+ }
+});
