@@ -33,9 +33,13 @@ export function evaluateFlashCapability(request = {}, manifest = {}) {
     if (operation === 'partition-flash' && !string(request.partition)) blockers.push('Exact target partition missing');
   }
   // No caller-provided field can override a manifest that is not physically qualified.
+  const policyEligible = blockers.length === 0;
+  // Read-only capabilities may be authorized after identity/policy validation.
+  // Destructive operations remain advisory-only here and require the trusted execution service.
+  const authorized = !write && policyEligible;
   return Object.freeze({schema:'bobfwtools.flashlab.capability.v1', operation,
     protocol, model, status:state, destructive:write,
-    policyEligible:blockers.length === 0, authorized:false, blockers});
+    policyEligible, authorized, blockers});
 }
 
 // No write adapters are qualified by this built-in catalog. Entries are diagnostic-only.
