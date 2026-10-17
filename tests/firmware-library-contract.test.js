@@ -895,7 +895,7 @@ describe('One-click hardware flow readiness orchestrator', () => {
     expect(desktop).toContain('Authorized programmer/service-loader evidence and designated-device physical qualification remain required before writes');
 
     expect(ui).toContain('Run full safe hardware audit');
-    expect(ui).toContain('SOFTWARE READY');
+    expect(ui).toContain('DIAGNOSTICS READY');
     expect(ui).toContain('Hardware write approval gates');
     expect(ui).toContain('REQUIRED FOR WRITE LANES');
     expect(commandCenter).toContain('<HardwareFlowReadiness />');
