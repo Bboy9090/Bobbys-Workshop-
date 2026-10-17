@@ -4,7 +4,7 @@ const workflow = readFileSync(new URL('../.github/workflows/bobfwtools-macos-rel
 
 test('public macOS release invokes existing verification helpers', () => {
   for (const path of ['scripts/verify-bobfwtools-macos-release-preflight.sh', 'scripts/create-bobfwtools-release-receipt.sh']) {
-    assert.ok(existsSync(new URL('../' + path, import.meta.url)), 'missing release helper: ' + path);
+    expect(existsSync(new URL('../' + path, import.meta.url)), 'missing release helper: ' + path).toBeTruthy();
     expect(workflow.includes(path), 'release workflow no longer calls: ' + path).toBeTruthy();
   }
 });
