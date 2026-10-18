@@ -1,0 +1,17 @@
+{
+  "sourceHead": "aafb4531bdbc03c095caa8ea548eae75e7b08edd",
+  "runId": 39158569134,
+  "jobId": 117766821976,
+  "conclusion": "success",
+  "url": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39158569134/job/117766821976",
+  "evidence": [
+    "2026-10-18T19:24:01.2628950Z HEAD is now at ab93435 Merge aafb4531bdbc03c095caa8ea548eae75e7b08edd into 39332417a94a4e99c3c5a09cad57567a4ebd8c7d",
+    "2026-10-18T19:24:25.1227960Z ##[group]Run cargo check --manifest-path libs/bootforgeusb/Cargo.toml --no-default-features",
+    "2026-10-18T19:24:44.5668810Z ##[group]Run cargo check --manifest-path src-tauri/Cargo.toml",
+    "2026-10-18T19:26:16.7207050Z ##[group]Run cargo check --manifest-path src-tauri/Cargo.toml --features qualified-flash",
+    "2026-10-18T19:26:23.0699640Z ##[group]Run cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --features qualified-flash",
+    "2026-10-18T19:27:48.3725930Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "2026-10-18T19:27:48.9867270Z test result: ok. 86 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.60s",
+    "2026-10-18T19:27:49.1379190Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+  ]
+}
