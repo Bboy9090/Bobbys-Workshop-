@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import WorkflowWalkthrough, { type GuidedWorkflowKind } from './WorkflowWalkthrough';
+import HardwareFlowReadiness from './HardwareFlowReadiness';
 import FirmwareProvenanceBuilder from './FirmwareProvenanceBuilder';
 import {
   getCalibrationPartitionAllowlist,
@@ -158,6 +159,13 @@ export default function RepairCommandCenter() {
       }));
     return [...adbTargets, ...recoveryTargets];
   }, [adbDevices, transportDevices]);
+
+  useEffect(() => {
+    setSelectedTargetKey((current) => {
+      if (current && targets.some((target) => target.key === current)) return current;
+      return targets.length === 1 ? targets[0].key : '';
+    });
+  }, [targets]);
 
   const selectedTarget = useMemo(
     () => targets.find((target) => target.key === selectedTargetKey) || null,
@@ -497,6 +505,8 @@ export default function RepairCommandCenter() {
           Command Center backend error: {error}
         </div>
       )}
+
+      <HardwareFlowReadiness />
 
       <WorkflowWalkthrough kind={walkthroughKind} />
 
