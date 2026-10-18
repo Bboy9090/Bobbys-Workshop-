@@ -1,0 +1,13 @@
+{
+  "capturedAt": "2026-10-18T21:03:22.415819+00:00",
+  "sourceHead": "a94a37afae1e818067bfdd603ff4bb6f29ab5ea4",
+  "ciRun": 39159222944,
+  "artifactId": 12148084217,
+  "artifactSha256": "5f09bb82e4699cc40a790de2e6b94c01b217a2363770bcd34ebe3d514bc0d798",
+  "expectedSha256": "5f09bb82e4699cc40a790de2e6b94c01b217a2363770bcd34ebe3d514bc0d798",
+  "digestVerified": true,
+  "app": "[REDACTED_HOME]/BobFWTools-device-evidence/release-20261018-a94a37a/unsigned/BobFWTools.app",
+  "archiveRoot": "Contents; restored BobFWTools.app wrapper",
+  "executablePermissionRestoredAfterArtifactExtraction": true,
+  "qualifiedWriterArtifact": false
+}

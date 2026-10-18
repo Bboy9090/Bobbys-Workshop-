@@ -1,3 +1,4 @@
+import { runHardwareProbe, type HardwareProbeFailure } from './hardware-probes';
 import { isSamsungDownloadTransport } from './hardware-lane-visibility';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
@@ -103,11 +104,12 @@ export async function verifyModeTransition(
   return invoke<ModeTransitionVerification>('mode_transition_verify', { serial, requestedMode });
 }
 
-export async function getMtpStatus(): Promise<MtpStatus | null> {
+export async function getMtpStatus(strict = false): Promise<MtpStatus | null> {
   if (!isTauriRuntime()) return null;
   try {
     return await invoke<MtpStatus>('mtp_status');
-  } catch {
+  } catch (error) {
+    if (strict) throw error;
     return null;
   }
 }
@@ -221,11 +223,12 @@ export type AdbFileResult = {
   evidenceSource: string;
 };
 
-export async function scanAdbDevices(): Promise<AdbDeviceRecord[]> {
+export async function scanAdbDevices(strict = false): Promise<AdbDeviceRecord[]> {
   if (!isTauriRuntime()) return [];
   try {
     return await invoke<AdbDeviceRecord[]>('adb_scan');
-  } catch {
+  } catch (error) {
+    if (strict) throw error;
     return [];
   }
 }
@@ -1015,6 +1018,7 @@ export type HardwareApprovalGate = {
 };
 
 export type HardwareFlowReadinessReport = {
+  probeFailures: HardwareProbeFailure[];
   generatedAtMs: number;
   softwareReady: boolean;
   writeReady: boolean;
@@ -1036,6 +1040,9 @@ export type HardwareFlowReadinessReport = {
 };
 
 export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowReadinessReport> {
+  const probeFailures: HardwareProbeFailure[] = [];
+  const probe = <T,>(name: string, run: () => Promise<T>, fallback: T) =>
+    runHardwareProbe(name, run, fallback, probeFailures);
   const [
     workstation,
     adbDevices,
@@ -1048,18 +1055,23 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     driverElevation,
     workflowPolicies,
   ] = await Promise.all([
-    getWorkstationReadiness(),
-    scanAdbDevices(),
-    getFastbootModeDevices(),
-    getMtpStatus(),
-    scanTransportDevices(),
-    scanRecoveryCandidates(),
-    scanFirmwareLibrary(),
-    scanDriverBindings(),
-    getDriverElevationStatus(),
-    getWorkflowPolicyCatalog(),
+    probe('workstation', getWorkstationReadiness, {
+      os: 'unverified', architecture: 'unverified', workspaceRoot: '', workspacePaths: [],
+      tools: [], drivers: [], driverStoreProbeAvailable: false, readyForDiagnostics: false,
+      readyForAndroidService: false, blockers: ['Workstation probe unavailable.'],
+    }),
+    probe('adb', () => scanAdbDevices(true), []),
+    probe('fastboot', getFastbootModeDevices, []),
+    probe('mtp', () => getMtpStatus(true), null),
+    probe('usb', scanTransportDevices, []),
+    probe('recovery', scanRecoveryCandidates, []),
+    probe('firmware', scanFirmwareLibrary, null),
+    probe('drivers', scanDriverBindings, []),
+    probe('elevation', getDriverElevationStatus, {
+      required: true, elevated: false, detail: 'Elevation status is unverified.',
+    }),
+    probe('policies', getWorkflowPolicyCatalog, []),
   ]);
-
   const bundles = firmware?.bundles ?? [];
   const workflowPolicy = (id: string) => workflowPolicies.find((policy) => policy.id === id) || null;
 
@@ -1223,12 +1235,33 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     });
   }
 
+  const dependencies: Record<string, string[]> = {
+    'adb-service': ['workstation', 'adb', 'drivers'],
+    fastboot: ['workstation', 'fastboot', 'drivers'],
+    'mtp-usb': ['mtp'],
+    'samsung-download': ['usb', 'policies'],
+    'qualcomm-edl': ['recovery', 'firmware', 'policies'],
+    'mediatek-download': ['recovery', 'firmware', 'policies'],
+    'windows-driver-claim': ['drivers', 'elevation'],
+  };
+  for (const lane of lanes) {
+    const failures = probeFailures.filter(failure =>
+      (dependencies[lane.id] ?? ['policies']).includes(failure.probe));
+    if (failures.length) {
+      lane.state = 'blocked';
+      lane.blockers = failures.map(failure => `${failure.probe} probe unavailable: ${failure.message}`);
+    }
+  }
+  probeFailures.sort((a, b) => a.probe.localeCompare(b.probe));
+
   const globalBlockers = [
+    ...probeFailures.map(failure => `${failure.probe} check BLOCKED: ${failure.message}`),
     ...workstation.blockers,
     ...unmatchedDrivers.map((binding) => `Driver claim unresolved: ${binding.instanceId}`),
   ];
 
   const softwareReady =
+    probeFailures.length === 0 &&
     workstation.readyForDiagnostics &&
     unmatchedDrivers.length === 0 &&
     lanes.some((lane) => lane.state !== 'blocked');
@@ -1272,9 +1305,11 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     {
       id: 'driver-claim',
       title: 'Exact USB driver claim resolved',
-      satisfied: unmatchedDrivers.length === 0,
+      satisfied: !probeFailures.some(failure => failure.probe === 'drivers') && unmatchedDrivers.length === 0,
       requiredForWrites: true,
-      detail: unmatchedDrivers.length
+      detail: probeFailures.some(failure => failure.probe === 'drivers')
+        ? 'Driver claim probe is unavailable; driver status is unverified.'
+        : unmatchedDrivers.length
         ? `${unmatchedDrivers.length} present Windows USB interface(s) still have an unresolved driver claim.`
         : 'No unresolved present Windows USB driver claims were found.',
     },
@@ -1350,6 +1385,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     .every((gate) => gate.satisfied);
 
   return {
+    probeFailures,
     generatedAtMs: Date.now(),
     softwareReady,
     writeReady,

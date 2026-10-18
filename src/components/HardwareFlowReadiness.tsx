@@ -54,6 +54,7 @@ export default function HardwareFlowReadiness() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const probeFailed = (name: string) => report?.probeFailures.some(failure => failure.probe === name) ?? false;
   const visibleLanes = report ? visibleHardwareLanes(report.lanes, showUnavailable) : [];
   const visiblePolicies = new Set(visibleLanes.map(lane => lane.workflowPolicyId));
   const qualificationQueue = report?.qualificationQueue.filter(task => showUnavailable || visiblePolicies.has(task.workflowId)) ?? [];
@@ -105,7 +106,7 @@ export default function HardwareFlowReadiness() {
             <div className="rounded border border-slate-800 bg-black/20 p-3">
               <div className="text-[10px] uppercase tracking-wide text-slate-500">Detected hardware</div>
               <div className="mt-1 text-sm font-semibold text-white">
-                {report.transportDevices.length} USB · {report.adbDevices.length} ADB · {report.fastbootSerials.length} Fastboot
+                {probeFailed('usb') ? 'USB unverified' : `${report.transportDevices.length} USB`} · {probeFailed('adb') ? 'ADB unverified' : `${report.adbDevices.length} ADB`} · {probeFailed('fastboot') ? 'Fastboot unverified' : `${report.fastbootSerials.length} Fastboot`}
               </div>
             </div>
             <div className={report.writeReady
@@ -160,7 +161,9 @@ export default function HardwareFlowReadiness() {
           </label>
           {visibleLanes.length === 0 && (
             <p className="mt-3 text-sm text-slate-300" role="status">
-              No applicable workflow detected. Connect a device with a data cable, select its USB mode, then run the safe audit again.
+              {report.probeFailures.length > 0
+                ? 'Some device checks are blocked. Connected-device status is incomplete; resolve the listed probe errors and rescan.'
+                : 'No applicable workflow detected. Connect a device with a data cable, select its USB mode, then run the safe audit again.'}
             </p>
           )}
           <div className="mt-3 grid gap-2 lg:grid-cols-2 xl:grid-cols-3">

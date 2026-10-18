@@ -1,0 +1,38 @@
+{
+  "architectures": [
+    "x86_64",
+    "arm64"
+  ],
+  "artifacts": {
+    "dmgSha256": "abedbfb0b0c63b903d0cd7e0b9bad3ab47d60cb44f3e402b6b9a9e1b90037392",
+    "executableSha256": "bf273594540b71d3be409dc9e3823d2e5d8b9725f2c111c8065aa14a15c3136b",
+    "infoPlistSha256": "32d95929a9afce0de2db53d0116302461849f5cec268fcd2ba5791765fb4bce5"
+  },
+  "notarization": {
+    "app": {
+      "gatekeeperAccepted": true,
+      "receiptSha256": "6626db31367d11b8fda20036e800ea32170f96efdfad5978527c607f7e234cef",
+      "status": "Accepted",
+      "submissionId": "ca06feb2-fa6a-440a-85e9-f4fd0192a7e0",
+      "ticketStapledAndValidated": true
+    },
+    "dmg": {
+      "gatekeeperAccepted": true,
+      "receiptSha256": "317d95f9358e0b64005cf155a312f25c2a0318509871e4d9b1132e1b16890000",
+      "status": "Accepted",
+      "submissionId": "d5a870d3-f7b6-4bc8-948f-f26d3401c0cd",
+      "ticketStapledAndValidated": true
+    }
+  },
+  "product": "BobFWTools",
+  "qualifiedDestructiveWriterIncluded": false,
+  "releaseLabel": "0.1.0-qualification-a94a37a",
+  "schema": "com.bobbyblanco.bobfwtools.release-receipt.v2",
+  "signing": {
+    "authority": "Developer ID Application: robert gonzalez (86NUJ8M3B8)",
+    "hardenedRuntimeRequired": true,
+    "identifier": "com.bobbyblanco.bobfwtools",
+    "teamIdentifier": "86NUJ8M3B8"
+  },
+  "sourceRevision": "a94a37afae1e818067bfdd603ff4bb6f29ab5ea4"
+}
