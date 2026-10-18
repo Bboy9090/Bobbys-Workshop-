@@ -2,9 +2,9 @@ name: BobFWTools macOS Core
 
 on:
   pull_request:
-    branches: [ "main-tool-kit", "feat/bobfwtools-macos-foundation", "feat/bobfwtools-calibration-edl-safety" ]
+    branches: [ "main-tool-kit", "feat/bobfwtools-macos-foundation", "feat/bobfwtools-calibration-edl-safety", "integration/hardware-readiness-foundation-20261018" ]
   push:
-    branches: [ "feat/bobfwtools-macos-foundation", "feat/bobfwtools-calibration-edl-safety" ]
+    branches: [ "feat/bobfwtools-macos-foundation", "feat/bobfwtools-calibration-edl-safety", "integration/hardware-readiness-foundation-20261018" ]
 
 permissions:
   contents: read
@@ -26,6 +26,9 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm install
+
+      - name: Install packaged API dependencies
+        run: npm ci --prefix src-tauri/resources/server --ignore-scripts
 
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@stable
