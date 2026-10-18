@@ -1,0 +1,42 @@
+{
+  "schema": "bobfwtools.macos-release-qualification.v1",
+  "capturedAt": "2026-10-18T21:14:48.400919+00:00",
+  "releaseReady": false,
+  "artifactSourceHead": "a94a37afae1e818067bfdd603ff4bb6f29ab5ea4",
+  "artifactId": 12148084217,
+  "patchBase": "81edd3a1e6e327d13c9d8dab59394742ab06a81a",
+  "worktreeFilesSha256": {
+    "src-tauri/entitlements.mac.plist": "719ef84d32f865e46f344c6b652ca966c1806a3d25a4599d1607276701d3c079",
+    "src/lib/desktop.ts": "32cc02a3129971f202fb943b3eba8bdeb3be723bd0e7963c908cb313e607b6bd",
+    "src/lib/hardware-probes.ts": "3d60dec2f1a60a5f1a0a46bdec0253beabedcc0b15a048745d3497a1d649483f",
+    "src/components/HardwareFlowReadiness.tsx": "5b6e0386af5a6931710ff6759f3a473f797f3ab19a74915633a3351647181f75",
+    "tests/hardware-probes.test.ts": "0f6d6b1115b55434d84a9f8abbed2e17828283ebfb44ec482e9f414994c57a15",
+    "tests/macos-sandbox-entitlements.test.js": "27d7e71a0520a77117826c6752c1b0e3a9d9c00aaeba69b915c9289c429d76e1"
+  },
+  "stages": {
+    "universalPreflight": "PASS",
+    "developerIdSignature": "PASS",
+    "appNotarization": "PASS",
+    "appStaplingAndGatekeeper": "PASS",
+    "dmgSignature": "PASS",
+    "dmgNotarization": "PASS",
+    "dmgStaplingAndGatekeeper": "PASS",
+    "originalSignedGuiStartup": "FAIL",
+    "sameBinaryWithNetworkClientEntitlementGuiStartup": "PASS",
+    "sameBinaryWithNetworkClientEntitlementSafeAudit": "FAIL",
+    "installerCopySmoke": "BLOCKED",
+    "correctedPartialAuditNativeGui": "NOT TESTED",
+    "correctedHeadFreshCI": "NOT TESTED"
+  },
+  "details": {
+    "originalGui": "Blank white window; WebKit content processes repeatedly terminated.",
+    "entitlementProbe": "Same prebuilt binary re-signed with only com.apple.security.network.client added; UI and native backend handshake rendered. The probe artifact is not the original notarized artifact.",
+    "safeAudit": "External Fastboot launch denied with Operation not permitted (os error 1); the original Promise.all discarded the complete report.",
+    "partialAuditFix": "Now retains successful probes, reports unavailable probes explicitly, times out waiting after 12s and blocks readiness. ADB/MTP strict errors are retained. A timeout does not cancel the native read-only probe.",
+    "localTests": "269 tests across 37 files, TypeScript and frontend build passed with the recorded worktree file hashes.",
+    "installerCopySmoke": "Remote Desktop Commander rejected the disk-image attach/copy command before execution. No command-policy bypass attempted.",
+    "deviceState": "No external USB target appeared in the fresh host IORegistry scan. Android physical qualification remains blocked.",
+    "runtimeLimits": "Intel Mac macOS 26.5.2; Apple Silicon execution not physically tested.",
+    "source": "Tauri maintainer issue https://github.com/tauri-apps/tauri/issues/13815 and Apple network.client entitlement documentation."
+  }
+}
