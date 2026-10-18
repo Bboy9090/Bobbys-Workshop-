@@ -648,7 +648,11 @@ describe('Recovery lane verified firmware selection', () => {
 
     expect(app).toContain('expectedRecoveryVendor');
     expect(app).toContain('laneVerifiedFirmwareBundles');
-    expect(app).toContain('bundle.planningReady && bundle.vendorHint === expectedRecoveryVendor');
+    expect(app).toContain('bundle.planningReady &&');
+    expect(app).toContain('bundle.vendorHint === expectedRecoveryVendor &&');
+    expect(app).toContain('sameIdentityValue(bundle.model, lockedRecoveryIdentity.model)');
+    expect(app).toContain('sameIdentityValue(bundle.board, lockedRecoveryIdentity.board)');
+    expect(app).toContain('sameIdentityValue(bundle.sku, lockedRecoveryIdentity.sku)');
     expect(app).toContain('setSelectedVerifiedBundle((current) =>');
     expect(app).toContain("return laneVerifiedFirmwareBundles[0]?.directory ?? ''");
     expect(app).toContain('Switching recovery lanes automatically clears or replaces any package from the other vendor');
@@ -869,5 +873,276 @@ describe('macOS signed notarized release contract', () => {
     const signScript = read('scripts/sign-bobfwtools-developer-id.sh');
     expect(workflow).toContain('BOBFW_EXPECTED_TEAM_ID');
     expect(signScript).toContain('Developer ID TeamIdentifier does not match the expected Apple team');
+  });
+});
+
+
+describe('One-click hardware flow readiness orchestrator', () => {
+  it('runs safe probes together and classifies all supported service lanes', () => {
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/HardwareFlowReadiness.tsx');
+    const commandCenter = read('src/components/RepairCommandCenter.tsx');
+
+    expect(desktop).toContain('buildHardwareFlowReadinessReport');
+    expect(desktop).toContain('Promise.all([');
+    expect(desktop).toContain("id: 'adb-service'");
+    expect(desktop).toContain("id: 'fastboot'");
+    expect(desktop).toContain("id: 'mtp-usb'");
+    expect(desktop).toContain("id: 'samsung-download'");
+    expect(desktop).toContain("id: 'qualcomm-edl'");
+    expect(desktop).toContain("id: 'mediatek-download'");
+    expect(desktop).toContain('bundle.planningReady && Boolean(bundle.packageFingerprint)');
+    expect(desktop).toContain('Authorized programmer/service-loader evidence and designated-device physical qualification remain required before writes');
+
+    expect(ui).toContain('Run full safe hardware audit');
+    expect(ui).toContain('DIAGNOSTICS READY');
+    expect(ui).toContain('Hardware write approval gates');
+    expect(ui).toContain('REQUIRED FOR WRITE LANES');
+    expect(commandCenter).toContain('<HardwareFlowReadiness />');
+  });
+
+  it('keeps destructive approval as provable gates instead of an automatic bypass', () => {
+    const desktop = read('src/lib/desktop.ts');
+
+    for (const gate of [
+      'workstation',
+      'driver-claim',
+      'device-identity',
+      'verified-firmware',
+      'recovery-job',
+      'backup-rollback',
+      'qualification-dossier',
+      'bench-evidence',
+      'human-decision',
+      'audit-bundle',
+      'write-authority',
+    ]) {
+      expect(desktop).toContain(`id: '${gate}'`);
+    }
+    expect(desktop).toContain('Production grant is intentionally unavailable until all prior hardware gates are satisfied');
+    expect(desktop).toContain("id: 'device-identity'");
+    expect(desktop).toContain('Transport detection is not exact identity proof.');
+    expect(desktop).toContain("title: 'Verified package + exact-device binding'");
+    expect(desktop).toContain('this gate stays missing until one package is bound to the independently proven live model/board/SKU');
+    expect(desktop).toContain('satisfied: false');
+  });
+});
+
+
+describe('Automatic target selection and exact-device firmware withholding', () => {
+  it('auto-selects the only live repair target and clears stale selections', () => {
+    const commandCenter = read('src/components/RepairCommandCenter.tsx');
+
+    expect(commandCenter).toContain('targets.length === 1 ? targets[0].key :');
+    expect(commandCenter).toContain('targets.some((target) => target.key === current)');
+  });
+
+  it('does not expose vendor-only firmware as an exact-device recovery match', () => {
+    const desktop = read('src/lib/desktop.ts');
+
+    expect(desktop).toContain('intentionally withheld until exact device model/board/SKU identity is independently proven');
+    expect(desktop).toContain('Prove exact device model/board/SKU first');
+    expect(desktop).toContain("firmwareCandidates: []");
+  });
+});
+
+
+describe('Hardware readiness workflow policy binding', () => {
+  it('shows authoritative physical qualification state per supported lane', () => {
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/HardwareFlowReadiness.tsx');
+
+    expect(desktop).toContain('workflowPolicies');
+    expect(desktop).toContain("workflowPolicyId: 'android.adb-authorized'");
+    expect(desktop).toContain("workflowPolicyId: 'samsung.odin-plan'");
+    expect(desktop).toContain("workflowPolicyId: 'qualcomm.edl-plan'");
+    expect(desktop).toContain("workflowPolicyId: 'mediatek.brom-plan'");
+    expect(desktop).toContain("physicallyQualified: workflowPolicy('qualcomm.edl-plan')?.physicallyQualified ?? null");
+
+    expect(ui).toContain('physical qualification');
+    expect(ui).toContain("lane.physicallyQualified ? 'complete' : 'pending'");
+  });
+});
+
+
+describe('Hardware readiness catalog completeness', () => {
+  it('accounts for every active workflow and shows reserved workflows explicitly', () => {
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/HardwareFlowReadiness.tsx');
+
+    expect(desktop).toContain('representedPolicyIds');
+    expect(desktop).toContain('item.activeInBobfwtools && !representedPolicyIds.has(item.id)');
+    expect(desktop).toContain('Physical qualification is still pending for this workflow.');
+    expect(desktop).toContain("state: 'blocked'");
+
+    expect(ui).toContain('Reserved / inactive workflows');
+    expect(ui).toContain('.filter((policy) => !policy.activeInBobfwtools)');
+    expect(ui).toContain('RESERVED');
+  });
+});
+
+
+describe('Exact device identity gate for verified firmware', () => {
+  it('withholds firmware until model board and SKU are locked and exactly matched', () => {
+    const app = read('src/App.tsx');
+
+    expect(app).toContain('captureRecoveryIdentityFromAdb');
+    expect(app).toContain('lockRecoveryIdentity');
+    expect(app).toContain('sameIdentityValue(bundle.model, lockedRecoveryIdentity.model)');
+    expect(app).toContain('sameIdentityValue(bundle.board, lockedRecoveryIdentity.board)');
+    expect(app).toContain('sameIdentityValue(bundle.sku, lockedRecoveryIdentity.sku)');
+    expect(app).toContain('trustedForWrite: true');
+    expect(app).toContain('trustedForWrite: false');
+    expect(app).toContain('PLANNING ONLY');
+    expect(app).toContain('WRITE-QUALIFIED');
+    expect(app).toContain('NOT LOCKED — verified firmware remains withheld');
+    expect(app).toContain('Write-qualified recovery requires independently captured exact device identity.');
+    expect(app).toContain('The selected firmware bundle does not exactly match the locked device model/board/SKU identity.');
+  });
+});
+
+
+describe('Pending physical qualification queue', () => {
+  it('derives bench evidence tasks from every active unqualified workflow policy', () => {
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/HardwareFlowReadiness.tsx');
+
+    expect(desktop).toContain('qualificationQueue');
+    expect(desktop).toContain('policy.activeInBobfwtools && !policy.physicallyQualified');
+    expect(desktop).toContain('Designated physical-device bench result with post-operation verification');
+    expect(desktop).toContain('Verified backup or rollback evidence');
+    expect(desktop).toContain('Audit ledger evidence with input/output fingerprints');
+    expect(desktop).toContain('qualificationPacketForWorkflow');
+    for (const workflowId of [
+      'qualcomm.edl-plan',
+      'mediatek.brom-plan',
+      'calibration.backup',
+      'calibration.restore',
+      'hardware.storage-identify',
+      'hardware.chip-off-plan',
+      'bootforge.media',
+    ]) {
+      expect(desktop).toContain(`'${workflowId}'`);
+    }
+    expect(desktop).toContain('Execute only the designated one-partition qualification trial');
+    expect(desktop).toContain('manual specialist procedure');
+    expect(desktop).toContain('destination media identity');
+
+    expect(ui).toContain('Physical qualification queue');
+    expect(ui).toContain('BENCH PENDING');
+    expect(ui).toContain('Exact target evidence');
+    expect(ui).toContain('Host / tooling requirements');
+    expect(ui).toContain('Dry-run artifact');
+    expect(ui).toContain('Backup / rollback requirement');
+    expect(ui).toContain('Designated bench action');
+    expect(ui).toContain('Post-operation verification');
+    expect(ui).toContain('Policy evidence required');
+    expect(ui).toContain('Export packet');
+    expect(ui).toContain('Qualification packet exported');
+    expect(desktop).toContain('exportHardwareQualificationPacket');
+    expect(desktop).toContain('hardware_qualification_packet_export');
+  });
+});
+
+
+describe('Machine-readable hardware qualification packet export', () => {
+  it('exports bench-pending evidence without granting write authority', () => {
+    const backend = read('src-tauri/src/main.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/HardwareFlowReadiness.tsx');
+
+    expect(backend).toContain('hardware_qualification_packet_export');
+    expect(backend).toContain('com.bobbyblanco.bobfwtools.hardware-qualification-packet.v1');
+    expect(backend).toContain('"executionPerformed": false');
+    expect(backend).toContain('"qualificationStatus": "bench-pending"');
+    expect(backend).toContain('"packetDoesNotGrantWriteAuthority": true');
+    expect(backend).toContain('"packetFingerprint": packet_fingerprint');
+    expect(backend).toContain('write-authority-granted:false');
+    expect(backend).toContain('hardware_qualification_packet_export,');
+    expect(backend).toContain('hardware_qualification_packet_review');
+    expect(backend).toContain('Qualification packet fingerprint does not match its payload');
+    expect(backend).toContain('review never grants write authority');
+    expect(backend).toContain('hardware_qualification_packet_review,');
+
+    expect(desktop).toContain('exportHardwareQualificationPacket');
+    expect(desktop).toContain("title: 'Export hardware qualification packet'");
+    expect(ui).toContain('Export packet');
+  });
+});
+
+
+describe('Bench evidence binds the workflow qualification packet', () => {
+  it('requires an integrity-reviewed packet and freezes its fingerprint into bench evidence', () => {
+    const backend = read('src-tauri/src/main.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const consoleUi = read('src/components/QualifiedFlashConsole.tsx');
+
+    expect(backend).toContain('qualificationPacketPath: String');
+    expect(backend).toContain('hardware_qualification_packet_review(input.qualificationPacketPath.clone())');
+    expect(backend).toContain('qualification_packet_fingerprint: String');
+    expect(backend).toContain('"qualificationPacketFingerprint": receipt.qualification_packet_fingerprint');
+    expect(backend).toContain('Qualification bench evidence qualification-packet fingerprint is missing or malformed');
+    expect(backend).toContain('qualification-packet-fingerprint:{}');
+
+    expect(desktop).toContain('reviewHardwareQualificationPacket');
+    expect(desktop).toContain('qualificationPacketPath: string');
+
+    expect(consoleUi).toContain('Select + verify qualification packet');
+    expect(consoleUi).toContain('PACKET VERIFIED');
+    expect(consoleUi).toContain('qualificationPacketReview?.safeToReview');
+    expect(consoleUi).toContain('qualificationPacketPath: qualificationPacketReview.path');
+  });
+});
+
+
+describe('Qualification packet fingerprint survives to production authority', () => {
+  it('binds packet, bench evidence, human decision, audit bundle, grant, and executor validation', () => {
+    const backend = read('src-tauri/src/main.rs');
+    const desktop = read('src/lib/desktop.ts');
+
+    expect(backend).toContain('qualification_packet_fingerprint: Option<String>');
+    expect(backend).toContain('"qualificationPacketFingerprint": receipt.qualification_packet_fingerprint');
+    expect(backend).toContain('Decision and bench evidence are bound to different qualification packets');
+    expect(backend).toContain('"qualificationPacketFingerprint": bench.qualification_packet_fingerprint');
+    expect(backend).toContain('qualification_packet_fingerprint: Option<String>');
+    expect(backend).toContain('qualificationPacketFingerprint: Option<String>');
+    expect(backend).toContain('Production grant audit bundle is bound to a different qualification packet');
+    expect(backend).toContain('Production grant decision is bound to a different qualification packet');
+    expect(backend).toContain('qualificationPacketFingerprint: Some(bench_receipt.qualification_packet_fingerprint.clone())');
+    expect(backend).toContain('Production-qualified grant is missing its qualification-packet fingerprint');
+    expect(backend).toContain('Bench qualification trial must not carry production audit-bundle or qualification-packet authority');
+    expect(backend).toContain('qualification-packet-fingerprint:{}');
+
+    expect(desktop).toContain('qualificationPacketFingerprint?: string | null');
+  });
+});
+
+
+describe('Audit bundle revalidates qualification packet identity', () => {
+  it('requires the same packet fingerprint across bundle, bench evidence, and decision', () => {
+    const backend = read('src-tauri/src/main.rs');
+
+    expect(backend).toContain('Audit bundle bench evidence is bound to a different qualification packet');
+    expect(backend).toContain('Audit bundle human decision is bound to a different qualification packet');
+    expect(backend).toContain('Nested decision and bench evidence reference different qualification packets');
+    expect(backend).toContain('Nested bench evidence does not match the audit bundle qualification packet');
+  });
+});
+
+
+describe('Diagnostic readiness is distinct from write readiness', () => {
+  it('never treats general tooling readiness as destructive write approval', () => {
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/HardwareFlowReadiness.tsx');
+
+    expect(desktop).toContain('writeReady: boolean');
+    expect(desktop).toContain("const writeReady = approvalGates");
+    expect(desktop).toContain(".filter((gate) => gate.requiredForWrites)");
+    expect(desktop).toContain(".every((gate) => gate.satisfied)");
+
+    expect(ui).toContain('Diagnostic software readiness');
+    expect(ui).toContain('DIAGNOSTICS READY');
+    expect(ui).toContain('Destructive write readiness');
+    expect(ui).toContain('WRITE GATES INCOMPLETE');
   });
 });

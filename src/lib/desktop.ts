@@ -887,6 +887,497 @@ export async function initializeWorkstation(): Promise<WorkstationReadiness> {
 }
 
 
+export type HardwareFlowReadinessLane = {
+  id: string;
+  title: string;
+  workflowPolicyId?: string | null;
+  physicallyQualified?: boolean | null;
+  state: 'ready' | 'guided' | 'blocked';
+  automation: 'automatic-read-only' | 'guided-safe-action' | 'qualified-destructive';
+  detected: boolean;
+  applicableDevices: string[];
+  firmwareCandidates: string[];
+  blockers: string[];
+  nextSteps: string[];
+};
+
+export type HardwareQualificationTask = {
+  workflowId: string;
+  category: string;
+  risk: WorkflowRiskLevel;
+  softwareImplemented: boolean;
+  physicallyQualified: boolean;
+  requiredEvidence: string[];
+  targetEvidence: string[];
+  hostRequirements: string[];
+  dryRunArtifact: string;
+  rollbackRequirement: string;
+  benchAction: string;
+  postVerification: string[];
+  notes: string;
+};
+
+function qualificationPacketForWorkflow(workflowId: string) {
+  const generic = {
+    targetEvidence: ['Exact live device identity and transport evidence captured immediately before the bench action.'],
+    hostRequirements: ['Required workstation tooling present, exact USB/interface ownership resolved, and current BobFWTools build recorded.'],
+    dryRunArtifact: 'Export a dry-run/planning receipt using the exact intended target and inputs before any physical action.',
+    rollbackRequirement: 'Document the workflow-specific rollback or recovery path before proceeding.',
+    benchAction: 'Run the smallest authorized physical bench action that proves this workflow without broadening scope.',
+    postVerification: ['Re-detect the same target.', 'Verify expected state/output.', 'Attach audit fingerprints and operator decision.'],
+  };
+
+  const packets: Record<string, typeof generic> = {
+    'qualcomm.edl-plan': {
+      targetEvidence: ['Qualcomm EDL 9008 target identity, VID/PID, USB path, serial when exposed, and independently proven model/board/SKU.', 'Authorized Firehose programmer/service-loader record bound to the intended device family.'],
+      hostRequirements: ['Stable EDL transport with exact driver claim.', 'Qualified Firehose planning path and current recovery executor build recorded.'],
+      dryRunArtifact: 'Export the package-bound EDL recovery job and Firehose dry-run/write plan with deterministic firmware and job fingerprints.',
+      rollbackRequirement: 'Verified target-specific backup/restore or OEM recovery path must be reviewable before trial authority.',
+      benchAction: 'Execute only the designated one-partition qualification trial under qualification-trial authority; no wipe, no automatic reboot, no production grant.',
+      postVerification: ['Re-enumerate the exact EDL target.', 'Read back or otherwise verify the trial partition result against the expected digest/size.', 'Export audit bundle and reviewer decision before any production authority.'],
+    },
+    'mediatek.brom-plan': {
+      targetEvidence: ['MediaTek Preloader/BROM target identity, VID/PID, USB path, serial when exposed, and independently proven model/board/SKU.', 'Legitimate OEM/service DA/auth evidence applicable to the exact target.'],
+      hostRequirements: ['Stable MediaTek USB transport with exact driver ownership.', 'Current scatter/package inputs and executor build recorded.'],
+      dryRunArtifact: 'Export a package-bound MediaTek recovery plan with parsed scatter/partition map, deterministic package fingerprint, and intended single trial partition.',
+      rollbackRequirement: 'Verified backup or OEM recovery path for the exact target must exist before trial authority.',
+      benchAction: 'Run one explicitly approved partition trial only; do not format, erase broad regions, or escalate around DA/auth requirements.',
+      postVerification: ['Re-detect the same target and transport mode.', 'Verify the trial partition result against expected size/hash where readable.', 'Export audit bundle and reviewer decision before production authority.'],
+    },
+    'calibration.backup': {
+      targetEvidence: ['Authorized device identity plus resolved calibration partition/block path from the allowlist.'],
+      hostRequirements: ['Required root/service read access verified without bypassing device security controls.', 'Destination storage has enough capacity and is writable.'],
+      dryRunArtifact: 'Generate the calibration backup plan showing exact partitions, expected byte counts, destination, and access mode.',
+      rollbackRequirement: 'Backup itself is the rollback artifact; its manifest and SHA-256 must be retained with the device identity.',
+      benchAction: 'Read and export one approved calibration partition without modifying the device.',
+      postVerification: ['Backup byte count matches expectation.', 'Backup SHA-256 is recorded.', 'Manifest binds device UID, partition, path, size, and hash and can pass restore preflight later.'],
+    },
+    'calibration.restore': {
+      targetEvidence: ['Exact live device UID and partition identity matching a previously verified calibration backup manifest.'],
+      hostRequirements: ['Required service/write access verified and exact partition allowlist binding intact.'],
+      dryRunArtifact: 'Run restore preflight against manifest, live device UID, partition, byte count, and SHA-256 before write authority.',
+      rollbackRequirement: 'Preserve the original verified backup plus a second copy or independently verified recovery source before restore.',
+      benchAction: 'Restore only the explicitly approved calibration partition bound to the exact manifest and target.',
+      postVerification: ['Read back and verify size/hash when supported.', 'Confirm device re-detection and expected calibration/service state.', 'Export audit record tying restore result to the original manifest.'],
+    },
+    'hardware.storage-identify': {
+      targetEvidence: ['Exact physical target identity plus storage bus/device identification evidence.'],
+      hostRequirements: ['Read-only identification tooling available and no conflicting USB/storage driver claim.'],
+      dryRunArtifact: 'Export a read-only storage identification report before any service action.',
+      rollbackRequirement: 'No write action is permitted in this qualification; rollback is not applicable unless a later destructive workflow is opened.',
+      benchAction: 'Identify the storage technology/controller and geometry using read-only probes only.',
+      postVerification: ['Repeat identification produces the same target/controller result.', 'Attach device identity, transport, and evidence source to the audit record.'],
+    },
+    'hardware.chip-off-plan': {
+      targetEvidence: ['Exact board/device identity, storage package identification, and board-level service authorization.'],
+      hostRequirements: ['Documented bench equipment profile, adapter/socket compatibility, and operator safety checklist.'],
+      dryRunArtifact: 'Generate a chip-off service plan only; no physical removal or write operation is automated by BobFWTools.',
+      rollbackRequirement: 'Document board rework/reassembly and donor/backup strategy before any physical bench procedure.',
+      benchAction: 'Qualification is limited to validating the planning packet and hardware identification against a designated bench sample; physical chip removal remains a manual specialist procedure.',
+      postVerification: ['Reviewer confirms package/board match and equipment plan.', 'Audit bundle records that BobFWTools performed planning/evidence only, not automated chip removal.'],
+    },
+    'bootforge.media': {
+      targetEvidence: ['Exact destination media identity, capacity, removable status, and selected source image identity.'],
+      hostRequirements: ['Exclusive destination claim, source image verification, and sufficient host permissions for raw-media service.'],
+      dryRunArtifact: 'Export the media-write plan with source hash, destination identity/capacity, partition/layout intent, and no-execution receipt.',
+      rollbackRequirement: 'Confirm the destination is disposable/recoverable and preserve any required user data before qualification.',
+      benchAction: 'Write only to the designated removable qualification medium using the approved image and verify no other disk is addressable by the job.',
+      postVerification: ['Re-scan the same media identity.', 'Verify resulting partition/layout and source-derived hashes where applicable.', 'Record safe eject/remount result and audit fingerprints.'],
+    },
+  };
+
+  return packets[workflowId] ?? generic;
+}
+
+export async function exportHardwareQualificationPacket(
+  task: HardwareQualificationTask,
+): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const destinationPath = await save({
+    title: 'Export hardware qualification packet',
+    defaultPath: `${task.workflowId.replace(/[^a-zA-Z0-9._-]+/g, '-')}-qualification-packet.json`,
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  });
+  if (typeof destinationPath !== 'string' || !destinationPath.trim()) return null;
+  return invoke<string>('hardware_qualification_packet_export', {
+    packet: task,
+    destinationPath,
+  });
+}
+
+export type HardwareApprovalGate = {
+  id: string;
+  title: string;
+  satisfied: boolean;
+  requiredForWrites: boolean;
+  detail: string;
+};
+
+export type HardwareFlowReadinessReport = {
+  generatedAtMs: number;
+  softwareReady: boolean;
+  writeReady: boolean;
+  physicalApprovalRequired: boolean;
+  approvalGates: HardwareApprovalGate[];
+  workflowPolicies: WorkflowPolicy[];
+  qualificationQueue: HardwareQualificationTask[];
+  workstation: WorkstationReadiness;
+  adbDevices: AdbDeviceRecord[];
+  fastbootSerials: string[];
+  mtpConnected: boolean;
+  transportDevices: TransportDevice[];
+  recoveryCandidates: RecoveryCandidate[];
+  firmwareBundles: FirmwareBundleSummary[];
+  driverBindings: DriverBindingRecord[];
+  driverElevation: DriverElevationStatus;
+  lanes: HardwareFlowReadinessLane[];
+  blockers: string[];
+};
+
+export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowReadinessReport> {
+  const [
+    workstation,
+    adbDevices,
+    fastbootSerials,
+    mtp,
+    transportDevices,
+    recoveryCandidates,
+    firmware,
+    driverBindings,
+    driverElevation,
+    workflowPolicies,
+  ] = await Promise.all([
+    getWorkstationReadiness(),
+    scanAdbDevices(),
+    getFastbootModeDevices(),
+    getMtpStatus(),
+    scanTransportDevices(),
+    scanRecoveryCandidates(),
+    scanFirmwareLibrary(),
+    scanDriverBindings(),
+    getDriverElevationStatus(),
+    getWorkflowPolicyCatalog(),
+  ]);
+
+  const bundles = firmware?.bundles ?? [];
+  const workflowPolicy = (id: string) => workflowPolicies.find((policy) => policy.id === id) || null;
+
+  const verifiedBundles = bundles.filter(
+    (bundle) => bundle.planningReady && Boolean(bundle.packageFingerprint),
+  );
+  const qualcommBundles = verifiedBundles.filter((bundle) => bundle.vendorHint === 'qualcomm');
+  const mediatekBundles = verifiedBundles.filter((bundle) => bundle.vendorHint === 'mediatek');
+  const authorizedAdb = adbDevices.filter((device) => device.authorized);
+  const unmatchedDrivers = driverBindings.filter((binding) => binding.bindingState !== 'matched');
+
+  const samsungDevices = transportDevices.filter((device) => {
+    const haystack = [
+      device.mode,
+      device.manufacturer ?? '',
+      device.productName ?? '',
+      device.vendorId.toString(16).padStart(4, '0'),
+    ].join(' ').toLowerCase();
+    return haystack.includes('samsung') || haystack.includes('download') || device.vendorId === 0x04e8;
+  });
+  const qualcommRecovery = recoveryCandidates.filter((candidate) => candidate.workflow === 'qualcomm-edl');
+  const mediatekRecovery = recoveryCandidates.filter((candidate) => candidate.workflow === 'mediatek-download');
+
+  const lanes: HardwareFlowReadinessLane[] = [
+    {
+      id: 'adb-service',
+      title: 'ADB authorized service',
+      workflowPolicyId: 'android.adb-authorized',
+      physicallyQualified: workflowPolicy('android.adb-authorized')?.physicallyQualified ?? null,
+      state: authorizedAdb.length && workstation.readyForAndroidService ? 'ready' : 'blocked',
+      automation: 'automatic-read-only',
+      detected: adbDevices.length > 0,
+      applicableDevices: adbDevices.map((device) => device.serial),
+      firmwareCandidates: [],
+      blockers: [
+        ...(!workstation.readyForAndroidService ? workstation.blockers : []),
+        ...(adbDevices.length && !authorizedAdb.length ? ['ADB device is present but not authorized.'] : []),
+        ...(!adbDevices.length ? ['No ADB device detected.'] : []),
+      ],
+      nextSteps: authorizedAdb.length
+        ? ['Run diagnostics, identity reads, screenshots, logs, package inventory, and safe mode capability checks automatically.']
+        : ['Unlock the phone and approve the host RSA prompt when lawful ADB access is available.'],
+    },
+    {
+      id: 'fastboot',
+      title: 'Fastboot / bootloader service',
+      state: fastbootSerials.length && workstation.readyForAndroidService ? 'ready' : 'blocked',
+      automation: 'guided-safe-action',
+      detected: fastbootSerials.length > 0,
+      applicableDevices: fastbootSerials,
+      firmwareCandidates: [],
+      blockers: [
+        ...(!fastbootSerials.length ? ['No Fastboot device detected.'] : []),
+        ...(!workstation.readyForAndroidService ? workstation.blockers : []),
+      ],
+      nextSteps: ['Keep identity-bound Fastboot actions guided; destructive partition writes remain qualification-gated.'],
+    },
+    {
+      id: 'mtp-usb',
+      title: 'MTP / USB file service',
+      state: mtp?.connected ? 'ready' : 'blocked',
+      automation: 'automatic-read-only',
+      detected: Boolean(mtp?.connected),
+      applicableDevices: mtp?.connected
+        ? [mtp.model || mtp.manufacturer || mtp.serialNumber || 'MTP device']
+        : [],
+      firmwareCandidates: [],
+      blockers: mtp?.connected ? [] : ['No MTP device is currently connected.'],
+      nextSteps: ['Allow automated browse/copy/upload operations that do not alter protected device security state.'],
+    },
+    {
+      id: 'samsung-download',
+      title: 'Samsung Download Mode',
+      workflowPolicyId: 'samsung.odin-plan',
+      physicallyQualified: workflowPolicy('samsung.odin-plan')?.physicallyQualified ?? null,
+      state: samsungDevices.length ? 'guided' : 'blocked',
+      automation: 'qualified-destructive',
+      detected: samsungDevices.length > 0,
+      applicableDevices: samsungDevices.map((device) => device.deviceUid),
+      firmwareCandidates: [],
+      blockers: samsungDevices.length
+        ? ['Stock Samsung package still requires exact-device package verification and physical qualification before flash execution.']
+        : ['No Samsung Download Mode transport detected.'],
+      nextSteps: ['Inspect stock AP/BL/CP/CSC packages, verify MD5/package structure, then route into qualification rather than auto-flashing.'],
+    },
+    {
+      id: 'qualcomm-edl',
+      title: 'Qualcomm EDL / Sahara / Firehose',
+      workflowPolicyId: 'qualcomm.edl-plan',
+      physicallyQualified: workflowPolicy('qualcomm.edl-plan')?.physicallyQualified ?? null,
+      state: qualcommRecovery.length && qualcommBundles.length ? 'guided' : 'blocked',
+      automation: 'qualified-destructive',
+      detected: qualcommRecovery.length > 0,
+      applicableDevices: qualcommRecovery.map((candidate) => candidate.deviceUid),
+      firmwareCandidates: [],
+      blockers: [
+        ...(!qualcommRecovery.length ? ['No Qualcomm EDL 9008 recovery target detected.'] : []),
+        ...(!qualcommBundles.length
+          ? ['No verified Qualcomm firmware bundle with provenance + package fingerprint is available.']
+          : [`${qualcommBundles.length} verified Qualcomm bundle(s) are indexed but intentionally withheld until exact device model/board/SKU identity is independently proven.`]),
+        'Authorized programmer/service-loader evidence and designated-device physical qualification remain required before writes.',
+      ],
+      nextSteps: ['Prove exact device model/board/SKU first; only then may a matching verified Qualcomm package be promoted into recovery planning.'],
+    },
+    {
+      id: 'mediatek-download',
+      title: 'MediaTek Preloader / Download',
+      workflowPolicyId: 'mediatek.brom-plan',
+      physicallyQualified: workflowPolicy('mediatek.brom-plan')?.physicallyQualified ?? null,
+      state: mediatekRecovery.length && mediatekBundles.length ? 'guided' : 'blocked',
+      automation: 'qualified-destructive',
+      detected: mediatekRecovery.length > 0,
+      applicableDevices: mediatekRecovery.map((candidate) => candidate.deviceUid),
+      firmwareCandidates: [],
+      blockers: [
+        ...(!mediatekRecovery.length ? ['No MediaTek Preloader/Download recovery target detected.'] : []),
+        ...(!mediatekBundles.length
+          ? ['No verified MediaTek firmware bundle with provenance + package fingerprint is available.']
+          : [`${mediatekBundles.length} verified MediaTek bundle(s) are indexed but intentionally withheld until exact device model/board/SKU identity is independently proven.`]),
+        'Legitimate OEM/service DA/auth requirements and designated-device physical qualification remain required before writes.',
+      ],
+      nextSteps: ['Prove exact device model/board/SKU first; only then may a matching verified MediaTek package be promoted into recovery planning.'],
+    },
+  ];
+
+  const representedPolicyIds = new Set(
+    lanes.map((lane) => lane.workflowPolicyId).filter((value): value is string => Boolean(value)),
+  );
+
+  for (const policy of workflowPolicies.filter(
+    (item) => item.activeInBobfwtools && !representedPolicyIds.has(item.id),
+  )) {
+    const destructiveLike = policy.risk === 'destructive' || policy.risk === 'restricted' || policy.risk === 'elevated';
+    lanes.push({
+      id: `catalog:${policy.id}`,
+      title: policy.category + ' · ' + policy.id,
+      workflowPolicyId: policy.id,
+      physicallyQualified: policy.physicallyQualified,
+      state: 'blocked',
+      automation: destructiveLike ? 'qualified-destructive' : 'guided-safe-action',
+      detected: false,
+      applicableDevices: [],
+      firmwareCandidates: [],
+      blockers: [
+        'This catalog workflow has no dedicated auto-detection binding in the current readiness sweep; target/evidence selection remains guided.',
+        ...(!policy.physicallyQualified ? ['Physical qualification is still pending for this workflow.'] : []),
+      ],
+      nextSteps: [policy.notes],
+    });
+  }
+
+  if (unmatchedDrivers.length) {
+    lanes.push({
+      id: 'windows-driver-claim',
+      title: 'Windows USB driver claim',
+      state: 'blocked',
+      automation: 'guided-safe-action',
+      detected: true,
+      applicableDevices: unmatchedDrivers.map((binding) => binding.instanceId),
+      firmwareCandidates: [],
+      blockers: unmatchedDrivers.map(
+        (binding) => `${binding.friendlyName || binding.instanceId}: ${binding.detail}`,
+      ),
+      nextSteps: [
+        driverElevation.elevated
+          ? 'Build the exact-interface conflict plan and use only hardware-ID-verified relatch.'
+          : 'Restart BobFWTools as Administrator before any driver mutation.',
+      ],
+    });
+  }
+
+  const globalBlockers = [
+    ...workstation.blockers,
+    ...unmatchedDrivers.map((binding) => `Driver claim unresolved: ${binding.instanceId}`),
+  ];
+
+  const softwareReady =
+    workstation.readyForDiagnostics &&
+    unmatchedDrivers.length === 0 &&
+    lanes.some((lane) => lane.state !== 'blocked');
+
+  const qualificationQueue: HardwareQualificationTask[] = workflowPolicies
+    .filter((policy) => policy.activeInBobfwtools && !policy.physicallyQualified)
+    .map((policy) => {
+      const requiredEvidence = [
+        ...(policy.authorizationRequired ? ['Operator/device authorization evidence'] : []),
+        ...(policy.deviceIdentityVerification ? ['Exact target identity evidence immediately before execution'] : []),
+        ...(policy.dryRunSupported ? ['Dry-run / planning receipt using the exact intended inputs'] : []),
+        ...(policy.backupOrRollbackRequired ? ['Verified backup or rollback evidence'] : []),
+        ...(policy.auditLoggingRequired ? ['Audit ledger evidence with input/output fingerprints'] : []),
+        ...(policy.explicitConfirmationRequired ? ['Explicit human confirmation tied to the exact target'] : []),
+        'Designated physical-device bench result with post-operation verification',
+      ];
+      const packet = qualificationPacketForWorkflow(policy.id);
+      return {
+        workflowId: policy.id,
+        category: policy.category,
+        risk: policy.risk,
+        softwareImplemented: policy.activeInBobfwtools,
+        physicallyQualified: policy.physicallyQualified,
+        requiredEvidence,
+        ...packet,
+        notes: policy.notes,
+      };
+    });
+
+  const packageBoundFirmwareIndexed = verifiedBundles.length > 0;
+  const approvalGates: HardwareApprovalGate[] = [
+    {
+      id: 'workstation',
+      title: 'Workstation diagnostics ready',
+      satisfied: workstation.readyForDiagnostics,
+      requiredForWrites: true,
+      detail: workstation.readyForDiagnostics
+        ? 'Required host tooling/workspace checks are satisfied.'
+        : workstation.blockers.join(' · ') || 'Host diagnostics readiness is incomplete.',
+    },
+    {
+      id: 'driver-claim',
+      title: 'Exact USB driver claim resolved',
+      satisfied: unmatchedDrivers.length === 0,
+      requiredForWrites: true,
+      detail: unmatchedDrivers.length
+        ? `${unmatchedDrivers.length} present Windows USB interface(s) still have an unresolved driver claim.`
+        : 'No unresolved present Windows USB driver claims were found.',
+    },
+    {
+      id: 'device-identity',
+      title: 'Exact hardware identity',
+      satisfied: false,
+      requiredForWrites: true,
+      detail: 'Transport detection is not exact identity proof. This gate stays missing until one live target is explicitly locked to verified model/board/SKU evidence in the recovery handoff.',
+    },
+    {
+      id: 'verified-firmware',
+      title: 'Verified package + exact-device binding',
+      satisfied: false,
+      requiredForWrites: true,
+      detail: packageBoundFirmwareIndexed
+        ? `${verifiedBundles.length} planning-ready bundle(s) are indexed, but this gate stays missing until one package is bound to the independently proven live model/board/SKU and its deterministic fingerprint is revalidated for the recovery job.`
+        : 'No planning-ready firmware bundle with a deterministic package fingerprint is available.',
+    },
+    {
+      id: 'recovery-job',
+      title: 'Package-bound recovery job',
+      satisfied: false,
+      requiredForWrites: true,
+      detail: 'Satisfied only after a verified bundle is bound into a prepared recovery job whose job fingerprint validates.',
+    },
+    {
+      id: 'backup-rollback',
+      title: 'Backup / rollback evidence',
+      satisfied: false,
+      requiredForWrites: true,
+      detail: 'Satisfied only after the target-specific backup/rollback path is exported and reviewable.',
+    },
+    {
+      id: 'qualification-dossier',
+      title: 'Designated-device qualification dossier',
+      satisfied: false,
+      requiredForWrites: true,
+      detail: 'Must prove exact device, workstation, transport stability, authorized programmer/service evidence, and current executor build.',
+    },
+    {
+      id: 'bench-evidence',
+      title: 'One-partition bench evidence',
+      satisfied: false,
+      requiredForWrites: true,
+      detail: 'Exactly one approved trial partition must complete with post-write verification before production authority.',
+    },
+    {
+      id: 'human-decision',
+      title: 'Human qualification decision',
+      satisfied: false,
+      requiredForWrites: true,
+      detail: 'A reviewer decision must explicitly accept the physical qualification evidence.',
+    },
+    {
+      id: 'audit-bundle',
+      title: 'Verified audit bundle',
+      satisfied: false,
+      requiredForWrites: true,
+      detail: 'The final audit bundle must recompute and match all qualification fingerprints.',
+    },
+    {
+      id: 'write-authority',
+      title: 'Short-lived production write authority',
+      satisfied: false,
+      requiredForWrites: true,
+      detail: 'Production grant is intentionally unavailable until all prior hardware gates are satisfied.',
+    },
+  ];
+
+  const writeReady = approvalGates
+    .filter((gate) => gate.requiredForWrites)
+    .every((gate) => gate.satisfied);
+
+  return {
+    generatedAtMs: Date.now(),
+    softwareReady,
+    writeReady,
+    physicalApprovalRequired: lanes.some((lane) => lane.automation === 'qualified-destructive' && lane.detected),
+    approvalGates,
+    workflowPolicies,
+    qualificationQueue,
+    workstation,
+    adbDevices,
+    fastbootSerials,
+    mtpConnected: Boolean(mtp?.connected),
+    transportDevices,
+    recoveryCandidates,
+    firmwareBundles: verifiedBundles,
+    driverBindings,
+    driverElevation,
+    lanes,
+    blockers: globalBlockers,
+  };
+}
+
 export type AuditEvent = {
   timestampMs: number;
   category: string;
@@ -1101,6 +1592,38 @@ export async function reviewQualificationDossierPath(
 }
 
 
+export type HardwareQualificationPacketReview = {
+  path: string;
+  schemaValid: boolean;
+  packetFingerprintValid: boolean;
+  qualificationStatusBenchPending: boolean;
+  executionPerformedClaimed: boolean;
+  writeAuthorityClaimed: boolean;
+  safeToReview: boolean;
+  blockers: string[];
+  workflowId?: string | null;
+  packetFingerprint?: string | null;
+};
+
+export async function reviewHardwareQualificationPacket(): Promise<HardwareQualificationPacketReview | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: 'Review hardware qualification packet',
+    filters: [{ name: 'JSON qualification packet', extensions: ['json'] }],
+  });
+  if (!selected || Array.isArray(selected)) return null;
+  return invoke<HardwareQualificationPacketReview>('hardware_qualification_packet_review', { path: selected });
+}
+
+export async function reviewHardwareQualificationPacketPath(
+  path: string,
+): Promise<HardwareQualificationPacketReview | null> {
+  if (!isTauriRuntime() || !path.trim()) return null;
+  return invoke<HardwareQualificationPacketReview>('hardware_qualification_packet_review', { path: path.trim() });
+}
+
 export type QualifiedFlashPartition = {
   name: string;
   imagePath: string;
@@ -1139,6 +1662,7 @@ export type QualifiedFlashGrant = {
   expiresAtUnixSeconds: number;
   dossierFingerprint: string;
   auditBundleFingerprint?: string | null;
+  qualificationPacketFingerprint?: string | null;
   grantMac: string;
 };
 
@@ -1161,6 +1685,7 @@ export type QualifiedFlashApprovalInput = {
 
 export type QualificationBenchEvidenceInput = {
   dossierPath: string;
+  qualificationPacketPath: string;
   expectedRecoveryJobFingerprint: string;
   deviceSerial: string;
   reviewer: string;
@@ -1238,6 +1763,7 @@ export type QualificationAuditBundleReview = {
   bundleFingerprint?: string | null;
   recoveryJobFingerprint?: string | null;
   executorBuildFingerprint?: string | null;
+  qualificationPacketFingerprint?: string | null;
 };
 
 export async function reviewQualificationAuditBundle(

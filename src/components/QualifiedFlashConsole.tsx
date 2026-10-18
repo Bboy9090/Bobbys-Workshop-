@@ -11,10 +11,12 @@ import {
   issueQualificationTrialGrant,
   issueQualifiedFlashGrant,
   reviewQualificationDossier,
+  reviewHardwareQualificationPacket,
   startQualifiedFastbootFlash,
   type QualificationBuildIdentity,
   type QualificationDossierReview,
   type QualificationAuditBundleReview,
+  type HardwareQualificationPacketReview,
   type QualifiedFlashGrant,
   type QualifiedFlashPartition,
   type QualifiedFlashPhysicalChecks,
@@ -88,6 +90,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint, readines
   const [allowWipe, setAllowWipe] = useState(false);
   const [allowReboot, setAllowReboot] = useState(false);
   const [grant, setGrant] = useState<QualifiedFlashGrant | null>(null);
+  const [qualificationPacketReview, setQualificationPacketReview] = useState<HardwareQualificationPacketReview | null>(null);
   const [benchEvidencePath, setBenchEvidencePath] = useState<string | null>(null);
   const [decisionPath, setDecisionPath] = useState<string | null>(null);
   const [auditBundlePath, setAuditBundlePath] = useState<string | null>(null);
@@ -210,6 +213,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint, readines
 
   useEffect(() => {
     setReview(null);
+    setQualificationPacketReview(null);
     setGrant(null);
     setBenchEvidencePath(null);
     setDecisionPath(null);
@@ -246,6 +250,22 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint, readines
           programmerHashVerified: result.bindingSemanticsValid && result.programmerEvidenceReady,
         }));
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reviewQualificationPacket = async () => {
+    setBusy(true);
+    setError(null);
+    setGrant(null);
+    setBenchEvidencePath(null);
+    setDecisionPath(null);
+    try {
+      const result = await reviewHardwareQualificationPacket();
+      if (result) setQualificationPacketReview(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -304,7 +324,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint, readines
   };
 
   const exportBenchEvidence = async () => {
-    if (!review || !recoveryJobFingerprint || !deviceSerial || !reviewer.trim() || !allChecksPass || !partitions.length) return;
+    if (!review || !qualificationPacketReview?.safeToReview || !qualificationPacketReview.path || !recoveryJobFingerprint || !deviceSerial || !reviewer.trim() || !allChecksPass || !partitions.length) return;
     setBusy(true);
     setError(null);
     setGrant(null);
@@ -312,6 +332,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint, readines
     try {
       const path = await exportQualificationBenchEvidence({
         dossierPath: review.path,
+        qualificationPacketPath: qualificationPacketReview.path,
         expectedRecoveryJobFingerprint: recoveryJobFingerprint,
         deviceSerial,
         reviewer: reviewer.trim(),
@@ -625,6 +646,36 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint, readines
             </div>
           </div>
 
+          <div className="mt-3 rounded border border-amber-900/60 bg-amber-950/20 p-4">
+            <div className="text-[10px] uppercase tracking-wide text-amber-500">Qualification packet binding</div>
+            <p className="mt-2 text-xs text-slate-400">
+              Select the workflow-specific qualification packet exported from Hardware Readiness. The packet must pass integrity review before bench evidence can be recorded.
+            </p>
+            <button
+              type="button"
+              onClick={() => void reviewQualificationPacket()}
+              disabled={busy}
+              className="mt-3 rounded border border-amber-800 px-3 py-2 text-xs font-semibold text-amber-300 disabled:opacity-40"
+            >
+              Select + verify qualification packet
+            </button>
+            {qualificationPacketReview && (
+              <div className={qualificationPacketReview.safeToReview
+                ? 'mt-2 rounded border border-emerald-900/60 bg-emerald-950/20 p-3 text-xs text-emerald-300'
+                : 'mt-2 rounded border border-rose-900/60 bg-rose-950/20 p-3 text-xs text-rose-300'}>
+                <div className="font-semibold">
+                  {qualificationPacketReview.safeToReview ? 'PACKET VERIFIED' : 'PACKET BLOCKED'}
+                </div>
+                <div className="mt-1 break-all font-mono text-[10px]">
+                  {qualificationPacketReview.workflowId || 'unknown workflow'} · {qualificationPacketReview.packetFingerprint || 'no fingerprint'}
+                </div>
+                {qualificationPacketReview.blockers.map((blocker) => (
+                  <div key={blocker} className="mt-1 text-[10px]">{blocker}</div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="mt-3 rounded border border-cyan-900/60 bg-cyan-950/20 p-4">
             <div className="text-[10px] uppercase tracking-wide text-cyan-600">Stage 2 bench-evidence receipt</div>
             <p className="mt-2 text-xs text-slate-400">
@@ -634,7 +685,7 @@ export default function QualifiedFlashConsole({ recoveryJobFingerprint, readines
             <button
               type="button"
               onClick={() => void exportBenchEvidence()}
-              disabled={busy || !review?.safeToReview || !allChecksPass || !reviewer.trim() || !deviceSerial || !partitions.length}
+              disabled={busy || !review?.safeToReview || !qualificationPacketReview?.safeToReview || !allChecksPass || !reviewer.trim() || !deviceSerial || !partitions.length}
               className="mt-3 rounded border border-cyan-800 px-3 py-2 text-xs font-semibold text-cyan-300 disabled:opacity-40"
             >
               Export hash-bound bench evidence
