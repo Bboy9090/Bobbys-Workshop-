@@ -19,7 +19,7 @@ export default defineConfig({
         'server/'
       ]
     },
-    include: ['tests/**/*.test.{js,ts}'],
+    include: ['tests/**/*.test.{js,ts,mjs}'],
     testTimeout: 10000
   }
 });
