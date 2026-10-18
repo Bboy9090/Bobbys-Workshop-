@@ -6,6 +6,7 @@ export const CAPABILITY_STATES = Object.freeze([
   'NOT_IMPLEMENTED', 'SIMULATED', 'READ_ONLY_QUALIFIED', 'PHYSICAL_WRITE_QUALIFIED'
 ]);
 
+const READS = new Set(['detect', 'inspect']);
 const WRITES = new Set(['partition-flash', 'userdata-wipe', 'bootloader-unlock', 'recovery-sideload', 'media-write']);
 const string = value => typeof value === 'string' ? value.trim() : '';
 const sha256 = value => /^[a-f\d]{64}$/i.test(string(value));
@@ -17,22 +18,23 @@ export function evaluateFlashCapability(request = {}, manifest = {}) {
   const model = string(request.model).toUpperCase();
   const state = CAPABILITY_STATES.includes(manifest.status) ? manifest.status : 'NOT_IMPLEMENTED';
   const write = WRITES.has(operation);
+  if (!READS.has(operation) && !write) blockers.push('Unknown operation; explicit capability classification required');
   if (!operation || !protocol) blockers.push('Operation and protocol required');
   if (!model || model !== string(manifest.model).toUpperCase()) blockers.push('Exact device model mismatch');
   if (protocol !== string(manifest.protocol)) blockers.push('Protocol does not match qualified adapter');
   if (!Array.isArray(manifest.operations) || !manifest.operations.includes(operation)) blockers.push('Operation absent from capability manifest');
-  if (!request.trustedDeviceIdentity) blockers.push('No trusted live device identity attestation');
+  if (request.trustedDeviceIdentity !== true) blockers.push('No trusted live device identity attestation');
   if (!write && state !== 'READ_ONLY_QUALIFIED' && state !== 'PHYSICAL_WRITE_QUALIFIED') {
     blockers.push('Read-only qualification absent');
   }
   if (write) {
     if (state !== 'PHYSICAL_WRITE_QUALIFIED') blockers.push('Physical write qualification absent');
-    if (!request.explicitConsent) blockers.push('Explicit operator consent missing');
-    if (!request.signedScopedGrantVerified) blockers.push('Signed scoped qualification grant not verified');
+    if (request.explicitConsent !== true) blockers.push('Explicit operator consent missing');
+    if (request.signedScopedGrantVerified !== true) blockers.push('Signed scoped qualification grant not verified');
     if (!sha256(request.payloadSha256)) blockers.push('Verified SHA-256 payload evidence missing');
-    if (!request.firmwareCompatibilityVerified) blockers.push('Exact firmware, region and bootloader revision unverified');
-    if (!request.recoveryPlanQualified) blockers.push('Model-specific recovery procedure unqualified');
-    if (!request.journalReady) blockers.push('Durable transaction evidence not ready');
+    if (request.firmwareCompatibilityVerified !== true) blockers.push('Exact firmware, region and bootloader revision unverified');
+    if (request.recoveryPlanQualified !== true) blockers.push('Model-specific recovery procedure unqualified');
+    if (request.journalReady !== true) blockers.push('Durable transaction evidence not ready');
     if (operation === 'partition-flash' && !string(request.partition)) blockers.push('Exact target partition missing');
   }
   // No caller-provided field can override a manifest that is not physically qualified.

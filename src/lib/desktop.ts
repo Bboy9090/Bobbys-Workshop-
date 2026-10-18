@@ -1,3 +1,4 @@
+import { isSamsungDownloadTransport } from './hardware-lane-visibility';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 
@@ -1070,15 +1071,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
   const authorizedAdb = adbDevices.filter((device) => device.authorized);
   const unmatchedDrivers = driverBindings.filter((binding) => binding.bindingState !== 'matched');
 
-  const samsungDevices = transportDevices.filter((device) => {
-    const haystack = [
-      device.mode,
-      device.manufacturer ?? '',
-      device.productName ?? '',
-      device.vendorId.toString(16).padStart(4, '0'),
-    ].join(' ').toLowerCase();
-    return haystack.includes('samsung') || haystack.includes('download') || device.vendorId === 0x04e8;
-  });
+  const samsungDevices = transportDevices.filter(isSamsungDownloadTransport);
   const qualcommRecovery = recoveryCandidates.filter((candidate) => candidate.workflow === 'qualcomm-edl');
   const mediatekRecovery = recoveryCandidates.filter((candidate) => candidate.workflow === 'mediatek-download');
 
@@ -1127,7 +1120,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
         : [],
       firmwareCandidates: [],
       blockers: mtp?.connected ? [] : ['No MTP device is currently connected.'],
-      nextSteps: ['Allow automated browse/copy/upload operations that do not alter protected device security state.'],
+      nextSteps: ['Browse and copy files from the device. Uploads modify device storage and require a separate guided action.'],
     },
     {
       id: 'samsung-download',
