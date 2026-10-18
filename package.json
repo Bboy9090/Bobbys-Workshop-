@@ -59,7 +59,8 @@
     "tauri:build:macos:ci": "npm run build && tauri build --bundles app --target universal-apple-darwin",
     "tauri:build:macos:qualified:ci": "npm run build && tauri build --bundles app --target universal-apple-darwin --features qualified-flash",
     "test:legacy": "vitest run",
-    "typecheck": "tsc -b --pretty false"
+    "typecheck": "tsc -b --pretty false",
+    "qualification:matrix": "node scripts/qualification-matrix.mjs"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.7",

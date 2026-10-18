@@ -1,3 +1,4 @@
+import { visibleHardwareLanes } from '../lib/hardware-lane-visibility';
 import { useEffect, useState } from 'react';
 import {
   buildHardwareFlowReadinessReport,
@@ -13,6 +14,7 @@ function stateClasses(state: 'ready' | 'guided' | 'blocked'): string {
 
 export default function HardwareFlowReadiness() {
   const [report, setReport] = useState<HardwareFlowReadinessReport | null>(null);
+  const [showUnavailable, setShowUnavailable] = useState(false);
   const [busy, setBusy] = useState(false);
   const [exportingWorkflowId, setExportingWorkflowId] = useState<string | null>(null);
   const [exportedPacketPath, setExportedPacketPath] = useState<string | null>(null);
@@ -21,6 +23,7 @@ export default function HardwareFlowReadiness() {
   const runAudit = async () => {
     if (busy) return;
     setBusy(true);
+    setReport(null);
     setError(null);
     try {
       setReport(await buildHardwareFlowReadinessReport());
@@ -50,6 +53,10 @@ export default function HardwareFlowReadiness() {
     // One initial read-only sweep only; the operator controls later rescans.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const visibleLanes = report ? visibleHardwareLanes(report.lanes, showUnavailable) : [];
+  const visiblePolicies = new Set(visibleLanes.map(lane => lane.workflowPolicyId));
+  const qualificationQueue = report?.qualificationQueue.filter(task => showUnavailable || visiblePolicies.has(task.workflowId)) ?? [];
 
   return (
     <div className="mt-4 rounded-xl border border-violet-900/60 bg-violet-950/10 p-4">
@@ -147,8 +154,17 @@ export default function HardwareFlowReadiness() {
             </div>
           )}
 
+          <label className="mt-3 flex items-center gap-2 text-xs text-slate-300">
+            <input type="checkbox" checked={showUnavailable} onChange={event => setShowUnavailable(event.target.checked)} />
+            Show unavailable workflows and qualification backlog
+          </label>
+          {visibleLanes.length === 0 && (
+            <p className="mt-3 text-sm text-slate-300" role="status">
+              No applicable workflow detected. Connect a device with a data cable, select its USB mode, then run the safe audit again.
+            </p>
+          )}
           <div className="mt-3 grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
-            {report.lanes.map((lane) => (
+            {visibleLanes.map((lane) => (
               <div key={lane.id} className="rounded border border-slate-800 bg-slate-950/70 p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -209,14 +225,14 @@ export default function HardwareFlowReadiness() {
             ))}
           </div>
 
-          {report.qualificationQueue.length > 0 && (
+          {qualificationQueue.length > 0 && (
             <div className="mt-3 rounded border border-orange-900/50 bg-orange-950/10 p-3">
               <div className="text-[10px] font-semibold uppercase tracking-wide text-orange-400">Physical qualification queue</div>
               <div className="mt-1 text-[10px] leading-4 text-slate-500">
                 These workflows are implemented in software but are not yet allowed to claim physical qualification.
               </div>
               <div className="mt-2 grid gap-2 lg:grid-cols-2">
-                {report.qualificationQueue.map((task) => (
+                {qualificationQueue.map((task) => (
                   <div key={task.workflowId} className="rounded border border-slate-800 bg-slate-950/70 p-3">
                     <div className="flex items-center justify-between gap-2">
                       <div>
@@ -282,7 +298,7 @@ export default function HardwareFlowReadiness() {
             </div>
           )}
 
-          {report.workflowPolicies.some((policy) => !policy.activeInBobfwtools) && (
+          {showUnavailable && report.workflowPolicies.some((policy) => !policy.activeInBobfwtools) && (
             <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
               <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Reserved / inactive workflows</div>
               <div className="mt-2 grid gap-2 md:grid-cols-2">

@@ -1,0 +1,55 @@
+{
+  "provenance": "Verified tool transcript observations from connected Mac; remote raw capture availability was not confirmed after RPC timeout.",
+  "host": "BJ23s-MacBook-Pro.local",
+  "os": "macOS 26.5.2 (25F84)",
+  "architecture": "x86_64",
+  "usb": {
+    "vendorId": "04e8",
+    "productId": "685d",
+    "productLabel": "SM6150",
+    "modelVerified": false,
+    "protocolSessionVerified": false
+  },
+  "adb": {
+    "command": "ADB_LIBUSB=1 adb devices -l",
+    "exitCode": 0,
+    "devices": []
+  },
+  "fastboot": {
+    "command": "fastboot devices",
+    "exitCode": 0,
+    "devices": []
+  },
+  "heimdall": {
+    "command": "node scripts/samsung-readonly-detect.mjs --heimdall /Users/bj23/Projects/heimdall-host-qual/build/bin/heimdall --confirm-readonly",
+    "wrapperExitCode": 3,
+    "toolExitCode": 1,
+    "detected": false,
+    "protocolSessionVerified": false,
+    "modelIdentityVerified": false,
+    "flashAuthorized": false,
+    "frpStateChanged": false
+  },
+  "localTests": {
+    "sourceHead": "05afc5cb2cd68e9f30f85279ef849760bea67f29",
+    "qualifiedRustTests": 86,
+    "bootforgeUsbTests": 49,
+    "packagedApiTests": 243
+  },
+  "releasePrerequisites": {
+    "developerIdApplicationAvailable": true,
+    "teamId": "86NUJ8M3B8",
+    "notaryProfile": "BobFWTools",
+    "notaryProfileHistoryCheckExitCode": 0,
+    "appSigned": false,
+    "appNotarized": false,
+    "gatekeeperAssessed": false,
+    "installerTested": false,
+    "guiSmokeTested": false
+  },
+  "freeDiskGiBLastObserved": 1,
+  "observationWindow": {
+    "start": "2026-10-18T19:18:00Z",
+    "end": "2026-10-18T19:26:00Z"
+  }
+}
