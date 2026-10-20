@@ -106,6 +106,16 @@ jobs:
           path: src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
           if-no-files-found: error
 
+      - name: Build and check unsigned installer
+        run: bash scripts/qualify-bobfwtools-unsigned-installer.sh
+
+      - name: Upload unsigned installer qualification artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: BobFWTools-universal-macOS-installer-unsigned
+          path: ${{ runner.temp }}/BobFWTools-installer-qualification/
+          if-no-files-found: error
+
       - name: Build qualified universal BobFWTools.app
         run: npm run tauri:build:macos:qualified:ci
 

@@ -110,3 +110,5 @@ For a release candidate, record the exact source revision, executable and instal
 Desktop Commander reached its monthly limit during this session. The changed workspace has no completed signed/native installer or GUI qualification. Older signed app and DMG receipts remain historical and must not be reused for this source. Repository-secret availability also has not been verified through this connector.
 
 Standard release preparation does not authorize any destructive device operation. Every flash, wipe, unlock, repartition, calibration restore, and removable-media write remains separately blocked until exact-device evidence, trusted compatible firmware, recovery readiness, and explicit approval for the named device and operation are established.
+
+The macOS Core workflow also builds a CI-only unsigned DMG, mounts it read-only, checks the Applications link, and verifies an isolated byte-matching universal app copy. It uploads the DMG with a source-bound ledger and hash-verified matrix. These packaging receipts do not attest signing, notarization, connected-Mac Gatekeeper, native GUI, or any device operation.

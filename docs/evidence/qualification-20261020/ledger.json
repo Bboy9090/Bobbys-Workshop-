@@ -1,0 +1,1285 @@
+{
+  "schema": "bobfwtools.qualification-ledger.v1",
+  "reportedAt": "2026-10-20T22:58:29.536Z",
+  "testedHead": "a557d23c689a096dcddda8b26f7ce6bd3477a6af",
+  "ciMergeRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+  "sourceTree": "cdd84a2e26ca47eab40e2ce5b21c777c650b0a25",
+  "ciRuns": [
+    "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39509792194",
+    "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39509792161"
+  ],
+  "executionAuthorized": false,
+  "notes": [
+    "CI tested the exact recorded pull-request merge. Its Git tree equals the recorded pull-request head tree.",
+    "Software/browser/Rust results are simulated. No receipt qualifies a physical device or authorizes execution.",
+    "Physical rows retain historical aliases and model-specific exceptions. No currently attached Android phone is attested.",
+    "Historical failures are bound to their original source revisions and cannot override or qualify another revision.",
+    "The 2026-10-18 ledger and signed-artifact evidence are preserved unchanged as historical records.",
+    "Mac session logs, including the shared-cache Rust failure and isolated rebuild, remain private on the Mac and were not copied into this ledger.",
+    "The native GUI and installer for this source, Developer ID signing, new notarization and Gatekeeper remain blocked.",
+    "A later evidence/integrity-test and installer-CI commit contains this snapshot; use fresh CI on that commit before merging. Installer CI produces its own source-bound ledger artifact."
+  ],
+  "cases": [
+    {
+      "caseId": "packaged-api",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "integration-tests",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "typecheck",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "typecheck",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "frontend-build",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "production-build",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "workflow-contracts",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "definition-validation",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "production-reality",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "reality-gate",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "matrix-regressions",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "evidence-isolation-tests",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "firmware-contracts",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "compatibility-policy-tests",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "bounded-scans",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "scan-deadline-tests",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "workflow-availability",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "device-workflow-visibility-tests",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "workspace-panels",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "navigation-component-tests",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "browser-ui-1",
+      "model": "Chromium-preview",
+      "deviceAlias": "github-browser-ci",
+      "protocol": "browser",
+      "operation": "Home is a compact phone workspace with honest browser readiness",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "browser-ui-2",
+      "model": "Chromium-preview",
+      "deviceAlias": "github-browser-ci",
+      "protocol": "browser",
+      "operation": "All six views show only their own content",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "browser-ui-3",
+      "model": "Chromium-preview",
+      "deviceAlias": "github-browser-ci",
+      "protocol": "browser",
+      "operation": "Advanced tools are closed and deferred until requested",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "browser-ui-4",
+      "model": "Chromium-preview",
+      "deviceAlias": "github-browser-ci",
+      "protocol": "browser",
+      "operation": "Firmware planning inputs survive navigation and disclosure toggles",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "browser-ui-5",
+      "model": "Chromium-preview",
+      "deviceAlias": "github-browser-ci",
+      "protocol": "browser",
+      "operation": "Narrow screens retain navigation without horizontal scrolling",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "browser-ui-6",
+      "model": "Chromium-preview",
+      "deviceAlias": "github-browser-ci",
+      "protocol": "browser",
+      "operation": "No uncaught application errors",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "qualified-rust",
+      "model": "macOS-ci",
+      "deviceAlias": "github-macos-ci",
+      "protocol": "rust",
+      "operation": "qualified-feature-tests",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "bootforge-rust",
+      "model": "macOS-ci",
+      "deviceAlias": "github-macos-ci",
+      "protocol": "rust",
+      "operation": "bootforge-usb-tests",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "usb-host-observation",
+      "model": "UNKNOWN_USB_LABEL_SM6150",
+      "deviceAlias": "samsung-usb-04e8-685d",
+      "protocol": "external-host-usb",
+      "operation": "enumerate",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "samsung-host-detect",
+      "model": "UNKNOWN_USB_LABEL_SM6150",
+      "deviceAlias": "samsung-usb-04e8-685d",
+      "protocol": "external-heimdall",
+      "operation": "detect",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "adb-host-identity",
+      "model": "UNKNOWN_USB_LABEL_SM6150",
+      "deviceAlias": "samsung-usb-04e8-685d",
+      "protocol": "external-adb",
+      "operation": "identity",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "fastboot-host-identity",
+      "model": "UNKNOWN_USB_LABEL_SM6150",
+      "deviceAlias": "samsung-usb-04e8-685d",
+      "protocol": "external-fastboot",
+      "operation": "identity",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "native-usb-current-app",
+      "model": "UNKNOWN_USB_LABEL_SM6150",
+      "deviceAlias": "samsung-usb-04e8-685d",
+      "protocol": "native-usb",
+      "operation": "app-enumeration",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "mtp-current-app",
+      "model": "UNKNOWN_USB_LABEL_SM6150",
+      "deviceAlias": "samsung-usb-04e8-685d",
+      "protocol": "mtp",
+      "operation": "browse",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "samsung-download-current-app",
+      "model": "UNKNOWN_USB_LABEL_SM6150",
+      "deviceAlias": "samsung-usb-04e8-685d",
+      "protocol": "samsung-download",
+      "operation": "protocol-session",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "samsung-trusted-firmware",
+      "model": "UNKNOWN_USB_LABEL_SM6150",
+      "deviceAlias": "samsung-usb-04e8-685d",
+      "protocol": "samsung-download",
+      "operation": "trusted-firmware",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Exact model, trusted compatible firmware, qualified recovery path, and explicit device-specific operation approval are not established."
+    },
+    {
+      "caseId": "samsung-firmware-compatibility",
+      "model": "UNKNOWN_USB_LABEL_SM6150",
+      "deviceAlias": "samsung-usb-04e8-685d",
+      "protocol": "samsung-download",
+      "operation": "firmware-compatibility",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Exact model, trusted compatible firmware, qualified recovery path, and explicit device-specific operation approval are not established."
+    },
+    {
+      "caseId": "samsung-recovery-readiness",
+      "model": "UNKNOWN_USB_LABEL_SM6150",
+      "deviceAlias": "samsung-usb-04e8-685d",
+      "protocol": "samsung-download",
+      "operation": "recovery-readiness",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Exact model, trusted compatible firmware, qualified recovery path, and explicit device-specific operation approval are not established."
+    },
+    {
+      "caseId": "samsung-partition-flash",
+      "model": "UNKNOWN_USB_LABEL_SM6150",
+      "deviceAlias": "samsung-usb-04e8-685d",
+      "protocol": "samsung-download",
+      "operation": "partition-flash",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Exact model, trusted compatible firmware, qualified recovery path, and explicit device-specific operation approval are not established."
+    },
+    {
+      "caseId": "samsung-userdata-wipe",
+      "model": "UNKNOWN_USB_LABEL_SM6150",
+      "deviceAlias": "samsung-usb-04e8-685d",
+      "protocol": "samsung-download",
+      "operation": "userdata-wipe",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Exact model, trusted compatible firmware, qualified recovery path, and explicit device-specific operation approval are not established."
+    },
+    {
+      "caseId": "samsung-bootloader-unlock",
+      "model": "UNKNOWN_USB_LABEL_SM6150",
+      "deviceAlias": "samsung-usb-04e8-685d",
+      "protocol": "samsung-download",
+      "operation": "bootloader-unlock",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Exact model, trusted compatible firmware, qualified recovery path, and explicit device-specific operation approval are not established."
+    },
+    {
+      "caseId": "SM-A176U-read",
+      "model": "SM-A176U",
+      "deviceAlias": "historical-sm-a176u",
+      "protocol": "adb",
+      "operation": "identity",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Historical repository evidence exists; this exact model is not attested by the current connected-device scan."
+    },
+    {
+      "caseId": "SM-A176U-write",
+      "model": "SM-A176U",
+      "deviceAlias": "historical-sm-a176u",
+      "protocol": "samsung-download",
+      "operation": "partition-flash",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Current target, firmware/recovery evidence and device-specific write approval are absent."
+    },
+    {
+      "caseId": "SM-T580-read",
+      "model": "SM-T580",
+      "deviceAlias": "historical-sm-t580",
+      "protocol": "adb",
+      "operation": "identity",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Historical repository evidence exists; this exact model is not attested by the current connected-device scan."
+    },
+    {
+      "caseId": "SM-T580-write",
+      "model": "SM-T580",
+      "deviceAlias": "historical-sm-t580",
+      "protocol": "samsung-download",
+      "operation": "partition-flash",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Current target, firmware/recovery evidence and device-specific write approval are absent."
+    },
+    {
+      "caseId": "qualcomm-edl-read",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "qualcomm-edl",
+      "operation": "identity",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "qualcomm-edl-write",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "qualcomm-edl",
+      "operation": "physical-write",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "No designated target, trusted payload, qualified recovery evidence, and approved physical operation."
+    },
+    {
+      "caseId": "mediatek-brom-read",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "mediatek-brom",
+      "operation": "identity",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "mediatek-brom-write",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "mediatek-brom",
+      "operation": "physical-write",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "No designated target, trusted payload, qualified recovery evidence, and approved physical operation."
+    },
+    {
+      "caseId": "mediatek-preloader-read",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "mediatek-preloader",
+      "operation": "identity",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "mediatek-preloader-write",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "mediatek-preloader",
+      "operation": "physical-write",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "No designated target, trusted payload, qualified recovery evidence, and approved physical operation."
+    },
+    {
+      "caseId": "fastboot-read",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "fastboot",
+      "operation": "identity",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "fastboot-write",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "fastboot",
+      "operation": "physical-write",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "No designated target, trusted payload, qualified recovery evidence, and approved physical operation."
+    },
+    {
+      "caseId": "raw-removable-media-read",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "raw-removable-media",
+      "operation": "identity",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "raw-removable-media-write",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "raw-removable-media",
+      "operation": "physical-write",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "No designated target, trusted payload, qualified recovery evidence, and approved physical operation."
+    },
+    {
+      "caseId": "adb-device-information",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "adb",
+      "operation": "device-information",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "adb-battery",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "adb",
+      "operation": "battery-read",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "adb-logcat",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "adb",
+      "operation": "logcat-read",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "adb-screenshot",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "adb",
+      "operation": "screenshot-read",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "adb-package-inventory",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "adb",
+      "operation": "package-inventory",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "calibration-backup",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "adb-block-read",
+      "operation": "allowlisted-partition-backup",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "mtp-download",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "mtp",
+      "operation": "file-download",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "adb-apk-install",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "adb",
+      "operation": "apk-install",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "No current target or actual device-operation evidence. Any data-changing action requires its own scoped controls; no operation was executed."
+    },
+    {
+      "caseId": "adb-package-changes",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "adb",
+      "operation": "package-admin-change",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "No current target or actual device-operation evidence. Any data-changing action requires its own scoped controls; no operation was executed."
+    },
+    {
+      "caseId": "mtp-upload",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "mtp",
+      "operation": "file-upload",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "No current target or actual device-operation evidence. Any data-changing action requires its own scoped controls; no operation was executed."
+    },
+    {
+      "caseId": "calibration-restore",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "adb-block-write",
+      "operation": "same-device-calibration-restore",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "No active restore executor in this workspace, verified same-device backup or device-specific approval."
+    },
+    {
+      "caseId": "apple-dfu-restore",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "apple-dfu",
+      "operation": "signed-restore",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Reserved catalog entry; no active Apple restore executor or designated qualified target."
+    },
+    {
+      "caseId": "storage-bench-identify",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "isp-jtag-emmc-ufs",
+      "operation": "storage-identification",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Specialist planning reference only; no automatic bench executor or attested board/storage target."
+    },
+    {
+      "caseId": "chip-off-bench",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "chip-off",
+      "operation": "chip-off-reball",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Specialist physical procedure has no automatic executor, designated bench evidence or operation-specific approval."
+    },
+    {
+      "caseId": "windows-driver-observe",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "windows-usb-driver",
+      "operation": "claim-inspection",
+      "scope": "hardware-read",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "No connected Windows host, exact USB interface or physical driver-claim evidence in this pass."
+    },
+    {
+      "caseId": "windows-driver-relatch",
+      "model": "UNATTESTED",
+      "deviceAlias": "no-qualified-target",
+      "protocol": "windows-usb-driver",
+      "operation": "driver-relatch-rollback",
+      "scope": "hardware-write",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "No designated Windows target, compatible signed driver, verified snapshot/rollback or explicit interface-specific action approval."
+    },
+    {
+      "caseId": "signing-identity",
+      "model": "macOS-universal",
+      "deviceAlias": "connected-mac",
+      "protocol": "codesign",
+      "operation": "credential-availability",
+      "scope": "release",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Changed source has no completed signed/native release qualification. Desktop Commander monthly quota exhausted; older artifact receipts do not qualify this source."
+    },
+    {
+      "caseId": "notary-profile",
+      "model": "macOS-universal",
+      "deviceAlias": "connected-mac",
+      "protocol": "apple-notary",
+      "operation": "credential-availability",
+      "scope": "release",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Changed source has no completed signed/native release qualification. Desktop Commander monthly quota exhausted; older artifact receipts do not qualify this source."
+    },
+    {
+      "caseId": "remote-execution",
+      "model": "macOS-x86_64",
+      "deviceAlias": "connected-mac",
+      "protocol": "remote-desktop",
+      "operation": "evidence-capture",
+      "scope": "release",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Desktop Commander monthly quota exhausted. No further remote execution or capture was available."
+    },
+    {
+      "caseId": "signed-app",
+      "model": "macOS-universal",
+      "deviceAlias": "connected-mac",
+      "protocol": "codesign",
+      "operation": "verify-standard-app",
+      "scope": "release",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Changed source has no completed signed/native release qualification. Desktop Commander monthly quota exhausted; older artifact receipts do not qualify this source."
+    },
+    {
+      "caseId": "app-notarization",
+      "model": "macOS-universal",
+      "deviceAlias": "connected-mac",
+      "protocol": "apple-notary",
+      "operation": "accepted-app",
+      "scope": "release",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Changed source has no completed signed/native release qualification. Desktop Commander monthly quota exhausted; older artifact receipts do not qualify this source."
+    },
+    {
+      "caseId": "gatekeeper-app",
+      "model": "macOS-universal",
+      "deviceAlias": "connected-mac",
+      "protocol": "gatekeeper",
+      "operation": "assess-app",
+      "scope": "release",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Changed source has no completed signed/native release qualification. Desktop Commander monthly quota exhausted; older artifact receipts do not qualify this source."
+    },
+    {
+      "caseId": "dmg-installer",
+      "model": "macOS-universal",
+      "deviceAlias": "connected-mac",
+      "protocol": "dmg",
+      "operation": "install-smoke",
+      "scope": "release",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Changed source has no completed signed/native release qualification. Desktop Commander monthly quota exhausted; older artifact receipts do not qualify this source."
+    },
+    {
+      "caseId": "dmg-notarization",
+      "model": "macOS-universal",
+      "deviceAlias": "connected-mac",
+      "protocol": "apple-notary",
+      "operation": "accepted-dmg",
+      "scope": "release",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Changed source has no completed signed/native release qualification. Desktop Commander monthly quota exhausted; older artifact receipts do not qualify this source."
+    },
+    {
+      "caseId": "gui-smoke",
+      "model": "macOS-universal",
+      "deviceAlias": "connected-mac",
+      "protocol": "tauri-gui",
+      "operation": "safe-audit-clicks",
+      "scope": "release",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Changed source has no completed signed/native release qualification. Desktop Commander monthly quota exhausted; older artifact receipts do not qualify this source."
+    },
+    {
+      "caseId": "unsigned-universal-standard",
+      "model": "macOS-universal",
+      "deviceAlias": "github-macos-ci",
+      "protocol": "tauri-build",
+      "operation": "build-standard-app",
+      "scope": "release",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "unsigned-universal-qualified",
+      "model": "macOS-universal",
+      "deviceAlias": "github-macos-ci",
+      "protocol": "tauri-build",
+      "operation": "build-qualified-app",
+      "scope": "release",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "unsigned-installer-ci",
+      "model": "macOS-universal",
+      "deviceAlias": "github-macos-ci",
+      "protocol": "dmg",
+      "operation": "unsigned-installer-build-copy",
+      "scope": "release",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "native-focused-workspace",
+      "model": "macOS-universal",
+      "deviceAlias": "connected-mac",
+      "protocol": "tauri-gui",
+      "operation": "focused-navigation-and-completed-scan",
+      "scope": "release",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Changed source has no completed signed/native release qualification. Desktop Commander monthly quota exhausted; older artifact receipts do not qualify this source."
+    },
+    {
+      "caseId": "release-secret-metadata",
+      "model": "GitHub-Actions",
+      "deviceAlias": "release-ci",
+      "protocol": "credentials",
+      "operation": "secret-availability",
+      "scope": "release",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "exception": "Credential values were not accessed. The current connector does not expose Actions secret metadata; presence remains unverified."
+    },
+    {
+      "caseId": "default-rust-unit-tests",
+      "model": "macOS-ci",
+      "deviceAlias": "github-macos-ci",
+      "protocol": "rust",
+      "operation": "standard-feature-unit-tests",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326"
+    },
+    {
+      "caseId": "historical-ui-syntax",
+      "model": "linux-ci",
+      "deviceAlias": "github-prior-attempt",
+      "protocol": "software",
+      "operation": "typecheck",
+      "scope": "simulated",
+      "sourceRevision": "239b1c376f90aa64d0255f5cc61966329f76b4ec"
+    },
+    {
+      "caseId": "historical-catalog-contracts",
+      "model": "linux-ci",
+      "deviceAlias": "github-prior-attempt",
+      "protocol": "software",
+      "operation": "packaged-api-contracts",
+      "scope": "simulated",
+      "sourceRevision": "79c9f0fd1b08118abe2ef2a4e879862a5e0660ff"
+    },
+    {
+      "caseId": "historical-diagnostic-type",
+      "model": "linux-ci",
+      "deviceAlias": "github-prior-attempt",
+      "protocol": "software",
+      "operation": "typecheck",
+      "scope": "simulated",
+      "sourceRevision": "9e117b3b56b8f88d1c7f5176ae8b8b7ab3c7a3fc"
+    },
+    {
+      "caseId": "historical-fastboot-label",
+      "model": "macOS-ci",
+      "deviceAlias": "github-prior-attempt",
+      "protocol": "software",
+      "operation": "packaged-api-contracts",
+      "scope": "simulated",
+      "sourceRevision": "cc53e8b7d5e703fe218d868c1a80aafa305065e2"
+    },
+    {
+      "caseId": "historical-ci-command-contract",
+      "model": "linux-ci",
+      "deviceAlias": "github-prior-attempt",
+      "protocol": "software",
+      "operation": "source-contract-tests",
+      "scope": "simulated",
+      "sourceRevision": "843cbbf344b10a6602c58cd78a5f601165c0e9b6"
+    },
+    {
+      "caseId": "historical-library-lockfile",
+      "model": "macOS-ci",
+      "deviceAlias": "github-prior-attempt",
+      "protocol": "software",
+      "operation": "bootforge-library-check",
+      "scope": "simulated",
+      "sourceRevision": "843cbbf344b10a6602c58cd78a5f601165c0e9b6"
+    }
+  ],
+  "receipts": [
+    {
+      "caseId": "packaged-api",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "integration-tests",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "295/295 repository tests across 40 files passed while the test runner hosted the actual packaged API.",
+      "artifacts": [
+        {
+          "path": "ci-node.json",
+          "sha256": "75da7bfb2c24fcb4ea78b19e26fc1fd9282e9c25a843e781be6b4f54f13e65e7"
+        }
+      ],
+      "observedAt": "2026-10-20T22:40:51.902Z"
+    },
+    {
+      "caseId": "typecheck",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "typecheck",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "TypeScript check passed.",
+      "artifacts": [
+        {
+          "path": "ci-node.json",
+          "sha256": "75da7bfb2c24fcb4ea78b19e26fc1fd9282e9c25a843e781be6b4f54f13e65e7"
+        }
+      ],
+      "observedAt": "2026-10-20T22:40:51.902Z"
+    },
+    {
+      "caseId": "frontend-build",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "production-build",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "Production frontend build passed.",
+      "artifacts": [
+        {
+          "path": "ci-node.json",
+          "sha256": "75da7bfb2c24fcb4ea78b19e26fc1fd9282e9c25a843e781be6b4f54f13e65e7"
+        }
+      ],
+      "observedAt": "2026-10-20T22:40:51.902Z"
+    },
+    {
+      "caseId": "workflow-contracts",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "definition-validation",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "21 workflow definitions and 21 unique IDs validated.",
+      "artifacts": [
+        {
+          "path": "ci-node.json",
+          "sha256": "75da7bfb2c24fcb4ea78b19e26fc1fd9282e9c25a843e781be6b4f54f13e65e7"
+        }
+      ],
+      "observedAt": "2026-10-20T22:40:51.902Z"
+    },
+    {
+      "caseId": "production-reality",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "reality-gate",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "Production reality gate passed.",
+      "artifacts": [
+        {
+          "path": "ci-node.json",
+          "sha256": "75da7bfb2c24fcb4ea78b19e26fc1fd9282e9c25a843e781be6b4f54f13e65e7"
+        }
+      ],
+      "observedAt": "2026-10-20T22:40:51.902Z"
+    },
+    {
+      "caseId": "matrix-regressions",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "evidence-isolation-tests",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "Hash, path confinement, model/protocol/scope/revision, freshness and write-control reporting regressions passed. No physical authority.",
+      "artifacts": [
+        {
+          "path": "ci-node.json",
+          "sha256": "75da7bfb2c24fcb4ea78b19e26fc1fd9282e9c25a843e781be6b4f54f13e65e7"
+        }
+      ],
+      "observedAt": "2026-10-20T22:40:51.902Z"
+    },
+    {
+      "caseId": "firmware-contracts",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "compatibility-policy-tests",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "Firmware manifest, identity, provenance/hash, readiness, inventory and archive tests passed. This does not attest firmware for any physical model.",
+      "artifacts": [
+        {
+          "path": "ci-node.json",
+          "sha256": "75da7bfb2c24fcb4ea78b19e26fc1fd9282e9c25a843e781be6b4f54f13e65e7"
+        }
+      ],
+      "observedAt": "2026-10-20T22:40:51.902Z"
+    },
+    {
+      "caseId": "bounded-scans",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "scan-deadline-tests",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "Behavioral tests cover deadline, denied/stalled probes, duplicate unfinished probes, late results and directory fallback.",
+      "artifacts": [
+        {
+          "path": "ci-node.json",
+          "sha256": "75da7bfb2c24fcb4ea78b19e26fc1fd9282e9c25a843e781be6b4f54f13e65e7"
+        }
+      ],
+      "observedAt": "2026-10-20T22:40:51.902Z"
+    },
+    {
+      "caseId": "workflow-availability",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "device-workflow-visibility-tests",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "Behavioral tests cover host USB isolation, authorization, partial MTP, missing executors, catalog claims and changed diagnostic observations.",
+      "artifacts": [
+        {
+          "path": "ci-node.json",
+          "sha256": "75da7bfb2c24fcb4ea78b19e26fc1fd9282e9c25a843e781be6b4f54f13e65e7"
+        }
+      ],
+      "observedAt": "2026-10-20T22:40:51.902Z"
+    },
+    {
+      "caseId": "workspace-panels",
+      "model": "linux-ci",
+      "deviceAlias": "github-ci",
+      "protocol": "software",
+      "operation": "navigation-component-tests",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "Focused views and deferred tool initialization passed the component regressions.",
+      "artifacts": [
+        {
+          "path": "ci-node.json",
+          "sha256": "75da7bfb2c24fcb4ea78b19e26fc1fd9282e9c25a843e781be6b4f54f13e65e7"
+        }
+      ],
+      "observedAt": "2026-10-20T22:40:51.902Z"
+    },
+    {
+      "caseId": "browser-ui-1",
+      "model": "Chromium-preview",
+      "deviceAlias": "github-browser-ci",
+      "protocol": "browser",
+      "operation": "Home is a compact phone workspace with honest browser readiness",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "Home is a compact phone workspace with honest browser readiness; no native bridge or physical device exercised.",
+      "artifacts": [
+        {
+          "path": "browser-ui.json",
+          "sha256": "4b31e110794b19030e8fbea4ce5b0d431f57c888f27e0ba2e3ed655bd0a51ff8"
+        }
+      ],
+      "observedAt": "2026-10-20T22:41:08.395Z"
+    },
+    {
+      "caseId": "browser-ui-2",
+      "model": "Chromium-preview",
+      "deviceAlias": "github-browser-ci",
+      "protocol": "browser",
+      "operation": "All six views show only their own content",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "All six views show only their own content; no native bridge or physical device exercised.",
+      "artifacts": [
+        {
+          "path": "browser-ui.json",
+          "sha256": "4b31e110794b19030e8fbea4ce5b0d431f57c888f27e0ba2e3ed655bd0a51ff8"
+        }
+      ],
+      "observedAt": "2026-10-20T22:41:08.395Z"
+    },
+    {
+      "caseId": "browser-ui-3",
+      "model": "Chromium-preview",
+      "deviceAlias": "github-browser-ci",
+      "protocol": "browser",
+      "operation": "Advanced tools are closed and deferred until requested",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "Advanced tools are closed and deferred until requested; no native bridge or physical device exercised.",
+      "artifacts": [
+        {
+          "path": "browser-ui.json",
+          "sha256": "4b31e110794b19030e8fbea4ce5b0d431f57c888f27e0ba2e3ed655bd0a51ff8"
+        }
+      ],
+      "observedAt": "2026-10-20T22:41:08.395Z"
+    },
+    {
+      "caseId": "browser-ui-4",
+      "model": "Chromium-preview",
+      "deviceAlias": "github-browser-ci",
+      "protocol": "browser",
+      "operation": "Firmware planning inputs survive navigation and disclosure toggles",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "Firmware planning inputs survive navigation and disclosure toggles; no native bridge or physical device exercised.",
+      "artifacts": [
+        {
+          "path": "browser-ui.json",
+          "sha256": "4b31e110794b19030e8fbea4ce5b0d431f57c888f27e0ba2e3ed655bd0a51ff8"
+        }
+      ],
+      "observedAt": "2026-10-20T22:41:08.395Z"
+    },
+    {
+      "caseId": "browser-ui-5",
+      "model": "Chromium-preview",
+      "deviceAlias": "github-browser-ci",
+      "protocol": "browser",
+      "operation": "Narrow screens retain navigation without horizontal scrolling",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "Narrow screens retain navigation without horizontal scrolling; no native bridge or physical device exercised.",
+      "artifacts": [
+        {
+          "path": "browser-ui.json",
+          "sha256": "4b31e110794b19030e8fbea4ce5b0d431f57c888f27e0ba2e3ed655bd0a51ff8"
+        }
+      ],
+      "observedAt": "2026-10-20T22:41:08.395Z"
+    },
+    {
+      "caseId": "browser-ui-6",
+      "model": "Chromium-preview",
+      "deviceAlias": "github-browser-ci",
+      "protocol": "browser",
+      "operation": "No uncaught application errors",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "No uncaught application errors; no native bridge or physical device exercised.",
+      "artifacts": [
+        {
+          "path": "browser-ui.json",
+          "sha256": "4b31e110794b19030e8fbea4ce5b0d431f57c888f27e0ba2e3ed655bd0a51ff8"
+        }
+      ],
+      "observedAt": "2026-10-20T22:41:08.395Z"
+    },
+    {
+      "caseId": "qualified-rust",
+      "model": "macOS-ci",
+      "deviceAlias": "github-macos-ci",
+      "protocol": "rust",
+      "operation": "qualified-feature-tests",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "86 qualified-feature Rust tests passed; no physical writes executed.",
+      "artifacts": [
+        {
+          "path": "ci-rust.json",
+          "sha256": "0cf8d447a53abac25d87c0147037ea4d28857acf037a1607876cd65467615219"
+        }
+      ],
+      "observedAt": "2026-10-20T22:43:23.527Z"
+    },
+    {
+      "caseId": "bootforge-rust",
+      "model": "macOS-ci",
+      "deviceAlias": "github-macos-ci",
+      "protocol": "rust",
+      "operation": "bootforge-usb-tests",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "49 BootForge USB tests passed; no external device qualified.",
+      "artifacts": [
+        {
+          "path": "ci-macos.json",
+          "sha256": "7272fd63358183fc4e04f232044b3a301fba21217e6405ff6f52d6acb531e184"
+        }
+      ],
+      "observedAt": "2026-10-20T22:57:02.890Z"
+    },
+    {
+      "caseId": "unsigned-universal-standard",
+      "model": "macOS-universal",
+      "deviceAlias": "github-macos-ci",
+      "protocol": "tauri-build",
+      "operation": "build-standard-app",
+      "scope": "release",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "Universal standard app built and passed CI bundle verification. Unsigned/ad-hoc CI artifact only; signing/notarization/GUI remain separate.",
+      "artifacts": [
+        {
+          "path": "ci-macos.json",
+          "sha256": "7272fd63358183fc4e04f232044b3a301fba21217e6405ff6f52d6acb531e184"
+        }
+      ],
+      "observedAt": "2026-10-20T22:57:02.890Z"
+    },
+    {
+      "caseId": "unsigned-universal-qualified",
+      "model": "macOS-universal",
+      "deviceAlias": "github-macos-ci",
+      "protocol": "tauri-build",
+      "operation": "build-qualified-app",
+      "scope": "release",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "Universal qualified-feature app built and passed CI source/symbol checks. Qualification artifact only; no release approval or device-write authority.",
+      "artifacts": [
+        {
+          "path": "ci-macos.json",
+          "sha256": "7272fd63358183fc4e04f232044b3a301fba21217e6405ff6f52d6acb531e184"
+        }
+      ],
+      "observedAt": "2026-10-20T22:57:02.890Z"
+    },
+    {
+      "caseId": "default-rust-unit-tests",
+      "model": "macOS-ci",
+      "deviceAlias": "github-macos-ci",
+      "protocol": "rust",
+      "operation": "standard-feature-unit-tests",
+      "scope": "simulated",
+      "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+      "status": "PASS",
+      "detail": "35 standard app Rust tests passed with qualified writes disabled; 86 feature tests separately cover qualified gates.",
+      "artifacts": [
+        {
+          "path": "ci-rust.json",
+          "sha256": "0cf8d447a53abac25d87c0147037ea4d28857acf037a1607876cd65467615219"
+        }
+      ],
+      "observedAt": "2026-10-20T22:43:23.527Z"
+    },
+    {
+      "caseId": "historical-ui-syntax",
+      "model": "linux-ci",
+      "deviceAlias": "github-prior-attempt",
+      "protocol": "software",
+      "operation": "typecheck",
+      "scope": "simulated",
+      "sourceRevision": "239b1c376f90aa64d0255f5cc61966329f76b4ec",
+      "status": "FAIL",
+      "detail": "MTP card JSX omitted a closing brace; typecheck failed. Corrected in a later source revision.",
+      "artifacts": [
+        {
+          "path": "prior-ci-failures.json",
+          "sha256": "c04118ad029254f1e2c0aad6be6729a96ed1ce2e49fda30d5ff2df4e2ef98d8b"
+        }
+      ],
+      "observedAt": "2026-10-20T22:18:43.256Z"
+    },
+    {
+      "caseId": "historical-catalog-contracts",
+      "model": "linux-ci",
+      "deviceAlias": "github-prior-attempt",
+      "protocol": "software",
+      "operation": "packaged-api-contracts",
+      "scope": "simulated",
+      "sourceRevision": "79c9f0fd1b08118abe2ef2a4e879862a5e0660ff",
+      "status": "FAIL",
+      "detail": "Three obsolete source assertions expected catalog flags to establish physical qualification. Replaced by behavioral evidence and implementation checks.",
+      "artifacts": [
+        {
+          "path": "prior-ci-failures.json",
+          "sha256": "c04118ad029254f1e2c0aad6be6729a96ed1ce2e49fda30d5ff2df4e2ef98d8b"
+        }
+      ],
+      "observedAt": "2026-10-20T22:23:35.432Z"
+    },
+    {
+      "caseId": "historical-diagnostic-type",
+      "model": "linux-ci",
+      "deviceAlias": "github-prior-attempt",
+      "protocol": "software",
+      "operation": "typecheck",
+      "scope": "simulated",
+      "sourceRevision": "9e117b3b56b8f88d1c7f5176ae8b8b7ab3c7a3fc",
+      "status": "FAIL",
+      "detail": "Diagnostic summary was passed to a full-descriptor type; typecheck failed. Corrected to the minimal required identity fields.",
+      "artifacts": [
+        {
+          "path": "prior-ci-failures.json",
+          "sha256": "c04118ad029254f1e2c0aad6be6729a96ed1ce2e49fda30d5ff2df4e2ef98d8b"
+        }
+      ],
+      "observedAt": "2026-10-20T22:34:30.874Z"
+    },
+    {
+      "caseId": "historical-fastboot-label",
+      "model": "macOS-ci",
+      "deviceAlias": "github-prior-attempt",
+      "protocol": "software",
+      "operation": "packaged-api-contracts",
+      "scope": "simulated",
+      "sourceRevision": "cc53e8b7d5e703fe218d868c1a80aafa305065e2",
+      "status": "FAIL",
+      "detail": "One obsolete source assertion expected the old Fastboot destination label. Serial-bound routing now has a behavioral regression.",
+      "artifacts": [
+        {
+          "path": "prior-ci-failures.json",
+          "sha256": "c04118ad029254f1e2c0aad6be6729a96ed1ce2e49fda30d5ff2df4e2ef98d8b"
+        }
+      ],
+      "observedAt": "2026-10-20T22:36:59.180Z"
+    },
+    {
+      "caseId": "historical-ci-command-contract",
+      "model": "linux-ci",
+      "deviceAlias": "github-prior-attempt",
+      "protocol": "software",
+      "operation": "source-contract-tests",
+      "scope": "simulated",
+      "sourceRevision": "843cbbf344b10a6602c58cd78a5f601165c0e9b6",
+      "status": "FAIL",
+      "detail": "CI source assertion assumed the old Cargo argument order. The packaged application still uses its committed lockfile; the supported command prefix is retained.",
+      "artifacts": [
+        {
+          "path": "prior-ci-failures.json",
+          "sha256": "c04118ad029254f1e2c0aad6be6729a96ed1ce2e49fda30d5ff2df4e2ef98d8b"
+        }
+      ],
+      "observedAt": "2026-10-20T22:38:59.302Z"
+    },
+    {
+      "caseId": "historical-library-lockfile",
+      "model": "macOS-ci",
+      "deviceAlias": "github-prior-attempt",
+      "protocol": "software",
+      "operation": "bootforge-library-check",
+      "scope": "simulated",
+      "sourceRevision": "843cbbf344b10a6602c58cd78a5f601165c0e9b6",
+      "status": "FAIL",
+      "detail": "A new --locked library check failed because this library has no committed Cargo.lock. Corrected the library check to its existing library policy; the packaged application's committed dependency graph remains locked.",
+      "artifacts": [
+        {
+          "path": "prior-ci-failures.json",
+          "sha256": "c04118ad029254f1e2c0aad6be6729a96ed1ce2e49fda30d5ff2df4e2ef98d8b"
+        }
+      ],
+      "observedAt": "2026-10-20T22:38:58.758Z"
+    }
+  ]
+}

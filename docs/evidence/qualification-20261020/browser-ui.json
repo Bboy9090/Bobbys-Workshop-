@@ -1,0 +1,73 @@
+{
+  "schema": "bobfwtools.workspace-ui-evidence.v1",
+  "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+  "runUrl": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39509792194",
+  "scope": "Chromium browser preview with no native bridge",
+  "startedAt": "2026-10-20T22:41:06.165Z",
+  "status": "PASS",
+  "hardwareQualified": false,
+  "executionAuthorized": false,
+  "checks": [
+    {
+      "name": "Home is a compact phone workspace with honest browser readiness",
+      "status": "PASS"
+    },
+    {
+      "name": "All six views show only their own content",
+      "status": "PASS"
+    },
+    {
+      "name": "Advanced tools are closed and deferred until requested",
+      "status": "PASS"
+    },
+    {
+      "name": "Firmware planning inputs survive navigation and disclosure toggles",
+      "status": "PASS"
+    },
+    {
+      "name": "Narrow screens retain navigation without horizontal scrolling",
+      "status": "PASS"
+    },
+    {
+      "name": "No uncaught application errors",
+      "status": "PASS"
+    }
+  ],
+  "metrics": {
+    "desktopHome": {
+      "height": 833,
+      "scrollHeight": 833,
+      "viewport": 1365,
+      "document": 1365,
+      "main": 1141,
+      "mainScroll": 1141
+    },
+    "mobileHome": {
+      "viewport": 390,
+      "document": 390,
+      "main": 390,
+      "mainScroll": 390
+    }
+  },
+  "pageErrors": [],
+  "finishedAt": "2026-10-20T22:41:08.395Z",
+  "artifact": {
+    "id": 12304468863,
+    "name": "BobFWTools-workspace-ui-evidence",
+    "size_in_bytes": 412017,
+    "url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/artifacts/12304468863",
+    "archive_download_url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/artifacts/12304468863/zip",
+    "expired": false,
+    "created_at": "2026-10-20T22:41:09Z",
+    "expires_at": "2027-01-18T22:40:18Z",
+    "updated_at": "2026-10-20T22:41:09Z",
+    "digest": "sha256:f1fcc76f48f5366f80fba016ca68202037ad7ab4c34421385412305895a1821b",
+    "workflow_run": {
+      "id": 39509792194,
+      "repository_id": 1116528900,
+      "head_repository_id": 1116528900,
+      "head_branch": "fix/qualification-release-evidence-20261020",
+      "head_sha": "a557d23c689a096dcddda8b26f7ce6bd3477a6af"
+    }
+  }
+}
