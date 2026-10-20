@@ -947,8 +947,10 @@ describe('Automatic target selection and exact-device firmware withholding', () 
 });
 
 
+// Catalog eligibility and physical-state behavior are exercised in hardware-probes.test.ts.
+// Catalog flags are not evidence that the current device is qualified.
 describe('Hardware readiness workflow policy binding', () => {
-  it('shows authoritative physical qualification state per supported lane', () => {
+  it('retains explicit policy identities and a pending physical-evidence display', () => {
     const desktop = read('src/lib/desktop.ts');
     const ui = read('src/components/HardwareFlowReadiness.tsx');
 
@@ -957,7 +959,6 @@ describe('Hardware readiness workflow policy binding', () => {
     expect(desktop).toContain("workflowPolicyId: 'samsung.odin-plan'");
     expect(desktop).toContain("workflowPolicyId: 'qualcomm.edl-plan'");
     expect(desktop).toContain("workflowPolicyId: 'mediatek.brom-plan'");
-    expect(desktop).toContain("physicallyQualified: workflowPolicy('qualcomm.edl-plan')?.physicallyQualified ?? null");
 
     expect(ui).toContain('physical qualification');
     expect(ui).toContain("lane.physicallyQualified ? 'complete' : 'pending'");
@@ -966,13 +967,11 @@ describe('Hardware readiness workflow policy binding', () => {
 
 
 describe('Hardware readiness catalog completeness', () => {
-  it('accounts for every active workflow and shows reserved workflows explicitly', () => {
+  it('keeps unsupported workflows blocked and reserved references separate', () => {
     const desktop = read('src/lib/desktop.ts');
     const ui = read('src/components/HardwareFlowReadiness.tsx');
 
     expect(desktop).toContain('representedPolicyIds');
-    expect(desktop).toContain('item.activeInBobfwtools && !representedPolicyIds.has(item.id)');
-    expect(desktop).toContain('Physical qualification is still pending for this workflow.');
     expect(desktop).toContain("state: 'blocked'");
 
     expect(ui).toContain('Reserved / inactive workflows');
@@ -1003,12 +1002,11 @@ describe('Exact device identity gate for verified firmware', () => {
 
 
 describe('Pending physical qualification queue', () => {
-  it('derives bench evidence tasks from every active unqualified workflow policy', () => {
+  it('retains complete bench controls and read-only packet export', () => {
     const desktop = read('src/lib/desktop.ts');
     const ui = read('src/components/HardwareFlowReadiness.tsx');
 
     expect(desktop).toContain('qualificationQueue');
-    expect(desktop).toContain('policy.activeInBobfwtools && !policy.physicallyQualified');
     expect(desktop).toContain('Designated physical-device bench result with post-operation verification');
     expect(desktop).toContain('Verified backup or rollback evidence');
     expect(desktop).toContain('Audit ledger evidence with input/output fingerprints');
