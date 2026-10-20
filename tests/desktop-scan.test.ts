@@ -81,3 +81,24 @@ test('coalescing releases its slot on rejection so a later safe rescan can retry
   expect(await run('usb',probe,'fallback',failures,50)).toBe('real');
   expect(probe).toHaveBeenCalledTimes(2);
 });
+
+test('a late response from an expired scan cannot populate a later scan', async () => {
+  vi.useFakeTimers();
+  let release!: (value:unknown[])=>void;
+  let calls=0;
+  host({adb_scan:()=> ++calls===1 ? new Promise(resolve=>{release=resolve;}) :
+    [{serial:'fresh-target',authorized:false}]});
+  const scan=createDesktopScanner(50);
+  const old=scan();
+  await vi.advanceTimersByTimeAsync(50);
+  expect((await old).adb).toEqual([]);
+  const during=await scan();
+  expect(during.adb).toEqual([]);
+  expect(during.failures).toContainEqual({probe:'adb',
+    message:'Previous read-only probe is still running; status is unverified.'});
+  release([{serial:'stale-target',authorized:false}]);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(during.adb).toEqual([]);
+  expect((await scan()).adb).toEqual([{serial:'fresh-target',authorized:false}]);
+  expect(calls).toBe(2);
+});

@@ -24,7 +24,7 @@ export async function runHardwareProbe<T>(
   }
 }
 
-/** Coalesce unfinished native probes across UI timeouts; timeout is not cancellation. */
+/** Prevent duplicate native probes and reuse of results from timed-out scans. */
 export function createReadOnlyProbeRunner() {
   const pending = new Map<string, Promise<unknown>>();
   return <T>(
@@ -32,7 +32,8 @@ export function createReadOnlyProbeRunner() {
     failures: HardwareProbeFailure[], timeoutMs = 12000,
   ): Promise<T> => runHardwareProbe(probe, () => {
     let task = pending.get(probe) as Promise<T> | undefined;
-    if (!task) {
+    if (task) throw new Error('Previous read-only probe is still running; status is unverified.');
+    {
       task = Promise.resolve().then(run);
       pending.set(probe, task);
       const settled = () => {

@@ -382,7 +382,6 @@ export default function App() {
     setMtp(null);
     setCapabilities(null);
     setRecoveryCandidates([]);
-    setVerifiedFirmwareBundles([]);
     try {
       const scan = await scanner(storageIndex, mtpPath);
       setHandshake(scan.handshake);
@@ -892,7 +891,7 @@ export default function App() {
   };
 
   const useVerifiedFirmwareBundle = async () => {
-    if (recoveryBusy || !selectedVerifiedBundle) return;
+    if (recoveryBusy || refreshing || !selectedVerifiedBundle) return;
     setRecoveryBusy(true);
     setNativeError(null);
     setRecoveryEvidencePath(null);
@@ -1882,6 +1881,7 @@ export default function App() {
                       onClick={() => void useVerifiedFirmwareBundle()}
                       disabled={
                         recoveryBusy ||
+                        refreshing ||
                         !selectedVerifiedBundle ||
                         !laneVerifiedFirmwareBundles.some((bundle) => bundle.directory === selectedVerifiedBundle)
                       }
