@@ -6,7 +6,7 @@ This runbook covers the public **standard BobFWTools macOS app**. It does not au
 
 The manual `BobFWTools macOS Release` workflow must exist on the repository default branch (`main-tool-kit`) before GitHub will normally expose it as a Run workflow action.
 
-PR #203 currently targets `feat/bobfwtools-calibration-edl-safety`, so the release workflow becomes operational only after this work is propagated to `main-tool-kit`.
+The default branch already has a separately evolved signed app + DMG workflow. This integration lane uses the workflow and secret names documented below. Reconcile both versions when promoting integration changes to `main-tool-kit`; preserve the default branch's installer, DMG notarization, and receipt stages. An integration-only merge does not update the default release lane.
 
 ## Required GitHub Actions secrets
 
@@ -24,7 +24,7 @@ Do not commit any certificate, private key, password, Apple ID credential, or se
 ## Run the release
 
 1. Confirm the desired source commit is on `main-tool-kit`.
-2. Confirm ordinary Node.js CI and BobFWTools macOS Core are green for that source.
+2. Confirm ordinary Node.js CI, workspace browser checks, and BobFWTools macOS Core are green for that exact source.
 3. Open GitHub Actions and select **BobFWTools macOS Release**.
 4. Choose **Run workflow**.
 5. Enter a short release label such as `0.1.0-rc1`. The workflow sanitizes the label before using it in artifact names or provenance metadata.
@@ -36,7 +36,7 @@ The workflow intentionally fails closed if any release credential is missing.
 
 The release job:
 
-1. Re-runs source reality, TypeScript, repository tests, workflow validation, and BootForgeUSB tests.
+1. Installs the locked frontend and packaged API dependencies, then re-runs source reality, TypeScript, packaged API/repository tests, workflow validation, BootForgeUSB tests, and standard/qualified Rust gate tests.
 2. Builds the universal standard macOS app.
 3. Verifies the unsigned build before signing.
 4. Creates a temporary keychain and imports the Developer ID certificate.
@@ -100,3 +100,13 @@ If the workflow fails:
 The qualified destructive-writer app produced by macOS Core is a qualification artifact, not the public release artifact.
 
 Do not sign/notarize/distribute it as production software until the designated-device physical qualification process has real bench-write and post-write verification evidence and the project explicitly opens a qualified release lane.
+
+## Current interface release boundary (2026-10-20)
+
+The focused workspace in PR #240 changes navigation and when advanced subsystems initialize. Browser-only CI checks density, navigation, deferred panels, retained form state, and narrow-screen overflow. Browser evidence does not qualify native commands, connected devices, signing, notarization, Gatekeeper, or the installer.
+
+For a release candidate, record the exact source revision, executable and installer hashes, signing team, accepted app and DMG notarization receipts, ticket validation, and Gatekeeper assessment. Mount the DMG read-only, copy to an isolated location, verify the copied app, launch it, check the native handshake and completed scan, and run a safe audit with observed target evidence. Preserve explicit probe failures and do not infer a supported phone from built-in Apple USB components.
+
+Desktop Commander reached its monthly limit during this session. The changed workspace has no completed signed/native installer or GUI qualification. Older signed app and DMG receipts remain historical and must not be reused for this source. Repository-secret availability also has not been verified through this connector.
+
+Standard release preparation does not authorize any destructive device operation. Every flash, wipe, unlock, repartition, calibration restore, and removable-media write remains separately blocked until exact-device evidence, trusted compatible firmware, recovery readiness, and explicit approval for the named device and operation are established.
