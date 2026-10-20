@@ -1,0 +1,110 @@
+[
+  {
+    "caseId": "historical-ui-syntax",
+    "operation": "typecheck",
+    "sourceRevision": "239b1c376f90aa64d0255f5cc61966329f76b4ec",
+    "pullRequestHead": "0881c841408adf0a62b16392ff35a40bb4c42786",
+    "observedAt": "2026-10-20T22:18:43.256Z",
+    "detail": "MTP card JSX omitted a closing brace; typecheck failed. Corrected in a later source revision.",
+    "jobId": 118918747776,
+    "jobUrl": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39507128521/job/118918747776",
+    "logEvidence": [
+      "2026-10-20T22:18:43.2564799Z ##[error]src/App.tsx(1137,17): error TS1005: '}' expected.",
+      "2026-10-20T22:18:43.2754854Z ##[error]Process completed with exit code 1."
+    ],
+    "model": "linux-ci"
+  },
+  {
+    "caseId": "historical-catalog-contracts",
+    "operation": "packaged-api-contracts",
+    "sourceRevision": "79c9f0fd1b08118abe2ef2a4e879862a5e0660ff",
+    "pullRequestHead": "99f80dc0b3c929dbe42fc7b48be1187e4a080616",
+    "observedAt": "2026-10-20T22:23:35.432Z",
+    "detail": "Three obsolete source assertions expected catalog flags to establish physical qualification. Replaced by behavioral evidence and implementation checks.",
+    "jobId": 118920643574,
+    "jobUrl": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39507691511/job/118920643574",
+    "logEvidence": [
+      "2026-10-20T22:23:35.4320733Z  FAIL  tests/firmware-library-contract.test.js > Hardware readiness workflow policy binding > shows authoritative physical qualification state per supported lane",
+      "2026-10-20T22:23:35.4327626Z AssertionError: expected 'import { workflowImplementation } fro…' to contain 'physicallyQualified: workflowPolicy(\\…'",
+      "2026-10-20T22:23:35.5461307Z  FAIL  tests/firmware-library-contract.test.js > Hardware readiness catalog completeness > accounts for every active workflow and shows reserved workflows explicitly",
+      "2026-10-20T22:23:35.5461962Z AssertionError: expected 'import { workflowImplementation } fro…' to contain 'item.activeInBobfwtools && !represent…'",
+      "2026-10-20T22:23:35.6074676Z  FAIL  tests/firmware-library-contract.test.js > Pending physical qualification queue > derives bench evidence tasks from every active unqualified workflow policy",
+      "2026-10-20T22:23:35.6075333Z AssertionError: expected 'import { workflowImplementation } fro…' to contain 'policy.activeInBobfwtools && !policy.…'",
+      "2026-10-20T22:23:35.6610327Z  Test Files  1 failed | 39 passed (40)",
+      "2026-10-20T22:23:35.6610755Z       Tests  3 failed | 284 passed (287)",
+      "2026-10-20T22:23:35.6931954Z ##[error]AssertionError: expected 'import { workflowImplementation } fro…' to contain 'physicallyQualified: workflowPolicy(\\…'",
+      "2026-10-20T22:23:35.7239442Z ##[error]AssertionError: expected 'import { workflowImplementation } fro…' to contain 'item.activeInBobfwtools && !represent…'",
+      "2026-10-20T22:23:35.7544721Z ##[error]AssertionError: expected 'import { workflowImplementation } fro…' to contain 'policy.activeInBobfwtools && !policy.…'",
+      "2026-10-20T22:23:35.7562141Z ##[error]Process completed with exit code 1."
+    ],
+    "model": "linux-ci"
+  },
+  {
+    "caseId": "historical-diagnostic-type",
+    "operation": "typecheck",
+    "sourceRevision": "9e117b3b56b8f88d1c7f5176ae8b8b7ab3c7a3fc",
+    "pullRequestHead": "d2be966de8ea33adb05c66ba4a825bd22b6ee599",
+    "observedAt": "2026-10-20T22:34:30.874Z",
+    "detail": "Diagnostic summary was passed to a full-descriptor type; typecheck failed. Corrected to the minimal required identity fields.",
+    "jobId": 118925223621,
+    "jobUrl": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39509065391/job/118925223621",
+    "logEvidence": [
+      "2026-10-20T22:34:30.8749948Z ##[error]src/App.tsx(250,20): error TS2322: Type 'UsbConnectionSummary | null' is not assignable to type 'UsbDeviceRecord | null'.",
+      "2026-10-20T22:34:30.9022544Z ##[error]Process completed with exit code 1."
+    ],
+    "model": "linux-ci"
+  },
+  {
+    "caseId": "historical-fastboot-label",
+    "operation": "packaged-api-contracts",
+    "sourceRevision": "cc53e8b7d5e703fe218d868c1a80aafa305065e2",
+    "pullRequestHead": "f660d0cf9d710acef6e633bb03040afd9be690bf",
+    "observedAt": "2026-10-20T22:36:59.180Z",
+    "detail": "One obsolete source assertion expected the old Fastboot destination label. Serial-bound routing now has a behavioral regression.",
+    "jobId": 118925792645,
+    "jobUrl": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39509236459/job/118925792645",
+    "logEvidence": [
+      "2026-10-20T22:36:59.1803680Z  FAIL  tests/bobfwtools-foundation.test.js > best next action routing > routes selected devices to the safest relevant lane without auto-running destructive work",
+      "2026-10-20T22:36:59.1807930Z AssertionError: expected 'import { WorkspaceNavigation, Workspa…' to contain 'Open Fastboot service lane'",
+      "2026-10-20T22:36:59.4192550Z  Test Files  1 failed | 39 passed (40)",
+      "2026-10-20T22:36:59.4193040Z       Tests  1 failed | 293 passed (294)",
+      "2026-10-20T22:36:59.4847940Z ##[error]AssertionError: expected 'import { WorkspaceNavigation, Workspa…' to contain 'Open Fastboot service lane'",
+      "2026-10-20T22:36:59.4901770Z ##[error]Process completed with exit code 1."
+    ],
+    "model": "macOS-ci"
+  },
+  {
+    "caseId": "historical-ci-command-contract",
+    "operation": "source-contract-tests",
+    "model": "linux-ci",
+    "sourceRevision": "843cbbf344b10a6602c58cd78a5f601165c0e9b6",
+    "pullRequestHead": "bc15b98a0f77271677d9c72d15e18790df489ba9",
+    "observedAt": "2026-10-20T22:38:59.302Z",
+    "detail": "CI source assertion assumed the old Cargo argument order. The packaged application still uses its committed lockfile; the supported command prefix is retained.",
+    "jobId": 118926947089,
+    "jobUrl": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39509574532/job/118926947089",
+    "logEvidence": [
+      "2026-10-20T22:38:59.3026367Z  FAIL  tests/bobfwtools-foundation.test.js > BobFWTools production foundation > keeps the production reality gate in CI",
+      "2026-10-20T22:38:59.3035264Z AssertionError: expected 'name: BobFWTools macOS Core\\n\\non:\\n …' to contain 'cargo check --manifest-path src-tauri…'",
+      "2026-10-20T22:38:59.3157572Z  Test Files  1 failed | 39 passed (40)",
+      "2026-10-20T22:38:59.3160496Z       Tests  1 failed | 294 passed (295)",
+      "2026-10-20T22:38:59.3274160Z ##[error]AssertionError: expected 'name: BobFWTools macOS Core\\n\\non:\\n …' to contain 'cargo check --manifest-path src-tauri…'",
+      "2026-10-20T22:38:59.3785561Z ##[error]Process completed with exit code 1."
+    ]
+  },
+  {
+    "caseId": "historical-library-lockfile",
+    "operation": "bootforge-library-check",
+    "model": "macOS-ci",
+    "sourceRevision": "843cbbf344b10a6602c58cd78a5f601165c0e9b6",
+    "pullRequestHead": "bc15b98a0f77271677d9c72d15e18790df489ba9",
+    "observedAt": "2026-10-20T22:38:58.758Z",
+    "detail": "A new --locked library check failed because this library has no committed Cargo.lock. Corrected the library check to its existing library policy; the packaged application's committed dependency graph remains locked.",
+    "jobId": 118926947150,
+    "jobUrl": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39509574532/job/118926947150",
+    "logEvidence": [
+      "2026-10-20T22:38:58.7584020Z error: cannot create the lock file /Users/runner/work/Bobbys-Workshop-/Bobbys-Workshop-/libs/bootforgeusb/Cargo.lock because --locked was passed to prevent this",
+      "2026-10-20T22:38:58.7613280Z ##[error]Process completed with exit code 101."
+    ]
+  }
+]

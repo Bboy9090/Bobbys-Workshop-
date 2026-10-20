@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   BOBFWTOOLS_SOURCE_REVISION: ${{ github.sha }}
 
@@ -58,7 +62,7 @@ jobs:
         package-manager-cache: false
 
     - name: Install Dependencies
-      run: npm install
+      run: npm ci
 
     - name: Production Reality Gate
       run: npm run verify:reality
@@ -73,10 +77,44 @@ jobs:
       run: cargo check --manifest-path libs/bootforgeusb/Cargo.toml --no-default-features
 
     - name: Check Tauri Rust core
-      run: cargo check --manifest-path src-tauri/Cargo.toml
+      run: cargo check --manifest-path src-tauri/Cargo.toml --locked
 
     - name: Check qualified destructive writer build
-      run: cargo check --manifest-path src-tauri/Cargo.toml --features qualified-flash
+      run: cargo check --manifest-path src-tauri/Cargo.toml --locked --features qualified-flash
+
+    - name: Test standard app Rust gates
+      run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features
 
     - name: Test qualified destructive writer gates
-      run: cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --features qualified-flash
+      run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features --features qualified-flash
+
+
+  workspace-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@v7
+    - uses: actions/setup-node@v7
+      with:
+        node-version: "24.x"
+        package-manager-cache: false
+    - name: Install locked frontend dependencies
+      run: npm ci
+    - name: Typecheck and build the workspace
+      run: npm run typecheck && npm run build
+    - name: Install isolated browser test runtime
+      run: |
+        npm install --prefix "$RUNNER_TEMP/bobfw-ui" --no-audit --no-fund --package-lock=false --ignore-scripts playwright@1.64.0
+        "$RUNNER_TEMP/bobfw-ui/node_modules/.bin/playwright" install --with-deps chromium
+    - name: Check navigation, density, state retention, and narrow screens
+      env:
+        BOBFW_PLAYWRIGHT_MODULE: ${{ runner.temp }}/bobfw-ui/node_modules/playwright
+      run: node scripts/qualify-workspace-ui.cjs
+    - name: Upload browser-only UI evidence
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: BobFWTools-workspace-ui-evidence
+        path: artifacts/workspace-ui/
+        if-no-files-found: warn
+        compression-level: 0

@@ -1,0 +1,524 @@
+{
+  "observedAt": "2026-10-20T22:58:29.523Z",
+  "repository": "Bboy9090/Bobbys-Workshop-",
+  "continuation": {
+    "pullRequest": 236,
+    "baseBranch": "integration/hardware-readiness-foundation-20261018",
+    "baseSha": "8f640d077d70cdf58e8de941f765009ef85d6c36",
+    "workingPullRequest": 240
+  },
+  "branches": [
+    {
+      "name": "agent-lease-qualification-20261020-a",
+      "sha": "fad31ee750250853b3f42a2be2daf7208a494c87",
+      "protected": false
+    },
+    {
+      "name": "alert-autofix-277",
+      "sha": "5737bc4c60cebcd8fff45656bb08144f968f0518",
+      "protected": false
+    },
+    {
+      "name": "ci/node24-action-majors",
+      "sha": "7aee9ba4b77b4a93c76bb49790b4370f180a612b",
+      "protected": false
+    },
+    {
+      "name": "claude/clarify-role-of-bobbys-workshop",
+      "sha": "c8b4990bd284846d609c478c4e027409c1332940",
+      "protected": false
+    },
+    {
+      "name": "claude/feat-workshop-repair-dashboard",
+      "sha": "83d5028388e91afb9c5013a9688fdd5057b00692",
+      "protected": false
+    },
+    {
+      "name": "copilot/add-branch-protection-checks",
+      "sha": "83eff16af22683257e4ae79bcee0ceb6b94a3351",
+      "protected": false
+    },
+    {
+      "name": "copilot/add-copilot-instructions-file",
+      "sha": "d2ae390408de707fd0a84a81ab2751dc39e7786f",
+      "protected": false
+    },
+    {
+      "name": "copilot/audit-hunter-task",
+      "sha": "648e24a65a41e93c6232445b8c9f4ff64dbb5cb6",
+      "protected": false
+    },
+    {
+      "name": "copilot/audit-repo-for-placeholders",
+      "sha": "21f7d56fca9c40b6e469891bbae0f0299a273219",
+      "protected": false
+    },
+    {
+      "name": "copilot/clean-repo-file-tree",
+      "sha": "229063782afa2492b1dd22e7f704f5030cf422c8",
+      "protected": false
+    },
+    {
+      "name": "copilot/develop-diagnostic-repair-app",
+      "sha": "e13d3d14bec2ba4a73ddc2586bb39be77fab5e8e",
+      "protected": false
+    },
+    {
+      "name": "copilot/enhance-project-to-perfection",
+      "sha": "046dd6b0b89eafd7c0b671ba70acfc8d42766ce9",
+      "protected": false
+    },
+    {
+      "name": "copilot/fix-app-building-issues",
+      "sha": "f63a178279126cc733d267d015e8ec1e2283a1d1",
+      "protected": false
+    },
+    {
+      "name": "copilot/fix-ci-issues-and-reliability",
+      "sha": "32ee4095400daf8ac6edcdfcfa5f84053f4ec4ec",
+      "protected": false
+    },
+    {
+      "name": "copilot/fix-failing-builds-and-tests",
+      "sha": "8f507faa8973bd00a9fd1ffc4e77a2f3a3185204",
+      "protected": false
+    },
+    {
+      "name": "copilot/fix-merge-issues",
+      "sha": "89bd85c5ff1ea5788ebdf664a78349d3e7c09530",
+      "protected": false
+    },
+    {
+      "name": "copilot/identify-code-inefficiencies",
+      "sha": "89e9a9e9fbb784ad3ea411a195f7ae8af93998f5",
+      "protected": false
+    },
+    {
+      "name": "copilot/improve-code-efficiency",
+      "sha": "aa6fa40c381d5d062a779e2d1f8b20f78db145be",
+      "protected": false
+    },
+    {
+      "name": "copilot/refactor-duplicate-code-and-organize-files",
+      "sha": "fad0b8173eb94e9bfa479b176b6b9a12f199fba5",
+      "protected": false
+    },
+    {
+      "name": "copilot/sub-pr-146",
+      "sha": "43c35704ccd75aa1b2060c384501ed1daadbb9ab",
+      "protected": false
+    },
+    {
+      "name": "copilot/sub-pr-147",
+      "sha": "6b728efa5a6bf6f82c0928a7ed08e0186fd1ae9d",
+      "protected": false
+    },
+    {
+      "name": "cursor/remote-updates-synchronization-46f4",
+      "sha": "2c78bbfebd0669a176440edcd088f2640587560c",
+      "protected": false
+    },
+    {
+      "name": "cursor/repository-final-transformation-7ef9",
+      "sha": "ee4d4c951a815afa888469f7eddfde5109ec6fef",
+      "protected": false
+    },
+    {
+      "name": "cursor/workshop-production-readiness-9663",
+      "sha": "5dc6d4105085206bd501241ce9e7e21978e64e2c",
+      "protected": false
+    },
+    {
+      "name": "dependabot/cargo/libs/bootforgeusb/cargo-6381d79d06",
+      "sha": "6433500e86ce7068aad6700d40d13c21e46bb14a",
+      "protected": false
+    },
+    {
+      "name": "dependabot/npm_and_yarn/github/spark-0.46.0",
+      "sha": "20012b42796b9be8fe094fee418c55af21a56b20",
+      "protected": false
+    },
+    {
+      "name": "dependabot/npm_and_yarn/npm_and_yarn-0069324090",
+      "sha": "0a8d128f946a35d35cd388f960ef78889239510b",
+      "protected": false
+    },
+    {
+      "name": "dependabot/npm_and_yarn/server/npm_and_yarn-805d10c78b",
+      "sha": "e9ae7e88e21dec16a26294188594ffd65622fc9f",
+      "protected": false
+    },
+    {
+      "name": "dependabot/npm_and_yarn/tailwindcss/postcss-4.2.2",
+      "sha": "25c07f7a003808a71299c906511b12d6c843cb26",
+      "protected": false
+    },
+    {
+      "name": "dependabot/npm_and_yarn/typescript-6.0.2",
+      "sha": "f58ccecf0043a41caa6006c910459ac98a6b5c2f",
+      "protected": false
+    },
+    {
+      "name": "dependabot/npm_and_yarn/vite-8.0.5",
+      "sha": "ab489bf2a2c557473ee87de293832dca9e81f681",
+      "protected": false
+    },
+    {
+      "name": "dependabot/pip/python/fastapi_backend/pip-28e3a2e8dd",
+      "sha": "a693711c16521b37131d07ffe25317b235eb6170",
+      "protected": false
+    },
+    {
+      "name": "docs/bobfwtools-release-20-gates-20261013",
+      "sha": "62ea0fd5e9b641c07d9f75a367153cd08e733cb5",
+      "protected": false
+    },
+    {
+      "name": "docs/flash-interruption-recovery-gates-20261014",
+      "sha": "bee833658fec3b109dc964c9d0726d4c7aa57abe",
+      "protected": false
+    },
+    {
+      "name": "docs/flash-lab-30-gates-20261015",
+      "sha": "85342bea379e4dc7aba3567ddcbe8291c5c20514",
+      "protected": false
+    },
+    {
+      "name": "evidence/a17-usb-reconnection-20261013",
+      "sha": "ceaeb3b8658353de1cf4e10da77ed917d42c2d98",
+      "protected": false
+    },
+    {
+      "name": "feat/a176u-readonly-qualification-20261015",
+      "sha": "4abe7d0151c6530c7fea5e5e79283f91c44c3924",
+      "protected": false
+    },
+    {
+      "name": "feat/bobfwtools-calibration-edl-safety",
+      "sha": "e3ca1462e057e7828bd7b1a1e2159d1be7aab25d",
+      "protected": false
+    },
+    {
+      "name": "feat/bobfwtools-macos-foundation",
+      "sha": "2ceef486df91a204bbe49924e67af515d9ee9014",
+      "protected": false
+    },
+    {
+      "name": "feat/device-qualification-matrix-20261018",
+      "sha": "a94a37afae1e818067bfdd603ff4bb6f29ab5ea4",
+      "protected": false
+    },
+    {
+      "name": "feat/flashlab-capability-gate-20261016",
+      "sha": "c126556c5d7f17e655c38316a57a76221c5535fd",
+      "protected": false
+    },
+    {
+      "name": "feature/driver-claim-safety-continuation-v2",
+      "sha": "2f5831406937ccf7545c4b6129f461799cb78bd9",
+      "protected": false
+    },
+    {
+      "name": "feature/exclusive-agent-leases-20261020",
+      "sha": "e0c36c0c292893460d875ffc594929ddaee3b881",
+      "protected": false
+    },
+    {
+      "name": "feature/firmware-model-manifests",
+      "sha": "3e0c8095f0bf528fbddf89d87f2516b09d3cc735",
+      "protected": false
+    },
+    {
+      "name": "feature/hardware-flow-orchestrator-v1",
+      "sha": "97d289c185b12378f679e478ab368071af936ac0",
+      "protected": false
+    },
+    {
+      "name": "feature/hardware-flow-readiness-orchestrator",
+      "sha": "23cf7fc54dea90ee18c06acce2532ed27eb8ddd5",
+      "protected": false
+    },
+    {
+      "name": "feature/operational-console-pwa",
+      "sha": "a182212c74d63cf35d6c5b2e36088d8a92b44085",
+      "protected": false
+    },
+    {
+      "name": "feature/publishing-command-dashboard",
+      "sha": "ac5e4a55f27e9df81fd9fce0ff727887d3d5a712",
+      "protected": false
+    },
+    {
+      "name": "feature/qualcomm-mediatek-firmware-library",
+      "sha": "1aa8cd94e43146bec7d55b88e8c9934634c6d06e",
+      "protected": false
+    },
+    {
+      "name": "fix/a176u-runtime-identity-declaration-20261015",
+      "sha": "f7cacdb99f6b24f543d69bc8966440ef6a93b982",
+      "protected": false
+    },
+    {
+      "name": "fix/macos-adb-all-entrypoints-20261013",
+      "sha": "8a1b10b755cb9ea6e720b65214dbe8b48da865c6",
+      "protected": false
+    },
+    {
+      "name": "fix/macos-adb-libusb-samsung-20261013",
+      "sha": "784421b6580da6c122392475d844b2fe1d7c9005",
+      "protected": false
+    },
+    {
+      "name": "fix/macos-release-missing-notarization-script-20261016",
+      "sha": "ba25f8ef378f835fa2a50acf4efae36cbe66b2d1",
+      "protected": false
+    },
+    {
+      "name": "fix/macos-webview-client-entitlement-20261018",
+      "sha": "caa8af84bd2d8a97ab2990bef2d160a449427a91",
+      "protected": false
+    },
+    {
+      "name": "fix/qualification-release-evidence-20261020",
+      "sha": "4f7c9ed9b94fba598ae7a78ac4ff9d12fa0d8342",
+      "protected": false
+    },
+    {
+      "name": "fix/qualified-flash-evidence-semantics-20261015",
+      "sha": "fffc634b485d3ea3fe18d5e488963f28bf4c7f9b",
+      "protected": false
+    },
+    {
+      "name": "fix/qualify-mjs-tests-20261018",
+      "sha": "05afc5cb2cd68e9f30f85279ef849760bea67f29",
+      "protected": false
+    },
+    {
+      "name": "integration/bobfwtools-combined-20261011",
+      "sha": "b70b18fea7554657bdd18f42522ba5642107dbd6",
+      "protected": false
+    },
+    {
+      "name": "integration/hardware-readiness-foundation-20261018",
+      "sha": "8f640d077d70cdf58e8de941f765009ef85d6c36",
+      "protected": false
+    },
+    {
+      "name": "integration/samsung-readonly-gui-20261011",
+      "sha": "0cdeb66a9094e793481aa548204e56b8514f105c",
+      "protected": false
+    },
+    {
+      "name": "ipad/firmware-inventory-contract-20261010",
+      "sha": "b5bc87da0f097ab2b87ed4b8af37d2fa0eb7fd73",
+      "protected": false
+    },
+    {
+      "name": "main",
+      "sha": "5de62c6e423b0e69a71eb962b966c1f906022f46",
+      "protected": false
+    },
+    {
+      "name": "main-tool-kit",
+      "sha": "2b612b909c7d8d5df164d9240a25796b438666e2",
+      "protected": false
+    },
+    {
+      "name": "release/local-notary-lane",
+      "sha": "6a961a62899e75e214697750dcafa73dd75c8797",
+      "protected": false
+    },
+    {
+      "name": "release/macos-release-bridge-v2",
+      "sha": "ba6ccd283545efaf07e073198d45661fcdade64b",
+      "protected": false
+    },
+    {
+      "name": "release/macos-signing-notarization",
+      "sha": "2eb0491823cde7d21184e1028b5bcde89bc95764",
+      "protected": false
+    },
+    {
+      "name": "repair/workshop-test-contracts-20261007",
+      "sha": "224f20fffc1da6abccfd223d0a11cd85af3f6bfb",
+      "protected": false
+    },
+    {
+      "name": "rooms-complete-3748c",
+      "sha": "695cdb37a5d36f2521600a6e50b8415ed78cd784",
+      "protected": false
+    },
+    {
+      "name": "security/server-lock-refresh",
+      "sha": "1cb466ab73598781654d29100c394d60c5805a12",
+      "protected": false
+    },
+    {
+      "name": "test/flash-executor-injection-20261014",
+      "sha": "2f478826f6dd438ff4e1341360865c16aa83d9f6",
+      "protected": false
+    },
+    {
+      "name": "test/flash-interruption-20261014",
+      "sha": "3d6a966b7f0d693a28d682099082ce5354bddeb0",
+      "protected": false
+    },
+    {
+      "name": "test/flash-lab-virtual-partition-20261014",
+      "sha": "0556bfce66fcdb03cc05be3b036a178a21e0d7e7",
+      "protected": false
+    },
+    {
+      "name": "test/flash-postwrite-20261014",
+      "sha": "4f35dedb5e0b1f01e5202bc93f086802b902ad5d",
+      "protected": false
+    },
+    {
+      "name": "test/flash-transaction-integration-20261014",
+      "sha": "3f28eed3ced510adfb2bd16efa03e7e61a97e5b2",
+      "protected": false
+    },
+    {
+      "name": "test/flash-transport-result-20261014",
+      "sha": "23f51dbbaa52656ff2bf5600c3b1f921f629cd3c",
+      "protected": false
+    },
+    {
+      "name": "test/macos-release-entrypoint-contract-20261016",
+      "sha": "e58b83d38b971f0b7d4ed7679e40dc63a8d1253d",
+      "protected": false
+    },
+    {
+      "name": "workshop/agent-coordination-20261005",
+      "sha": "9145efb50dd9c43d8f263888e01819c55ef2f78f",
+      "protected": false
+    }
+  ],
+  "openPullRequests": [
+    {
+      "number": 240,
+      "title": "Focus the repair workspace and enforce honest device/workflow readiness",
+      "head": "fix/qualification-release-evidence-20261020",
+      "sha": "a557d23c689a096dcddda8b26f7ce6bd3477a6af",
+      "base": "integration/hardware-readiness-foundation-20261018",
+      "draft": true,
+      "updatedAt": "2026-10-20T22:44:59Z"
+    },
+    {
+      "number": 239,
+      "title": "Add task leases and fenced GitHub receipt publication",
+      "head": "feature/exclusive-agent-leases-20261020",
+      "sha": "e0c36c0c292893460d875ffc594929ddaee3b881",
+      "base": "main-tool-kit",
+      "draft": true,
+      "updatedAt": "2026-10-20T07:26:36Z"
+    },
+    {
+      "number": 193,
+      "title": "Add Workshop checkpoint validation and command-center coordination",
+      "head": "workshop/agent-coordination-20261005",
+      "sha": "9145efb50dd9c43d8f263888e01819c55ef2f78f",
+      "base": "main-tool-kit",
+      "draft": false,
+      "updatedAt": "2026-10-07T18:06:32Z"
+    },
+    {
+      "number": 192,
+      "title": "feat: add publishing command dashboard",
+      "head": "feature/publishing-command-dashboard",
+      "sha": "ac5e4a55f27e9df81fd9fce0ff727887d3d5a712",
+      "base": "main-tool-kit",
+      "draft": true,
+      "updatedAt": "2026-09-08T18:11:04Z"
+    },
+    {
+      "number": 190,
+      "title": "chore(deps): bump the cargo group across 1 directory with 5 updates",
+      "head": "dependabot/cargo/libs/bootforgeusb/cargo-6381d79d06",
+      "sha": "6433500e86ce7068aad6700d40d13c21e46bb14a",
+      "base": "main-tool-kit",
+      "draft": false,
+      "updatedAt": "2026-06-12T19:49:26Z"
+    },
+    {
+      "number": 186,
+      "title": "chore(deps): bump the pip group across 1 directory with 2 updates",
+      "head": "dependabot/pip/python/fastapi_backend/pip-28e3a2e8dd",
+      "sha": "a693711c16521b37131d07ffe25317b235eb6170",
+      "base": "main-tool-kit",
+      "draft": false,
+      "updatedAt": "2026-04-14T00:02:40Z"
+    },
+    {
+      "number": 185,
+      "title": "chore(deps-dev): bump vite from 7.3.1 to 8.0.5",
+      "head": "dependabot/npm_and_yarn/vite-8.0.5",
+      "sha": "ab489bf2a2c557473ee87de293832dca9e81f681",
+      "base": "main-tool-kit",
+      "draft": false,
+      "updatedAt": "2026-06-18T06:50:42Z"
+    },
+    {
+      "number": 184,
+      "title": "chore(deps): bump @github/spark from 0.44.15 to 0.46.0",
+      "head": "dependabot/npm_and_yarn/github/spark-0.46.0",
+      "sha": "20012b42796b9be8fe094fee418c55af21a56b20",
+      "base": "main-tool-kit",
+      "draft": false,
+      "updatedAt": "2026-06-18T06:50:40Z"
+    },
+    {
+      "number": 183,
+      "title": "chore(deps-dev): bump typescript from 5.9.3 to 6.0.2",
+      "head": "dependabot/npm_and_yarn/typescript-6.0.2",
+      "sha": "f58ccecf0043a41caa6006c910459ac98a6b5c2f",
+      "base": "main-tool-kit",
+      "draft": false,
+      "updatedAt": "2026-06-18T06:50:39Z"
+    },
+    {
+      "number": 182,
+      "title": "chore(deps-dev): bump @tailwindcss/postcss from 4.1.18 to 4.2.2",
+      "head": "dependabot/npm_and_yarn/tailwindcss/postcss-4.2.2",
+      "sha": "25c07f7a003808a71299c906511b12d6c843cb26",
+      "base": "main-tool-kit",
+      "draft": false,
+      "updatedAt": "2026-06-18T06:50:38Z"
+    },
+    {
+      "number": 181,
+      "title": "chore(deps): bump the npm_and_yarn group across 1 directory with 6 updates",
+      "head": "dependabot/npm_and_yarn/npm_and_yarn-0069324090",
+      "sha": "0a8d128f946a35d35cd388f960ef78889239510b",
+      "base": "main-tool-kit",
+      "draft": false,
+      "updatedAt": "2026-06-18T06:50:37Z"
+    },
+    {
+      "number": 180,
+      "title": "chore(deps): bump the npm_and_yarn group across 3 directories with 4 updates",
+      "head": "dependabot/npm_and_yarn/server/npm_and_yarn-805d10c78b",
+      "sha": "e9ae7e88e21dec16a26294188594ffd65622fc9f",
+      "base": "main-tool-kit",
+      "draft": false,
+      "updatedAt": "2026-04-06T22:03:55Z"
+    }
+  ],
+  "defaultHead": "2b612b909c7d8d5df164d9240a25796b438666e2",
+  "promotionComparison": {
+    "status": "diverged",
+    "integrationAhead": 695,
+    "defaultAhead": 25,
+    "mergeBase": "bde4136b8d79b0cd145b1885468942846b341f31"
+  },
+  "preservation": "No unrelated branches, PRs, dirty working trees, or historical evidence were reset or removed.",
+  "remoteBlocker": "Desktop Commander monthly quota exhausted. No retries or credential reconnection required.",
+  "releaseSecretAvailability": "Not verified: current GitHub fetch connector does not expose the Actions secret metadata endpoint.",
+  "initialBranchInventoryObservedAt": "2026-10-20T22:31:59.917Z",
+  "workingSource": {
+    "head": "a557d23c689a096dcddda8b26f7ce6bd3477a6af",
+    "merge": "c54e10339047dd94e61a645117c8e1d9634c7326",
+    "tree": "cdd84a2e26ca47eab40e2ce5b21c777c650b0a25"
+  },
+  "parallelWorkRecheck": "PRs #239, #193, #192 and dependency PR heads remain unchanged; integration base remains 8f640d0."
+}

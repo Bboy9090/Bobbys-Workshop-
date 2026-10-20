@@ -283,7 +283,7 @@ describe('best next action routing', () => {
     expect(app).toContain('Best next action');
     expect(app).toContain('Open matching recovery lane');
     expect(app).toContain('Open Samsung firmware tools');
-    expect(app).toContain('Open Fastboot service lane');
+    // Fastboot serial binding and stale observations have behavioral regressions in workspace-availability.test.ts.
     expect(app).toContain('Test this device connection');
     expect(app).toContain("document.getElementById('safe-repair-workflows')");
     expect(app).toContain("document.getElementById('repair-command-center')");

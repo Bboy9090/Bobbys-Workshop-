@@ -1,0 +1,23 @@
+{
+  "schema": "bobfwtools.ci-failure-observation.v1",
+  "sourceRevision": "39e3dd909a9ae0204c05b7b2ade287cfa7d7b20a",
+  "pullRequestHead": "e53de3d3fa1dbeaf6fc8759914c36f04e39aa3be",
+  "observedAt": "2026-10-20T23:07:08.375Z",
+  "runUrl": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39511974852",
+  "jobId": 118934967214,
+  "status": "FAIL",
+  "scope": "release",
+  "executionAuthorized": false,
+  "detail": "DMG integrity, read-only mount and byte-matching isolated universal copy passed. Strict app-bundle signature verification failed: executable ad-hoc metadata did not seal the app bundle. CI is adding explicit ad-hoc bundle sealing; no Developer ID or notarization is claimed.",
+  "logEvidence": [
+    "2026-10-20T23:07:08.0349290Z hdiutil: verify: checksum of \"/Users/runner/work/_temp/BobFWTools-installer-qualification/BobFWTools-universal-macOS-unsigned.dmg\" is VALID",
+    "2026-10-20T23:07:08.3078590Z BobFWTools macOS app verification: PASS",
+    "2026-10-20T23:07:08.3079100Z bundle_id=com.bobbyblanco.bobfwtools",
+    "2026-10-20T23:07:08.3079410Z version=0.1.0",
+    "2026-10-20T23:07:08.3079640Z build=0.1.0",
+    "2026-10-20T23:07:08.3079920Z architectures=x86_64 arm64",
+    "2026-10-20T23:07:08.3080250Z signing=adhoc",
+    "2026-10-20T23:07:08.3754650Z /Users/runner/work/_temp/bobfw-installer.08ZbvT/installed/BobFWTools.app: code object is not signed at all",
+    "2026-10-20T23:07:08.4229600Z ##[error]Process completed with exit code 1."
+  ]
+}

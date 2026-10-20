@@ -1,4 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { WorkspaceNavigation, WorkspacePanel, ExpertPanel, TaskEntry, type WorkspaceView } from './components/WorkspaceNavigation';
+import { deriveWorkspaceAvailability, resolveObservedDiagnosticTarget, hasMatchingFastbootSerial } from './lib/workspace-availability';
+import { createDesktopScanner } from './lib/desktop-scan';
+import { isAndroidUsbCandidate } from './lib/phone-usb-candidates';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import RepairCommandCenter from './components/RepairCommandCenter';
 import { SamsungDownloadStatus } from './components/SamsungDownloadStatus';
 import OperatorTimeline from './components/OperatorTimeline';
@@ -11,20 +15,14 @@ import { DeviceModeGuide } from './components/DeviceModeGuide';
 import {
   chooseDownloadDestination,
   chooseUploadSource,
-  frontendBackendHandshake,
   diagnosePhone,
   getAdbBatteryInfo,
   getAdbDeviceInfo,
   getAdbLogcatSnapshot,
   installApkOnDevice,
   prepareAdb,
-  getMtpStatus,
-  getNativeUsbDevices,
-  getWorkflowCapabilities,
   isTauriRuntime,
   saveAdbScreenshot,
-  scanAdbDevices,
-  getAdbModeCapabilities,
   getFastbootModeDevices,
   fastbootRebootMode,
   verifyModeTransition,
@@ -99,6 +97,25 @@ function sameIdentityValue(a?: string | null, b?: string | null): boolean {
 }
 
 export default function App() {
+  const [workspaceView,setWorkspaceView]=useState<WorkspaceView>('phone');
+  const [requestedPanel,setRequestedPanel]=useState<string | null>(null);
+  const [scanCompleted,setScanCompleted]=useState(false);
+  const [scanFailures,setScanFailures]=useState<string[]>([]);
+  const workspaceMain=useRef<HTMLElement>(null);
+  const openWorkspace=(view:WorkspaceView,panel:string | null=null)=>{
+    setRequestedPanel(panel);setWorkspaceView(view);
+  };
+  useEffect(()=>{workspaceMain.current?.scrollTo({top:0});},[workspaceView]);
+  useEffect(()=>{
+    const root=workspaceMain.current;
+    if(!root)return;
+    const releaseRequest=(event:Event)=>{
+      if(event.target instanceof HTMLDetailsElement && !event.target.open)setRequestedPanel(null);
+    };
+    root.addEventListener('toggle',releaseRequest,true);
+    return ()=>root.removeEventListener('toggle',releaseRequest,true);
+  },[]);
+
   const [usbDevices, setUsbDevices] = useState<UsbDeviceRecord[]>([]);
   const [mtp, setMtp] = useState<MtpStatus | null>(null);
   const [adbDevices, setAdbDevices] = useState<AdbDeviceRecord[]>([]);
@@ -141,6 +158,9 @@ export default function App() {
   const [recoveryIdentityDraft, setRecoveryIdentityDraft] = useState({ model: '', board: '', sku: '' });
   const [lockedRecoveryIdentity, setLockedRecoveryIdentity] = useState<LockedRecoveryFirmwareIdentity | null>(null);
   const nativeRuntime = useMemo(() => isTauriRuntime(), []);
+  const scanner = useMemo(() => createDesktopScanner(), []);
+  const refreshRunning = useRef(false);
+  const phoneUsbDevices = useMemo(() => usbDevices.filter(isAndroidUsbCandidate), [usbDevices]);
   const filteredPackages = useMemo(() => {
     const q = packageQuery.trim().toLowerCase();
     return q ? adbPackages.filter((pkg) => pkg.packageName.toLowerCase().includes(q)) : adbPackages;
@@ -231,10 +251,14 @@ export default function App() {
     setNativeError(null);
   };
 
-  const selectedDiagnosticUsb = useMemo(
+  const reviewedDiagnosticUsb = useMemo(
     () => diagnostic?.usbConnections.find((item) => item.deviceUid === selectedDiagnosticUid) || null,
     [diagnostic, selectedDiagnosticUid],
   );
+  const selectedDiagnosticUsb=resolveObservedDiagnosticTarget({
+    nativeRuntime,checking:refreshing,scanCompleted,failedProbes:scanFailures,
+    usb:usbDevices,reviewed:reviewedDiagnosticUsb,
+  });
 
   const selectedDeviceActions = useMemo(() => {
     if (!selectedDiagnosticUsb) return [] as { id: string; label: string; ready: boolean; reason: string }[];
@@ -315,9 +339,11 @@ export default function App() {
   const selectedNextAction = useMemo(() => {
     if (!selectedDiagnosticUsb) {
       return {
-        kind: 'none' as const,
-        label: 'Select a detected device',
-        detail: 'Choose one USB target above so BobFWTools can route you to the correct service lane.',
+        kind: reviewedDiagnosticUsb ? 'diagnose' as const : 'none' as const,
+        label: reviewedDiagnosticUsb ? 'Recheck this connection' : 'Select a detected device',
+        detail: reviewedDiagnosticUsb
+          ? 'The saved diagnosis is not verified against the current USB observation. Finish scanning and rerun diagnosis before continuing.'
+          : 'Choose one USB target above so BobFWTools can route you to the correct service lane.',
       };
     }
 
@@ -337,10 +363,15 @@ export default function App() {
       };
     }
     if (normalizedMode.includes('fastboot')) {
-      return {
-        kind: 'command-center' as const,
-        label: 'Open Fastboot service lane',
-        detail: 'The selected device is already in Fastboot/bootloader mode. Continue with verified target diagnostics.',
+      const bound=hasMatchingFastbootSerial(selectedDiagnosticUsb,fastbootModeDevices);
+      return bound ? {
+        kind: 'bootloader' as const,
+        label: 'Open bootloader controls',
+        detail: 'The selected USB serial is also observed by Fastboot. Review that serial before using guided mode controls.',
+      } : {
+        kind: 'diagnose' as const,
+        label: 'Recheck Fastboot connection',
+        detail: 'A bootloader USB descriptor alone does not prove a matching Fastboot serial. Recheck the connection and inspect probe errors.',
       };
     }
 
@@ -360,7 +391,7 @@ export default function App() {
       label: 'Continue with verified service tools',
       detail: 'This selected device has a target-bound normal-service transport. Open the command center for the applicable safe actions.',
     };
-  }, [selectedDiagnosticUsb, selectedDeviceActions]);
+  }, [selectedDiagnosticUsb, reviewedDiagnosticUsb, selectedDeviceActions, fastbootModeDevices]);
 
   const refreshJobs = useCallback(async () => {
     if (!nativeRuntime) return;
@@ -372,35 +403,28 @@ export default function App() {
   }, [nativeRuntime]);
 
   const refresh = useCallback(async () => {
-    if (transferBusy) return;
+    if (transferBusy || refreshRunning.current) return;
+    refreshRunning.current = true;
     setRefreshing(true);
     setNativeError(null);
-
+    // Previously observed transport capabilities cannot enable actions during a rescan.
+    setAdbDevices([]);
+    setAdbModeCapabilities({});
+    setFastbootModeDevices([]);
+    setMtp(null);
+    setCapabilities(null);
+    setRecoveryCandidates([]);
     try {
-      const hello = await frontendBackendHandshake();
-      setHandshake(hello);
-      const devices = await getNativeUsbDevices();
-      setUsbDevices(devices);
-
-      try {
-        const recovery = await scanRecoveryCandidates();
-        setRecoveryCandidates(recovery);
-        if (!selectedRecoveryUid && recovery.length) {
-          setSelectedRecoveryUid(recovery[0].deviceUid);
-          setRecoveryKind(recovery[0].workflow);
-        } else if (selectedRecoveryUid && !recovery.some((candidate) => candidate.deviceUid === selectedRecoveryUid)) {
-          setSelectedRecoveryUid(recovery[0]?.deviceUid ?? null);
-          if (recovery[0]) setRecoveryKind(recovery[0].workflow);
-          setRecoveryArtifacts([]);
-          setRecoveryPlan(null);
-          setRecoveryJob(null);
-          setRecoveryEvidencePath(null);
-          setRecoveryCertificatePath(null);
-          setRecoveryCertificateReview(null);
-        }
-      } catch {
-        setRecoveryCandidates([]);
-        setSelectedRecoveryUid(null);
+      const scan = await scanner(storageIndex, mtpPath);
+      setScanFailures(scan.failures.map(failure=>failure.probe));
+      setHandshake(scan.handshake);
+      setUsbDevices(scan.usb);
+      setRecoveryCandidates(scan.recovery);
+      const target = scan.recovery.find(candidate => candidate.deviceUid === selectedRecoveryUid) ||
+        (scan.recovery.length === 1 ? scan.recovery[0] : null);
+      setSelectedRecoveryUid(target?.deviceUid ?? null);
+      if (target) setRecoveryKind(target.workflow);
+      if (selectedRecoveryUid !== (target?.deviceUid ?? null)) {
         setRecoveryArtifacts([]);
         setRecoveryPlan(null);
         setRecoveryJob(null);
@@ -408,73 +432,37 @@ export default function App() {
         setRecoveryCertificatePath(null);
         setRecoveryCertificateReview(null);
       }
-
-      const adb = await scanAdbDevices();
-      setAdbDevices(adb);
-      const capabilityPairs = await Promise.all(
-        adb
-          .filter((device) => device.authorized)
-          .map(async (device) => {
-            try {
-              return [device.serial, await getAdbModeCapabilities(device.serial)] as const;
-            } catch {
-              return null;
-            }
-          }),
-      );
-      setAdbModeCapabilities(
-        Object.fromEntries(capabilityPairs.filter((item): item is readonly [string, AdbModeCapabilities] => item !== null)),
-      );
-      try {
-        setFastbootModeDevices(await getFastbootModeDevices());
-      } catch {
-        setFastbootModeDevices([]);
-      }
-      if (!adbSelectedSerial && adb.length) {
-        setAdbSelectedSerial(adb[0].serial);
-      } else if (adbSelectedSerial && !adb.some((device) => device.serial === adbSelectedSerial)) {
-        setAdbSelectedSerial(adb[0]?.serial ?? null);
-      }
-
-      const mtpStatus = await getMtpStatus();
-      setMtp(mtpStatus);
-
-      const matrix = await getWorkflowCapabilities();
-      setCapabilities(matrix);
-      try {
-        const firmware = await scanFirmwareLibrary();
-        const readyBundles = firmware?.bundles.filter((bundle) => bundle.planningReady) ?? [];
-        setVerifiedFirmwareBundles(readyBundles);
-        setSelectedVerifiedBundle((current) =>
-          current && readyBundles.some((bundle) => bundle.directory === current)
-            ? current
-            : readyBundles[0]?.directory ?? '',
-        );
-      } catch {
-        setVerifiedFirmwareBundles([]);
-        setSelectedVerifiedBundle('');
-      }
-      await refreshJobs();
-
-      if (mtpStatus?.storages.length) {
-        const safeIndex = Math.min(storageIndex, mtpStatus.storages.length - 1);
-        setStorageIndex(safeIndex);
-        try {
-          setMtpObjects(await listMtpDirectory(safeIndex, mtpPath));
-        } catch {
-          setMtpPath([]);
-          setMtpObjects(await listMtpDirectory(safeIndex, []));
-        }
-      } else {
-        setMtpObjects([]);
-        setMtpPath([]);
-      }
+      setAdbDevices(scan.adb);
+      setAdbModeCapabilities(scan.modes);
+      setFastbootModeDevices(scan.fastboot);
+      setAdbSelectedSerial(current =>
+        current && scan.adb.some(device => device.serial === current)
+          ? current : scan.adb.length === 1 ? scan.adb[0].serial : null);
+      setMtp(scan.mtp?.connected === true ? scan.mtp : null);
+      setCapabilities(scan.capabilities);
+      const readyBundles = scan.firmware?.bundles.filter(bundle => bundle.planningReady) ?? [];
+      setVerifiedFirmwareBundles(readyBundles);
+      setSelectedVerifiedBundle(current =>
+        current && readyBundles.some(bundle => bundle.directory === current)
+          ? current : readyBundles[0]?.directory ?? '');
+      setWorkflowJobs(scan.jobs);
+      setStorageIndex(scan.directory.storageIndex);
+      setMtpPath(current =>
+        current.length === scan.directory.path.length &&
+        current.every((part,index) => part === scan.directory.path[index])
+          ? current : scan.directory.path);
+      setMtpObjects(scan.directory.objects);
+      if (scan.failures.length) setNativeError(
+        'Some device checks are unverified. ' +
+        scan.failures.map(failure => failure.probe + ': ' + failure.message).join(' · '));
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
+      refreshRunning.current = false;
+      setScanCompleted(true);
       setRefreshing(false);
     }
-  }, [storageIndex, mtpPath, transferBusy, adbSelectedSerial, selectedRecoveryUid, refreshJobs]);
+  }, [storageIndex, mtpPath, transferBusy, selectedRecoveryUid, scanner]);
 
   const retryJob = async (id: string) => {
     if (transferBusy) return;
@@ -501,7 +489,7 @@ export default function App() {
       setSelectedDiagnosticUid((current) =>
         current && report.usbConnections.some((item) => item.deviceUid === current)
           ? current
-          : report.usbConnections[0]?.deviceUid ?? null,
+          : report.usbConnections.length === 1 ? report.usbConnections[0].deviceUid : null,
       );
       if (report.selectedAdbSerial) setAdbSelectedSerial(report.selectedAdbSerial);
       await refresh();
@@ -513,7 +501,12 @@ export default function App() {
   };
 
   const runCableDoctor = async () => {
+    setRequestedPanel('diagnostic-connection');
     if (transferBusy || diagnosing || cableDoctorBusy) return;
+    if(selectedDiagnosticUid && !selectedDiagnosticUsb){
+      setNativeError('The selected diagnostic target is not verified in the current scan. Rerun diagnosis first.');
+      return;
+    }
     setCableDoctorBusy(true);
     setNativeError(null);
     try {
@@ -526,6 +519,9 @@ export default function App() {
   };
 
   const runSelectedNextAction = async () => {
+    if(refreshing || diagnosing || transferBusy)return;
+    if(selectedNextAction.kind==='diagnose'){await runDiagnosis();return;}
+    if(selectedNextAction.kind==='bootloader'){openWorkspace('phone','bootloader-controls');return;}
     if (selectedNextAction.kind === 'cable') {
       await runCableDoctor();
       return;
@@ -533,6 +529,7 @@ export default function App() {
 
     if (selectedNextAction.kind === 'recovery') {
       const candidate = recoveryCandidates.find((item) => item.deviceUid === selectedDiagnosticUid);
+      openWorkspace('firmware','recovery-planner');
       document.getElementById('safe-repair-workflows')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       if (!candidate) {
         setNativeError('The selected USB target is no longer present in the recovery scan. Refresh detection before preparing a recovery job.');
@@ -543,6 +540,7 @@ export default function App() {
     }
 
     if (selectedNextAction.kind === 'command-center') {
+      openWorkspace('advanced','service-tools');
       document.getElementById('repair-command-center')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
@@ -843,13 +841,18 @@ export default function App() {
     }
   };
 
+  const latestRefresh = useRef(refresh);
+  useEffect(() => { latestRefresh.current = refresh; }, [refresh]);
   useEffect(() => {
-    void refresh();
-    const id = window.setInterval(() => {
-      if (!transferBusy) void refresh();
-    }, 5000);
-    return () => window.clearInterval(id);
-  }, [refresh, transferBusy]);
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      await latestRefresh.current();
+      if (active) timer = setTimeout(() => void poll(), 5000);
+    };
+    void poll();
+    return () => { active = false; if (timer !== undefined) clearTimeout(timer); };
+  }, []);
 
   const selectRecoveryArtifacts = async () => {
     if (recoveryBusy) return;
@@ -932,7 +935,7 @@ export default function App() {
   };
 
   const useVerifiedFirmwareBundle = async () => {
-    if (recoveryBusy || !selectedVerifiedBundle) return;
+    if (recoveryBusy || refreshing || !selectedVerifiedBundle) return;
     setRecoveryBusy(true);
     setNativeError(null);
     setRecoveryEvidencePath(null);
@@ -1089,84 +1092,76 @@ export default function App() {
   };
 
 
+
+  const workspaceTasks=deriveWorkspaceAvailability({nativeRuntime,checking:refreshing || !scanCompleted,
+    failedProbes:scanFailures,adb:adbDevices,usb:usbDevices,mtp,fastboot:fastbootModeDevices});
+  const hasObservedPhone=adbDevices.length>0 || phoneUsbDevices.length>0 || fastbootModeDevices.length>0 || mtp?.connected===true;
+  const selectedAdb=adbDevices.find(device=>device.serial===adbSelectedSerial);
+  const connectionLabel=selectedAdb
+    ? adbModeCapabilities[selectedAdb.serial]?.model || 'ADB · '+selectedAdb.serial
+    : selectedRecoveryCandidate?.productName || (mtp?.connected ? mtp.model || 'MTP connection' : hasObservedPhone ? 'Connection observed' : 'Connect a phone');
   return (
-    <div className="flex h-screen flex-col bg-slate-950 text-slate-200">
-      <header className="flex shrink-0 items-center justify-between border-b border-slate-800 bg-slate-900 px-5 py-3">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight text-white">BobFWTools</h1>
-          <p className="text-xs text-slate-500">
-            Android connectivity for macOS · native USB + MTP
-          </p>
-        </div>
+    <div className="flex h-dvh min-h-[480px] flex-col bg-slate-950 text-slate-200">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-5 py-3">
+        <div><h1 className="text-base font-semibold tracking-tight text-white">BobFWTools</h1><p className="mt-0.5 text-xs text-slate-500">Device repair workspace</p></div>
         <div className="flex items-center gap-3">
-          <span className={`text-xs ${nativeRuntime ? 'text-emerald-400' : 'text-amber-300'}`}>
-            {nativeRuntime ? 'Native desktop core' : 'Browser preview'}
-          </span>
-          <span className={`text-xs ${handshake?.status === 'ready' ? 'text-emerald-300' : 'text-amber-300'}`}>
-            {handshake?.status === 'ready' ? `Handshake · ${handshake.correlation_id}` : 'Handshake pending'}
+          <span className={handshake?.status==='ready' ? 'hidden text-xs text-emerald-400 sm:inline' : 'hidden text-xs text-slate-500 sm:inline'}>
+            {handshake?.status==='ready' ? 'Desktop connected' : nativeRuntime ? 'Checking desktop' : 'Browser preview'}
           </span>
           {transferBusy && <span className="text-xs text-cyan-300">Transfer running…</span>}
-          <button
-            type="button"
-            onClick={() => void refresh()}
-            disabled={refreshing || transferBusy}
-            className="rounded bg-orange-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 hover:bg-orange-500"
-          >
+          <button type="button" onClick={()=>void refresh()} disabled={refreshing || transferBusy}
+            className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800 disabled:opacity-40">
             {refreshing ? 'Scanning…' : 'Scan now'}
           </button>
         </div>
       </header>
-
-      <div className="flex min-h-0 flex-1">
-        <aside className="w-80 shrink-0 overflow-y-auto border-r border-slate-800 bg-slate-900/80 p-4">
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Physical USB
-          </h2>
-
-          {usbDevices.length === 0 ? (
-            <div className="rounded border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-500">
-              No USB device observed. Connect the phone directly or through a data-capable USB hub.
-            </div>
-          ) : (
-            <ul className="space-y-2">
-              {usbDevices.map((device) => (
-                <li key={device.deviceUid} className="rounded border border-slate-700 bg-slate-950/60 p-3">
-                  <div className="font-medium text-white">
-                    {device.productName || device.manufacturer || 'USB device'}
-                  </div>
-                  <div className="mt-1 text-xs text-cyan-300">{device.platformHint}</div>
-                  <div className="text-xs text-slate-400">{device.mode} · {device.speed}</div>
-                  <div className="mt-2 font-mono text-[11px] text-slate-600">
-                    {hex(device.vendorId)}:{hex(device.productId)}
-                  </div>
-                  <div className="mt-1 text-[11px] text-slate-600">{device.evidenceSource}</div>
-                </li>
-              ))}
-            </ul>
-          )}
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <aside className="w-full shrink-0 border-b border-slate-800 bg-slate-900/40 p-3 md:w-56 md:border-b-0 md:border-r">
+          <div className="mb-4 hidden rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-3 md:block">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Current connection</div>
+            <div className="mt-2 truncate text-sm font-semibold text-white" title={connectionLabel}>{connectionLabel}</div>
+            <div className="mt-1 text-xs text-slate-500">{refreshing ? 'Refreshing evidence' : selectedAdb ? selectedAdb.authorized ? 'ADB authorized' : 'Authorization needed' : hasObservedPhone ? 'Choose a task to verify access' : scanFailures.length ? 'Connection checks incomplete' : 'No phone target observed'}</div>
+          </div>
+          <WorkspaceNavigation active={workspaceView} onChange={view=>openWorkspace(view)}/>
+          <p className="mt-5 hidden border-t border-slate-800 px-2 pt-4 text-[11px] leading-5 text-slate-600 md:block">Device writes require separate qualification and your approval for the exact operation.</p>
         </aside>
-
-        <main className="min-w-0 flex-1 overflow-y-auto p-5">
-          {nativeError && (
-            <div className="mb-4 rounded border border-red-900 bg-red-950/30 p-3 text-sm text-red-200">
-              {nativeError}
-            </div>
-          )}
-
-          {(adbDevices.length > 0 || usbDevices.length > 0) && (
+        <main ref={workspaceMain} id="workspace-main" className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
+          <div className="mx-auto w-full max-w-[1120px]">
+            {nativeError && <details className="mb-4 rounded-lg border border-amber-900/60 bg-amber-950/20 text-xs text-amber-200">
+              <summary className="cursor-pointer px-4 py-3 font-medium">Some checks need attention · view details</summary>
+              <div className="max-h-48 overflow-auto border-t border-amber-900/40 px-4 py-3 leading-5">{nativeError}</div>
+            </details>}
+            <WorkspacePanel view="phone" active={workspaceView}>
+<div className="mb-5 rounded-xl border border-slate-800 bg-slate-900/60 p-5">
+  <div className="flex flex-wrap items-center justify-between gap-3">
+    <div><h3 className="text-base font-semibold text-white">{hasObservedPhone ? 'Choose your next task' : 'Connect a phone to get started'}</h3>
+      <p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">{refreshing ? 'Checking real connections…' : hasObservedPhone ? 'Each task shows the connection it uses and the checks still required.' : 'Use a data cable, unlock the phone, and choose File transfer when prompted.'}</p></div>
+    <button type="button" disabled={refreshing || transferBusy} onClick={()=>void refresh()} className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Scan devices</button>
+  </div>
+</div>
+<div className="mb-5 grid gap-3 lg:grid-cols-3">
+  <TaskEntry title="Check the phone" readiness={workspaceTasks.diagnose} onOpen={()=>openWorkspace('diagnose')}/>
+  <TaskEntry title="Files & apps" readiness={workspaceTasks.files} onOpen={()=>openWorkspace('files')}/>
+  <TaskEntry title="Firmware packages" readiness={workspaceTasks.firmware} onOpen={()=>openWorkspace('firmware')}/>
+</div>          {(adbDevices.length > 0 || phoneUsbDevices.length > 0 || mtp?.connected === true) && (
             <section className="mb-4 rounded-lg border border-emerald-900/70 bg-emerald-950/10 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-base font-semibold text-white">1. Choose the detected phone</h2>
+                  <h2 className="text-base font-semibold text-white">Connected phones</h2>
                   <p className="mt-1 text-sm text-slate-400">
                     Select a phone below. BobFWTools will show only actions supported by its current connection and authorization.
                   </p>
                 </div>
                 <span className="rounded bg-slate-900 px-2 py-1 text-xs text-slate-400">
-                  {adbDevices.length + usbDevices.length} device signal{adbDevices.length + usbDevices.length === 1 ? '' : 's'} found
+                  {adbDevices.length + phoneUsbDevices.length + (mtp?.connected === true ? 1 : 0)} connection signal{adbDevices.length + phoneUsbDevices.length + (mtp?.connected === true ? 1 : 0) === 1 ? '' : 's'} found
                 </span>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {mtp?.connected === true && <div className="rounded border border-slate-800 bg-slate-950/60 p-4">
+                  <div className="text-sm font-semibold text-white">{mtp.model || mtp.manufacturer || 'File-transfer connection'}</div>
+                  <p className="mt-1 text-xs text-slate-400">MTP connection observed. File access is separate from ADB authorization and firmware qualification.</p>
+                  <button type="button" onClick={()=>openWorkspace('files')} className="mt-3 rounded border border-cyan-800 px-3 py-2 text-xs text-cyan-300">Open file connection</button>
+                </div>}
                 {adbDevices.map((device) => {
                   const selected = adbSelectedSerial === device.serial;
                   return (
@@ -1192,6 +1187,7 @@ export default function App() {
                       <div className="mt-2 font-mono text-xs text-cyan-300">{device.serial}</div>
                       <div className="mt-1 text-xs text-slate-400">{device.state} · ADB connection</div>
                       {selected && <div className="mt-3 text-xs font-medium text-cyan-200">Selected — actions below use this phone</div>}
+                      <details className="mt-3"><summary className="cursor-pointer text-xs font-medium text-slate-400">Connection & mode controls</summary>
                       <div className="mt-3 grid grid-cols-2 gap-2">
                         <button
                           type="button"
@@ -1281,10 +1277,11 @@ export default function App() {
                           ))}
                         </div>
                       )}
+                      </details>
                     </div>
                   );
                 })}
-                {usbDevices.map((device) => {
+                {phoneUsbDevices.map((device) => {
                   const serviceOnlyMode = ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download'].includes(device.mode);
                   return (
                     <div key={`usb-${device.deviceUid}`} className="rounded border border-slate-800 bg-slate-950/60 p-4">
@@ -1293,7 +1290,7 @@ export default function App() {
                         <span className="text-xs text-cyan-300">Detected</span>
                       </div>
                       <div className="mt-2 text-xs text-slate-300">{device.platformHint} · {device.mode}</div>
-                      <div className="mt-1 text-xs text-slate-500">This connection is available for matching recovery and firmware workflows.</div>
+                      <div className="mt-1 text-xs text-slate-500">USB candidate observed. Service options require matching protocol and exact-device evidence.</div>
 
                       {serviceOnlyMode && (
                         <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
@@ -1333,6 +1330,7 @@ export default function App() {
             </section>
           )}
 
+<ExpertPanel id="bootloader-controls" title="Observed bootloader connection" description="Guided mode controls. A connection never grants flash permission." reveal={requestedPanel==='bootloader-controls'}>
           {fastbootModeDevices.length > 0 && (
             <section className="mb-4 rounded-lg border border-cyan-900/60 bg-cyan-950/10 p-5">
               <div>
@@ -1400,46 +1398,14 @@ export default function App() {
             </section>
           )}
 
-          {lastTransfer && (
-            <div className="mb-4 rounded border border-emerald-900 bg-emerald-950/30 p-3 text-sm text-emerald-200">
-              Verified {lastTransfer.operation}: {lastTransfer.filename} · {formatBytes(lastTransfer.bytes)}
-              <div className="mt-1 break-all text-xs text-emerald-400/80">
-                {lastTransfer.destination} · {lastTransfer.evidenceSource}
-              </div>
-            </div>
-          )}
-
-          <div className="mb-4">
-            <SamsungDownloadStatus receipt={usbDevices.some(device => device.vendorId === 0x04e8 && device.productName === 'Gadget Serial') ? {
-              schema: 'bobfwtools.samsung.detect.v1',
-              transport: 'Samsung USB Gadget Serial',
-              detected: true,
-              protocolSessionVerified: false,
-              pitDownloaded: false,
-              modelIdentityVerified: false,
-              flashAuthorized: false,
-              frpStateChanged: false,
-              exitCode: 0
-            } : null} />
-          </div>
-          <RepairCommandCenter />
-          <OperatorTimeline />
-          <AuditLedger />
-          <RecoverySafetyTools />
-          <FirehoseDryRun />
-          <QualificationDossier
-            recoveryJobFingerprint={recoveryJob?.jobFingerprint ?? null}
-            preparedRecoveryIdentity={recoveryJob?.identity ?? null}
-          />
-          <QualifiedFlashConsole
-            recoveryJobFingerprint={recoveryJob?.jobFingerprint ?? null}
-            readinessCertificatePath={recoveryCertificateReview?.safeToReview ? recoveryCertificatePath : null}
-          />
-
+{fastbootModeDevices.length===0 && <p className="text-sm text-slate-500">{scanFailures.includes('fastboot') ? 'Bootloader status is unverified.' : 'No Fastboot connection observed.'}</p>}
+</ExpertPanel>
+</WorkspacePanel>
+<WorkspacePanel view="diagnose" active={workspaceView}>
           <section className="mb-4 rounded-lg border border-cyan-900/70 bg-cyan-950/10 p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h2 className="text-base font-semibold text-white">2. Check this phone and show its safe options</h2>
+                <h2 className="text-base font-semibold text-white">Read this connection</h2>
                 <p className="mt-1 max-w-2xl text-sm text-slate-400">
                   One scan checks physical USB, MTP, ADB authorization, Fastboot, verified device properties,
                   battery state, and the workflows BobFWTools can actually run right now.
@@ -1482,6 +1448,36 @@ export default function App() {
                   </div>
                 </div>
 
+
+                {diagnostic.usbConnections.length > 0 && <label className="mt-4 block text-xs text-slate-400">
+                  Connection to inspect
+                  <select value={selectedDiagnosticUid || ''} onChange={event=>{setSelectedDiagnosticUid(event.target.value || null);setCableDoctor(null);}}
+                    className="mt-2 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
+                    <option value="">Choose one observed connection</option>
+                    {diagnostic.usbConnections.map(usb=><option key={usb.deviceUid} value={usb.deviceUid}>{usb.productName || usb.manufacturer || usb.platformHint} · {usb.mode}</option>)}
+                  </select>
+                </label>}
+                <div className="mt-4 rounded border border-cyan-900/60 bg-cyan-950/10 p-4">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-500">Best next action</div>
+                  <div className="mt-1 text-sm font-semibold text-white">{selectedNextAction.label}</div>
+                  <div className="mt-1 max-w-3xl text-xs leading-5 text-slate-400">{selectedNextAction.detail}</div>
+                  <button
+                    type="button"
+                    onClick={() => void runSelectedNextAction()}
+                    disabled={selectedNextAction.kind === 'none' || cableDoctorBusy || diagnosing || refreshing || transferBusy || !nativeRuntime}
+                    className="mt-3 rounded border border-cyan-800 bg-cyan-950/30 px-3 py-2 text-xs font-semibold text-cyan-300 disabled:opacity-40"
+                  >
+                    {selectedNextAction.label}
+                  </button>
+                </div>
+
+
+                {diagnostic.findings.some(finding=>finding.severity !== 'ok') && <div className="mt-3 rounded border border-amber-900/60 bg-amber-950/20 p-3 text-xs text-amber-200" role="status">
+                  {diagnostic.findings.filter(finding=>finding.severity !== 'ok').slice(0,3).map(finding=><div key={finding.id}>{finding.title}</div>)}
+                  <button type="button" onClick={()=>setRequestedPanel('diagnostic-findings')} className="mt-2 underline">Review findings and recommendations</button>
+                </div>}
+                <div className="mt-4">
+                  <ExpertPanel id="diagnostic-connection" title="Connection test & USB details" description="Cable checks, observed interfaces, and mode guidance." reveal={requestedPanel==='diagnostic-connection'}>
                 <div className="mt-4 rounded border border-slate-800 bg-slate-950/50 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -1604,6 +1600,9 @@ export default function App() {
                   )}
                 </div>
 
+
+                  </ExpertPanel>
+                  <ExpertPanel id="diagnostic-findings" title="Device profile & detailed findings" description="Reported identity, system details, and diagnostic recommendations." reveal={requestedPanel==='diagnostic-findings'}>
                 <div className="mt-4 grid gap-4 xl:grid-cols-2">
                   <div className="rounded border border-slate-800 bg-slate-950/50 p-4">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Verified device profile</h3>
@@ -1651,20 +1650,9 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="mt-4 rounded border border-cyan-900/60 bg-cyan-950/10 p-4">
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-500">Best next action</div>
-                  <div className="mt-1 text-sm font-semibold text-white">{selectedNextAction.label}</div>
-                  <div className="mt-1 max-w-3xl text-xs leading-5 text-slate-400">{selectedNextAction.detail}</div>
-                  <button
-                    type="button"
-                    onClick={() => void runSelectedNextAction()}
-                    disabled={selectedNextAction.kind === 'none' || cableDoctorBusy}
-                    className="mt-3 rounded border border-cyan-800 bg-cyan-950/30 px-3 py-2 text-xs font-semibold text-cyan-300 disabled:opacity-40"
-                  >
-                    {selectedNextAction.label}
-                  </button>
-                </div>
 
+                  </ExpertPanel>
+                </div>
                 <div className="mt-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected-device workflows</div>
@@ -1675,7 +1663,7 @@ export default function App() {
                     )}
                   </div>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                    {selectedDeviceActions.length ? selectedDeviceActions.map((action) => (
+                    {selectedDeviceActions.some(action=>action.ready) ? selectedDeviceActions.filter(action=>action.ready).map((action) => (
                       <div
                         key={action.id}
                         className={action.ready
@@ -1689,7 +1677,7 @@ export default function App() {
                       </div>
                     )) : (
                       <div className="text-xs text-slate-500">
-                        Select a detected USB device above to scope workflows to that target.
+                        Choose an observed connection above. Only its available read checks or planning tools appear here.
                       </div>
                     )}
                   </div>
@@ -1710,19 +1698,431 @@ export default function App() {
             )}
           </section>
 
+<ExpertPanel id="authorized-adb-tools" title="Authorized ADB checks" description="Only actions for the selected authorized serial are enabled.">
+          <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-white">Authorized ADB workflows</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  These actions run against the selected real ADB device. Unauthorized and offline devices remain
+                  visible but cannot execute workflows.
+                </p>
+              </div>
+              <span className="text-xs text-slate-500">{adbDevices.length} ADB device(s)</span>
+            </div>
+
+            {adbDevices.length === 0 ? (
+              <div className="mt-4 rounded border border-slate-800 bg-slate-950/50 p-3 text-sm text-slate-500">
+                No ADB interface detected. File transfer can still work over MTP without USB debugging.
+              </div>
+            ) : (
+              <>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {adbDevices.map((device) => (
+                    <button
+                      key={device.serial}
+                      type="button"
+                      onClick={() => setAdbSelectedSerial(device.serial)}
+                      className={`rounded border px-3 py-2 text-left text-xs ${
+                        adbSelectedSerial === device.serial
+                          ? 'border-cyan-500 bg-cyan-950/20'
+                          : 'border-slate-700 bg-slate-950'
+                      }`}
+                    >
+                      <div className="font-mono text-slate-200">{device.serial}</div>
+                      <div className={device.authorized ? 'text-emerald-400' : 'text-amber-300'}>
+                        {device.state}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  <button
+                    type="button"
+                    disabled={transferBusy}
+                    onClick={() => void runOneClickAdb()}
+                    className="rounded bg-cyan-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-cyan-600"
+                  >
+                    Prepare ADB
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runAdbBattery()}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Battery info
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runAdbDeviceInfo()}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Read live device info
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      transferBusy ||
+                      !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized
+                    }
+                    onClick={() => void runAdbLogcat()}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Capture logcat
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runAdbScreenshot()}
+                    className="rounded bg-violet-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-violet-600"
+                  >
+                    Save screenshot
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('network')}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Network settings
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('factory-reset-settings')}
+                    className="rounded bg-amber-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-amber-600"
+                  >
+                    Factory reset settings
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('install-apk')}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Install APK
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('reboot-normal')}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Reboot
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('reboot-recovery')}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Reboot recovery
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('reboot-bootloader')}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Reboot bootloader
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                    onClick={() => void runSimpleAdbAction('reboot-download')}
+                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+                  >
+                    Samsung download mode
+                  </button>
+                </div>
+
+                {adbOutput && (
+                  <pre className="mt-4 max-h-72 overflow-auto whitespace-pre-wrap rounded border border-slate-800 bg-black p-3 text-xs text-slate-300">
+                    {adbOutput}
+                  </pre>
+                )}
+              </>
+            )}
+          </section>
+
+
+</ExpertPanel>
+</WorkspacePanel>
+<WorkspacePanel view="files" active={workspaceView}>
+          {lastTransfer && (
+            <div className="mb-4 rounded border border-emerald-900 bg-emerald-950/30 p-3 text-sm text-emerald-200">
+              Verified {lastTransfer.operation}: {lastTransfer.filename} · {formatBytes(lastTransfer.bytes)}
+              <div className="mt-1 break-all text-xs text-emerald-400/80">
+                {lastTransfer.destination} · {lastTransfer.evidenceSource}
+              </div>
+            </div>
+          )}
+
+          <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-base font-semibold text-white">Phone files</h2>
+                <p className="mt-1 max-w-2xl text-sm text-slate-400">
+                  Real Android file access. USB debugging is not required. Unlock the phone and choose File transfer
+                  or Android Auto when Android asks what the USB connection should do.
+                </p>
+              </div>
+              <span className={`rounded px-2 py-1 text-xs font-medium ${
+                mtp ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400'
+              }`}>
+                {mtp ? 'MTP connected' : scanFailures.includes('mtp') ? 'Connection unverified' : 'No MTP session'}
+              </span>
+            </div>
+
+            {!mtp ? (
+              <div className="mt-5 rounded border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">
+                BobFWTools sees MTP independently from ADB. If the phone is connected but no
+                MTP session appears, unlock the phone and switch its USB preference to File transfer.
+              </div>
+            ) : (
+              <>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <div className="text-[11px] uppercase text-slate-600">Manufacturer</div>
+                    <div className="mt-1 text-sm text-white">{mtp.manufacturer || 'Unavailable'}</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <div className="text-[11px] uppercase text-slate-600">Model</div>
+                    <div className="mt-1 text-sm text-white">{mtp.model || 'Unavailable'}</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <div className="text-[11px] uppercase text-slate-600">Family</div>
+                    <div className="mt-1 text-sm text-white">{mtp.deviceFamily}</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
+                    <div className="text-[11px] uppercase text-slate-600">Evidence</div>
+                    <div className="mt-1 break-all text-xs text-cyan-300">{mtp.evidenceSource}</div>
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Storage</h3>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {mtp.storages.map((storage, index) => (
+                      <button
+                        type="button"
+                        key={`${storage.description}-${index}`}
+                        onClick={() => void openStorage(index)}
+                        disabled={transferBusy}
+                        className={`rounded border px-3 py-2 text-left text-sm disabled:opacity-50 ${
+                          index === storageIndex
+                            ? 'border-orange-500 bg-orange-950/20'
+                            : 'border-slate-700 bg-slate-950 hover:border-slate-600'
+                        }`}
+                      >
+                        <div className="font-medium text-white">{storage.description || `Storage ${index + 1}`}</div>
+                        <div className="text-xs text-slate-500">{formatBytes(storage.freeSpaceBytes)} free</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-medium text-white">Current Android folder</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
+                        <button
+                          type="button"
+                          disabled={transferBusy}
+                          onClick={() => void openMtpFolder([])}
+                          className="rounded px-1.5 py-0.5 text-cyan-300 hover:bg-slate-800 disabled:opacity-50"
+                        >
+                          root
+                        </button>
+                        {mtpPath.map((segment, index) => (
+                          <span key={`${segment}-${index}`} className="flex items-center gap-1">
+                            <span className="text-slate-600">/</span>
+                            <button
+                              type="button"
+                              disabled={transferBusy}
+                              onClick={() => void openMtpFolder(mtpPath.slice(0, index + 1))}
+                              className="rounded px-1.5 py-0.5 text-cyan-300 hover:bg-slate-800 disabled:opacity-50"
+                            >
+                              {segment}
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void uploadFile()}
+                      disabled={transferBusy}
+                      className="rounded bg-cyan-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 hover:bg-cyan-600"
+                    >
+                      Upload Mac file here
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Folder contents
+                    </h3>
+                    <span className="text-xs text-slate-600">{mtpObjects.length} objects</span>
+                  </div>
+                  <div className="mt-2 overflow-hidden rounded border border-slate-800">
+                    {mtpObjects.length === 0 ? (
+                      <div className="bg-slate-950/60 p-4 text-sm text-slate-500">
+                        This folder is empty or returned no visible objects.
+                      </div>
+                    ) : (
+                      <ul className="divide-y divide-slate-800 bg-slate-950/60">
+                        {mtpObjects.map((object) => (
+                          <li key={object.path.join('/')} className="flex items-center gap-3 px-3 py-2">
+                            <span className="w-12 text-[11px] uppercase text-slate-600">
+                              {object.isFolder ? 'Folder' : 'File'}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-sm text-slate-200">
+                              {object.filename || 'Unnamed object'}
+                            </span>
+                            {!object.isFolder && (
+                              <span className="text-[11px] text-slate-600">{formatBytes(object.sizeBytes)}</span>
+                            )}
+                            {object.isFolder ? (
+                              <button
+                                type="button"
+                                disabled={transferBusy}
+                                onClick={() => void openMtpFolder(object.path)}
+                                className="rounded border border-slate-700 px-2 py-1 text-xs text-cyan-300 disabled:opacity-50 hover:bg-slate-800"
+                              >
+                                Open
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={transferBusy}
+                                onClick={() => void downloadFile(object)}
+                                className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 disabled:opacity-50 hover:bg-slate-800"
+                              >
+                                Download to Mac
+                              </button>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Negotiated MTP capabilities
+                  </h3>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {mtp.capabilities.map((capability) => (
+                      <span key={capability} className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-300">
+                        {capability}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </section>
+
+<div className="mt-4"><ExpertPanel id="app-management" title="Installed apps" description="ADB authorization is required. Changes keep their existing confirmations.">
+          <section className="mb-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-white">ADB App Manager</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Manage third-party packages on the selected authorized device. Package actions are validated and allowlisted.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
+                onClick={() => void refreshPackages()}
+                className="rounded bg-slate-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
+              >
+                Load apps
+              </button>
+            </div>
+
+            {adbPackages.length > 0 && (
+              <>
+                <div className="mt-3">
+                  <input
+                    value={packageQuery}
+                    onChange={(event) => setPackageQuery(event.target.value)}
+                    placeholder="Search package names…"
+                    className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-600"
+                  />
+                </div>
+                <div className="mt-3 max-h-80 overflow-y-auto rounded border border-slate-800">
+                  {filteredPackages.map((pkg) => (
+                    <div key={pkg.packageName} className="flex flex-wrap items-center gap-2 border-b border-slate-800 bg-slate-950/50 px-3 py-2 last:border-b-0">
+                      <div className="min-w-0 flex-1 break-all font-mono text-xs text-slate-200">{pkg.packageName}</div>
+                      <button
+                        type="button"
+                        disabled={!!packageBusy}
+                        onClick={() => void packageAction(pkg.packageName, 'enable')}
+                        className="rounded border border-slate-700 px-2 py-1 text-[11px] text-emerald-300 disabled:opacity-40 hover:bg-slate-800"
+                      >
+                        Enable
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!packageBusy}
+                        onClick={() => void packageAction(pkg.packageName, 'disable-user')}
+                        className="rounded border border-slate-700 px-2 py-1 text-[11px] text-amber-300 disabled:opacity-40 hover:bg-slate-800"
+                      >
+                        Disable
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!packageBusy}
+                        onClick={() => void packageAction(pkg.packageName, 'clear-data')}
+                        className="rounded border border-slate-700 px-2 py-1 text-[11px] text-orange-300 disabled:opacity-40 hover:bg-slate-800"
+                      >
+                        Clear data
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!packageBusy}
+                        onClick={() => void packageAction(pkg.packageName, 'uninstall-user')}
+                        className="rounded border border-red-900 px-2 py-1 text-[11px] text-red-300 disabled:opacity-40 hover:bg-red-950/40"
+                      >
+                        Uninstall user
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 text-xs text-slate-600">
+                  {filteredPackages.length} of {adbPackages.length} user-installed packages shown.
+                </div>
+              </>
+            )}
+          </section>
+
+
+</ExpertPanel></div>
+</WorkspacePanel>
+<WorkspacePanel view="firmware" active={workspaceView}>
+<div className="mb-4 rounded-xl border border-amber-900/60 bg-amber-950/10 p-4 text-sm leading-6 text-slate-300">Package inspection and planning are available for supported formats. Brand or chipset matches do not prove exact model compatibility. Device writes stay locked.</div><ExpertPanel id="recovery-planner" title="Qualcomm / MediaTek service packages" description="Inspect artifacts and prepare an audited recovery plan. Planning only." reveal={requestedPanel==='recovery-planner'}>
           <section id="safe-repair-workflows" className="mb-4 rounded-lg border border-orange-900/60 bg-orange-950/10 p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h2 className="text-base font-semibold text-white">3. Choose a safe repair workflow</h2>
+                <h2 className="text-base font-semibold text-white">Qualcomm / MediaTek package inspection</h2>
                 <p className="mt-1 max-w-3xl text-sm text-slate-400">
-                  Safe recovery is enabled for live hardware detection, artifact inspection, payload hashing, dry-run planning,
-                  audited job preparation, identity revalidation, and qualification evidence. Destructive writes remain locked
-                  until the exact executor/device combination passes physical qualification.
+                  Inspect a service package and prepare an evidence-bound recovery plan. Exact model, compatibility,
+                  recovery readiness, and device-specific approval remain required for any future device write.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded border border-emerald-800 bg-emerald-950/40 px-2 py-1 text-xs font-semibold text-emerald-300">
-                  ENABLED
+                  INSPECTION ONLY
                 </span>
                 <span className="rounded border border-amber-900 bg-amber-950/50 px-2 py-1 text-xs text-amber-300">
                   WRITE GATE LOCKED
@@ -1922,6 +2322,7 @@ export default function App() {
                       onClick={() => void useVerifiedFirmwareBundle()}
                       disabled={
                         recoveryBusy ||
+                        refreshing ||
                         !selectedVerifiedBundle ||
                         !laneVerifiedFirmwareBundles.some((bundle) => bundle.directory === selectedVerifiedBundle)
                       }
@@ -2209,80 +2610,124 @@ export default function App() {
             </div>
           </section>
 
-          <section className="mb-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
+
+</ExpertPanel>{usbDevices.some(device=>device.vendorId===0x04e8 && device.mode==='samsung-download') && <><ExpertPanel id="samsung-detection" title="Samsung connection evidence" description="USB observation is separate from a verified Download Mode session.">
+          <div className="mb-4">
+            <SamsungDownloadStatus receipt={usbDevices.some(device => device.vendorId === 0x04e8 && device.productName === 'Gadget Serial') ? {
+              schema: 'bobfwtools.samsung.detect.v1',
+              transport: 'Samsung USB Gadget Serial',
+              detected: true,
+              protocolSessionVerified: false,
+              pitDownloaded: false,
+              modelIdentityVerified: false,
+              flashAuthorized: false,
+              frpStateChanged: false,
+              exitCode: 0
+            } : null} />
+          </div>
+
+</ExpertPanel><button type="button" onClick={()=>openWorkspace('advanced','service-tools')} className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200">Open Samsung package tools</button></>}
+</WorkspacePanel>
+<WorkspacePanel view="advanced" active={workspaceView}>
+<ExpertPanel id="service-tools" title="Device & firmware service tools" description="Detected-target workflows, host setup, package catalogs, and driver evidence." reveal={requestedPanel==='service-tools'}>
+<RepairCommandCenter liveSnapshot={{adb:adbDevices,usb:usbDevices,checking:refreshing || !scanCompleted}}/>
+</ExpertPanel>
+<ExpertPanel id="recovery-safety" title="Calibration backups & authorized loaders" description="Read-only backup tools and hash-enrolled OEM/service programmers.">
+<RecoverySafetyTools/>
+</ExpertPanel>
+<ExpertPanel id="sector-planning" title="Sector planning" description="Offline Firehose math and bounds checking. No device writes.">
+<FirehoseDryRun/>
+</ExpertPanel>
+<ExpertPanel id="qualification-dossier" title="Device qualification evidence" description="Exact target, recovery job, repeated USB observations, and review receipts.">
+<QualificationDossier recoveryJobFingerprint={recoveryJob?.jobFingerprint ?? null} preparedRecoveryIdentity={recoveryJob?.identity ?? null}/>
+</ExpertPanel>
+<ExpertPanel id="qualified-writer" title="Physical write qualification" description="Independent gates and exact-operation approval remain mandatory.">
+<QualifiedFlashConsole recoveryJobFingerprint={recoveryJob?.jobFingerprint ?? null} readinessCertificatePath={recoveryCertificateReview?.safeToReview ? recoveryCertificatePath : null}/>
+</ExpertPanel>
+<ExpertPanel id="connection-observations" title="Raw connection & backend evidence" description="USB descriptors, probe results, and frontend/backend correlation.">
+<div className="mb-3 text-xs text-slate-400">{nativeRuntime ? 'Native desktop core' : 'Browser preview'} · {handshake?.status==='ready' ? 'Handshake · '+handshake.correlation_id : 'Handshake pending'}</div><div className="max-h-64 overflow-auto">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Physical USB observations
+          </h2>
+
+          {usbDevices.length === 0 ? (
+            <div className="rounded border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-500">
+              No USB device observed. Connect the phone directly or through a data-capable USB hub.
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {usbDevices.map((device) => (
+                <li key={device.deviceUid} className="rounded border border-slate-700 bg-slate-950/60 p-3">
+                  <div className="font-medium text-white">
+                    {device.productName || device.manufacturer || 'USB device'}
+                  </div>
+                  <div className="mt-1 text-xs text-cyan-300">{device.platformHint}</div>
+                  <div className="text-xs text-slate-400">{device.mode} · {device.speed}</div>
+                  <div className="mt-2 font-mono text-[11px] text-slate-600">
+                    {hex(device.vendorId)}:{hex(device.productId)}
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-600">{device.evidenceSource}</div>
+                </li>
+              ))}
+            </ul>
+          )}
+</div>          <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-sm font-semibold text-white">ADB App Manager</h2>
+                <h2 className="text-sm font-semibold text-white">Live workflow capability matrix</h2>
                 <p className="mt-1 text-sm text-slate-400">
-                  Manage third-party packages on the selected authorized device. Package actions are validated and allowlisted.
+                  Every workflow is enabled from current transport evidence, not device-brand assumptions.
                 </p>
               </div>
-              <button
-                type="button"
-                disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
-                onClick={() => void refreshPackages()}
-                className="rounded bg-slate-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
-              >
-                Load apps
-              </button>
+              {capabilities && (
+                <span className="text-xs text-slate-500">
+                  USB {capabilities.usbDevicesSeen} · ADB {capabilities.adbDevicesSeen} · MTP {capabilities.mtpConnected ? 'yes' : 'no'}
+                </span>
+              )}
             </div>
-
-            {adbPackages.length > 0 && (
-              <>
-                <div className="mt-3">
-                  <input
-                    value={packageQuery}
-                    onChange={(event) => setPackageQuery(event.target.value)}
-                    placeholder="Search package names…"
-                    className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-600"
-                  />
-                </div>
-                <div className="mt-3 max-h-80 overflow-y-auto rounded border border-slate-800">
-                  {filteredPackages.map((pkg) => (
-                    <div key={pkg.packageName} className="flex flex-wrap items-center gap-2 border-b border-slate-800 bg-slate-950/50 px-3 py-2 last:border-b-0">
-                      <div className="min-w-0 flex-1 break-all font-mono text-xs text-slate-200">{pkg.packageName}</div>
-                      <button
-                        type="button"
-                        disabled={!!packageBusy}
-                        onClick={() => void packageAction(pkg.packageName, 'enable')}
-                        className="rounded border border-slate-700 px-2 py-1 text-[11px] text-emerald-300 disabled:opacity-40 hover:bg-slate-800"
-                      >
-                        Enable
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!!packageBusy}
-                        onClick={() => void packageAction(pkg.packageName, 'disable-user')}
-                        className="rounded border border-slate-700 px-2 py-1 text-[11px] text-amber-300 disabled:opacity-40 hover:bg-slate-800"
-                      >
-                        Disable
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!!packageBusy}
-                        onClick={() => void packageAction(pkg.packageName, 'clear-data')}
-                        className="rounded border border-slate-700 px-2 py-1 text-[11px] text-orange-300 disabled:opacity-40 hover:bg-slate-800"
-                      >
-                        Clear data
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!!packageBusy}
-                        onClick={() => void packageAction(pkg.packageName, 'uninstall-user')}
-                        className="rounded border border-red-900 px-2 py-1 text-[11px] text-red-300 disabled:opacity-40 hover:bg-red-950/40"
-                      >
-                        Uninstall user
-                      </button>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {(capabilities?.workflows ?? []).map((workflow) => (
+                <div
+                  key={workflow.id}
+                  className={`rounded border p-3 ${
+                    workflow.enabled
+                      ? 'border-emerald-900 bg-emerald-950/20'
+                      : 'border-slate-800 bg-slate-950/50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-mono text-xs text-white">{workflow.id}</div>
+                    <span className={workflow.enabled ? 'text-xs text-emerald-400' : 'text-xs text-slate-600'}>
+                      {workflow.enabled ? 'enabled' : 'unavailable'}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-slate-400">{workflow.reason}</div>
+                  {workflow.evidence.length > 0 && (
+                    <div className="mt-2 break-all text-[10px] text-slate-600">
+                      {workflow.evidence.join(' · ')}
                     </div>
-                  ))}
+                  )}
                 </div>
-                <div className="mt-2 text-xs text-slate-600">
-                  {filteredPackages.length} of {adbPackages.length} user-installed packages shown.
-                </div>
-              </>
-            )}
+              ))}
+            </div>
           </section>
 
+
+</ExpertPanel>
+<ExpertPanel id="execution-policy" title="Execution policy" description="Read the rules enforced by device actions.">
+          <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
+            <h2 className="text-sm font-semibold text-white">Workflow execution policy</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              BobFWTools only enables a workflow when the required transport is actually present. USB descriptor data
+              comes from the native Rust scanner. File operations execute through a real MTP session. Completed uploads
+              are re-listed for verification; downloads are verified after the Mac file is written. Missing transports
+              remain unavailable instead of returning simulated success.
+            </p>
+          </section>
+
+</ExpertPanel>
+</WorkspacePanel>
+<WorkspacePanel view="history" active={workspaceView}>
           <section className="mb-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -2302,7 +2747,7 @@ export default function App() {
             <div className="mt-3 space-y-2">
               {workflowJobs.length === 0 ? (
                 <div className="rounded border border-slate-800 bg-slate-950/50 p-3 text-sm text-slate-500">
-                  No audited one-click jobs have run in this app session yet.
+                  {scanFailures.includes('jobs') ? 'Job history could not be checked. Resolve the connection error and rescan.' : 'No audited one-click jobs have run in this app session yet.'}
                 </div>
               ) : workflowJobs.slice(0, 8).map((job) => (
                 <div key={job.id} className="rounded border border-slate-800 bg-slate-950/50 p-3">
@@ -2347,375 +2792,13 @@ export default function App() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-5">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h2 className="text-base font-semibold text-white">Media Transfer Protocol</h2>
-                <p className="mt-1 max-w-2xl text-sm text-slate-400">
-                  Real Android file access. USB debugging is not required. Unlock the phone and choose File transfer
-                  or Android Auto when Android asks what the USB connection should do.
-                </p>
-              </div>
-              <span className={`rounded px-2 py-1 text-xs font-medium ${
-                mtp ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400'
-              }`}>
-                {mtp ? 'MTP connected' : 'No MTP session'}
-              </span>
-            </div>
-
-            {!mtp ? (
-              <div className="mt-5 rounded border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">
-                BobFWTools sees MTP independently from ADB. If the phone is physically visible at left but no
-                MTP session appears, unlock the phone and switch its USB preference to File transfer.
-              </div>
-            ) : (
-              <>
-                <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
-                    <div className="text-[11px] uppercase text-slate-600">Manufacturer</div>
-                    <div className="mt-1 text-sm text-white">{mtp.manufacturer || 'Unavailable'}</div>
-                  </div>
-                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
-                    <div className="text-[11px] uppercase text-slate-600">Model</div>
-                    <div className="mt-1 text-sm text-white">{mtp.model || 'Unavailable'}</div>
-                  </div>
-                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
-                    <div className="text-[11px] uppercase text-slate-600">Family</div>
-                    <div className="mt-1 text-sm text-white">{mtp.deviceFamily}</div>
-                  </div>
-                  <div className="rounded border border-slate-800 bg-slate-950/60 p-3">
-                    <div className="text-[11px] uppercase text-slate-600">Evidence</div>
-                    <div className="mt-1 break-all text-xs text-cyan-300">{mtp.evidenceSource}</div>
-                  </div>
-                </div>
-
-                <div className="mt-5">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Storage</h3>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {mtp.storages.map((storage, index) => (
-                      <button
-                        type="button"
-                        key={`${storage.description}-${index}`}
-                        onClick={() => void openStorage(index)}
-                        disabled={transferBusy}
-                        className={`rounded border px-3 py-2 text-left text-sm disabled:opacity-50 ${
-                          index === storageIndex
-                            ? 'border-orange-500 bg-orange-950/20'
-                            : 'border-slate-700 bg-slate-950 hover:border-slate-600'
-                        }`}
-                      >
-                        <div className="font-medium text-white">{storage.description || `Storage ${index + 1}`}</div>
-                        <div className="text-xs text-slate-500">{formatBytes(storage.freeSpaceBytes)} free</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-5 rounded border border-slate-800 bg-slate-950/40 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="text-xs font-medium text-white">Current Android folder</div>
-                      <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
-                        <button
-                          type="button"
-                          disabled={transferBusy}
-                          onClick={() => void openMtpFolder([])}
-                          className="rounded px-1.5 py-0.5 text-cyan-300 hover:bg-slate-800 disabled:opacity-50"
-                        >
-                          root
-                        </button>
-                        {mtpPath.map((segment, index) => (
-                          <span key={`${segment}-${index}`} className="flex items-center gap-1">
-                            <span className="text-slate-600">/</span>
-                            <button
-                              type="button"
-                              disabled={transferBusy}
-                              onClick={() => void openMtpFolder(mtpPath.slice(0, index + 1))}
-                              className="rounded px-1.5 py-0.5 text-cyan-300 hover:bg-slate-800 disabled:opacity-50"
-                            >
-                              {segment}
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void uploadFile()}
-                      disabled={transferBusy}
-                      className="rounded bg-cyan-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 hover:bg-cyan-600"
-                    >
-                      Upload Mac file here
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-5">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Folder contents
-                    </h3>
-                    <span className="text-xs text-slate-600">{mtpObjects.length} objects</span>
-                  </div>
-                  <div className="mt-2 overflow-hidden rounded border border-slate-800">
-                    {mtpObjects.length === 0 ? (
-                      <div className="bg-slate-950/60 p-4 text-sm text-slate-500">
-                        This folder is empty or returned no visible objects.
-                      </div>
-                    ) : (
-                      <ul className="divide-y divide-slate-800 bg-slate-950/60">
-                        {mtpObjects.map((object) => (
-                          <li key={object.path.join('/')} className="flex items-center gap-3 px-3 py-2">
-                            <span className="w-12 text-[11px] uppercase text-slate-600">
-                              {object.isFolder ? 'Folder' : 'File'}
-                            </span>
-                            <span className="min-w-0 flex-1 truncate text-sm text-slate-200">
-                              {object.filename || 'Unnamed object'}
-                            </span>
-                            {!object.isFolder && (
-                              <span className="text-[11px] text-slate-600">{formatBytes(object.sizeBytes)}</span>
-                            )}
-                            {object.isFolder ? (
-                              <button
-                                type="button"
-                                disabled={transferBusy}
-                                onClick={() => void openMtpFolder(object.path)}
-                                className="rounded border border-slate-700 px-2 py-1 text-xs text-cyan-300 disabled:opacity-50 hover:bg-slate-800"
-                              >
-                                Open
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                disabled={transferBusy}
-                                onClick={() => void downloadFile(object)}
-                                className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 disabled:opacity-50 hover:bg-slate-800"
-                              >
-                                Download to Mac
-                              </button>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-5">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Negotiated MTP capabilities
-                  </h3>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {mtp.capabilities.map((capability) => (
-                      <span key={capability} className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-300">
-                        {capability}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-          </section>
-
-          <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold text-white">Live workflow capability matrix</h2>
-                <p className="mt-1 text-sm text-slate-400">
-                  Every workflow is enabled from current transport evidence, not device-brand assumptions.
-                </p>
-              </div>
-              {capabilities && (
-                <span className="text-xs text-slate-500">
-                  USB {capabilities.usbDevicesSeen} · ADB {capabilities.adbDevicesSeen} · MTP {capabilities.mtpConnected ? 'yes' : 'no'}
-                </span>
-              )}
-            </div>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {(capabilities?.workflows ?? []).map((workflow) => (
-                <div
-                  key={workflow.id}
-                  className={`rounded border p-3 ${
-                    workflow.enabled
-                      ? 'border-emerald-900 bg-emerald-950/20'
-                      : 'border-slate-800 bg-slate-950/50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="font-mono text-xs text-white">{workflow.id}</div>
-                    <span className={workflow.enabled ? 'text-xs text-emerald-400' : 'text-xs text-slate-600'}>
-                      {workflow.enabled ? 'enabled' : 'unavailable'}
-                    </span>
-                  </div>
-                  <div className="mt-1 text-xs text-slate-400">{workflow.reason}</div>
-                  {workflow.evidence.length > 0 && (
-                    <div className="mt-2 break-all text-[10px] text-slate-600">
-                      {workflow.evidence.join(' · ')}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold text-white">Authorized ADB workflows</h2>
-                <p className="mt-1 text-sm text-slate-400">
-                  These actions run against the selected real ADB device. Unauthorized and offline devices remain
-                  visible but cannot execute workflows.
-                </p>
-              </div>
-              <span className="text-xs text-slate-500">{adbDevices.length} ADB device(s)</span>
-            </div>
-
-            {adbDevices.length === 0 ? (
-              <div className="mt-4 rounded border border-slate-800 bg-slate-950/50 p-3 text-sm text-slate-500">
-                No ADB interface detected. File transfer can still work over MTP without USB debugging.
-              </div>
-            ) : (
-              <>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {adbDevices.map((device) => (
-                    <button
-                      key={device.serial}
-                      type="button"
-                      onClick={() => setAdbSelectedSerial(device.serial)}
-                      className={`rounded border px-3 py-2 text-left text-xs ${
-                        adbSelectedSerial === device.serial
-                          ? 'border-cyan-500 bg-cyan-950/20'
-                          : 'border-slate-700 bg-slate-950'
-                      }`}
-                    >
-                      <div className="font-mono text-slate-200">{device.serial}</div>
-                      <div className={device.authorized ? 'text-emerald-400' : 'text-amber-300'}>
-                        {device.state}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  <button
-                    type="button"
-                    disabled={transferBusy}
-                    onClick={() => void runOneClickAdb()}
-                    className="rounded bg-cyan-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-cyan-600"
-                  >
-                    Prepare ADB
-                  </button>
-                  <button
-                    type="button"
-                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
-                    onClick={() => void runAdbBattery()}
-                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
-                  >
-                    Battery info
-                  </button>
-                  <button
-                    type="button"
-                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
-                    onClick={() => void runAdbDeviceInfo()}
-                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
-                  >
-                    Read live device info
-                  </button>
-                  <button
-                    type="button"
-                    disabled={
-                      transferBusy ||
-                      !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized
-                    }
-                    onClick={() => void runAdbLogcat()}
-                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
-                  >
-                    Capture logcat
-                  </button>
-                  <button
-                    type="button"
-                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
-                    onClick={() => void runAdbScreenshot()}
-                    className="rounded bg-violet-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-violet-600"
-                  >
-                    Save screenshot
-                  </button>
-                  <button
-                    type="button"
-                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
-                    onClick={() => void runSimpleAdbAction('network')}
-                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
-                  >
-                    Network settings
-                  </button>
-                  <button
-                    type="button"
-                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
-                    onClick={() => void runSimpleAdbAction('factory-reset-settings')}
-                    className="rounded bg-amber-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-amber-600"
-                  >
-                    Factory reset settings
-                  </button>
-                  <button
-                    type="button"
-                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
-                    onClick={() => void runSimpleAdbAction('install-apk')}
-                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
-                  >
-                    Install APK
-                  </button>
-                  <button
-                    type="button"
-                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
-                    onClick={() => void runSimpleAdbAction('reboot-normal')}
-                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
-                  >
-                    Reboot
-                  </button>
-                  <button
-                    type="button"
-                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
-                    onClick={() => void runSimpleAdbAction('reboot-recovery')}
-                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
-                  >
-                    Reboot recovery
-                  </button>
-                  <button
-                    type="button"
-                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
-                    onClick={() => void runSimpleAdbAction('reboot-bootloader')}
-                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
-                  >
-                    Reboot bootloader
-                  </button>
-                  <button
-                    type="button"
-                    disabled={transferBusy || !adbDevices.find((device) => device.serial === adbSelectedSerial)?.authorized}
-                    onClick={() => void runSimpleAdbAction('reboot-download')}
-                    className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
-                  >
-                    Samsung download mode
-                  </button>
-                </div>
-
-                {adbOutput && (
-                  <pre className="mt-4 max-h-72 overflow-auto whitespace-pre-wrap rounded border border-slate-800 bg-black p-3 text-xs text-slate-300">
-                    {adbOutput}
-                  </pre>
-                )}
-              </>
-            )}
-          </section>
-
-          <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
-            <h2 className="text-sm font-semibold text-white">Workflow execution policy</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-400">
-              BobFWTools only enables a workflow when the required transport is actually present. USB descriptor data
-              comes from the native Rust scanner. File operations execute through a real MTP session. Completed uploads
-              are re-listed for verification; downloads are verified after the Mac file is written. Missing transports
-              remain unavailable instead of returning simulated success.
-            </p>
-          </section>
+<ExpertPanel id="connection-timeline" title="Connection events" description="Observed USB and recovery-mode events.">
+<OperatorTimeline/>
+</ExpertPanel><ExpertPanel id="saved-audit-ledger" title="Saved audit evidence" description="Persistent, fingerprinted event and workflow records.">
+<AuditLedger/>
+</ExpertPanel>
+</WorkspacePanel>
+          </div>
         </main>
       </div>
     </div>

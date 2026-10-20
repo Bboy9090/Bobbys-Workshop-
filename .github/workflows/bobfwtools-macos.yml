@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   BOBFWTOOLS_SOURCE_REVISION: ${{ github.sha }}
 
@@ -25,7 +29,7 @@ jobs:
           package-manager-cache: false
 
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci
 
       - name: Install packaged API dependencies
         run: npm ci --prefix src-tauri/resources/server --ignore-scripts
@@ -60,19 +64,29 @@ jobs:
         run: cargo check --manifest-path libs/bootforgeusb/Cargo.toml
 
       - name: Check BobFWTools Tauri core
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+        run: cargo check --manifest-path src-tauri/Cargo.toml --locked
 
       - name: Check qualified destructive writer build
-        run: cargo check --manifest-path src-tauri/Cargo.toml --features qualified-flash
+        run: cargo check --manifest-path src-tauri/Cargo.toml --locked --features qualified-flash
+
+      - name: Test standard app Rust gates
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features
 
       - name: Test qualified destructive writer gates
-        run: cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --features qualified-flash
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features --features qualified-flash
 
       - name: Run BootForge USB tests
         run: cargo test --manifest-path libs/bootforgeusb/Cargo.toml
 
       - name: Build universal BobFWTools.app
         run: npm run tauri:build:macos:ci
+
+      - name: Seal standard CI bundle ad-hoc
+        run: |
+          set -euo pipefail
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
+          codesign --force --deep --sign - --timestamp=none --options runtime --entitlements src-tauri/entitlements.mac.plist "$APP"
+          codesign --verify --deep --strict "$APP"
 
       - name: Verify universal app bundle
         run: bash scripts/verify-bobfwtools-macos-app.sh
@@ -99,8 +113,25 @@ jobs:
           path: src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
           if-no-files-found: error
 
+      - name: Build and check unsigned installer
+        run: bash scripts/qualify-bobfwtools-unsigned-installer.sh
+
+      - name: Upload unsigned installer qualification artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: BobFWTools-universal-macOS-installer-unsigned
+          path: ${{ runner.temp }}/BobFWTools-installer-qualification/
+          if-no-files-found: error
+
       - name: Build qualified universal BobFWTools.app
         run: npm run tauri:build:macos:qualified:ci
+
+      - name: Seal qualified CI bundle ad-hoc
+        run: |
+          set -euo pipefail
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
+          codesign --force --deep --sign - --timestamp=none --options runtime --entitlements src-tauri/entitlements.mac.plist "$APP"
+          codesign --verify --deep --strict "$APP"
 
       - name: Verify qualified universal app bundle
         run: |

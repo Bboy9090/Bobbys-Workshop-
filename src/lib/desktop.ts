@@ -1,3 +1,4 @@
+import { workflowImplementation } from './workspace-availability';
 import { runHardwareProbe, type HardwareProbeFailure } from './hardware-probes';
 import { isSamsungDownloadTransport } from './hardware-lane-visibility';
 import { invoke } from '@tauri-apps/api/core';
@@ -1073,7 +1074,6 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     probe('policies', getWorkflowPolicyCatalog, []),
   ]);
   const bundles = firmware?.bundles ?? [];
-  const workflowPolicy = (id: string) => workflowPolicies.find((policy) => policy.id === id) || null;
 
   const verifiedBundles = bundles.filter(
     (bundle) => bundle.planningReady && Boolean(bundle.packageFingerprint),
@@ -1092,7 +1092,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'adb-service',
       title: 'ADB authorized service',
       workflowPolicyId: 'android.adb-authorized',
-      physicallyQualified: workflowPolicy('android.adb-authorized')?.physicallyQualified ?? null,
+      physicallyQualified: null,
       state: authorizedAdb.length && workstation.readyForAndroidService ? 'ready' : 'blocked',
       automation: 'automatic-read-only',
       detected: adbDevices.length > 0,
@@ -1138,7 +1138,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'samsung-download',
       title: 'Samsung Download Mode',
       workflowPolicyId: 'samsung.odin-plan',
-      physicallyQualified: workflowPolicy('samsung.odin-plan')?.physicallyQualified ?? null,
+      physicallyQualified: null,
       state: samsungDevices.length ? 'guided' : 'blocked',
       automation: 'qualified-destructive',
       detected: samsungDevices.length > 0,
@@ -1153,7 +1153,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'qualcomm-edl',
       title: 'Qualcomm EDL / Sahara / Firehose',
       workflowPolicyId: 'qualcomm.edl-plan',
-      physicallyQualified: workflowPolicy('qualcomm.edl-plan')?.physicallyQualified ?? null,
+      physicallyQualified: null,
       state: qualcommRecovery.length && qualcommBundles.length ? 'guided' : 'blocked',
       automation: 'qualified-destructive',
       detected: qualcommRecovery.length > 0,
@@ -1172,7 +1172,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'mediatek-download',
       title: 'MediaTek Preloader / Download',
       workflowPolicyId: 'mediatek.brom-plan',
-      physicallyQualified: workflowPolicy('mediatek.brom-plan')?.physicallyQualified ?? null,
+      physicallyQualified: null,
       state: mediatekRecovery.length && mediatekBundles.length ? 'guided' : 'blocked',
       automation: 'qualified-destructive',
       detected: mediatekRecovery.length > 0,
@@ -1194,14 +1194,14 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
   );
 
   for (const policy of workflowPolicies.filter(
-    (item) => item.activeInBobfwtools && !representedPolicyIds.has(item.id),
+    (item) => item.activeInBobfwtools === true && workflowImplementation(item.id) !== null && !representedPolicyIds.has(item.id),
   )) {
     const destructiveLike = policy.risk === 'destructive' || policy.risk === 'restricted' || policy.risk === 'elevated';
     lanes.push({
       id: `catalog:${policy.id}`,
       title: policy.category + ' · ' + policy.id,
       workflowPolicyId: policy.id,
-      physicallyQualified: policy.physicallyQualified,
+      physicallyQualified: false,
       state: 'blocked',
       automation: destructiveLike ? 'qualified-destructive' : 'guided-safe-action',
       detected: false,
@@ -1209,7 +1209,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       firmwareCandidates: [],
       blockers: [
         'This catalog workflow has no dedicated auto-detection binding in the current readiness sweep; target/evidence selection remains guided.',
-        ...(!policy.physicallyQualified ? ['Physical qualification is still pending for this workflow.'] : []),
+        'Current-device physical qualification requires exact target evidence; catalog flags do not qualify this device.',
       ],
       nextSteps: [policy.notes],
     });
@@ -1267,7 +1267,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     lanes.some((lane) => lane.state !== 'blocked');
 
   const qualificationQueue: HardwareQualificationTask[] = workflowPolicies
-    .filter((policy) => policy.activeInBobfwtools && !policy.physicallyQualified)
+    .filter((policy) => policy.activeInBobfwtools === true && workflowImplementation(policy.id) !== null)
     .map((policy) => {
       const requiredEvidence = [
         ...(policy.authorizationRequired ? ['Operator/device authorization evidence'] : []),
@@ -1283,8 +1283,8 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
         workflowId: policy.id,
         category: policy.category,
         risk: policy.risk,
-        softwareImplemented: policy.activeInBobfwtools,
-        physicallyQualified: policy.physicallyQualified,
+        softwareImplemented: workflowImplementation(policy.id) !== null,
+        physicallyQualified: false,
         requiredEvidence,
         ...packet,
         notes: policy.notes,

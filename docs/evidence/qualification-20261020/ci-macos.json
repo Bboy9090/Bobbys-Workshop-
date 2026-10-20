@@ -1,0 +1,259 @@
+{
+  "schema": "bobfwtools.ci-observation.v1",
+  "sourceRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
+  "pullRequestHead": "a557d23c689a096dcddda8b26f7ce6bd3477a6af",
+  "sourceTree": "cdd84a2e26ca47eab40e2ce5b21c777c650b0a25",
+  "runUrl": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39509792161",
+  "observedAt": "2026-10-20T22:57:02.890Z",
+  "jobs": [
+    {
+      "id": 118927681417,
+      "name": "macos-core",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 39509792161,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Run actions/checkout@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Use Node.js",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Install frontend dependencies",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Install packaged API dependencies",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Rust toolchain",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Validate macOS entitlements",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Production reality gate",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8
+        },
+        {
+          "name": "Typecheck frontend",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9
+        },
+        {
+          "name": "Build frontend",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10
+        },
+        {
+          "name": "Run BobFWTools production contract tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11
+        },
+        {
+          "name": "Validate workflow definitions",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12
+        },
+        {
+          "name": "Audit root npm dependency tree",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13
+        },
+        {
+          "name": "Check BootForge USB",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14
+        },
+        {
+          "name": "Check BobFWTools Tauri core",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15
+        },
+        {
+          "name": "Check qualified destructive writer build",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 16
+        },
+        {
+          "name": "Test standard app Rust gates",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17
+        },
+        {
+          "name": "Test qualified destructive writer gates",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18
+        },
+        {
+          "name": "Run BootForge USB tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19
+        },
+        {
+          "name": "Build universal BobFWTools.app",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 20
+        },
+        {
+          "name": "Verify universal app bundle",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21
+        },
+        {
+          "name": "Inspect unsigned CI artifact",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 22
+        },
+        {
+          "name": "Upload BobFWTools app artifact",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 23
+        },
+        {
+          "name": "Build qualified universal BobFWTools.app",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 24
+        },
+        {
+          "name": "Verify qualified universal app bundle",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 25
+        },
+        {
+          "name": "Upload qualified BobFWTools app artifact",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 26
+        },
+        {
+          "name": "Post Use Node.js",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 51
+        },
+        {
+          "name": "Post Run actions/checkout@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 52
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 53
+        }
+      ]
+    }
+  ],
+  "logEvidence": [
+    "2026-10-20T22:45:56.9842160Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "2026-10-20T22:45:57.1016700Z test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s",
+    "2026-10-20T22:45:57.3513150Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "2026-10-20T22:46:09.8559330Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "2026-10-20T22:46:09.9677230Z test result: ok. 86 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s",
+    "2026-10-20T22:46:10.0635640Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "2026-10-20T22:46:22.1557150Z test result: ok. 49 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+    "2026-10-20T22:46:22.1585620Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "2026-10-20T22:46:22.3762410Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "2026-10-20T22:53:39.9690210Z BobFWTools macOS app verification: PASS",
+    "2026-10-20T22:53:39.9692280Z architectures=x86_64 arm64",
+    "2026-10-20T22:53:40.0605910Z   echo \"Ad-hoc CI signature confirmed. Signing/notarization remains a separate release gate.\"",
+    "2026-10-20T22:53:40.0606970Z   echo \"Unsigned CI artifact confirmed. Signing/notarization remains a separate release gate.\"",
+    "2026-10-20T22:53:40.2594350Z Ad-hoc CI signature confirmed. Signing/notarization remains a separate release gate.",
+    "2026-10-20T22:56:52.1709150Z strings \"$BIN\" | grep -F \"Qualified destructive writes require post-write target verification\"",
+    "2026-10-20T22:56:52.1709810Z strings \"$BIN\" | grep -F \"bootforge_qualified_fastboot_devices\"",
+    "2026-10-20T22:56:52.6304240Z BobFWTools macOS app verification: PASS",
+    "2026-10-20T22:56:52.6307480Z architectures=x86_64 arm64",
+    "2026-10-20T22:56:53.0575300Z qualificationGatespolicyrawWriteExecutorEnabledrequiresPhysicalExecutorQualificationsecurityBypassExecutionSupportedexport-evidence-receiptRecovery evidence receipt exported; no write/flash execution was performed.Evidence receipt destination is requiredunknowncom.bobbyblanco.bobfwtools.hardware-qualification-packet.v1bench-pendingpacketpacketDoesNotGrantWriteAuthorityphysicalBenchEvidenceRequiredhumanQualificationDecisionRequiredwrite-authority-granted:falseQualificationexport-hardware-qualification-packetQualification packet destination is requiredQualification packet schema is not recognizedQualification packet fingerprint does not match its payloadQualification packet status is not bench-pendingQualification packet improperly claims execution was performedQualification packet improperly claims write authorityreview-hardware-qualification-packetHardware qualification packet integrity reviewed; review never grants write authority.Qualified device serial is requiredEvery physical qualification check, including destructive bench write and post-write verification, must passExact qualified fastboot device is not currently connectedThis build does not contain the qualified destructive writerissue-qualified-flash-grantapproved-short-livedShort-lived qualified flash grant issued after explicit physical qualification review.At least one qualified partition image is requiredProduction grant partition inputs do not exactly match the verified bench-evidence receiptProduction grant decision is bound to a different qualification packetProduction grant audit bundle is bound to a different qualification packetProduction grant checks do not exactly match the verified bench-evidence receiptQualification decision is bound to a different bench-evidence receiptQualified flash grants must expire within 1-30 minutesPhysical qualification reviewer identity is requiredc54e10339047dd94e61a645117c8e1d9634c7326",
+    "2026-10-20T22:56:53.0963970Z Production-qualified grant qualification-packet fingerprint is invalidQualified destructive writes require post-write target verificationBench qualification trial cannot wipe userdata or reboot automatically",
+    "2026-10-20T22:56:53.1019830Z blockedPrepared recovery device identity is no longer present exactly as prepared.Recovery device identity is no longer present exactly as prepareddevicesA valid 64-character recovery-job SHA-256 fingerprint is requiredExecutor source revision is unavailable; build is not qualification-binding readyLive recovery-mode device does not exactly match the frozen recovery-job identityWorkstation tool evidence is missing from the qualification dossierWindows driver-store probe evidence is unavailable; OEM driver readiness cannot be provenWindows OEM driver evidence matrix is missing from the qualification dossierOne or more applicable Windows driver checks lack verifiable evidenceQualcomm EDL qualification requires an authorized programmer record with valid SHA-256, nonzero size, declared device family, and authorization sourceRepeat USB enumeration without identity driftConfirm expected recovery mode after reconnectConfirm bulk endpoint stability across repeated scansConfirm OEM/service programmer hash remains enrolled and unchangedConfirm firmware/device/layout preflight matches targetConfirm dry-run partition plan stays within verified boundsConfirm backup/rollback evidence exists where requiredRecord designated-device bench outcome separately before any executor qualificationRequire an exact recovery-job fingerprint match before qualification reviewRequire the live recovery-mode device to exactly match the frozen recovery-job identityRequire an executor source revision and build fingerprint before qualification reviewRequire a preserved workstation tool matrix and verifiable Windows driver-store evidence before qualification reviewcom.bobbyblanco.bobfwtools.designated-device-qualification.binding.v1transportFindingsrequiredPhysicalChecksbindingBlockerscom.bobbyblanco.bobfwtools.designated-device-qualification.v1pending-physical-reviewexecutionEnabledByThisDossierqualificationBindingReadybindingMaterialexecutorBuildexport-qualification-dossiercompleted-no-executionDesignated-device qualification dossier exported; executor qualification remains false.Qualification dossier destination is requiredQualification dossier schema is not recognizedDossier fingerprint does not match binding materialRecovery-job fingerprint is missing or malformedDossier does not match the currently prepared recovery jobDossier was produced by a different executor buildDossier did not claim qualification-binding readinessDossier qualification-binding claim is inconsistent with its hash-bound identity/workstation/transport/programmer evidenceQualification status is not pending-physical-reviewImported dossier improperly claims executor qualificationImported dossier improperly claims execution enablementreviewablereview-qualification-dossierQualification dossier reviewed; review never enables an executor.DownloadsDocumentsDesktopefsmodemst1modemst2fsgfscpersistnvramnvdatanvcfgFastboot write exited unsuccessfullyFastboot reported a write failurecom.bobbyblanco.bobfwtools.qualified-flash-grant.v1qualification-trialDestructive executor authority is not valid for this operationQualified flash grant dossier fingerprint is invalidBench qualification trial must not carry production audit-bundle or qualification-packet authorityProduction-qualified grant audit-bundle fingerprint is invalidProduction-qualified grant qualification-packet fingerprint is invalidQualified flash grant recovery-job fingerprint is invalidQualified flash grant does not authorize userdata wipeQualified flash grant does not authorize automatic rebootQualified destructive writes require post-write target verificationQualified flash grant has expiredQualified flash grant is bound to a different executor buildQualified flash grant is bound to a different device serialBench qualification trial cannot wipe userdata or reboot automaticallyBench qualification trial is restricted to exactly one partitionQualified flash grant authentication failedQualified flash grant schema is not recognized-sflashartifactsHashedpayloadsHashedpayloadIntegrityPassedpartitionMapNormalizedhardwareIdentityRevalidatedexecutorPhysicallyQualifiedexecutionReadycom.bobbyblanco.bobfwtools.recovery-evidence.v1executionPerformed",
+    "2026-10-20T22:56:53.1385290Z flash_startappHandleconfigflash_canceljobIdflash_statusflash_historylimitflash_activebootforge_flash_historybootforge_flash_activeaudit_recentadb_device_infoadb_logcat_snapshotlinesadb_screenshotdestinationPathadb_mode_capabilitiesadb_reboot_modeadb_open_network_settingsadb_open_factory_reset_settingsadb_install_apkapkPathadb_list_user_packagesadb_package_actionfirmware_target_preflightdevicecalibration_backup_planedl_programmer_qualificationqualificationfirehose_write_planrequesttransport_retry_decisioncontextfirmware_provenance_writeinputhardware_service_profile_validateprofilebootforge_firmware_inspectpathsbootforge_samsung_planbootforge_recovery_autodiscoverbootforge_recovery_planbootforge_recovery_preparecandidatepackageFingerprintbootforge_recovery_revalidatejobbootforge_recovery_export_receiptbootforge_recovery_export_readiness_certificatebootforge_recovery_review_readiness_certificateexpectedJobFingerprintbootforge_qualification_exporthardware_qualification_packet_exportpackethardware_qualification_packet_reviewbootforge_qualification_reviewexpectedRecoveryJobFingerprintbootforge_qualified_flash_inspect_imagebootforge_qualification_bench_evidence_exportbootforge_qualification_decision_exportbootforge_qualification_audit_bundle_exportbootforge_qualification_audit_bundle_reviewbootforge_issue_qualification_trial_grantbootforge_issue_qualified_flash_grantbackup_calibration_partitionadbSerialdestinationDirinspect_calibration_backupmanifestPathcalibration_restore_preflightactualBytesactualSha256edl_inspect_programmeredl_enroll_programmerrecordconfirmationfirmware_chipset_lookupqueryfirmware_manifest_inspectfirmware_manifest_comparefirmware_bundle_planning_artifactsfastboot_reboot_modemode_transition_verifyrequestedModedriver_binding_release_and_rescaninstanceIddriver_binding_candidatesdriver_binding_conflict_plandriver_binding_cleanup_reportdriver_binding_snapshotdriver_binding_rollback_plansnapshotPathdriver_binding_stability_testdriver_binding_inspect_infinfPathdriver_binding_stage_and_relatchbootforge_qualification_build_identitybootforge_qualified_fastboot_devicesnusb::descriptorsSuccesspackage:authorized EDL programmer enrollment requires a declared device familyPREFLIGHTWRITE_IN_PROGRESSWRITE_INTERRUPTED_UNKNOWN_STATEAWAITING_REENUMERATIONPOST_WRITE_VERIFIEDBLOCKED_REQUIRES_REVIEWmid > lencalled `Result::unwrap()` on an `Err` valuetauri::apppoisoned menu mutexstart-serverdevices-ladb devices-sshellgetpropscreencap-padb screenshotscreenshotadb:exec-out-screencap+png-signature+local-size"
+  ],
+  "artifacts": [
+    {
+      "id": 12306435449,
+      "name": "BobFWTools-universal-macOS-unsigned",
+      "size_in_bytes": 8434836,
+      "url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/artifacts/12306435449",
+      "archive_download_url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/artifacts/12306435449/zip",
+      "expired": false,
+      "created_at": "2026-10-20T22:53:48Z",
+      "expires_at": "2027-01-18T22:40:18Z",
+      "updated_at": "2026-10-20T22:53:48Z",
+      "digest": "sha256:4b661af59d5ccb38299ec6c0989ca8fe07577a7f069453c4a41e5d6ff81d7263",
+      "workflow_run": {
+        "id": 39509792161,
+        "repository_id": 1116528900,
+        "head_repository_id": 1116528900,
+        "head_branch": "fix/qualification-release-evidence-20261020",
+        "head_sha": "a557d23c689a096dcddda8b26f7ce6bd3477a6af"
+      }
+    },
+    {
+      "id": 12305697680,
+      "name": "BobFWTools-universal-macOS-qualified-unsigned",
+      "size_in_bytes": 8792132,
+      "url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/artifacts/12305697680",
+      "archive_download_url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/artifacts/12305697680/zip",
+      "expired": false,
+      "created_at": "2026-10-20T22:56:57Z",
+      "expires_at": "2027-01-18T22:40:18Z",
+      "updated_at": "2026-10-20T22:56:57Z",
+      "digest": "sha256:5a0e484040aa896dee70485f06de1f8bca6cdd478f858b1ff53feeff3b23717b",
+      "workflow_run": {
+        "id": 39509792161,
+        "repository_id": 1116528900,
+        "head_repository_id": 1116528900,
+        "head_branch": "fix/qualification-release-evidence-20261020",
+        "head_sha": "a557d23c689a096dcddda8b26f7ce6bd3477a6af"
+      }
+    }
+  ],
+  "executionAuthorized": false
+}
