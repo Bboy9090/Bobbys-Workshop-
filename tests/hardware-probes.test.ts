@@ -6,7 +6,7 @@ import {buildHardwareFlowReadinessReport} from '../src/lib/desktop';
 vi.mock('@tauri-apps/api/core', () => ({invoke: vi.fn()}));
 afterEach(() => {vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers();});
 
-function host(failing: string[]) {
+function host(failing: string[], overrides: Record<string,unknown> = {}) {
   vi.stubGlobal('window', {__TAURI_INTERNALS__:{}});
   vi.mocked(invoke).mockImplementation(async (command: string) => {
     if (failing.includes(command)) throw new Error('Operation not permitted (os error 1)');
@@ -25,6 +25,7 @@ function host(failing: string[]) {
       driver_binding_scan: [],
       driver_binding_elevation_status: {required:false,elevated:true,detail:'not Windows'},
       workflow_policy_catalog: [],
+      ...overrides,
     };
     if (!(command in replies)) throw new Error('Unexpected command: '+command);
     return replies[command] as never;
@@ -56,4 +57,24 @@ test('a stalled read-only probe releases the UI wait with explicit unverified st
   await vi.advanceTimersByTimeAsync(50);
   expect(await result).toBeNull();
   expect(failures).toEqual([{probe:'mtp',message:'Read-only probe timed out; status is unverified.'}]);
+});
+
+test('catalog claims cannot expose missing executors or qualify the current device', async () => {
+  const policy=(id:string,activeInBobfwtools:unknown=true)=>({
+    id,category:'test',platform:'android',risk:'read-only',authorizationRequired:true,
+    deviceIdentityVerification:true,dryRunSupported:false,backupOrRollbackRequired:false,
+    auditLoggingRequired:true,explicitConfirmationRequired:false,physicallyQualified:true,
+    activeInBobfwtools,notes:'Synthetic policy; no device evidence.',
+  });
+  host([], {workflow_policy_catalog:[
+    policy('android.adb-authorized'),policy('diagnostics.usb-scan'),
+    policy('calibration.restore'),policy('apple.dfu'),policy('unknown.workflow'),
+    policy('calibration.backup','true'),
+  ]});
+  const report=await buildHardwareFlowReadinessReport();
+  expect(report.qualificationQueue.map(row=>row.workflowId).sort()).toEqual(['android.adb-authorized','diagnostics.usb-scan']);
+  expect(report.qualificationQueue.every(row=>row.softwareImplemented && row.physicallyQualified===false)).toBe(true);
+  expect(report.lanes.some(row=>['calibration.restore','apple.dfu','unknown.workflow','calibration.backup'].includes(row.workflowPolicyId || ''))).toBe(false);
+  expect(report.lanes.find(row=>row.id==='adb-service')?.physicallyQualified).toBeNull();
+  expect(report.writeReady).toBe(false);
 });
