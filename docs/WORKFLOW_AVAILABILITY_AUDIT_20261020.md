@@ -64,3 +64,5 @@ Current native UI/installer and new signing/notarization/Gatekeeper checks are b
 The default branch and this integration lane have diverged. The default branch has a separately evolved app + DMG release workflow and different certificate secret names. Promotion must preserve its DMG notarization, installer and provenance stages and resolve the release-script interface differences before release. PRs #239, #193, #192 and dependency work remain separate and untouched.
 
 No flash, wipe, unlock, repartition, restore, or raw-media write was performed or approved in this session.
+
+The final React review adds a repeated-request disclosure regression using a read-only simulated bridge. No simulated device becomes physical evidence. CI also seals its own generated app bundles ad-hoc before strict installer verification; Developer ID signing remains a separate release gate.

@@ -1,6 +1,6 @@
 {
   "schema": "bobfwtools.qualification-ledger.v1",
-  "reportedAt": "2026-10-20T22:58:29.536Z",
+  "reportedAt": "2026-10-20T23:12:09.533Z",
   "testedHead": "a557d23c689a096dcddda8b26f7ce6bd3477a6af",
   "ciMergeRevision": "c54e10339047dd94e61a645117c8e1d9634c7326",
   "sourceTree": "cdd84a2e26ca47eab40e2ce5b21c777c650b0a25",
@@ -17,7 +17,8 @@
     "The 2026-10-18 ledger and signed-artifact evidence are preserved unchanged as historical records.",
     "Mac session logs, including the shared-cache Rust failure and isolated rebuild, remain private on the Mac and were not copied into this ledger.",
     "The native GUI and installer for this source, Developer ID signing, new notarization and Gatekeeper remain blocked.",
-    "A later evidence/integrity-test and installer-CI commit contains this snapshot; use fresh CI on that commit before merging. Installer CI produces its own source-bound ledger artifact."
+    "A later evidence/integrity-test and installer-CI commit contains this snapshot; use fresh CI on that commit before merging. Installer CI produces its own source-bound ledger artifact.",
+    "The later disclosure and CI bundle-seal fixes are outside the frozen UI source snapshot. Fresh PR CI and its generated installer ledger attest the newer source."
   ],
   "cases": [
     {
@@ -792,6 +793,15 @@
       "operation": "bootforge-library-check",
       "scope": "simulated",
       "sourceRevision": "843cbbf344b10a6602c58cd78a5f601165c0e9b6"
+    },
+    {
+      "caseId": "historical-installer-unsealed-bundle",
+      "model": "macOS-universal",
+      "deviceAlias": "github-prior-attempt",
+      "protocol": "codesign",
+      "operation": "strict-ci-bundle-integrity",
+      "scope": "release",
+      "sourceRevision": "39e3dd909a9ae0204c05b7b2ade287cfa7d7b20a"
     }
   ],
   "receipts": [
@@ -1280,6 +1290,24 @@
         }
       ],
       "observedAt": "2026-10-20T22:38:58.758Z"
+    },
+    {
+      "caseId": "historical-installer-unsealed-bundle",
+      "model": "macOS-universal",
+      "deviceAlias": "github-prior-attempt",
+      "protocol": "codesign",
+      "operation": "strict-ci-bundle-integrity",
+      "scope": "release",
+      "sourceRevision": "39e3dd909a9ae0204c05b7b2ade287cfa7d7b20a",
+      "observedAt": "2026-10-20T23:07:08.375Z",
+      "status": "FAIL",
+      "detail": "DMG integrity, read-only mount and byte-matching isolated universal copy passed. Strict app-bundle signature verification failed: executable ad-hoc metadata did not seal the app bundle. CI is adding explicit ad-hoc bundle sealing; no Developer ID or notarization is claimed.",
+      "artifacts": [
+        {
+          "path": "installer-ci-failure-e53de3d.json",
+          "sha256": "c2038e95bc3ff61096d782aab5315e0d9accade06711472575c0c8921b5b6c4d"
+        }
+      ]
     }
   ]
 }

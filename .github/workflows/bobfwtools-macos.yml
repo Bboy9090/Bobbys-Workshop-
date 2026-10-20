@@ -81,6 +81,13 @@ jobs:
       - name: Build universal BobFWTools.app
         run: npm run tauri:build:macos:ci
 
+      - name: Seal standard CI bundle ad-hoc
+        run: |
+          set -euo pipefail
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
+          codesign --force --deep --sign - --timestamp=none --options runtime --entitlements src-tauri/entitlements.mac.plist "$APP"
+          codesign --verify --deep --strict "$APP"
+
       - name: Verify universal app bundle
         run: bash scripts/verify-bobfwtools-macos-app.sh
 
@@ -118,6 +125,13 @@ jobs:
 
       - name: Build qualified universal BobFWTools.app
         run: npm run tauri:build:macos:qualified:ci
+
+      - name: Seal qualified CI bundle ad-hoc
+        run: |
+          set -euo pipefail
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app
+          codesign --force --deep --sign - --timestamp=none --options runtime --entitlements src-tauri/entitlements.mac.plist "$APP"
+          codesign --verify --deep --strict "$APP"
 
       - name: Verify qualified universal app bundle
         run: |

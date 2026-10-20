@@ -106,6 +106,16 @@ export default function App() {
     setRequestedPanel(panel);setWorkspaceView(view);
   };
   useEffect(()=>{workspaceMain.current?.scrollTo({top:0});},[workspaceView]);
+  useEffect(()=>{
+    const root=workspaceMain.current;
+    if(!root)return;
+    const releaseRequest=(event:Event)=>{
+      if(event.target instanceof HTMLDetailsElement && !event.target.open)setRequestedPanel(null);
+    };
+    root.addEventListener('toggle',releaseRequest,true);
+    return ()=>root.removeEventListener('toggle',releaseRequest,true);
+  },[]);
+
   const [usbDevices, setUsbDevices] = useState<UsbDeviceRecord[]>([]);
   const [mtp, setMtp] = useState<MtpStatus | null>(null);
   const [adbDevices, setAdbDevices] = useState<AdbDeviceRecord[]>([]);

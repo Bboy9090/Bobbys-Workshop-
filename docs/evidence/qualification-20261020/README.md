@@ -8,7 +8,7 @@ This snapshot records exact-source CI and explicit device/release gaps for PR #2
 - Node CI: https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39509792194
 - macOS Core CI: https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39509792161
 - Current-source result counts: PASS 21, FAIL 0, BLOCKED 35, NOT TESTED 20.
-- Earlier failed attempts: 6; original revisions and excerpts retained in prior-ci-failures.json.
+- Earlier failed attempts: 7; original revisions and excerpts retained in prior-ci-failures.json.
 
 The source tree was frozen before recording the evidence. The subsequent evidence/integrity-test and installer-CI commit must pass fresh CI before merge. These earlier CI receipts do not silently become receipts for another revision. The new unsigned installer check produces a separate source-bound ledger and hash-verified matrix in its CI artifact; this snapshot predates that check.
 
@@ -41,3 +41,5 @@ No flash, wipe, unlock, repartition, restore or raw-media write was performed or
 - `../../WORKFLOW_AVAILABILITY_AUDIT_20261020.md`: all 11 policy entries and interface rules.
 
 Run `node scripts/qualification-matrix.mjs docs/evidence/qualification-20261020/ledger.json markdown` for live evaluation. Normal 24-hour freshness rules apply. The fixture integrity test evaluates only the archived capture time; it grants no authority and does not extend live evidence freshness.
+
+The first installer run on e53de3d failed strict app-bundle verification; `installer-ci-failure-e53de3d.json` retains the raw result. CI now explicitly seals its generated bundles ad-hoc before packaging. This supplies no Developer ID, notarization or Gatekeeper release approval. A later disclosure re-open fix is covered by fresh PR CI, not the frozen source's browser snapshot.

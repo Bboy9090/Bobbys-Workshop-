@@ -11,7 +11,7 @@ const report={
   schema:'bobfwtools.workspace-ui-evidence.v1',
   sourceRevision:process.env.BOBFWTOOLS_SOURCE_REVISION || process.env.GITHUB_SHA || null,
   runUrl:process.env.GITHUB_RUN_ID ? 'https://github.com/'+process.env.GITHUB_REPOSITORY+'/actions/runs/'+process.env.GITHUB_RUN_ID : null,
-  scope:'Chromium browser preview with no native bridge',
+  scope:'Chromium preview; one additional read-only bridge fixture is simulated. No real native bridge or device.',
   startedAt:new Date().toISOString(),status:'NOT TESTED',hardwareQualified:false,executionAuthorized:false,
   checks:[],metrics:{},pageErrors:[],
 };
@@ -110,6 +110,55 @@ async function noHorizontalOverflow() {
       await selectView('phone','Phone');
       report.metrics.mobileHome=await noHorizontalOverflow();
       await page.screenshot({path:resolve(output,'mobile-phone.png'),fullPage:true});
+    });
+    await check('Repeated reveal requests reopen a manually closed panel (simulated read-only bridge)',async()=>{
+      const simulated=await browser.newPage({viewport:{width:1365,height:900}});
+      simulated.on('pageerror',error=>report.pageErrors.push(error.message));
+      await simulated.addInitScript(()=>{
+        const usb={deviceUid:'ui-fixture-only',vendorId:0x18d1,productId:0x4ee1,
+          manufacturer:'SIMULATED',productName:'Read-only UI fixture; no hardware',serialNumber:'UI-ONLY',
+          class:0,subclass:0,protocol:0,busNumber:1,deviceAddress:1,speed:'high',
+          platformHint:'android-generic',mode:'usb',transport:'usb',evidenceSource:'simulated-ui-fixture'};
+        window.__BOBFW_UI_FIXTURE__={calls:[],unexpected:[]};
+        const replies={
+          frontend_backend_handshake:{status:'ready',protocol:'simulated',backend:'fixture',
+            greeting:'Simulated read-only bridge; no device.',correlation_id:'ui-fixture'},
+          bootforgeusb_scan:[usb],adb_scan:[],fastboot_mode_devices:[],mtp_status:null,
+          bootforge_recovery_scan:[],workflow_capabilities:null,
+          firmware_library_scan:{bundles:[]},workflow_job_list:[],
+          diagnose_phone:{usbDevicesSeen:1,androidUsbDevicesSeen:1,usbConnections:[usb],
+            connectionGrade:'usable',connectionSummary:'Simulated UI observation only.',
+            adbDevicesSeen:0,authorizedAdbDevices:0,mtpConnected:false,fastbootPresent:false,
+            selectedAdbSerial:null,device:{manufacturer:'SIMULATED',model:'UI fixture; no hardware'},
+            availableWorkflows:[],blockedWorkflows:[],evidence:[],
+            findings:[{id:'ui-fixture-warning',severity:'warning',title:'Simulated disclosure check',
+              detail:'Only tests navigation and disclosure state; no physical qualification.'}]},
+        };
+        window.__TAURI_INTERNALS__={invoke:async(command)=>{
+          window.__BOBFW_UI_FIXTURE__.calls.push(command);
+          if(!Object.prototype.hasOwnProperty.call(replies,command)){
+            window.__BOBFW_UI_FIXTURE__.unexpected.push(command);
+            throw Error('Command is not allowed by read-only UI fixture: '+command);
+          }
+          return structuredClone(replies[command]);
+        }};
+      });
+      try {
+        await simulated.goto('http://127.0.0.1:4173',{waitUntil:'networkidle'});
+        await simulated.getByRole('navigation',{name:'Workspace',exact:true}).getByRole('button',{name:'Diagnostics',exact:true}).click();
+        await simulated.getByRole('button',{name:'Diagnose This Phone',exact:true}).click();
+        const request=simulated.getByRole('button',{name:'Review findings and recommendations',exact:true});
+        for(let attempt=0;attempt<2;attempt++){
+          await request.click();
+          await simulated.waitForFunction(()=>document.querySelector('#diagnostic-findings')?.open===true);
+          await simulated.locator('#diagnostic-findings > summary').click();
+          await simulated.waitForFunction(()=>document.querySelector('#diagnostic-findings')?.open===false);
+        }
+        const trace=await simulated.evaluate(()=>window.__BOBFW_UI_FIXTURE__);
+        report.simulatedDisclosure={scope:'simulated; no hardware or device execution',...trace};
+        assert.deepEqual(trace.unexpected,[]);
+        assert.ok(trace.calls.includes('diagnose_phone'));
+      }finally{await simulated.close();}
     });
     await check('No uncaught application errors',async()=>assert.deepEqual(report.pageErrors,[]));
     report.status='PASS';
