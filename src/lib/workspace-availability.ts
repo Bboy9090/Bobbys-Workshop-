@@ -69,3 +69,10 @@ export function resolveObservedDiagnosticTarget(input: {
     (observed.serialNumber?.trim() || '')===(reviewed.serialNumber?.trim() || '')
     ? observed : null;
 }
+
+export function hasMatchingFastbootSerial(
+  target:Pick<UsbDeviceRecord,'serialNumber'>, serials:string[],
+):boolean {
+  const serial=target.serialNumber?.trim();
+  return Boolean(serial && serials.includes(serial));
+}

@@ -1,5 +1,5 @@
 import {expect,test} from 'vitest';
-import {deriveWorkspaceAvailability,workflowImplementation,resolveObservedDiagnosticTarget} from '../src/lib/workspace-availability';
+import {deriveWorkspaceAvailability,workflowImplementation,resolveObservedDiagnosticTarget,hasMatchingFastbootSerial} from '../src/lib/workspace-availability';
 import type {AdbDeviceRecord,MtpStatus,UsbDeviceRecord} from '../src/lib/desktop';
 const base={nativeRuntime:true,checking:false,failedProbes:[] as string[],adb:[] as AdbDeviceRecord[],
   usb:[] as UsbDeviceRecord[],mtp:null as MtpStatus|null,fastboot:[] as string[]};
@@ -61,4 +61,12 @@ test('a different target, mode, product or serial invalidates saved workflow rou
 test('built-in host components cannot become a phone through a saved diagnostic record',()=>{
   const internal={...reviewed,vendorId:0x05ac,productId:0x8104,mode:'usb',platformHint:'apple'};
   expect(resolveObservedDiagnosticTarget({...observation,reviewed:internal,usb:[internal]})).toBeNull();
+});
+
+test('Fastboot guidance requires this exact descriptor serial, not another connected phone',()=>{
+  expect(hasMatchingFastbootSerial({serialNumber:'selected'},['another'])).toBe(false);
+  expect(hasMatchingFastbootSerial({serialNumber:'selected'},[])).toBe(false);
+  for(const serialNumber of ['',null,undefined])
+    expect(hasMatchingFastbootSerial({serialNumber},['another'])).toBe(false);
+  expect(hasMatchingFastbootSerial({serialNumber:' selected '},['another','selected'])).toBe(true);
 });

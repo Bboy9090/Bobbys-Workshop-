@@ -1,5 +1,5 @@
 import { WorkspaceNavigation, WorkspacePanel, ExpertPanel, TaskEntry, type WorkspaceView } from './components/WorkspaceNavigation';
-import { deriveWorkspaceAvailability, resolveObservedDiagnosticTarget } from './lib/workspace-availability';
+import { deriveWorkspaceAvailability, resolveObservedDiagnosticTarget, hasMatchingFastbootSerial } from './lib/workspace-availability';
 import { createDesktopScanner } from './lib/desktop-scan';
 import { isAndroidUsbCandidate } from './lib/phone-usb-candidates';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -353,8 +353,7 @@ export default function App() {
       };
     }
     if (normalizedMode.includes('fastboot')) {
-      const serial=selectedDiagnosticUsb.serialNumber?.trim();
-      const bound=Boolean(serial && fastbootModeDevices.includes(serial));
+      const bound=hasMatchingFastbootSerial(selectedDiagnosticUsb,fastbootModeDevices);
       return bound ? {
         kind: 'bootloader' as const,
         label: 'Open bootloader controls',
