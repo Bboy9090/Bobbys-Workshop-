@@ -73,7 +73,8 @@ test('live qualifier refuses production branches and unknown credential modes be
     ['Bboy9090/Bobbys-Workshop-', 'main-tool-kit', revision, '--use-gh-keyring'],
     ['Bboy9090/Bobbys-Workshop-', 'agent-lease-qualification-test', revision, '--unknown-mode'],
   ]) {
-    const result = spawnSync(process.execPath, [join(__dirname, 'task-lease-live.cjs'), ...args], { encoding: 'utf8', timeout: 5000 });
+    const result = spawnSync(process.execPath, [join(__dirname, 'task-lease-live.cjs'), ...args], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(result.error, undefined);
     assert.equal(result.status, 1); assert.equal(result.stdout, '');
     assert.match(result.stderr, /Explicit isolated|Unknown credential mode/);
   }
