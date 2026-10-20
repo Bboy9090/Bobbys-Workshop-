@@ -1092,7 +1092,7 @@ export default function App() {
           <div className="mb-4 hidden rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-3 md:block">
             <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Current connection</div>
             <div className="mt-2 truncate text-sm font-semibold text-white" title={connectionLabel}>{connectionLabel}</div>
-            <div className="mt-1 text-xs text-slate-500">{refreshing ? 'Refreshing evidence' : selectedAdb ? selectedAdb.authorized ? 'ADB authorized' : 'Authorization needed' : hasObservedPhone ? 'Choose a task to verify access' : 'No phone target observed'}</div>
+            <div className="mt-1 text-xs text-slate-500">{refreshing ? 'Refreshing evidence' : selectedAdb ? selectedAdb.authorized ? 'ADB authorized' : 'Authorization needed' : hasObservedPhone ? 'Choose a task to verify access' : scanFailures.length ? 'Connection checks incomplete' : 'No phone target observed'}</div>
           </div>
           <WorkspaceNavigation active={workspaceView} onChange={view=>openWorkspace(view)}/>
           <p className="mt-5 hidden border-t border-slate-800 px-2 pt-4 text-[11px] leading-5 text-slate-600 md:block">Device writes require separate qualification and your approval for the exact operation.</p>
@@ -1125,7 +1125,7 @@ export default function App() {
                   </p>
                 </div>
                 <span className="rounded bg-slate-900 px-2 py-1 text-xs text-slate-400">
-                  {adbDevices.length + phoneUsbDevices.length} connection signal{adbDevices.length + phoneUsbDevices.length === 1 ? '' : 's'} found
+                  {adbDevices.length + phoneUsbDevices.length + (mtp?.connected === true ? 1 : 0)} connection signal{adbDevices.length + phoneUsbDevices.length + (mtp?.connected === true ? 1 : 0) === 1 ? '' : 's'} found
                 </span>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -1133,7 +1133,7 @@ export default function App() {
                   <div className="text-sm font-semibold text-white">{mtp.model || mtp.manufacturer || 'File-transfer connection'}</div>
                   <p className="mt-1 text-xs text-slate-400">MTP connection observed. File access is separate from ADB authorization and firmware qualification.</p>
                   <button type="button" onClick={()=>openWorkspace('files')} className="mt-3 rounded border border-cyan-800 px-3 py-2 text-xs text-cyan-300">Open file connection</button>
-                </div>
+                </div>}
                 {adbDevices.map((device) => {
                   const selected = adbSelectedSerial === device.serial;
                   return (

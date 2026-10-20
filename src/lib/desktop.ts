@@ -1,3 +1,4 @@
+import { workflowImplementation } from './workspace-availability';
 import { runHardwareProbe, type HardwareProbeFailure } from './hardware-probes';
 import { isSamsungDownloadTransport } from './hardware-lane-visibility';
 import { invoke } from '@tauri-apps/api/core';
@@ -1193,7 +1194,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
   );
 
   for (const policy of workflowPolicies.filter(
-    (item) => item.activeInBobfwtools && !representedPolicyIds.has(item.id),
+    (item) => item.activeInBobfwtools === true && workflowImplementation(item.id) !== null && !representedPolicyIds.has(item.id),
   )) {
     const destructiveLike = policy.risk === 'destructive' || policy.risk === 'restricted' || policy.risk === 'elevated';
     lanes.push({
@@ -1208,7 +1209,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       firmwareCandidates: [],
       blockers: [
         'This catalog workflow has no dedicated auto-detection binding in the current readiness sweep; target/evidence selection remains guided.',
-        ...(!policy.physicallyQualified ? ['Physical qualification is still pending for this workflow.'] : []),
+        'Current-device physical qualification requires exact target evidence; catalog flags do not qualify this device.',
       ],
       nextSteps: [policy.notes],
     });
@@ -1266,7 +1267,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
     lanes.some((lane) => lane.state !== 'blocked');
 
   const qualificationQueue: HardwareQualificationTask[] = workflowPolicies
-    .filter((policy) => policy.activeInBobfwtools)
+    .filter((policy) => policy.activeInBobfwtools === true && workflowImplementation(policy.id) !== null)
     .map((policy) => {
       const requiredEvidence = [
         ...(policy.authorizationRequired ? ['Operator/device authorization evidence'] : []),
@@ -1282,7 +1283,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
         workflowId: policy.id,
         category: policy.category,
         risk: policy.risk,
-        softwareImplemented: policy.activeInBobfwtools,
+        softwareImplemented: workflowImplementation(policy.id) !== null,
         physicallyQualified: false,
         requiredEvidence,
         ...packet,
