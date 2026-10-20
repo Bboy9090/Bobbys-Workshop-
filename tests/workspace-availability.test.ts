@@ -1,5 +1,5 @@
 import {expect,test} from 'vitest';
-import {deriveWorkspaceAvailability,workflowImplementation} from '../src/lib/workspace-availability';
+import {deriveWorkspaceAvailability,workflowImplementation,resolveObservedDiagnosticTarget} from '../src/lib/workspace-availability';
 import type {AdbDeviceRecord,MtpStatus,UsbDeviceRecord} from '../src/lib/desktop';
 const base={nativeRuntime:true,checking:false,failedProbes:[] as string[],adb:[] as AdbDeviceRecord[],
   usb:[] as UsbDeviceRecord[],mtp:null as MtpStatus|null,fastboot:[] as string[]};
@@ -39,4 +39,26 @@ test('catalog entries without an active executor remain unavailable',()=>{
   for(const id of ['samsung.odin-plan','qualcomm.edl-plan','mediatek.brom-plan'])
     expect(workflowImplementation(id)).toBe('planning');
   expect(workflowImplementation('calibration.backup')).toBe('backup');
+});
+
+const reviewed={deviceUid:'observed-1',vendorId:0x04e8,productId:0x6860,
+  serialNumber:'target-1',mode:'adb',platformHint:'android-samsung'} as UsbDeviceRecord;
+const observation={nativeRuntime:true,checking:false,scanCompleted:true,failedProbes:[] as string[],usb:[reviewed],reviewed};
+test('a reviewed profile routes only through the latest matching USB observation',()=>{
+  const current={...reviewed,productName:'Fresh observation'};
+  expect(resolveObservedDiagnosticTarget({...observation,usb:[current]})).toBe(current);
+});
+test('missing, failed, in-progress and preview observations cannot reuse a saved diagnosis',()=>{
+  for(const change of [{nativeRuntime:false},{checking:true},{scanCompleted:false},
+    {failedProbes:['usb']},{usb:[]},{reviewed:null}])
+    expect(resolveObservedDiagnosticTarget({...observation,...change})).toBeNull();
+});
+test('a different target, mode, product or serial invalidates saved workflow routing',()=>{
+  for(const change of [{deviceUid:'other'},{mode:'samsung-download'},{productId:0x685d},
+    {vendorId:0x05ac},{serialNumber:'other'}])
+    expect(resolveObservedDiagnosticTarget({...observation,usb:[{...reviewed,...change}]})).toBeNull();
+});
+test('built-in host components cannot become a phone through a saved diagnostic record',()=>{
+  const internal={...reviewed,vendorId:0x05ac,productId:0x8104,mode:'usb',platformHint:'apple'};
+  expect(resolveObservedDiagnosticTarget({...observation,reviewed:internal,usb:[internal]})).toBeNull();
 });

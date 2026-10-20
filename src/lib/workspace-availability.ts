@@ -52,3 +52,19 @@ export function workflowImplementation(id: string): 'read' | 'backup' | 'plannin
     default:return null;
   }
 }
+
+/** A saved diagnostic profile cannot make a disconnected or changed target current. */
+export function resolveObservedDiagnosticTarget(input: {
+  nativeRuntime:boolean; checking:boolean; scanCompleted:boolean; failedProbes:string[];
+  usb:UsbDeviceRecord[]; reviewed:UsbDeviceRecord|null;
+}):UsbDeviceRecord|null {
+  const {reviewed}=input;
+  if(!input.nativeRuntime || input.checking || !input.scanCompleted ||
+    input.failedProbes.includes('usb') || !reviewed)return null;
+  const observed=input.usb.find(device=>device.deviceUid===reviewed.deviceUid);
+  if(!observed || !isAndroidUsbCandidate(observed))return null;
+  return observed.vendorId===reviewed.vendorId && observed.productId===reviewed.productId &&
+    observed.mode===reviewed.mode &&
+    (observed.serialNumber?.trim() || '')===(reviewed.serialNumber?.trim() || '')
+    ? observed : null;
+}

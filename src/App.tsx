@@ -1,5 +1,5 @@
 import { WorkspaceNavigation, WorkspacePanel, ExpertPanel, TaskEntry, type WorkspaceView } from './components/WorkspaceNavigation';
-import { deriveWorkspaceAvailability } from './lib/workspace-availability';
+import { deriveWorkspaceAvailability, resolveObservedDiagnosticTarget } from './lib/workspace-availability';
 import { createDesktopScanner } from './lib/desktop-scan';
 import { isAndroidUsbCandidate } from './lib/phone-usb-candidates';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -241,10 +241,14 @@ export default function App() {
     setNativeError(null);
   };
 
-  const selectedDiagnosticUsb = useMemo(
+  const reviewedDiagnosticUsb = useMemo(
     () => diagnostic?.usbConnections.find((item) => item.deviceUid === selectedDiagnosticUid) || null,
     [diagnostic, selectedDiagnosticUid],
   );
+  const selectedDiagnosticUsb=resolveObservedDiagnosticTarget({
+    nativeRuntime,checking:refreshing,scanCompleted,failedProbes:scanFailures,
+    usb:usbDevices,reviewed:reviewedDiagnosticUsb,
+  });
 
   const selectedDeviceActions = useMemo(() => {
     if (!selectedDiagnosticUsb) return [] as { id: string; label: string; ready: boolean; reason: string }[];
@@ -326,8 +330,10 @@ export default function App() {
     if (!selectedDiagnosticUsb) {
       return {
         kind: 'none' as const,
-        label: 'Select a detected device',
-        detail: 'Choose one USB target above so BobFWTools can route you to the correct service lane.',
+        label: reviewedDiagnosticUsb ? 'Recheck this connection' : 'Select a detected device',
+        detail: reviewedDiagnosticUsb
+          ? 'The saved diagnosis is not verified against the current USB observation. Finish scanning and rerun diagnosis before continuing.'
+          : 'Choose one USB target above so BobFWTools can route you to the correct service lane.',
       };
     }
 
@@ -370,7 +376,7 @@ export default function App() {
       label: 'Continue with verified service tools',
       detail: 'This selected device has a target-bound normal-service transport. Open the command center for the applicable safe actions.',
     };
-  }, [selectedDiagnosticUsb, selectedDeviceActions]);
+  }, [selectedDiagnosticUsb, reviewedDiagnosticUsb, selectedDeviceActions]);
 
   const refreshJobs = useCallback(async () => {
     if (!nativeRuntime) return;
@@ -482,6 +488,10 @@ export default function App() {
   const runCableDoctor = async () => {
     setRequestedPanel('diagnostic-connection');
     if (transferBusy || diagnosing || cableDoctorBusy) return;
+    if(selectedDiagnosticUid && !selectedDiagnosticUsb){
+      setNativeError('The selected diagnostic target is not verified in the current scan. Rerun diagnosis first.');
+      return;
+    }
     setCableDoctorBusy(true);
     setNativeError(null);
     try {
