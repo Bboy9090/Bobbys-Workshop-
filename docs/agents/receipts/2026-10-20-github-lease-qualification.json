@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "repository": "Bboy9090/Bobbys-Workshop-",
+  "branch": "agent-lease-qualification-20261020-a",
+  "revision": "665405ea5f06a3eb0e65439a00b977289e85fca1",
+  "executor": "darwin/v26.7.0",
+  "task": "qualification_205aa7076f814f649fe4161747471592",
+  "results": {
+    "acquire": true,
+    "competingOwnerRejected": true,
+    "renew": true,
+    "staleProviderWriteRejected": true,
+    "expiredRenewRejected": true,
+    "takeover": true,
+    "staleOwnerRejected": true,
+    "release": true
+  },
+  "result": "pass",
+  "exitCode": 0,
+  "durationSeconds": 41.73,
+  "independentReadback": {
+    "generation": 2,
+    "sequence": 4,
+    "released": true,
+    "blobSha": "115fc37079aa62f2d33306d9e15d0ff8984d56ab"
+  },
+  "limits": [
+    "Synthetic qualification marker only; no canonical task was dispatched.",
+    "Destination-side transactional fencing remains unimplemented.",
+    "Production state branch and worker credential provisioning remain unconfigured.",
+    "No physical device or release operation was performed."
+  ]
+}
