@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createDesktopScanner } from './lib/desktop-scan';
+import { isAndroidUsbCandidate } from './lib/phone-usb-candidates';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import RepairCommandCenter from './components/RepairCommandCenter';
 import { SamsungDownloadStatus } from './components/SamsungDownloadStatus';
 import OperatorTimeline from './components/OperatorTimeline';
@@ -11,20 +13,14 @@ import { DeviceModeGuide } from './components/DeviceModeGuide';
 import {
   chooseDownloadDestination,
   chooseUploadSource,
-  frontendBackendHandshake,
   diagnosePhone,
   getAdbBatteryInfo,
   getAdbDeviceInfo,
   getAdbLogcatSnapshot,
   installApkOnDevice,
   prepareAdb,
-  getMtpStatus,
-  getNativeUsbDevices,
-  getWorkflowCapabilities,
   isTauriRuntime,
   saveAdbScreenshot,
-  scanAdbDevices,
-  getAdbModeCapabilities,
   getFastbootModeDevices,
   fastbootRebootMode,
   verifyModeTransition,
@@ -141,6 +137,9 @@ export default function App() {
   const [recoveryIdentityDraft, setRecoveryIdentityDraft] = useState({ model: '', board: '', sku: '' });
   const [lockedRecoveryIdentity, setLockedRecoveryIdentity] = useState<LockedRecoveryFirmwareIdentity | null>(null);
   const nativeRuntime = useMemo(() => isTauriRuntime(), []);
+  const scanner = useMemo(() => createDesktopScanner(), []);
+  const refreshRunning = useRef(false);
+  const phoneUsbDevices = useMemo(() => usbDevices.filter(isAndroidUsbCandidate), [usbDevices]);
   const filteredPackages = useMemo(() => {
     const q = packageQuery.trim().toLowerCase();
     return q ? adbPackages.filter((pkg) => pkg.packageName.toLowerCase().includes(q)) : adbPackages;
@@ -372,35 +371,28 @@ export default function App() {
   }, [nativeRuntime]);
 
   const refresh = useCallback(async () => {
-    if (transferBusy) return;
+    if (transferBusy || refreshRunning.current) return;
+    refreshRunning.current = true;
     setRefreshing(true);
     setNativeError(null);
-
+    // Previously observed transport capabilities cannot enable actions during a rescan.
+    setAdbDevices([]);
+    setAdbModeCapabilities({});
+    setFastbootModeDevices([]);
+    setMtp(null);
+    setCapabilities(null);
+    setRecoveryCandidates([]);
+    setVerifiedFirmwareBundles([]);
     try {
-      const hello = await frontendBackendHandshake();
-      setHandshake(hello);
-      const devices = await getNativeUsbDevices();
-      setUsbDevices(devices);
-
-      try {
-        const recovery = await scanRecoveryCandidates();
-        setRecoveryCandidates(recovery);
-        if (!selectedRecoveryUid && recovery.length) {
-          setSelectedRecoveryUid(recovery[0].deviceUid);
-          setRecoveryKind(recovery[0].workflow);
-        } else if (selectedRecoveryUid && !recovery.some((candidate) => candidate.deviceUid === selectedRecoveryUid)) {
-          setSelectedRecoveryUid(recovery[0]?.deviceUid ?? null);
-          if (recovery[0]) setRecoveryKind(recovery[0].workflow);
-          setRecoveryArtifacts([]);
-          setRecoveryPlan(null);
-          setRecoveryJob(null);
-          setRecoveryEvidencePath(null);
-          setRecoveryCertificatePath(null);
-          setRecoveryCertificateReview(null);
-        }
-      } catch {
-        setRecoveryCandidates([]);
-        setSelectedRecoveryUid(null);
+      const scan = await scanner(storageIndex, mtpPath);
+      setHandshake(scan.handshake);
+      setUsbDevices(scan.usb);
+      setRecoveryCandidates(scan.recovery);
+      const target = scan.recovery.find(candidate => candidate.deviceUid === selectedRecoveryUid) ||
+        (scan.recovery.length === 1 ? scan.recovery[0] : null);
+      setSelectedRecoveryUid(target?.deviceUid ?? null);
+      if (target) setRecoveryKind(target.workflow);
+      if (selectedRecoveryUid !== (target?.deviceUid ?? null)) {
         setRecoveryArtifacts([]);
         setRecoveryPlan(null);
         setRecoveryJob(null);
@@ -408,73 +400,36 @@ export default function App() {
         setRecoveryCertificatePath(null);
         setRecoveryCertificateReview(null);
       }
-
-      const adb = await scanAdbDevices();
-      setAdbDevices(adb);
-      const capabilityPairs = await Promise.all(
-        adb
-          .filter((device) => device.authorized)
-          .map(async (device) => {
-            try {
-              return [device.serial, await getAdbModeCapabilities(device.serial)] as const;
-            } catch {
-              return null;
-            }
-          }),
-      );
-      setAdbModeCapabilities(
-        Object.fromEntries(capabilityPairs.filter((item): item is readonly [string, AdbModeCapabilities] => item !== null)),
-      );
-      try {
-        setFastbootModeDevices(await getFastbootModeDevices());
-      } catch {
-        setFastbootModeDevices([]);
-      }
-      if (!adbSelectedSerial && adb.length) {
-        setAdbSelectedSerial(adb[0].serial);
-      } else if (adbSelectedSerial && !adb.some((device) => device.serial === adbSelectedSerial)) {
-        setAdbSelectedSerial(adb[0]?.serial ?? null);
-      }
-
-      const mtpStatus = await getMtpStatus();
-      setMtp(mtpStatus);
-
-      const matrix = await getWorkflowCapabilities();
-      setCapabilities(matrix);
-      try {
-        const firmware = await scanFirmwareLibrary();
-        const readyBundles = firmware?.bundles.filter((bundle) => bundle.planningReady) ?? [];
-        setVerifiedFirmwareBundles(readyBundles);
-        setSelectedVerifiedBundle((current) =>
-          current && readyBundles.some((bundle) => bundle.directory === current)
-            ? current
-            : readyBundles[0]?.directory ?? '',
-        );
-      } catch {
-        setVerifiedFirmwareBundles([]);
-        setSelectedVerifiedBundle('');
-      }
-      await refreshJobs();
-
-      if (mtpStatus?.storages.length) {
-        const safeIndex = Math.min(storageIndex, mtpStatus.storages.length - 1);
-        setStorageIndex(safeIndex);
-        try {
-          setMtpObjects(await listMtpDirectory(safeIndex, mtpPath));
-        } catch {
-          setMtpPath([]);
-          setMtpObjects(await listMtpDirectory(safeIndex, []));
-        }
-      } else {
-        setMtpObjects([]);
-        setMtpPath([]);
-      }
+      setAdbDevices(scan.adb);
+      setAdbModeCapabilities(scan.modes);
+      setFastbootModeDevices(scan.fastboot);
+      setAdbSelectedSerial(current =>
+        current && scan.adb.some(device => device.serial === current)
+          ? current : scan.adb.length === 1 ? scan.adb[0].serial : null);
+      setMtp(scan.mtp);
+      setCapabilities(scan.capabilities);
+      const readyBundles = scan.firmware?.bundles.filter(bundle => bundle.planningReady) ?? [];
+      setVerifiedFirmwareBundles(readyBundles);
+      setSelectedVerifiedBundle(current =>
+        current && readyBundles.some(bundle => bundle.directory === current)
+          ? current : readyBundles[0]?.directory ?? '');
+      setWorkflowJobs(scan.jobs);
+      setStorageIndex(scan.directory.storageIndex);
+      setMtpPath(current =>
+        current.length === scan.directory.path.length &&
+        current.every((part,index) => part === scan.directory.path[index])
+          ? current : scan.directory.path);
+      setMtpObjects(scan.directory.objects);
+      if (scan.failures.length) setNativeError(
+        'Some device checks are unverified. ' +
+        scan.failures.map(failure => failure.probe + ': ' + failure.message).join(' · '));
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
+      refreshRunning.current = false;
       setRefreshing(false);
     }
-  }, [storageIndex, mtpPath, transferBusy, adbSelectedSerial, selectedRecoveryUid, refreshJobs]);
+  }, [storageIndex, mtpPath, transferBusy, selectedRecoveryUid, scanner]);
 
   const retryJob = async (id: string) => {
     if (transferBusy) return;
@@ -843,13 +798,18 @@ export default function App() {
     }
   };
 
+  const latestRefresh = useRef(refresh);
+  useEffect(() => { latestRefresh.current = refresh; }, [refresh]);
   useEffect(() => {
-    void refresh();
-    const id = window.setInterval(() => {
-      if (!transferBusy) void refresh();
-    }, 5000);
-    return () => window.clearInterval(id);
-  }, [refresh, transferBusy]);
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      await latestRefresh.current();
+      if (active) timer = setTimeout(() => void poll(), 5000);
+    };
+    void poll();
+    return () => { active = false; if (timer !== undefined) clearTimeout(timer); };
+  }, []);
 
   const selectRecoveryArtifacts = async () => {
     if (recoveryBusy) return;
@@ -1153,7 +1113,7 @@ export default function App() {
             </div>
           )}
 
-          {(adbDevices.length > 0 || usbDevices.length > 0) && (
+          {(adbDevices.length > 0 || phoneUsbDevices.length > 0) && (
             <section className="mb-4 rounded-lg border border-emerald-900/70 bg-emerald-950/10 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -1163,7 +1123,7 @@ export default function App() {
                   </p>
                 </div>
                 <span className="rounded bg-slate-900 px-2 py-1 text-xs text-slate-400">
-                  {adbDevices.length + usbDevices.length} device signal{adbDevices.length + usbDevices.length === 1 ? '' : 's'} found
+                  {adbDevices.length + phoneUsbDevices.length} device signal{adbDevices.length + phoneUsbDevices.length === 1 ? '' : 's'} found
                 </span>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -1284,7 +1244,7 @@ export default function App() {
                     </div>
                   );
                 })}
-                {usbDevices.map((device) => {
+                {phoneUsbDevices.map((device) => {
                   const serviceOnlyMode = ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download'].includes(device.mode);
                   return (
                     <div key={`usb-${device.deviceUid}`} className="rounded border border-slate-800 bg-slate-950/60 p-4">
@@ -1293,7 +1253,7 @@ export default function App() {
                         <span className="text-xs text-cyan-300">Detected</span>
                       </div>
                       <div className="mt-2 text-xs text-slate-300">{device.platformHint} · {device.mode}</div>
-                      <div className="mt-1 text-xs text-slate-500">This connection is available for matching recovery and firmware workflows.</div>
+                      <div className="mt-1 text-xs text-slate-500">USB candidate observed. Service options require matching protocol and exact-device evidence.</div>
 
                       {serviceOnlyMode && (
                         <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3">
