@@ -56,7 +56,8 @@ export function workflowImplementation(id: string): 'read' | 'backup' | 'plannin
 /** A saved diagnostic profile cannot make a disconnected or changed target current. */
 export function resolveObservedDiagnosticTarget(input: {
   nativeRuntime:boolean; checking:boolean; scanCompleted:boolean; failedProbes:string[];
-  usb:UsbDeviceRecord[]; reviewed:UsbDeviceRecord|null;
+  usb:UsbDeviceRecord[];
+  reviewed:Pick<UsbDeviceRecord,'deviceUid'|'vendorId'|'productId'|'mode'|'serialNumber'>|null;
 }):UsbDeviceRecord|null {
   const {reviewed}=input;
   if(!input.nativeRuntime || input.checking || !input.scanCompleted ||
