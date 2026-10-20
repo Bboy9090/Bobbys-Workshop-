@@ -27,7 +27,7 @@ The HTTP response Date supplies lease time; a missing clock, missing branch, mal
 
 This primitive does not launch agents, update Airtable statuses or enforce a lease around existing workflows. The real GitHub adapter passed isolated qualification on macOS at source `665405ea5f06a3eb0e65439a00b977289e85fca1`. The qualification branch is `agent-lease-qualification-20261020-a`; its synthetic lease was released. Production task-state provisioning and worker credentials remain unconfigured.
 
-An ownership check alone cannot stop an already-running or paused worker after lease expiry. The protected destination must reject stale fencing generations transactionally. Until the executor/destination implements that check, automatic dispatch, release actions and hardware operations must remain disabled. GitHub administrators and other branch writers can replace lease state; this is coordination among trusted workers, not an adversarial security boundary. Sustained high-throughput scheduling requires a purpose-built transactional store rather than GitHub commits per heartbeat.
+An ownership check alone cannot stop an already-running or paused worker after lease expiry. External protected destinations must reject stale fencing generations transactionally. The receipt-only GitHub destination described below fences branch ownership changes, but external dispatch, release actions and hardware operations remain disabled. GitHub administrators and other branch writers can replace lease state; this is coordination among trusted workers, not an adversarial security boundary. Sustained high-throughput scheduling requires a purpose-built transactional store rather than GitHub commits per heartbeat.
 
 ## Validation
 
@@ -39,7 +39,7 @@ Source baseline: main-tool-kit at `2b612b909c7d8d5df164d9240a25796b438666e2`. Ex
 
 Run `node scripts/agents/task-lease-live.cjs Bboy9090/Bobbys-Workshop- <qualification-branch> <exact-source-revision> --use-gh-keyring` only on an authorized executor. The branch must already exist and start with `agent-lease-qualification-`. The harness refuses production branch names before credential access. It uses an injected environment token or, with the explicit flag, the authenticated GitHub CLI keyring inside the child process; credentials are not printed. It tests a synthetic task marker, not a canonical portfolio task, waits for a real 30-second lease expiry, and retains released state for fencing history. It never launches work or changes Airtable statuses.
 
-The first probe at39a86f5 failed with generic diagnostics. A later probe at665405e completed all eight assertions and exited0; that successful receipt establishes provider behavior only at its stated source. Destination-side transactional fencing and automatic dispatch remain unimplemented.
+The first probe at39a86f5 failed with generic diagnostics. A later probe at665405e completed all eight assertions and exited0; that successful receipt establishes provider behavior only at its stated source. Receipt publication fencing is implemented below; external-effect transactional fencing and automatic dispatch remain unimplemented.
 
 ## Fenced GitHub receipt destination
 
@@ -50,3 +50,5 @@ This fences publication against intervening ownership mutations; it does not exe
 GitHub does not atomically evaluate wall-clock expiry during a ref update. A prepared receipt can still be accepted after its lease deadline if no intervening branch mutation occurred. The protocol therefore does **not** establish strict expiry-at-write authorization or protect external systems, in-flight device commands, releases or billing. Those destinations require their own transactional enforcement. Automatic dispatch remains disconnected. Branch deletion/reset or administrator force-push also defeats monotonic history; trusted-worker coordination is the scope.
 
 Tests cover immutable source reads, exact parent binding, non-forced ref update, stale publication rejection, stale owners, path validation and forged/reused handles. The explicit live qualifier now stages worker A's receipt, waits through expiry/takeover, publishes worker B's receipt, then attempts A's stale commit and verifies B's digest remains current.
+
+Live destination qualification passed at `21ddbbaf3de277258fbd9c13247648862b50c095` on macOS/Node26.7.0. The staged former-owner commit was rejected after the replacement owner published, and independent connector readback preserved generation2 and the replacement digest. The synthetic lease was released. Receipt: `docs/agents/receipts/2026-10-20-fenced-publication.json`. Eighteen local Node tests, local lint/build and the dedicated lease CI passed at this implementation; broader fresh Node/macOS CI remains subject to its actual run status.
