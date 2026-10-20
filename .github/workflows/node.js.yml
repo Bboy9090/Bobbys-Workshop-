@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   BOBFWTOOLS_SOURCE_REVISION: ${{ github.sha }}
 
@@ -70,16 +74,19 @@ jobs:
       run: npm run build
 
     - name: Check embedded USB crate
-      run: cargo check --manifest-path libs/bootforgeusb/Cargo.toml --no-default-features
+      run: cargo check --locked --manifest-path libs/bootforgeusb/Cargo.toml --no-default-features
 
     - name: Check Tauri Rust core
-      run: cargo check --manifest-path src-tauri/Cargo.toml
+      run: cargo check --locked --manifest-path src-tauri/Cargo.toml
 
     - name: Check qualified destructive writer build
-      run: cargo check --manifest-path src-tauri/Cargo.toml --features qualified-flash
+      run: cargo check --locked --manifest-path src-tauri/Cargo.toml --features qualified-flash
+
+    - name: Test standard app Rust gates
+      run: cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features
 
     - name: Test qualified destructive writer gates
-      run: cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --features qualified-flash
+      run: cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features --features qualified-flash
 
 
   workspace-ui:
