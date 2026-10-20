@@ -42,4 +42,8 @@ async function qualify() {
     if (latest) { try { await leases.release(latest); } catch { /* Failed/expired leases are bounded by their 30-second TTL. */ } }
   }
 }
-qualify().catch(() => { console.error('Live lease qualification failed; dispatch remains disabled.'); process.exitCode = 1; });
+qualify().catch(error => {
+  const safe = /^(Lease |Task already leased|Provider clock unavailable|Invalid |Explicit |Unknown |Repository,)/.test(error.message) ? error.message : error.name;
+  console.error('Live lease qualification failed; dispatch remains disabled. ' + safe);
+  process.exitCode = 1;
+});
