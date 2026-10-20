@@ -1,3 +1,4 @@
+import { workflowImplementation } from '../lib/workspace-availability';
 import { useEffect, useMemo, useState } from 'react';
 import WorkflowWalkthrough, { type GuidedWorkflowKind } from './WorkflowWalkthrough';
 import HardwareFlowReadiness from './HardwareFlowReadiness';
@@ -93,7 +94,9 @@ function Badge({ children, on }: { children: string; on: boolean }) {
   );
 }
 
-export default function RepairCommandCenter() {
+export default function RepairCommandCenter({liveSnapshot}: {
+  liveSnapshot?: {adb:AdbDeviceRecord[];usb:UsbDeviceRecord[];checking:boolean};
+}) {
   const [catalog, setCatalog] = useState<WorkflowPolicy[]>([]);
   const [allowlist, setAllowlist] = useState<string[]>([]);
   const [edlDevices, setEdlDevices] = useState<UsbDeviceRecord[]>([]);
@@ -144,13 +147,15 @@ export default function RepairCommandCenter() {
   const [driverRollbackPlans, setDriverRollbackPlans] = useState<Record<string, DriverRollbackPlan>>({});
   const [driverElevation, setDriverElevation] = useState<DriverElevationStatus | null>(null);
 
+  const liveAdb=liveSnapshot?.adb ?? adbDevices;
+  const liveTransports=liveSnapshot?.usb ?? transportDevices;
   const targets = useMemo(() => {
-    const adbTargets = adbDevices.map((device) => ({
+    const adbTargets = liveAdb.map((device) => ({
       key: `adb:${device.serial}`,
       kind: 'adb',
       label: `ADB · ${device.serial}${device.authorized ? ' · authorized' : ' · unauthorized'}`,
     }));
-    const recoveryTargets = transportDevices
+    const recoveryTargets = liveTransports
       .filter((device) => ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download'].includes(device.mode))
       .map((device) => ({
         key: `usb:${device.deviceUid}`,
@@ -158,18 +163,19 @@ export default function RepairCommandCenter() {
         label: `${device.productName || device.manufacturer || 'USB device'} · ${device.mode}`,
       }));
     return [...adbTargets, ...recoveryTargets];
-  }, [adbDevices, transportDevices]);
+  }, [liveAdb, liveTransports]);
 
   useEffect(() => {
+    if(liveSnapshot?.checking)return;
     setSelectedTargetKey((current) => {
       if (current && targets.some((target) => target.key === current)) return current;
       return targets.length === 1 ? targets[0].key : '';
     });
-  }, [targets]);
+  }, [targets,liveSnapshot?.checking]);
 
   const selectedTarget = useMemo(
-    () => targets.find((target) => target.key === selectedTargetKey) || null,
-    [targets, selectedTargetKey],
+    () => liveSnapshot?.checking ? null : targets.find((target) => target.key === selectedTargetKey) || null,
+    [targets, selectedTargetKey,liveSnapshot?.checking],
   );
 
   const walkthroughKind = useMemo<GuidedWorkflowKind>(() => {
@@ -192,8 +198,8 @@ export default function RepairCommandCenter() {
   const selectedAdbDevice = useMemo(() => {
     if (selectedTarget?.kind !== 'adb') return null;
     const serial = selectedTarget.key.slice('adb:'.length);
-    return adbDevices.find((device) => device.serial === serial) || null;
-  }, [selectedTarget, adbDevices]);
+    return liveAdb.find((device) => device.serial === serial) || null;
+  }, [selectedTarget, liveAdb]);
 
   const applicableWorkflowIds = useMemo(() => {
     const ids = new Set<string>(['diagnostics.usb-scan']);
@@ -201,7 +207,6 @@ export default function RepairCommandCenter() {
       case 'adb':
         ids.add('android.adb-authorized');
         ids.add('calibration.backup');
-        ids.add('calibration.restore');
         break;
       case 'qualcomm-edl':
         ids.add('qualcomm.edl-plan');
@@ -220,16 +225,18 @@ export default function RepairCommandCenter() {
   }, [selectedTarget]);
 
   const active = useMemo(
-    () => catalog.filter((item) => item.activeInBobfwtools && applicableWorkflowIds.has(item.id)),
+    () => catalog.filter((item) => item.activeInBobfwtools === true && workflowImplementation(item.id) !== null && applicableWorkflowIds.has(item.id)),
     [catalog, applicableWorkflowIds],
   );
   const manualActive = useMemo(
     () => catalog.filter((item) => item.activeInBobfwtools && ['hardware-service', 'cross-platform'].includes(item.platform) && item.id !== 'diagnostics.usb-scan'),
     [catalog],
   );
-  const reserved = useMemo(() => catalog.filter((item) => !item.activeInBobfwtools), [catalog]);
+  const reserved = useMemo(() => catalog.filter((item) => !item.activeInBobfwtools || (workflowImplementation(item.id) === null && !['hardware-service','cross-platform'].includes(item.platform))), [catalog]);
 
   const workflowLiveStatus = (workflow: WorkflowPolicy): { label: string; detail: string; ready: boolean } => {
+    if(!workflowImplementation(workflow.id))return {label:'UNAVAILABLE',detail:'Catalog reference only; no active execution control is implemented here.',ready:false};
+    if(liveSnapshot?.checking)return {label:'CHECKING',detail:'Current target evidence is being refreshed.',ready:false};
     if (workflow.id === 'diagnostics.usb-scan') {
       return { label: 'READY NOW', detail: 'Read-only USB evidence can run without a destructive gate.', ready: true };
     }
@@ -244,21 +251,21 @@ export default function RepairCommandCenter() {
       return {
         label: 'PLANNING READY',
         detail: 'Selected 9008 hardware can be inspected and prepared; write execution remains qualification-locked.',
-        ready: true,
+        ready: false,
       };
     }
     if (workflow.id === 'mediatek.brom-plan') {
       return {
         label: 'PLANNING READY',
         detail: 'Selected MediaTek recovery hardware can be inspected with legitimate DA/auth artifacts; writes remain locked.',
-        ready: true,
+        ready: false,
       };
     }
     if (workflow.id === 'samsung.odin-plan') {
       return {
         label: 'PLANNING READY',
         detail: 'Selected Samsung Download Mode target can use stock firmware inspection and guarded planning.',
-        ready: true,
+        ready: false,
       };
     }
     if (workflow.id === 'calibration.backup') {
@@ -266,6 +273,9 @@ export default function RepairCommandCenter() {
         ? { label: 'READY TO VERIFY', detail: 'Selected ADB target is authorized; block-read access is still verified before backup.', ready: true }
         : { label: 'BLOCKED', detail: 'Select and authorize the exact ADB target first.', ready: false };
     }
+    if(workflow.id === 'android.adb-authorized')return selectedAdbDevice?.authorized === true
+      ? {label:'AUTHORIZED ADB',detail:'Read checks use the selected authorized serial; each operation revalidates access.',ready:true}
+      : {label:'BLOCKED',detail:'Select and authorize this exact device first.',ready:false};
     if (!workflow.physicallyQualified) {
       return {
         label: 'EVIDENCE ONLY',
@@ -273,7 +283,7 @@ export default function RepairCommandCenter() {
         ready: false,
       };
     }
-    return { label: 'READY', detail: 'Required live target is selected; normal workflow gates still apply.', ready: true };
+    return { label: 'UNAVAILABLE', detail: 'No device-specific executor readiness is established for this entry.', ready: false };
   };
 
   useEffect(() => {
@@ -516,6 +526,7 @@ export default function RepairCommandCenter() {
             Detected target
             <select
               value={selectedTargetKey}
+              disabled={liveSnapshot?.checking}
               onChange={(event) => {
                 setSelectedTargetKey(event.target.value);
                 setSamsungFirmwareReports([]);
@@ -1606,17 +1617,10 @@ export default function RepairCommandCenter() {
               );
             })()}
 
-            <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-800 pt-3">
-              <div className="text-[11px] text-slate-600">executor qualification</div>
-              <span
-                className={
-                  workflow.physicallyQualified
-                    ? 'rounded bg-emerald-950 px-2 py-1 text-[10px] font-medium text-emerald-300'
-                    : 'rounded bg-amber-950 px-2 py-1 text-[10px] font-medium text-amber-300'
-                }
-              >
-                {workflow.physicallyQualified ? 'physically qualified' : 'qualification pending'}
-              </span>
+            <div className="mt-3 border-t border-slate-800 pt-3 text-[11px] text-slate-500">
+              {workflowImplementation(workflow.id)==='planning'
+                ? 'Package planning only · physical device qualification is separate.'
+                : 'Available software does not certify this device. Access is revalidated for each operation.'}
             </div>
           </article>
         ))}
@@ -1696,7 +1700,7 @@ export default function RepairCommandCenter() {
       {!!manualActive.length && (
         <details className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-4">
           <summary className="cursor-pointer text-xs font-semibold text-slate-300">
-            Advanced/manual tools · {manualActive.length}
+            Advanced/manual tools (planning references) · {manualActive.length}
           </summary>
           <div className="mt-3 grid gap-2 lg:grid-cols-2">
             {manualActive.map((workflow) => (
@@ -1875,21 +1879,21 @@ export default function RepairCommandCenter() {
         </div>
         )}
 
-        <div className="rounded-lg border border-violet-900/60 bg-violet-950/10 p-4">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-violet-400">Future flagship lane</div>
+        <details className="rounded-lg border border-slate-800 bg-slate-950/30 p-4"><summary className="cursor-pointer text-xs font-semibold text-slate-400">Unavailable catalog entries</summary>
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-violet-400">Reference only · unavailable</div>
           <div className="mt-1 text-sm font-medium text-white">B.U.Tools reserved platform work</div>
           <div className="mt-3 space-y-2">
             {reserved.map((workflow) => (
               <div key={workflow.id} className="rounded border border-slate-800 bg-slate-950/60 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono text-xs text-violet-200">{workflow.id}</span>
-                  <span className="rounded bg-violet-950 px-2 py-1 text-[10px] text-violet-300">reserved</span>
+                  <span className="rounded bg-violet-950 px-2 py-1 text-[10px] text-violet-300">unavailable</span>
                 </div>
                 <div className="mt-1 text-xs text-slate-500">{workflow.notes}</div>
               </div>
             ))}
           </div>
-        </div>
+        </details>
       </div>
 
       <div className="mt-4 rounded-lg border border-red-950 bg-red-950/10 p-3 text-xs leading-5 text-slate-500">
