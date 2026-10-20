@@ -79,3 +79,57 @@ test('live qualifier refuses production branches and unknown credential modes be
     assert.match(result.stderr, /Explicit isolated|Unknown credential mode/);
   }
 });
+
+const { GitHubReceiptDestination } = require('./task-lease-destination.cjs');
+function destinationProvider(claim, status = 200) {
+  const head = '1'.repeat(40), commit = '5'.repeat(40);
+  return provider([
+    { body: JSON.stringify({ object: { sha: head } }) },
+    { body: JSON.stringify({ encoding: 'base64', sha: '2'.repeat(40), content: Buffer.from(JSON.stringify(claim)).toString('base64') }), headers: { date: new Date(1000000).toUTCString() } },
+    { body: JSON.stringify({ tree: { sha: '3'.repeat(40) } }) },
+    { body: JSON.stringify({ sha: '4'.repeat(40) }) },
+    { body: JSON.stringify({ sha: '6'.repeat(40) }) },
+    { body: JSON.stringify({ sha: commit }) },
+    { status, body: JSON.stringify({ object: { sha: commit } }) },
+  ]);
+}
+test('receipt destination reads an immutable lease and publishes without force', async () => {
+  const claim = await fixture().leases.acquire('rec123', 'worker', revision);
+  const { store, calls } = destinationProvider(claim); const destination = new GitHubReceiptDestination(store);
+  const handle = await destination.prepare(claim, { action: 'validation', artifactSha256: 'a'.repeat(64) });
+  assert.ok(calls[1].url.endsWith('?ref=' + '1'.repeat(40)));
+  assert.deepEqual(JSON.parse(calls[5].options.body).parents, ['1'.repeat(40)]);
+  await destination.commit(handle);
+  assert.deepEqual(JSON.parse(calls[6].options.body), { sha: '5'.repeat(40), force: false });
+  await assert.rejects(destination.commit(handle), /consumed/);
+});
+test('prepared receipt cannot publish after branch ownership advances', async () => {
+  const claim = await fixture().leases.acquire('rec123', 'worker', revision);
+  const { store } = destinationProvider(claim, 422); const destination = new GitHubReceiptDestination(store);
+  const handle = await destination.prepare(claim, { action: 'validation', artifactSha256: 'a'.repeat(64) });
+  await assert.rejects(destination.commit(handle), /Receipt conflict/);
+});
+test('receipt cannot be prepared by a stale owner or for arbitrary content', async () => {
+  const claim = await fixture().leases.acquire('rec123', 'worker', revision);
+  const { store, calls } = destinationProvider(claim); const destination = new GitHubReceiptDestination(store);
+  await assert.rejects(destination.prepare(claim, { action: '../escape', artifactSha256: 'a'.repeat(64) }), /Invalid receipt/);
+  assert.equal(calls.length, 0);
+  await assert.rejects(destination.prepare({ ...claim, token: 'stale' }, { action: 'validation', artifactSha256: 'a'.repeat(64) }), /lost/);
+  assert.equal(calls.length, 2);
+  await assert.rejects(destination.commit({ commit: '5'.repeat(40) }), /Unknown/);
+});
+
+test('released or expired lease cannot prepare a receipt', async () => {
+  const first = await fixture().leases.acquire('rec123', 'worker', revision);
+  for (const change of [{ released: true }, { expiresAt: 1 }]) {
+    const { store, calls } = destinationProvider({ ...first, ...change });
+    await assert.rejects(new GitHubReceiptDestination(store).prepare(first, { action: 'validation', artifactSha256: 'a'.repeat(64) }), /lost|expired/);
+    assert.equal(calls.length, 2);
+  }
+});
+test('prepared receipt handle belongs to its destination instance', async () => {
+  const claim = await fixture().leases.acquire('rec123', 'worker', revision);
+  const { store } = destinationProvider(claim); const one = new GitHubReceiptDestination(store), two = new GitHubReceiptDestination(store);
+  const handle = await one.prepare(claim, { action: 'validation', artifactSha256: 'a'.repeat(64) });
+  await assert.rejects(two.commit(handle), /Unknown/);
+});
