@@ -65,3 +65,16 @@ test('falsy malformed state and unexpected fields cannot reset fencing history',
   const { leases, corrupt } = fixture(); const claim = await leases.acquire('rec123', 'worker', revision);
   corrupt({ ...claim, extra: 'not permitted' }); await assert.rejects(leases.assertOwned(claim), /Invalid lease/);
 });
+
+test('live qualifier refuses production branches and unknown credential modes before authentication', () => {
+  const { spawnSync } = require('node:child_process');
+  const { join } = require('node:path');
+  for (const args of [
+    ['Bboy9090/Bobbys-Workshop-', 'main-tool-kit', revision, '--use-gh-keyring'],
+    ['Bboy9090/Bobbys-Workshop-', 'agent-lease-qualification-test', revision, '--unknown-mode'],
+  ]) {
+    const result = spawnSync(process.execPath, [join(__dirname, 'task-lease-live.cjs'), ...args], { encoding: 'utf8', timeout: 5000 });
+    assert.equal(result.status, 1); assert.equal(result.stdout, '');
+    assert.match(result.stderr, /Explicit isolated|Unknown credential mode/);
+  }
+});
