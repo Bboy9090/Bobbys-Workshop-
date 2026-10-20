@@ -329,7 +329,7 @@ export default function App() {
   const selectedNextAction = useMemo(() => {
     if (!selectedDiagnosticUsb) {
       return {
-        kind: 'none' as const,
+        kind: reviewedDiagnosticUsb ? 'diagnose' as const : 'none' as const,
         label: reviewedDiagnosticUsb ? 'Recheck this connection' : 'Select a detected device',
         detail: reviewedDiagnosticUsb
           ? 'The saved diagnosis is not verified against the current USB observation. Finish scanning and rerun diagnosis before continuing.'
@@ -353,10 +353,16 @@ export default function App() {
       };
     }
     if (normalizedMode.includes('fastboot')) {
-      return {
-        kind: 'command-center' as const,
-        label: 'Open Fastboot service lane',
-        detail: 'The selected device is already in Fastboot/bootloader mode. Continue with verified target diagnostics.',
+      const serial=selectedDiagnosticUsb.serialNumber?.trim();
+      const bound=Boolean(serial && fastbootModeDevices.includes(serial));
+      return bound ? {
+        kind: 'bootloader' as const,
+        label: 'Open bootloader controls',
+        detail: 'The selected USB serial is also observed by Fastboot. Review that serial before using guided mode controls.',
+      } : {
+        kind: 'diagnose' as const,
+        label: 'Recheck Fastboot connection',
+        detail: 'A bootloader USB descriptor alone does not prove a matching Fastboot serial. Recheck the connection and inspect probe errors.',
       };
     }
 
@@ -376,7 +382,7 @@ export default function App() {
       label: 'Continue with verified service tools',
       detail: 'This selected device has a target-bound normal-service transport. Open the command center for the applicable safe actions.',
     };
-  }, [selectedDiagnosticUsb, reviewedDiagnosticUsb, selectedDeviceActions]);
+  }, [selectedDiagnosticUsb, reviewedDiagnosticUsb, selectedDeviceActions, fastbootModeDevices]);
 
   const refreshJobs = useCallback(async () => {
     if (!nativeRuntime) return;
@@ -504,6 +510,9 @@ export default function App() {
   };
 
   const runSelectedNextAction = async () => {
+    if(refreshing || diagnosing || transferBusy)return;
+    if(selectedNextAction.kind==='diagnose'){await runDiagnosis();return;}
+    if(selectedNextAction.kind==='bootloader'){openWorkspace('phone','bootloader-controls');return;}
     if (selectedNextAction.kind === 'cable') {
       await runCableDoctor();
       return;
@@ -1312,7 +1321,7 @@ export default function App() {
             </section>
           )}
 
-<ExpertPanel id="bootloader-controls" title="Observed bootloader connection" description="Guided mode controls. A connection never grants flash permission.">
+<ExpertPanel id="bootloader-controls" title="Observed bootloader connection" description="Guided mode controls. A connection never grants flash permission." reveal={requestedPanel==='bootloader-controls'}>
           {fastbootModeDevices.length > 0 && (
             <section className="mb-4 rounded-lg border border-cyan-900/60 bg-cyan-950/10 p-5">
               <div>
@@ -1446,7 +1455,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => void runSelectedNextAction()}
-                    disabled={selectedNextAction.kind === 'none' || cableDoctorBusy}
+                    disabled={selectedNextAction.kind === 'none' || cableDoctorBusy || diagnosing || refreshing || transferBusy || !nativeRuntime}
                     className="mt-3 rounded border border-cyan-800 bg-cyan-950/30 px-3 py-2 text-xs font-semibold text-cyan-300 disabled:opacity-40"
                   >
                     {selectedNextAction.label}
