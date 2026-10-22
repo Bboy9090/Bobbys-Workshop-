@@ -305,6 +305,14 @@ pub async fn diagnose_phone() -> Result<PhoneDiagnosticReport, String> {
             detail: "The USB descriptor matches BobFWTools' Samsung Download Mode evidence rule.".to_string(),
             recommendation: Some("Use only Samsung recovery/firmware workflows qualified for this exact model and firmware package.".to_string()),
         });
+    } else if android_usb.iter().any(|d| d.mode == "samsung-usb") {
+        findings.push(DiagnosticFinding {
+            id: "samsung-usb-attached".to_string(),
+            severity: "warning",
+            title: "Samsung USB attached; Download Mode not qualified".to_string(),
+            detail: "A Samsung USB transport is physically present, but this descriptor is also used by normal composite USB operation and is not sufficient evidence of Odin/Download Mode.".to_string(),
+            recommendation: Some("Enter Samsung Download Mode without changing bootloader-lock state, then re-run detection before any firmware planning.".to_string()),
+        });
     }
 
     if android_usb.iter().any(|d| d.mode == "mediatek-preloader") {
