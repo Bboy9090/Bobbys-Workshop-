@@ -277,6 +277,8 @@ describe('Device-aware mode capability matrix', () => {
     expect(adb).toContain('BROM/preloader entry is intentionally not exposed as a generic ADB command');
 
     expect(desktop).toContain('getAdbModeCapabilities');
+    expect(desktop).toContain("device.mode === 'samsung-download'");
+    expect(desktop).toContain('Samsung USB hardware is attached, but Download Mode has not been independently qualified');
     expect(app).toContain('adbModeCapabilities[device.serial]?.download');
     expect(app).toContain('Qualcomm EDL: device/OEM-specific entry required');
     expect(app).toContain('MediaTek BROM/Preloader: device-specific or physical entry required');
