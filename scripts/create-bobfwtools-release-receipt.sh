@@ -20,6 +20,7 @@ fail() {
 [[ -f "$DMG_NOTARY_JSON" ]] || fail "DMG notarization receipt not found"
 [[ "$SOURCE_REVISION" =~ ^[a-f0-9]{40}$ ]] || fail "a full lowercase source SHA is required"
 [[ -n "$RELEASE_LABEL" ]] || fail "release label is unavailable"
+[[ ! -e "$OUTPUT_PATH" && ! -L "$OUTPUT_PATH" ]] || fail "receipt destination already exists"
 
 BIN="$APP_PATH/Contents/MacOS/bobfwtools"
 PLIST="$APP_PATH/Contents/Info.plist"
@@ -56,8 +57,11 @@ IDENTIFIER="$(printf '%s\n' "$SIGNATURE_DETAILS" | awk -F= '/^Identifier=/ {prin
 [[ "$IDENTIFIER" == com.bobbyblanco.bobfwtools ]] || fail "unexpected signing identifier"
 EXPECTED_TEAM="${BOBFW_EXPECTED_TEAM_ID:-${APPLE_TEAM_ID:-}}"
 [[ -n "$EXPECTED_TEAM" && "$TEAM_ID" == "$EXPECTED_TEAM" ]] || fail "release signing team does not match the expected Apple team"
-printf '%s\n' "$SIGNATURE_DETAILS" | grep -E 'flags=.*runtime' >/dev/null || fail "hardened runtime is missing"
-printf '%s\n' "$SIGNATURE_DETAILS" | grep -E '^Timestamp=.' >/dev/null || fail "secure signing timestamp is missing"
+printf '%s\n' "$SIGNATURE_DETAILS" | grep -E 'flags=.*[(,]runtime[),]' >/dev/null || fail "hardened runtime is missing"
+TIMESTAMP="$(printf '%s\n' "$SIGNATURE_DETAILS" | awk -F= '/^Timestamp=/ {print substr($0,index($0,"=")+1); exit}')"
+case "$TIMESTAMP" in
+  ''|[Nn][Oo][Nn][Ee]|[Uu][Nn][Aa][Vv][Aa][Ii][Ll][Aa][Bb][Ll][Ee]) fail "secure signing timestamp is missing" ;;
+esac
 DMG_DETAILS="$(codesign -dv --verbose=4 "$DMG_PATH" 2>&1)"
 DMG_TEAM="$(printf '%s\n' "$DMG_DETAILS" | awk -F= '/^TeamIdentifier=/ {print $2; exit}')"
 [[ "$DMG_TEAM" == "$TEAM_ID" ]] || fail "DMG signing team differs from the app"

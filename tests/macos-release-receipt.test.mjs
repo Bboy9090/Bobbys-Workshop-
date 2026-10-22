@@ -44,7 +44,7 @@ if [[ "$command" == codesign && "$1" == -dv ]]; then
   [[ "$target" != *.dmg ]] || team="\${SIM_DMG_TEAM:-TESTTEAM01}"
   printf '%s\\n' 'Authority=Developer ID Application: SIMULATED' "TeamIdentifier=$team" 'Identifier=com.bobbyblanco.bobfwtools'
   if [[ "\${SIM_RUNTIME:-}" != no ]]; then echo 'flags=0x10000(runtime)'; else echo 'flags=0x0(none)'; fi
-  if [[ "\${SIM_TIMESTAMP:-}" != no ]]; then echo 'Timestamp=SIMULATED'; fi
+  if [[ "\${SIM_TIMESTAMP:-}" != no ]]; then echo "Timestamp=\${SIM_TIMESTAMP:-SIMULATED}"; fi
 fi
 exit 0
 `, {mode:0o755});
@@ -86,7 +86,7 @@ describe('release receipt failure handling with simulated command results', () =
   });
   it.each([
     {SIM_ARCHS:'arm64'}, {SIM_TEAM:'OTHERTEAM1'}, {SIM_DMG_TEAM:'OTHERTEAM1'},
-    {SIM_RUNTIME:'no'}, {SIM_TIMESTAMP:'no'}, {SIM_FAIL:'codesign'},
+    {SIM_RUNTIME:'no'}, {SIM_TIMESTAMP:'no'}, {SIM_TIMESTAMP:'none'}, {SIM_FAIL:'codesign'},
     {SIM_FAIL:'xcrun'}, {SIM_FAIL:'spctl',SIM_FAIL_TARGET:'.dmg'},
     {SIM_FAIL:'spctl',SIM_FAIL_TARGET:'.app'}, {BOBFWTOOLS_SOURCE_REVISION:'short'},
   ])('fails closed for missing or rejected source/signing prerequisites: %j', env => {
@@ -111,5 +111,13 @@ describe('release receipt failure handling with simulated command results', () =
       expect(result.stderr).toContain('destination already exists');
     }
     expect(readFileSync(f.dmg,'utf8')).toBe('SIMULATED-DMG');
+  });
+  it('preserves an existing receipt rather than replacing it with a different run', () => {
+    const f=fixture();
+    writeFileSync(f.output, 'PREVIOUS-RECEIPT');
+    const result=f.run();
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('receipt destination already exists');
+    expect(readFileSync(f.output,'utf8')).toBe('PREVIOUS-RECEIPT');
   });
 });
