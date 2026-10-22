@@ -6,27 +6,11 @@ test -n "$RUNNER_TEMP"
 APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app"
 OUT="$RUNNER_TEMP/BobFWTools-installer-qualification"
 WORK="$(mktemp -d "$RUNNER_TEMP/bobfw-installer.XXXXXX")"
-STAGE="$WORK/stage"
-MOUNT="$WORK/mount"
+trap 'rm -rf "$WORK"' EXIT
 COPIED="$WORK/installed/BobFWTools.app"
 DMG="$OUT/BobFWTools-universal-macOS-unsigned.dmg"
-mkdir -p "$OUT" "$STAGE" "$MOUNT" "$WORK/installed"
-test ! -e "$DMG"
-
-bash scripts/verify-bobfwtools-macos-app.sh "$APP"
-ditto "$APP" "$STAGE/BobFWTools.app"
-ln -s /Applications "$STAGE/Applications"
-hdiutil create -volname "BobFWTools" -srcfolder "$STAGE" -format UDZO "$DMG"
-hdiutil verify "$DMG"
-
-trap 'hdiutil detach "$MOUNT" >/dev/null 2>&1 || true' EXIT
-hdiutil attach -readonly -nobrowse -mountpoint "$MOUNT" "$DMG"
-test -L "$MOUNT/Applications"
-test "$(readlink "$MOUNT/Applications")" = "/Applications"
-ditto "$MOUNT/BobFWTools.app" "$COPIED"
-diff -qr "$APP" "$COPIED"
-bash scripts/verify-bobfwtools-macos-app.sh "$COPIED"
-strings "$COPIED/Contents/MacOS/bobfwtools" | grep -F "$BOBFWTOOLS_SOURCE_REVISION"
+mkdir -p "$OUT"
+bash scripts/package-bobfwtools-dmg.sh "$APP" "$DMG" "$COPIED"
 
 SIGNATURE_DETAILS="$(codesign -dv --verbose=4 "$COPIED" 2>&1 || true)"
 if printf '%s\n' "$SIGNATURE_DETAILS" | grep -q '^Authority='; then
@@ -107,5 +91,3 @@ assert all(row["executionAuthorized"] is False for row in report["rows"])
 assert not any(row["status"] == "PASS" for row in report["rows"][4:])
 print("Unsigned installer evidence hashes and scope: PASS")
 PY
-hdiutil detach "$MOUNT"
-trap - EXIT

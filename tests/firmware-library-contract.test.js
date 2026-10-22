@@ -865,9 +865,9 @@ describe('macOS signed notarized release contract', () => {
     expect(workflow).toContain('actions/upload-artifact@v7');
     expect(workflow).toContain('package-manager-cache: false');
     expect(workflow).toContain('bobfwtools-release-receipt.json');
-    expect(releaseReceipt).toContain('com.bobbyblanco.bobfwtools.release-receipt.v1');
+    expect(releaseReceipt).toContain('com.bobbyblanco.bobfwtools.release-receipt.v2');
     expect(releaseReceipt).toContain('"qualifiedDestructiveWriterIncluded": False');
-    expect(releaseReceipt).toContain('"submissionId": submission_id');
+    expect(releaseReceipt).toContain('"submissionId": app_notary["id"]');
     expect(releaseReceipt).toContain('"gatekeeperAccepted": True');
     expect(releaseReceipt).toContain('"executableSha256": binary_sha256');
     const signScript = read('scripts/sign-bobfwtools-developer-id.sh');

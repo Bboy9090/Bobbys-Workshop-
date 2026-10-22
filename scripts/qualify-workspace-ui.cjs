@@ -91,6 +91,7 @@ async function noHorizontalOverflow() {
       assert.equal(await page.locator('#recovery-planner[open]').count(),0);
       await page.locator('#recovery-planner > summary').click();
       const field=page.getByPlaceholder('Exact model',{exact:true});
+      assert.equal(await page.getByRole('button',{name:'Choose artifacts',exact:true}).isDisabled(),true);
       await field.fill('UI-STATE-ONLY-NO-DEVICE');
       await selectView('phone','Phone');
       await selectView('firmware','Firmware');
@@ -111,7 +112,7 @@ async function noHorizontalOverflow() {
       report.metrics.mobileHome=await noHorizontalOverflow();
       await page.screenshot({path:resolve(output,'mobile-phone.png'),fullPage:true});
     });
-    await check('Repeated reveal requests reopen a manually closed panel (simulated read-only bridge)',async()=>{
+    await check('Disclosures reopen and artifact selection handles cancellation and failure (simulated read-only bridge)',async()=>{
       const simulated=await browser.newPage({viewport:{width:1365,height:900}});
       simulated.on('pageerror',error=>report.pageErrors.push(error.message));
       await simulated.addInitScript(()=>{
@@ -119,7 +120,7 @@ async function noHorizontalOverflow() {
           manufacturer:'SIMULATED',productName:'Read-only UI fixture; no hardware',serialNumber:'UI-ONLY',
           class:0,subclass:0,protocol:0,busNumber:1,deviceAddress:1,speed:'high',
           platformHint:'android-generic',mode:'usb',transport:'usb',evidenceSource:'simulated-ui-fixture'};
-        window.__BOBFW_UI_FIXTURE__={calls:[],unexpected:[]};
+        window.__BOBFW_UI_FIXTURE__={calls:[],unexpected:[],pickerCalls:0};
         const replies={
           frontend_backend_handshake:{status:'ready',protocol:'simulated',backend:'fixture',
             greeting:'Simulated read-only bridge; no device.',correlation_id:'ui-fixture'},
@@ -136,6 +137,12 @@ async function noHorizontalOverflow() {
         };
         window.__TAURI_INTERNALS__={invoke:async(command)=>{
           window.__BOBFW_UI_FIXTURE__.calls.push(command);
+          if(command==='plugin:dialog|open'){
+            const count=++window.__BOBFW_UI_FIXTURE__.pickerCalls;
+            if(count===1)return ['/SIMULATED/planning-only-rawprogram.xml'];
+            if(count===2)return null;
+            throw Error('SIMULATED artifact-picker permission failure');
+          }
           if(!Object.prototype.hasOwnProperty.call(replies,command)){
             window.__BOBFW_UI_FIXTURE__.unexpected.push(command);
             throw Error('Command is not allowed by read-only UI fixture: '+command);
@@ -154,10 +161,24 @@ async function noHorizontalOverflow() {
           await simulated.locator('#diagnostic-findings > summary').click();
           await simulated.waitForFunction(()=>document.querySelector('#diagnostic-findings')?.open===false);
         }
+        await simulated.getByRole('navigation',{name:'Workspace',exact:true}).getByRole('button',{name:'Firmware',exact:true}).click();
+        await simulated.locator('#recovery-planner > summary').click();
+        const picker=simulated.getByRole('button',{name:'Choose artifacts',exact:true});
+        await picker.click();
+        await simulated.getByText('planning-only-rawprogram.xml',{exact:true}).waitFor();
+        assert.equal(await simulated.getByRole('button',{name:'Inspect recovery plan',exact:true}).isEnabled(),true);
+        await picker.click();
+        await simulated.waitForFunction(()=>window.__BOBFW_UI_FIXTURE__.pickerCalls===2);
+        assert.equal(await simulated.getByText('planning-only-rawprogram.xml',{exact:true}).count(),1,'Cancellation must retain selected artifacts.');
+        await picker.click();
+        await simulated.waitForFunction(()=>document.body.textContent.includes('SIMULATED artifact-picker permission failure'));
+        assert.equal(await picker.isEnabled(),true,'Picker must recover after a rejected dialog.');
         const trace=await simulated.evaluate(()=>window.__BOBFW_UI_FIXTURE__);
         report.simulatedDisclosure={scope:'simulated; no hardware or device execution',...trace};
         assert.deepEqual(trace.unexpected,[]);
         assert.ok(trace.calls.includes('diagnose_phone'));
+        assert.equal(trace.pickerCalls,3);
+        assert.equal(trace.calls.includes('bootforge_recovery_prepare'),false,'Selecting a file must not prepare or execute a device job.');
       }finally{await simulated.close();}
     });
     await check('No uncaught application errors',async()=>assert.deepEqual(report.pageErrors,[]));

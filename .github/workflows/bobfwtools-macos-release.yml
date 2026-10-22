@@ -11,12 +11,17 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: bobfwtools-macos-release
+  cancel-in-progress: false
+
 env:
   BOBFWTOOLS_SOURCE_REVISION: ${{ github.sha }}
 
 jobs:
   signed-notarized-release:
     runs-on: macos-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
 
@@ -40,12 +45,14 @@ jobs:
           SAFE_LABEL="$(printf '%s' "$RAW_RELEASE_LABEL" | tr -cs 'A-Za-z0-9._-' '-' | sed 's/^-*//; s/-*$//' | cut -c1-64)"
           test -n "$SAFE_LABEL" || { echo "Release label becomes empty after sanitization"; exit 1; }
           echo "safe=$SAFE_LABEL" >> "$GITHUB_OUTPUT"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code HEAD --
 
       - name: Preflight release credentials
         env:
-          P12_B64: ${{ secrets.BOBFW_DEVELOPER_ID_P12_BASE64 }}
-          P12_PASSWORD: ${{ secrets.BOBFW_DEVELOPER_ID_P12_PASSWORD }}
-          SIGNING_IDENTITY: ${{ secrets.BOBFW_DEVELOPER_IDENTITY }}
+          P12_B64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 || secrets.BOBFW_DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD || secrets.BOBFW_DEVELOPER_ID_P12_PASSWORD }}
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY || secrets.BOBFW_DEVELOPER_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -80,8 +87,8 @@ jobs:
 
       - name: Import Developer ID certificate
         env:
-          P12_B64: ${{ secrets.BOBFW_DEVELOPER_ID_P12_BASE64 }}
-          P12_PASSWORD: ${{ secrets.BOBFW_DEVELOPER_ID_P12_PASSWORD }}
+          P12_B64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 || secrets.BOBFW_DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD || secrets.BOBFW_DEVELOPER_ID_P12_PASSWORD }}
         run: |
           set -euo pipefail
           KEYCHAIN="$RUNNER_TEMP/bobfwtools-release.keychain-db"
@@ -99,7 +106,7 @@ jobs:
 
       - name: Sign with Developer ID
         env:
-          BOBFW_DEVELOPER_IDENTITY: ${{ secrets.BOBFW_DEVELOPER_IDENTITY }}
+          BOBFW_DEVELOPER_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY || secrets.BOBFW_DEVELOPER_IDENTITY }}
           BOBFW_EXPECTED_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
@@ -126,23 +133,74 @@ jobs:
           lipo -info "$BIN"
           strings "$BIN" | grep -F "$GITHUB_SHA"
 
+      - name: Build and verify installer
+        env:
+          RELEASE_LABEL: ${{ steps.release_label.outputs.safe }}
+        run: |
+          set -euo pipefail
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools-DeveloperID.app
+          OUT="$RUNNER_TEMP/bobfwtools-release"
+          bash scripts/package-bobfwtools-dmg.sh "$APP" \
+            "$OUT/BobFWTools-$RELEASE_LABEL-universal-macOS.dmg" \
+            "$RUNNER_TEMP/bobfwtools-release-installed/BobFWTools.app"
+
+      - name: Sign, notarize, and staple installer
+        env:
+          RELEASE_LABEL: ${{ steps.release_label.outputs.safe }}
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY || secrets.BOBFW_DEVELOPER_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          DMG="$RUNNER_TEMP/bobfwtools-release/BobFWTools-$RELEASE_LABEL-universal-macOS.dmg"
+          codesign --force --timestamp --sign "$SIGNING_IDENTITY" "$DMG"
+          codesign --verify --strict "$DMG"
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" --wait --output-format json > bobfwtools-dmg-notarization-receipt.json
+          python3 - bobfwtools-dmg-notarization-receipt.json <<'PY'
+          import json, sys
+          receipt = json.load(open(sys.argv[1], encoding="utf-8"))
+          if receipt.get("status") != "Accepted" or not receipt.get("id"):
+              raise SystemExit("DMG notarization was not accepted with a submission id")
+          PY
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG"
+          COPIED="$RUNNER_TEMP/bobfwtools-final-installed/BobFWTools.app"
+          bash scripts/package-bobfwtools-dmg.sh \
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools-DeveloperID.app \
+            "$DMG" "$COPIED" verify
+          codesign --verify --deep --strict "$COPIED"
+          xcrun stapler validate "$COPIED"
+          spctl --assess --type execute --verbose=4 "$COPIED"
+
       - name: Create release provenance receipt
         env:
           BOBFWTOOLS_RELEASE_LABEL: ${{ steps.release_label.outputs.safe }}
+          BOBFW_EXPECTED_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           bash scripts/create-bobfwtools-release-receipt.sh \
-            src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools-DeveloperID.app \
+            "$RUNNER_TEMP/bobfwtools-final-installed/BobFWTools.app" \
+            "$RUNNER_TEMP/bobfwtools-release/BobFWTools-$BOBFWTOOLS_RELEASE_LABEL-universal-macOS.dmg" \
             bobfwtools-notarization-receipt.json \
+            bobfwtools-dmg-notarization-receipt.json \
             bobfwtools-release-receipt.json
+          ditto -c -k --keepParent \
+            "$RUNNER_TEMP/bobfwtools-final-installed/BobFWTools.app" \
+            "$RUNNER_TEMP/bobfwtools-release/BobFWTools-$BOBFWTOOLS_RELEASE_LABEL-universal-macOS.app.zip"
 
       - name: Upload notarized release artifact
         uses: actions/upload-artifact@v7
         with:
           name: BobFWTools-macOS-notarized-${{ steps.release_label.outputs.safe }}
           path: |
-            src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools-DeveloperID.app
+            ${{ runner.temp }}/bobfwtools-release/*.dmg
+            ${{ runner.temp }}/bobfwtools-release/*.app.zip
             bobfwtools-notarization-receipt.json
+            bobfwtools-dmg-notarization-receipt.json
             bobfwtools-release-receipt.json
           if-no-files-found: error
 
@@ -150,7 +208,5 @@ jobs:
         if: always()
         run: |
           set +e
-          if [ -n "${BOBFW_RELEASE_KEYCHAIN:-}" ]; then
-            security delete-keychain "$BOBFW_RELEASE_KEYCHAIN"
-          fi
+          security delete-keychain "$RUNNER_TEMP/bobfwtools-release.keychain-db" >/dev/null 2>&1
           rm -f "$RUNNER_TEMP/bobfwtools-developer-id.p12"
