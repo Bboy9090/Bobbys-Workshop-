@@ -34,6 +34,9 @@ jobs:
       - name: Install packaged API dependencies
         run: npm ci --prefix src-tauri/resources/server --ignore-scripts
 
+      - name: Audit packaged API dependencies
+        run: npm audit --prefix src-tauri/resources/server --audit-level=moderate
+
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:

@@ -45,6 +45,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential file libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev patchelf xvfb dbus-x11 python3-pyatspi at-spi2-core
       - run: npm ci
       - run: npm ci --prefix src-tauri/resources/server --ignore-scripts
+      - run: npm audit --prefix src-tauri/resources/server --audit-level=moderate
       - run: npm run verify:reality
       - run: npm run lint
       - run: npm run typecheck
@@ -64,6 +65,17 @@ jobs:
         run: npx tauri build --bundles ${{ matrix.bundles }}
       - name: Inspect installer copies and smoke native GUI
         run: node scripts/qualify-platform-packages.mjs ${{ matrix.platform }} "${{ runner.temp }}/BobFWTools-package-evidence"
+      - name: Retain an explicit failed gate receipt
+        if: failure()
+        env:
+          EVIDENCE_DIRECTORY: ${{ runner.temp }}/BobFWTools-package-evidence
+        run: >-
+          node -e "const f=require('node:fs'),p=require('node:path'),d=process.env.EVIDENCE_DIRECTORY;
+          f.mkdirSync(d,{recursive:true});const out=p.join(d,'qualification-failure.json');
+          if(!f.existsSync(out))f.writeFileSync(out,JSON.stringify({status:'FAIL',sourceRevision:process.env.BOBFWTOOLS_SOURCE_REVISION,
+          observedAt:new Date().toISOString(),platform:process.platform,runId:process.env.GITHUB_RUN_ID,
+          detail:'Native package job failed before qualification completed; inspect the linked run jobs for the failed gate.',
+          executionAuthorized:false,hardwareQualified:false,releaseQualified:false},null,2)+'\n');"
       - name: Retain unsigned packages and qualification evidence
         if: always()
         uses: actions/upload-artifact@v7
