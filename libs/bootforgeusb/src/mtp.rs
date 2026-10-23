@@ -39,6 +39,42 @@ pub fn parse(bytes: &[u8]) -> Result<Container, String> {
     })
 }
 
+
+/// Read exactly one framed container using bounded bulk reads. Never allocate
+/// from an untrusted length until the header has been validated.
+pub fn read_container<F>(mut read: F) -> Result<Container, String>
+where F: FnMut(&mut [u8]) -> Result<usize, String> {
+    let mut header = [0u8; 12];
+    let mut filled = 0;
+    while filled < header.len() {
+        let n = read(&mut header[filled..])?;
+        if n == 0 || n > header.len() - filled { return Err("short or invalid MTP header read".into()); }
+        filled += n;
+    }
+    let size = u32::from_le_bytes(header[0..4].try_into().unwrap()) as usize;
+    if !(12..=MAX_CONTAINER).contains(&size) { return Err("invalid or oversized MTP container".into()); }
+    let mut frame = vec![0u8; size];
+    frame[..12].copy_from_slice(&header);
+    let mut filled = 12;
+    while filled < size {
+        let n = read(&mut frame[filled..])?;
+        if n == 0 || n > size - filled { return Err("short or invalid MTP payload read".into()); }
+        filled += n;
+    }
+    parse(&frame)
+}
+
+/// Require GetDeviceInfo data followed by a matching success response.
+pub fn validate_device_info(data: &Container, response: &Container, transaction: u32) -> Result<(), String> {
+    if data.kind != 2 || data.code != GET_DEVICE_INFO || data.transaction != transaction || data.payload.is_empty() {
+        return Err("invalid GetDeviceInfo data container".into());
+    }
+    if response.kind != 3 || response.code != RESPONSE_OK || response.transaction != transaction {
+        return Err("GetDeviceInfo response was not successful".into());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
