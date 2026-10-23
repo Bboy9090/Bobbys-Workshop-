@@ -71,9 +71,9 @@ pub fn workflow_catalog() -> Vec<WorkflowPolicy> {
             backup_or_rollback_required: true,
             audit_logging_required: true,
             explicit_confirmation_required: true,
-            physically_qualified: true,
+            physically_qualified: false,
             active_in_bobfwtools: true,
-            notes: "Stock signed Samsung recovery planning; destructive writes require approval.",
+            notes: "Stock signed Samsung recovery planning is available; physical write qualification, exact target/package binding, and reviewer/audit evidence remain required before destructive execution.",
         },
         WorkflowPolicy {
             id: "qualcomm.edl-plan",
@@ -211,6 +211,19 @@ mod tests {
                 assert!(workflow.device_identity_verification);
             }
         }
+    }
+
+    #[test]
+    fn samsung_odin_requires_physical_qualification() {
+        let samsung = workflow_catalog()
+            .into_iter()
+            .find(|w| w.id == "samsung.odin-plan")
+            .unwrap();
+        assert!(samsung.active_in_bobfwtools);
+        assert!(!samsung.physically_qualified);
+        assert!(samsung.device_identity_verification);
+        assert!(samsung.backup_or_rollback_required);
+        assert!(samsung.explicit_confirmation_required);
     }
 
     #[test]
