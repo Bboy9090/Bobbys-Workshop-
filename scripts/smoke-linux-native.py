@@ -36,6 +36,16 @@ with out.with_suffix('.log').open('w') as log:
                     try:
                         if node.name:
                             names.append(node.name)
+                        # WebKitGTK may expose rendered span/paragraph text through
+                        # AccessibleText rather than the accessible name.
+                        try:
+                            text = node.queryText()
+                            value = text.getText(0, min(text.characterCount, 2000)).strip()
+                            if value and value not in names:
+                                names.append(value)
+                        except Exception:
+                            # Most containers do not implement AccessibleText.
+                            pass
                         pending.extend(list(node))
                     except Exception:
                         continue
@@ -46,7 +56,9 @@ with out.with_suffix('.log').open('w') as log:
         host_storage_as_phone = 'Connected phones' in names or 'MTP connection observed' in names
         passed = ('Phone' in names and 'Diagnostics' in names and
                   'Desktop connected' in names and scan_complete and not host_storage_as_phone)
-        out.write_text(json.dumps({'status': 'PASS' if passed else 'FAIL', 'observedAt': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'scope': 'Linux CI native WebKitGTK under Xvfb; Debian-extracted application', 'navigationNames': names, 'deviceScanComplete': scan_complete, 'noPhoneOnDisposableRunner': not host_storage_as_phone, 'hardwareQualified': False, 'releaseQualified': False, 'executionAuthorized': False}, indent=2) + '\n')
+        report = {'status': 'PASS' if passed else 'FAIL', 'observedAt': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'scope': 'Linux CI native WebKitGTK under Xvfb; Debian-extracted application', 'navigationNames': names, 'deviceScanComplete': scan_complete, 'noPhoneOnDisposableRunner': not host_storage_as_phone, 'hardwareQualified': False, 'releaseQualified': False, 'executionAuthorized': False}
+        out.write_text(json.dumps(report, indent=2) + '\n')
+        print('NATIVE_GUI_EVIDENCE ' + json.dumps(report), flush=True)
         if not passed:
             raise RuntimeError('Native WebKitGTK scan/navigation failed or host storage was exposed as a phone')
     finally:

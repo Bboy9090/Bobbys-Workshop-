@@ -38,6 +38,7 @@ try {
   $passed = ($names -contains 'Phone') -and ($names -contains 'Diagnostics') -and ($names -contains 'Desktop connected') -and $scanComplete -and (-not $hostStorageAsPhone)
   $receipt = @{status=$(if($passed){'PASS'}else{'FAIL'});observedAt=[DateTime]::UtcNow.ToString('o');scope='Windows CI native WebView2 GUI and isolated installer copies';title=$app.MainWindowTitle;navigationNames=$names;deviceScanComplete=$scanComplete;noPhoneOnDisposableRunner=(-not $hostStorageAsPhone);hardwareQualified=$false;releaseQualified=$false;executionAuthorized=$false;executables=@(@{location='msi-copy';path=$msiExecutables[0].FullName},@{location='nsis-copy';path=$executable})}
   $receipt | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 (Join-Path $OutputDirectory 'native-smoke.json')
+  Write-Output ('NATIVE_GUI_EVIDENCE ' + ($receipt | ConvertTo-Json -Depth 8 -Compress))
   if (-not $passed) { throw 'Native WebView2 scan/navigation failed or host storage was exposed as a phone' }
 } finally {
   if (-not $app.HasExited) {

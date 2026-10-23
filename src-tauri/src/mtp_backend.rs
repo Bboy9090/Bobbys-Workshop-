@@ -16,7 +16,7 @@ struct UsbMtpTarget {
 impl UsbMtpTarget {
     fn token(&self) -> String {
         use sha2::{Digest, Sha256};
-        // Keep location IDs out of JavaScript numbers and raw serials out of IPC.
+        // Keep location IDs out of JavaScript numbers; bind every USB identity field.
         let identity = serde_json::to_vec(&(
             self.vendor_id, self.product_id, self.location_id, &self.serial,
         )).expect("USB identity tuple is serializable");

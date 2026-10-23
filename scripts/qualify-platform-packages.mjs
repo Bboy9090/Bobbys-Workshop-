@@ -62,9 +62,12 @@ try {
     checks.push({capability:'Debian package extraction and executable provenance',status:'PASS'},
       {capability:'AppImage extraction and executable provenance',status:'PASS'});
   }
-  if (smoke?.status !== 'PASS' || smoke?.executionAuthorized !== false) throw new Error('Native GUI smoke did not pass');
+  if (smoke?.status !== 'PASS' || smoke?.executionAuthorized !== false ||
+      smoke?.deviceScanComplete !== true || smoke?.noPhoneOnDisposableRunner !== true) {
+    throw new Error('Native GUI scan did not finish safely or a host disk was exposed as a phone');
+  }
   const nativeSmoke = {path:'native-smoke.json',sha256:digest(readFileSync(join(out,'native-smoke.json')))};
-  checks.push({capability:'Native CI window renders Phone and Diagnostics navigation',status:'PASS'},
+  checks.push({capability:'Native CI navigation and completed device scan exclude host storage as a phone',status:'PASS'},
     {capability:platform === 'windows' ? 'Authenticode release signing' : 'Release checksum signature and trusted publication',status:'BLOCKED'},
     {capability:platform === 'windows' ? 'SmartScreen assessment on supported user Windows host' : 'Installation on supported physical Linux host',status:'NOT TESTED'},
     {capability:'ARM64 native package and GUI qualification',status:'NOT TESTED'},

@@ -1127,7 +1127,7 @@ export default function App() {
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-5 py-3">
         <div><h1 className="text-base font-semibold tracking-tight text-white">BobFWTools</h1><p className="mt-0.5 text-xs text-slate-500">Device repair workspace</p></div>
         <div className="flex items-center gap-3">
-          <span className={handshake?.status==='ready' ? 'hidden text-xs text-emerald-400 sm:inline' : 'hidden text-xs text-slate-500 sm:inline'}>
+          <span role="status" aria-label={handshake?.status==='ready' ? 'Desktop connected' : nativeRuntime ? 'Checking desktop' : 'Browser preview'} className={handshake?.status==='ready' ? 'hidden text-xs text-emerald-400 sm:inline' : 'hidden text-xs text-slate-500 sm:inline'}>
             {handshake?.status==='ready' ? 'Desktop connected' : nativeRuntime ? 'Checking desktop' : 'Browser preview'}
           </span>
           {transferBusy && <span className="text-xs text-cyan-300">Transfer running…</span>}
@@ -1149,7 +1149,7 @@ export default function App() {
         </aside>
         <main ref={workspaceMain} id="workspace-main" className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
           <div className="mx-auto w-full max-w-[1120px]">
-            <p role="status" className="sr-only">{refreshing || !scanCompleted ? 'Checking devices' : 'Device checks complete'}</p>
+            <p role="status" aria-label={refreshing || !scanCompleted ? 'Checking devices' : 'Device checks complete'} className="sr-only">{refreshing || !scanCompleted ? 'Checking devices' : 'Device checks complete'}</p>
             {nativeError && <details className="mb-4 rounded-lg border border-amber-900/60 bg-amber-950/20 text-xs text-amber-200">
               <summary className="cursor-pointer px-4 py-3 font-medium">Some checks need attention · view details</summary>
               <div className="max-h-48 overflow-auto border-t border-amber-900/40 px-4 py-3 leading-5">{nativeError}</div>
