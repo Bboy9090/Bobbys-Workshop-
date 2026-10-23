@@ -1,0 +1,43 @@
+{
+  "schema": "bobfwtools.release-preparation-history.v1",
+  "pullRequest": 241,
+  "headRevision": "dcf85cebdb54e2a0170d23ee2e9ebad66a6df9d5",
+  "testedRevision": "3b7334414d33865eec21d000759f5bfb0573c3ca",
+  "sourceTree": "2ceeed9dea935a5183f5109da1836f846d7d8950",
+  "observedAt": "2026-10-22T01:37:07Z",
+  "scope": "Historical CI artifact/code validation; not current-source signing or device evidence",
+  "nodeRun": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39705370565",
+  "macosRun": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39705370493",
+  "results": {
+    "status": "PASS",
+    "repositoryAndPackagedApiTests": 316,
+    "simulatedReleaseReceiptTests": 20,
+    "standardRustTests": 35,
+    "qualifiedFeatureRustTests": 86,
+    "bootforgeUsbTests": 49,
+    "universalStandardAndQualifiedBuilds": "PASS",
+    "unsignedInstallerPackaging": "PASS"
+  },
+  "artifacts": {
+    "unsignedInstallerArchiveSha256": "299ee0b7a4c915c16c2e99e12de3e586245533f6b2434e3c317942a7cc0fd3d6",
+    "unsignedDmgSha256": "5a840b2813d677e49f969781ad1408d02aa4dc5db94054b4edead86a53306854",
+    "copiedExecutableSha256": "a3c704d2e1457381136910fc63734da4aaaaea25e17328ab959a047781a1a56a",
+    "copiedInfoPlistSha256": "32d95929a9afce0de2db53d0116302461849f5cec268fcd2ba5791765fb4bce5",
+    "url": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39705370493/artifacts/12394777249"
+  },
+  "releaseGate": {
+    "status": "BLOCKED",
+    "review": "https://github.com/Bboy9090/Bobbys-Workshop-/pull/241#issuecomment-6333856559",
+    "requirements": [
+      "Real Developer ID app and DMG signing",
+      "Accepted app and DMG notarization with retained receipts",
+      "Stapling and Gatekeeper evidence",
+      "Final installer-copy checks",
+      "Native GUI smoke for exact source"
+    ],
+    "reason": "No credential-backed signed/native run for this source; PR241 remains draft."
+  },
+  "hardwareQualified": false,
+  "releaseQualified": false,
+  "executionAuthorized": false
+}

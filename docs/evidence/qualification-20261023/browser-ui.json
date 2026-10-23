@@ -1,0 +1,127 @@
+{
+  "schema": "bobfwtools.workspace-ui-evidence.v1",
+  "sourceRevision": "31c2ecf442036608c675098659d2175d687f74d1",
+  "runUrl": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39929620699",
+  "scope": "Chromium preview; one additional read-only bridge fixture is simulated. No real native bridge or device.",
+  "startedAt": "2026-10-23T09:09:55.815Z",
+  "status": "PASS",
+  "hardwareQualified": false,
+  "executionAuthorized": false,
+  "checks": [
+    {
+      "name": "Home is a compact phone workspace with honest browser readiness",
+      "status": "PASS"
+    },
+    {
+      "name": "All six views show only their own content",
+      "status": "PASS"
+    },
+    {
+      "name": "Advanced tools are closed and deferred until requested",
+      "status": "PASS"
+    },
+    {
+      "name": "Firmware planning inputs survive navigation and disclosure toggles",
+      "status": "PASS"
+    },
+    {
+      "name": "Narrow screens retain navigation without horizontal scrolling",
+      "status": "PASS"
+    },
+    {
+      "name": "Observed controls, disclosure reopening and artifact-picker recovery (simulated read-only bridge)",
+      "status": "PASS"
+    },
+    {
+      "name": "No uncaught application errors",
+      "status": "PASS"
+    }
+  ],
+  "metrics": {
+    "desktopHome": {
+      "height": 833,
+      "scrollHeight": 833,
+      "viewport": 1365,
+      "document": 1365,
+      "main": 1141,
+      "mainScroll": 1141
+    },
+    "mobileHome": {
+      "viewport": 390,
+      "document": 390,
+      "main": 390,
+      "mainScroll": 390
+    }
+  },
+  "pageErrors": [],
+  "simulatedDisclosure": {
+    "scope": "simulated; no hardware or device execution",
+    "calls": [
+      "adb_scan",
+      "mtp_status",
+      "frontend_backend_handshake",
+      "bootforgeusb_scan",
+      "bootforge_recovery_scan",
+      "fastboot_mode_devices",
+      "workflow_capabilities",
+      "firmware_library_scan",
+      "workflow_job_list",
+      "diagnose_phone",
+      "adb_scan",
+      "mtp_status",
+      "frontend_backend_handshake",
+      "bootforgeusb_scan",
+      "bootforge_recovery_scan",
+      "fastboot_mode_devices",
+      "workflow_capabilities",
+      "firmware_library_scan",
+      "workflow_job_list",
+      "plugin:dialog|open",
+      "plugin:dialog|open",
+      "plugin:dialog|open",
+      "adb_scan",
+      "mtp_status",
+      "frontend_backend_handshake",
+      "bootforgeusb_scan",
+      "bootforge_recovery_scan",
+      "fastboot_mode_devices",
+      "workflow_capabilities",
+      "firmware_library_scan",
+      "workflow_job_list",
+      "adb_scan",
+      "mtp_status",
+      "frontend_backend_handshake",
+      "bootforgeusb_scan",
+      "bootforge_recovery_scan",
+      "fastboot_mode_devices",
+      "workflow_capabilities",
+      "firmware_library_scan",
+      "workflow_job_list"
+    ],
+    "unexpected": [],
+    "pickerCalls": 3,
+    "fastboot": []
+  },
+  "finishedAt": "2026-10-23T09:10:00.791Z",
+  "pullRequestHead": "85829de8ba974b2dba02f3e0ce939386458e1265",
+  "sourceTree": "1b04a356471ffef445a72141de3e66492ebf9230",
+  "artifact": {
+    "id": 12491420616,
+    "name": "BobFWTools-workspace-ui-evidence",
+    "size_in_bytes": 404481,
+    "url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/artifacts/12491420616",
+    "archive_download_url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/artifacts/12491420616/zip",
+    "expired": false,
+    "created_at": "2026-10-23T09:10:01Z",
+    "expires_at": "2027-01-21T09:07:52Z",
+    "updated_at": "2026-10-23T09:10:01Z",
+    "digest": "sha256:ff5684e4934f48baaa6530ce303de94dc37ddd3d00ae7104f9d89cc0bd3a3c45",
+    "workflow_run": {
+      "id": 39929620699,
+      "repository_id": 1116528900,
+      "head_repository_id": 1116528900,
+      "head_branch": "fix/workspace-applicable-controls-20261023",
+      "head_sha": "85829de8ba974b2dba02f3e0ce939386458e1265"
+    }
+  }
+}

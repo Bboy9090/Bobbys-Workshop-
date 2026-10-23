@@ -64,6 +64,7 @@ async function noHorizontalOverflow() {
       assert.equal(await page.getByText('Desktop required',{exact:true}).count(),3);
       assert.equal(await page.locator('details[open]').count(),0);
       assert.equal(await page.locator('#service-tools').count(),0,'Advanced tools must not initialize on home.');
+      assert.equal(await page.locator('#bootloader-controls').count(),0,'Unobserved bootloader controls must not appear on home.');
       const main=await page.locator('#workspace-main').evaluate(node=>({height:node.clientHeight,scrollHeight:node.scrollHeight}));
       report.metrics.desktopHome={...main,...await noHorizontalOverflow()};
       assert.ok(main.scrollHeight<=main.height+1,'Home unexpectedly needs scrolling: '+JSON.stringify(main));
@@ -112,7 +113,7 @@ async function noHorizontalOverflow() {
       report.metrics.mobileHome=await noHorizontalOverflow();
       await page.screenshot({path:resolve(output,'mobile-phone.png'),fullPage:true});
     });
-    await check('Disclosures reopen and artifact selection handles cancellation and failure (simulated read-only bridge)',async()=>{
+    await check('Observed controls, disclosure reopening and artifact-picker recovery (simulated read-only bridge)',async()=>{
       const simulated=await browser.newPage({viewport:{width:1365,height:900}});
       simulated.on('pageerror',error=>report.pageErrors.push(error.message));
       await simulated.addInitScript(()=>{
@@ -120,7 +121,7 @@ async function noHorizontalOverflow() {
           manufacturer:'SIMULATED',productName:'Read-only UI fixture; no hardware',serialNumber:'UI-ONLY',
           class:0,subclass:0,protocol:0,busNumber:1,deviceAddress:1,speed:'high',
           platformHint:'android-generic',mode:'usb',transport:'usb',evidenceSource:'simulated-ui-fixture'};
-        window.__BOBFW_UI_FIXTURE__={calls:[],unexpected:[],pickerCalls:0};
+        window.__BOBFW_UI_FIXTURE__={calls:[],unexpected:[],pickerCalls:0,fastboot:[]};
         const replies={
           frontend_backend_handshake:{status:'ready',protocol:'simulated',backend:'fixture',
             greeting:'Simulated read-only bridge; no device.',correlation_id:'ui-fixture'},
@@ -137,6 +138,7 @@ async function noHorizontalOverflow() {
         };
         window.__TAURI_INTERNALS__={invoke:async(command)=>{
           window.__BOBFW_UI_FIXTURE__.calls.push(command);
+          if(command==='fastboot_mode_devices')return [...window.__BOBFW_UI_FIXTURE__.fastboot];
           if(command==='plugin:dialog|open'){
             const count=++window.__BOBFW_UI_FIXTURE__.pickerCalls;
             if(count===1)return ['/SIMULATED/planning-only-rawprogram.xml'];
@@ -173,6 +175,16 @@ async function noHorizontalOverflow() {
         await picker.click();
         await simulated.waitForFunction(()=>document.body.textContent.includes('SIMULATED artifact-picker permission failure'));
         assert.equal(await picker.isEnabled(),true,'Picker must recover after a rejected dialog.');
+        await simulated.getByRole('navigation',{name:'Workspace',exact:true}).getByRole('button',{name:'Phone',exact:true}).click();
+        assert.equal(await simulated.locator('#bootloader-controls').count(),0);
+        await simulated.evaluate(()=>{window.__BOBFW_UI_FIXTURE__.fastboot=['SIMULATED-BOOTLOADER'];});
+        await simulated.getByRole('button',{name:'Scan now',exact:true}).click();
+        await simulated.locator('#bootloader-controls > summary').waitFor();
+        await simulated.locator('#bootloader-controls > summary').click();
+        await simulated.getByText('SIMULATED-BOOTLOADER',{exact:true}).waitFor();
+        await simulated.evaluate(()=>{window.__BOBFW_UI_FIXTURE__.fastboot=[];});
+        await simulated.getByRole('button',{name:'Scan now',exact:true}).click();
+        await simulated.waitForFunction(()=>!document.querySelector('#bootloader-controls'));
         const trace=await simulated.evaluate(()=>window.__BOBFW_UI_FIXTURE__);
         report.simulatedDisclosure={scope:'simulated; no hardware or device execution',...trace};
         assert.deepEqual(trace.unexpected,[]);

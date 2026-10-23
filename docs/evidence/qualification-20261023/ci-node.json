@@ -1,0 +1,285 @@
+{
+  "schema": "bobfwtools.ci-evidence.v1",
+  "sourceRevision": "31c2ecf442036608c675098659d2175d687f74d1",
+  "pullRequestHead": "85829de8ba974b2dba02f3e0ce939386458e1265",
+  "sourceTree": "1b04a356471ffef445a72141de3e66492ebf9230",
+  "runUrl": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39929620699",
+  "executor": "GitHub Actions ubuntu-latest / Chromium",
+  "jobs": [
+    {
+      "id": 120334773610,
+      "run_id": 39929620699,
+      "workflow_name": "Node.js CI",
+      "head_branch": "fix/workspace-applicable-controls-20261023",
+      "run_url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/runs/39929620699",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOQozhBM8AAAAcBILtag",
+      "head_sha": "85829de8ba974b2dba02f3e0ce939386458e1265",
+      "url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/jobs/120334773610",
+      "html_url": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39929620699/job/120334773610",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-23T09:08:54Z",
+      "started_at": "2026-10-23T09:08:56Z",
+      "completed_at": "2026-10-23T09:10:04Z",
+      "name": "workspace-ui",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-23T09:08:57Z",
+          "completed_at": "2026-10-23T09:08:58Z"
+        },
+        {
+          "name": "Run actions/checkout@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-23T09:08:58Z",
+          "completed_at": "2026-10-23T09:09:01Z"
+        },
+        {
+          "name": "Run actions/setup-node@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-23T09:09:01Z",
+          "completed_at": "2026-10-23T09:09:05Z"
+        },
+        {
+          "name": "Install locked frontend dependencies",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-23T09:09:05Z",
+          "completed_at": "2026-10-23T09:09:20Z"
+        },
+        {
+          "name": "Typecheck and build the workspace",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-23T09:09:20Z",
+          "completed_at": "2026-10-23T09:09:26Z"
+        },
+        {
+          "name": "Install isolated browser test runtime",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-23T09:09:26Z",
+          "completed_at": "2026-10-23T09:09:55Z"
+        },
+        {
+          "name": "Check navigation, density, state retention, and narrow screens",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-23T09:09:55Z",
+          "completed_at": "2026-10-23T09:10:00Z"
+        },
+        {
+          "name": "Upload browser-only UI evidence",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-23T09:10:00Z",
+          "completed_at": "2026-10-23T09:10:02Z"
+        },
+        {
+          "name": "Post Run actions/setup-node@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-10-23T09:10:02Z",
+          "completed_at": "2026-10-23T09:10:02Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 16,
+          "started_at": "2026-10-23T09:10:02Z",
+          "completed_at": "2026-10-23T09:10:02Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17,
+          "started_at": "2026-10-23T09:10:02Z",
+          "completed_at": "2026-10-23T09:10:02Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/check-runs/120334773610",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "runner_id": 1000097818,
+      "runner_name": "GitHub Actions 1000097818",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 120334773821,
+      "run_id": 39929620699,
+      "workflow_name": "Node.js CI",
+      "head_branch": "fix/workspace-applicable-controls-20261023",
+      "run_url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/runs/39929620699",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOQozhBM8AAAAcBILuPQ",
+      "head_sha": "85829de8ba974b2dba02f3e0ce939386458e1265",
+      "url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/jobs/120334773821",
+      "html_url": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39929620699/job/120334773821",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-23T09:08:54Z",
+      "started_at": "2026-10-23T09:08:56Z",
+      "completed_at": "2026-10-23T09:09:34Z",
+      "name": "build",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-23T09:08:57Z",
+          "completed_at": "2026-10-23T09:08:58Z"
+        },
+        {
+          "name": "Run actions/checkout@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-23T09:08:58Z",
+          "completed_at": "2026-10-23T09:09:01Z"
+        },
+        {
+          "name": "Use Node.js",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-23T09:09:01Z",
+          "completed_at": "2026-10-23T09:09:01Z"
+        },
+        {
+          "name": "Install Dependencies",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-23T09:09:01Z",
+          "completed_at": "2026-10-23T09:09:15Z"
+        },
+        {
+          "name": "Install packaged API dependencies",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-23T09:09:15Z",
+          "completed_at": "2026-10-23T09:09:16Z"
+        },
+        {
+          "name": "Production Reality Gate",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-23T09:09:16Z",
+          "completed_at": "2026-10-23T09:09:16Z"
+        },
+        {
+          "name": "Lint workspace",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-23T09:09:16Z",
+          "completed_at": "2026-10-23T09:09:21Z"
+        },
+        {
+          "name": "Typecheck Frontend",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-23T09:09:21Z",
+          "completed_at": "2026-10-23T09:09:24Z"
+        },
+        {
+          "name": "Build",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-23T09:09:24Z",
+          "completed_at": "2026-10-23T09:09:26Z"
+        },
+        {
+          "name": "Test",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-23T09:09:26Z",
+          "completed_at": "2026-10-23T09:09:31Z"
+        },
+        {
+          "name": "Validate workflow definitions",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-23T09:09:31Z",
+          "completed_at": "2026-10-23T09:09:31Z"
+        },
+        {
+          "name": "Post Use Node.js",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21,
+          "started_at": "2026-10-23T09:09:31Z",
+          "completed_at": "2026-10-23T09:09:31Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 22,
+          "started_at": "2026-10-23T09:09:31Z",
+          "completed_at": "2026-10-23T09:09:32Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 23,
+          "started_at": "2026-10-23T09:09:32Z",
+          "completed_at": "2026-10-23T09:09:32Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/check-runs/120334773821",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "runner_id": 1000097819,
+      "runner_name": "GitHub Actions 1000097819",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    }
+  ],
+  "results": {
+    "repositoryAndPackagedApiTests": 296,
+    "testFiles": 41,
+    "workflowDefinitions": 21,
+    "lintErrors": 0,
+    "lintWarnings": 3
+  },
+  "excerpts": [
+    "2026-10-23T09:09:16.9143076Z BobFWTools production reality gate: PASS",
+    "2026-10-23T09:09:20.9818128Z ✖ 3 problems (0 errors, 3 warnings)",
+    "2026-10-23T09:09:21.2865520Z > tsc -b --pretty false",
+    "2026-10-23T09:09:24.9767367Z > tsc -b --noCheck && vite build",
+    "2026-10-23T09:09:31.5258047Z  Test Files  41 passed (41)",
+    "2026-10-23T09:09:31.5259180Z       Tests  296 passed (296)",
+    "2026-10-23T09:09:31.8192853Z Workflow validation passed: 21 definitions, 21 unique ids"
+  ],
+  "hardwareQualified": false,
+  "executionAuthorized": false,
+  "observedAt": "2026-10-23T09:09:34Z"
+}

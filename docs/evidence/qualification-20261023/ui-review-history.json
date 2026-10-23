@@ -1,0 +1,19 @@
+{
+  "schema": "bobfwtools.ui-review-history.v1",
+  "status": "FAIL",
+  "sourceRevision": "566cd5bf39ff2269ddda5c63a6b791841e03df68",
+  "headRevision": "62c0af44093a13aa4e42ed83da418f6b69769c55",
+  "artifactCapturedAt": "2026-10-22T01:21:09.293Z",
+  "artifactUrl": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39705088800/artifacts/12394424012",
+  "archiveSha256": "ed8e9e3e67f988cf89945d7e42b4f0f990ca2c03b2ff22b57e91401fa4630fa9",
+  "image": "desktop-phone.png",
+  "imageSha256": "dc577fb6e34683ec4c95ea66b7278f3ce10e1e0b5179791342fef7300bed75c0",
+  "finding": "An empty Observed bootloader connection disclosure appeared despite no observed Fastboot target.",
+  "method": "Visual review of downloaded SHA256-verified Chromium capture, checked against the rendered condition in source.",
+  "originalAutomatedChecks": "PASS; the original test did not assert that this inapplicable panel was absent.",
+  "fixPullRequest": 248,
+  "fix": "Condition the complete disclosure on an observed Fastboot serial; verify simulated appearance and removal after rescanning.",
+  "scope": "Historical software-layout finding, not hardware or a current-source FAIL.",
+  "hardwareQualified": false,
+  "executionAuthorized": false
+}

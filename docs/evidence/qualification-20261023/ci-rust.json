@@ -1,0 +1,174 @@
+{
+  "schema": "bobfwtools.ci-evidence.v1",
+  "sourceRevision": "31c2ecf442036608c675098659d2175d687f74d1",
+  "pullRequestHead": "85829de8ba974b2dba02f3e0ce939386458e1265",
+  "sourceTree": "1b04a356471ffef445a72141de3e66492ebf9230",
+  "runUrl": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39929620699",
+  "executor": "GitHub Actions macos-latest",
+  "jobs": [
+    {
+      "id": 120334773776,
+      "run_id": 39929620699,
+      "workflow_name": "Node.js CI",
+      "head_branch": "fix/workspace-applicable-controls-20261023",
+      "run_url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/runs/39929620699",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOQozhBM8AAAAcBILuEA",
+      "head_sha": "85829de8ba974b2dba02f3e0ce939386458e1265",
+      "url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/jobs/120334773776",
+      "html_url": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39929620699/job/120334773776",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-23T09:08:54Z",
+      "started_at": "2026-10-23T09:08:57Z",
+      "completed_at": "2026-10-23T09:12:37Z",
+      "name": "macos-rust",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-23T09:08:57Z",
+          "completed_at": "2026-10-23T09:08:58Z"
+        },
+        {
+          "name": "Run actions/checkout@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-23T09:08:58Z",
+          "completed_at": "2026-10-23T09:09:02Z"
+        },
+        {
+          "name": "Use Node.js",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-23T09:09:02Z",
+          "completed_at": "2026-10-23T09:09:03Z"
+        },
+        {
+          "name": "Install Dependencies",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-23T09:09:03Z",
+          "completed_at": "2026-10-23T09:09:13Z"
+        },
+        {
+          "name": "Production Reality Gate",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-23T09:09:13Z",
+          "completed_at": "2026-10-23T09:09:14Z"
+        },
+        {
+          "name": "Typecheck Frontend",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-23T09:09:14Z",
+          "completed_at": "2026-10-23T09:09:17Z"
+        },
+        {
+          "name": "Build Frontend",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-23T09:09:17Z",
+          "completed_at": "2026-10-23T09:09:18Z"
+        },
+        {
+          "name": "Check embedded USB crate",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-23T09:09:18Z",
+          "completed_at": "2026-10-23T09:09:33Z"
+        },
+        {
+          "name": "Check Tauri Rust core",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-23T09:09:33Z",
+          "completed_at": "2026-10-23T09:10:49Z"
+        },
+        {
+          "name": "Check qualified destructive writer build",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-23T09:10:49Z",
+          "completed_at": "2026-10-23T09:10:54Z"
+        },
+        {
+          "name": "Test standard app Rust gates",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-23T09:10:54Z",
+          "completed_at": "2026-10-23T09:12:24Z"
+        },
+        {
+          "name": "Test qualified destructive writer gates",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-10-23T09:12:24Z",
+          "completed_at": "2026-10-23T09:12:32Z"
+        },
+        {
+          "name": "Post Use Node.js",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 23,
+          "started_at": "2026-10-23T09:12:32Z",
+          "completed_at": "2026-10-23T09:12:33Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 24,
+          "started_at": "2026-10-23T09:12:33Z",
+          "completed_at": "2026-10-23T09:12:33Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 25,
+          "started_at": "2026-10-23T09:12:33Z",
+          "completed_at": "2026-10-23T09:12:35Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/check-runs/120334773776",
+      "labels": [
+        "macos-latest"
+      ],
+      "runner_id": 1000097820,
+      "runner_name": "GitHub Actions 1000097820",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    }
+  ],
+  "results": {
+    "standardAppTests": 35,
+    "qualifiedFeatureTests": 86
+  },
+  "excerpts": [
+    "2026-10-23T09:12:23.2903630Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "2026-10-23T09:12:23.9687450Z test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.66s",
+    "2026-10-23T09:12:24.1430150Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "2026-10-23T09:12:32.1831480Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "2026-10-23T09:12:32.3910310Z test result: ok. 86 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s",
+    "2026-10-23T09:12:32.4832560Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+  ],
+  "scope": "Unit and build checks; no device execution or physical qualification",
+  "hardwareQualified": false,
+  "executionAuthorized": false,
+  "observedAt": "2026-10-23T09:12:37Z"
+}

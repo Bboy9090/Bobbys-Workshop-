@@ -1335,8 +1335,7 @@ export default function App() {
             </section>
           )}
 
-<ExpertPanel id="bootloader-controls" title="Observed bootloader connection" description="Guided mode controls. A connection never grants flash permission." reveal={requestedPanel==='bootloader-controls'}>
-          {fastbootModeDevices.length > 0 && (
+{fastbootModeDevices.length > 0 && <ExpertPanel id="bootloader-controls" title="Observed bootloader connection" description="Guided mode controls. A connection never grants flash permission." reveal={requestedPanel==='bootloader-controls'}>
             <section className="mb-4 rounded-lg border border-cyan-900/60 bg-cyan-950/10 p-5">
               <div>
                 <h2 className="text-base font-semibold text-white">Fastboot mode controls</h2>
@@ -1401,10 +1400,7 @@ export default function App() {
                 ))}
               </div>
             </section>
-          )}
-
-{fastbootModeDevices.length===0 && <p className="text-sm text-slate-500">{scanFailures.includes('fastboot') ? 'Bootloader status is unverified.' : 'No Fastboot connection observed.'}</p>}
-</ExpertPanel>
+</ExpertPanel>}
 </WorkspacePanel>
 <WorkspacePanel view="diagnose" active={workspaceView}>
           <section className="mb-4 rounded-lg border border-cyan-900/70 bg-cyan-950/10 p-5">

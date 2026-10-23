@@ -1,0 +1,77 @@
+{
+  "schema": "bobfwtools.work-audit.v1",
+  "date": "2026-10-23",
+  "integrationBase": "030dc7ed452395bf0c9fa2173b3e669ce4190b91",
+  "defaultBranch": "main-tool-kit",
+  "defaultHead": "2b612b909c7d8d5df164d9240a25796b438666e2",
+  "interfacePullRequest": 248,
+  "interfaceHead": "85829de8ba974b2dba02f3e0ce939386458e1265",
+  "testedIntegration": "31c2ecf442036608c675098659d2175d687f74d1",
+  "sourceTree": "1b04a356471ffef445a72141de3e66492ebf9230",
+  "reusedWork": {
+    "pullRequest": 241,
+    "head": "dcf85cebdb54e2a0170d23ee2e9ebad66a6df9d5",
+    "scope": "Only App, WorkspaceNavigation, browser qualification and the Node lint gate were reused. Signing, receipt scripts and release workflow remain on PR241."
+  },
+  "reviewBoundary": "PR241 remains draft pending its recorded real signed/native release gates; UI248 is independently qualified software work.",
+  "parallelWork": [
+    {
+      "pullRequest": 242,
+      "state": "merged into macOS foundation",
+      "scope": "Samsung 685D attachment versus Download Mode"
+    },
+    {
+      "pullRequest": 243,
+      "scope": "Native bulk endpoint preflight"
+    },
+    {
+      "pullRequest": 244,
+      "scope": "Native stream scheduling"
+    },
+    {
+      "pullRequest": 245,
+      "scope": "Native bulk IN benchmark and platform package workflow"
+    },
+    {
+      "pullRequest": 246,
+      "scope": "Samsung firmware provenance"
+    },
+    {
+      "pullRequest": 247,
+      "scope": "Samsung evidence/planning handoff"
+    },
+    {
+      "pullRequest": 239,
+      "scope": "Task leases"
+    },
+    {
+      "pullRequest": 193,
+      "scope": "Coordination"
+    },
+    {
+      "pullRequest": 192,
+      "scope": "Publishing dashboard"
+    }
+  ],
+  "preservation": "Independent branches, default branch, release review, historical receipts, and local checkout/untracked files were preserved.",
+  "execution": {
+    "desktopCommanderUsed": false,
+    "currentUsbObservation": "NOT TESTED",
+    "realDeviceOperations": [],
+    "destructiveOperations": [],
+    "signedReleasePublished": false
+  },
+  "executionAuthorized": false,
+  "olderLedgerFreshnessCheck": {
+    "evaluatedAt": "2026-10-23T09:18:47.565Z",
+    "ledger": "../qualification-20261020/ledger.json",
+    "liveCounts": {
+      "BLOCKED": 63,
+      "NOT TESTED": 20
+    },
+    "notes": "Historical PASS/FAIL receipts were preserved; the normal 24-hour freshness check blocks them today. No old receipt was re-dated."
+  },
+  "actualIntegrationMerge": "c5579317892c3f29afe157274341411666c50408",
+  "mergedTreeVerified": true,
+  "nextIntegrationReview": "Samsung normal composite USB versus Download Mode correction in PR242 is merged on the macOS foundation branch; it is not included in this frozen UI248 source. Other native/Samsung lanes remain separate and unqualified by this snapshot."
+}
