@@ -94,6 +94,7 @@ fn expected_paths() -> Vec<(&'static str, PathBuf)> {
         ("firmware-inbox", root.join("firmware").join("inbox")),
         ("firmware-qualcomm", root.join("firmware").join("qualcomm")),
         ("firmware-mediatek", root.join("firmware").join("mediatek")),
+        ("firmware-samsung", root.join("firmware").join("samsung")),
         ("firmware-quarantine", root.join("firmware").join("quarantine")),
         ("backups", root.join("backups")),
         ("logs", root.join("logs")),
