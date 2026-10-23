@@ -63,6 +63,7 @@ try {
       {capability:'AppImage extraction and executable provenance',status:'PASS'});
   }
   if (smoke?.status !== 'PASS' || smoke?.executionAuthorized !== false) throw new Error('Native GUI smoke did not pass');
+  const nativeSmoke = {path:'native-smoke.json',sha256:digest(readFileSync(join(out,'native-smoke.json')))};
   checks.push({capability:'Native CI window renders Phone and Diagnostics navigation',status:'PASS'},
     {capability:platform === 'windows' ? 'Authenticode release signing' : 'Release checksum signature and trusted publication',status:'BLOCKED'},
     {capability:platform === 'windows' ? 'SmartScreen assessment on supported user Windows host' : 'Installation on supported physical Linux host',status:'NOT TESTED'},
@@ -72,13 +73,13 @@ try {
   const receipt = {schema:'bobfwtools.platform-installer-evidence.v1',sourceRevision:revision,observedAt,
     platform,scope:'Disposable native GitHub CI runner; standard unsigned packages only',
     runner:{os:process.platform,architecture:process.arch,runId:process.env.GITHUB_RUN_ID ?? null,runAttempt:process.env.GITHUB_RUN_ATTEMPT ?? null},
-    status:'PASS',artifacts,executables,checks,nativeGuiStatus:'PASS (CI only)',
+    status:'PASS',artifacts,executables,nativeSmoke,checks,nativeGuiStatus:'PASS (CI only)',
     qualifiedDestructiveWriterIncluded:false,hardwareQualified:false,releaseQualified:false,executionAuthorized:false,cases:[],receipts:[]};
   checks.forEach((check,index) => {
     const spec={caseId:`${platform}-package-${index+1}`,model:`${platform}-x86_64`,deviceAlias:`github-${platform}-ci`,protocol:'installer',operation:check.capability,scope:'release',sourceRevision:revision};
     if(check.status==='BLOCKED')spec.exception='Outside unsigned native CI qualification: '+check.capability;
     receipt.cases.push(spec);
-    if(check.status==='PASS')receipt.receipts.push({...spec,status:'PASS',observedAt,detail:check.capability+'; no public release or hardware authority.',artifacts:artifacts.map(({path,sha256})=>({path,sha256}))});
+    if(check.status==='PASS')receipt.receipts.push({...spec,status:'PASS',observedAt,detail:check.capability+'; no public release or hardware authority.',artifacts:[...artifacts.map(({path,sha256})=>({path,sha256})),nativeSmoke]});
   });
   writeFileSync(join(out,'installer-evidence.json'),JSON.stringify(receipt,null,2)+'\n');
   writeFileSync(join(out,'installer-matrix.json'),run(process.execPath,['scripts/qualification-matrix.mjs',join(out,'installer-evidence.json')]));
