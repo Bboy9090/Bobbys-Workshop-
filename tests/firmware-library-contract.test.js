@@ -950,6 +950,7 @@ describe('One-click hardware flow readiness orchestrator', () => {
 
   it('keeps destructive approval as provable gates instead of an automatic bypass', () => {
     const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/HardwareFlowReadiness.tsx');
 
     for (const gate of [
       'workstation',
