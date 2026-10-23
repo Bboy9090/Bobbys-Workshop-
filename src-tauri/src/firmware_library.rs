@@ -1220,11 +1220,11 @@ mod tests {
     #[test]
     fn classifies_samsung_odin_components() {
         for (name, kind) in [
-            ("AP_T870XXU4CVI1.tar.md5", "samsung-ap"),
-            ("BL_T870XXU4CVI1.tar.md5", "samsung-bl"),
+            ("AP_TESTXXU4CVI1.tar.md5", "samsung-ap"),
+            ("BL_TESTXXU4CVI1.tar.md5", "samsung-bl"),
             ("CP_T875XXU4CVI1.tar.md5", "samsung-cp"),
-            ("CSC_OMC_OXM_T870OXM4CVI1.tar.md5", "samsung-csc"),
-            ("HOME_CSC_OMC_OXM_T870OXM4CVI1.tar.md5", "samsung-csc"),
+            ("CSC_OMC_OXM_TESTOXM4CVI1.tar.md5", "samsung-csc"),
+            ("HOME_CSC_OMC_OXM_TESTOXM4CVI1.tar.md5", "samsung-csc"),
         ] {
             let (vendor, observed_kind) = classify(Path::new(&format!("samsung/SM-T870/{name}")));
             assert_eq!(vendor, "samsung");
@@ -1238,7 +1238,7 @@ mod tests {
             "bobfwtools-samsung-provenance-test-{}",
             std::process::id()
         ));
-        let directory = root.join("samsung/SM-T870/US");
+        let directory = root.join("samsung/SM-TEST/US");
         fs::create_dir_all(&directory).unwrap();
         fs::write(
             directory.join(PROVENANCE_MANIFEST_NAME),
@@ -1247,27 +1247,27 @@ mod tests {
               "vendor":"samsung",
               "chipsetFamily":"SM6150",
               "oem":"Samsung",
-              "model":"SM-T870",
-              "board":"gts7lwifi",
-              "sku":"SM-T870",
+              "model":"SM-TEST",
+              "board":"testboard",
+              "sku":"SM-TEST",
               "region":"US",
               "carrier":"wifi",
-              "buildVersion":"T870XXU4CVI1",
+              "buildVersion":"TESTXXU4CVI1",
               "bootloaderRevision":"4",
               "storage":"ufs",
               "sourceCategory":"official-oem",
               "sourceReference":"Samsung stock firmware package",
               "artifacts":[
-                {"relativePath":"AP_T870XXU4CVI1.tar.md5","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-                {"relativePath":"BL_T870XXU4CVI1.tar.md5","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
-                {"relativePath":"CSC_OMC_OXM_T870OXM4CVI1.tar.md5","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}
+                {"relativePath":"AP_TESTXXU4CVI1.tar.md5","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+                {"relativePath":"BL_TESTXXU4CVI1.tar.md5","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+                {"relativePath":"CSC_OMC_OXM_TESTOXM4CVI1.tar.md5","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}
               ]
             }"#,
         ).unwrap();
 
         let make = |name: &str, kind: &str, sha: char| FirmwareLibraryEntry {
             path: directory.join(name).display().to_string(),
-            relative_path: format!("samsung/SM-T870/US/{name}"),
+            relative_path: format!("samsung/SM-TEST/US/{name}"),
             name: name.into(),
             bytes: 1,
             sha256: sha.to_string().repeat(64),
@@ -1280,12 +1280,12 @@ mod tests {
             warnings: vec![],
         };
         let entries = vec![
-            make("AP_T870XXU4CVI1.tar.md5", "samsung-ap", 'a'),
-            make("BL_T870XXU4CVI1.tar.md5", "samsung-bl", 'b'),
-            make("CSC_OMC_OXM_T870OXM4CVI1.tar.md5", "samsung-csc", 'c'),
+            make("AP_TESTXXU4CVI1.tar.md5", "samsung-ap", 'a'),
+            make("BL_TESTXXU4CVI1.tar.md5", "samsung-bl", 'b'),
+            make("CSC_OMC_OXM_TESTOXM4CVI1.tar.md5", "samsung-csc", 'c'),
             FirmwareLibraryEntry {
                 path: directory.join(PROVENANCE_MANIFEST_NAME).display().to_string(),
-                relative_path: format!("samsung/SM-T870/US/{PROVENANCE_MANIFEST_NAME}"),
+                relative_path: format!("samsung/SM-TEST/US/{PROVENANCE_MANIFEST_NAME}"),
                 name: PROVENANCE_MANIFEST_NAME.into(),
                 bytes: 1,
                 sha256: "d".repeat(64),
@@ -1304,7 +1304,7 @@ mod tests {
         assert!(bundles[0].planning_ready);
         assert!(bundles[0].missing_required.is_empty());
         assert_eq!(bundles[0].vendor_hint, "samsung");
-        assert_eq!(bundles[0].model.as_deref(), Some("SM-T870"));
+        assert_eq!(bundles[0].model.as_deref(), Some("SM-TEST"));
         let _ = fs::remove_dir_all(root);
     }
 
