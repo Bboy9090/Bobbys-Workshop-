@@ -37,6 +37,9 @@ jobs:
     - name: Production Reality Gate
       run: npm run verify:reality
 
+    - name: Lint workspace
+      run: npm run lint
+
     - name: Typecheck Frontend
       run: npm run typecheck
 
