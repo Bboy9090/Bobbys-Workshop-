@@ -948,6 +948,8 @@ pub fn firmware_library_scan() -> Result<FirmwareLibraryReport, String> {
         .map_err(|e| format!("failed creating Qualcomm firmware directory: {e}"))?;
     fs::create_dir_all(root.join("mediatek"))
         .map_err(|e| format!("failed creating MediaTek firmware directory: {e}"))?;
+    fs::create_dir_all(root.join("samsung"))
+        .map_err(|e| format!("failed creating Samsung firmware directory: {e}"))?;
     fs::create_dir_all(root.join("quarantine"))
         .map_err(|e| format!("failed creating firmware quarantine directory: {e}"))?;
 
@@ -1197,6 +1199,97 @@ mod tests {
             .warnings
             .iter()
             .any(|warning| warning.contains("multiple qualcomm chipset families")));
+    }
+
+    #[test]
+    fn classifies_samsung_odin_components() {
+        for (name, kind) in [
+            ("AP_T870XXU4CVI1.tar.md5", "samsung-ap"),
+            ("BL_T870XXU4CVI1.tar.md5", "samsung-bl"),
+            ("CP_T875XXU4CVI1.tar.md5", "samsung-cp"),
+            ("CSC_OMC_OXM_T870OXM4CVI1.tar.md5", "samsung-csc"),
+            ("HOME_CSC_OMC_OXM_T870OXM4CVI1.tar.md5", "samsung-csc"),
+        ] {
+            let (vendor, observed_kind) = classify(Path::new(&format!("samsung/SM-T870/{name}")));
+            assert_eq!(vendor, "samsung");
+            assert_eq!(observed_kind, kind);
+        }
+    }
+
+    #[test]
+    fn samsung_stock_bundle_requires_ap_bl_csc_and_exact_provenance() {
+        let root = std::env::temp_dir().join(format!(
+            "bobfwtools-samsung-provenance-test-{}",
+            std::process::id()
+        ));
+        let directory = root.join("samsung/SM-T870/US");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(
+            directory.join(PROVENANCE_MANIFEST_NAME),
+            r#"{
+              "schema":"com.bobbyblanco.bobfwtools.firmware-provenance.v1",
+              "vendor":"samsung",
+              "chipsetFamily":"SM6150",
+              "oem":"Samsung",
+              "model":"SM-T870",
+              "board":"gts7lwifi",
+              "sku":"SM-T870",
+              "region":"US",
+              "carrier":"wifi",
+              "buildVersion":"T870XXU4CVI1",
+              "bootloaderRevision":"4",
+              "storage":"ufs",
+              "sourceCategory":"official-oem",
+              "sourceReference":"Samsung stock firmware package",
+              "artifacts":[
+                {"relativePath":"AP_T870XXU4CVI1.tar.md5","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+                {"relativePath":"BL_T870XXU4CVI1.tar.md5","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+                {"relativePath":"CSC_OMC_OXM_T870OXM4CVI1.tar.md5","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}
+              ]
+            }"#,
+        ).unwrap();
+
+        let make = |name: &str, kind: &str, sha: char| FirmwareLibraryEntry {
+            path: directory.join(name).display().to_string(),
+            relative_path: format!("samsung/SM-T870/US/{name}"),
+            name: name.into(),
+            bytes: 1,
+            sha256: sha.to_string().repeat(64),
+            modified_unix_ms: None,
+            vendor_hint: "samsung".into(),
+            artifact_kind: kind.into(),
+            chipset_matches: vec![],
+            blocked: false,
+            eligible_for_planning: true,
+            warnings: vec![],
+        };
+        let entries = vec![
+            make("AP_T870XXU4CVI1.tar.md5", "samsung-ap", 'a'),
+            make("BL_T870XXU4CVI1.tar.md5", "samsung-bl", 'b'),
+            make("CSC_OMC_OXM_T870OXM4CVI1.tar.md5", "samsung-csc", 'c'),
+            FirmwareLibraryEntry {
+                path: directory.join(PROVENANCE_MANIFEST_NAME).display().to_string(),
+                relative_path: format!("samsung/SM-T870/US/{PROVENANCE_MANIFEST_NAME}"),
+                name: PROVENANCE_MANIFEST_NAME.into(),
+                bytes: 1,
+                sha256: "d".repeat(64),
+                modified_unix_ms: None,
+                vendor_hint: "unknown".into(),
+                artifact_kind: "provenance-manifest".into(),
+                chipset_matches: vec![],
+                blocked: false,
+                eligible_for_planning: true,
+                warnings: vec![],
+            },
+        ];
+
+        let bundles = summarize_bundles(&root, &entries);
+        assert_eq!(bundles.len(), 1);
+        assert!(bundles[0].planning_ready);
+        assert!(bundles[0].missing_required.is_empty());
+        assert_eq!(bundles[0].vendor_hint, "samsung");
+        assert_eq!(bundles[0].model.as_deref(), Some("SM-T870"));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
