@@ -55,12 +55,17 @@ pub fn benchmark_bulk_in(bus: u8, address: u8, interface: Option<u8>, reads: u32
         return Err(format!("interface {} is class {:02x}/{:02x}/{:02x}, not MTP imaging 06/01/01; refusing MTP command", pair.interface, interface_class, interface_subclass, interface_protocol));
     }
     let handle = device.open().map_err(|e| format!("USB open failed: {e}"))?;
-    // Never detach a kernel driver automatically or change device configuration.
+    // Driver detachment is opt-in only, and only after descriptor validation.
+    // Never change device configuration.
     let active = handle.active_configuration().map_err(|e| e.to_string())?;
     if active != pair.configuration {
         return Err("active configuration differs from inspected endpoint".into());
     }
-    handle.claim_interface(pair.interface).map_err(|e| format!("claim interface failed: {e}"))?;
+    // On macOS, auto-detach is not universally supported by libusb. A failure
+    // must not trigger manual kext removal or an implicit device reset.
+    #[cfg(not(target_os = "macos"))]
+    handle.set_auto_detach_kernel_driver(true).map_err(|e| format!("auto-detach unsupported: {e}"))?;
+    handle.claim_interface(pair.interface).map_err(|e| format!("claim interface failed (OS driver may own interface): {e}"))?;
     if pair.alternate_setting != 0 {
         handle.release_interface(pair.interface).ok();
         return Err("non-default alternate setting is not benchmarked".into());
