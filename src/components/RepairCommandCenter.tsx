@@ -8,6 +8,7 @@ import {
   getWorkflowPolicyCatalog,
   scanAdbDevices,
   scanTransportDevices,
+  probeSamsungDownloadMode,
   chooseSamsungFirmwarePackages,
   inspectSamsungFirmwarePackages,
   buildSamsungFirmwarePlan,
@@ -59,6 +60,7 @@ import {
   type EdlProgrammerRecord,
   type UsbDeviceRecord,
   type TransportDevice,
+  type SamsungDownloadProbeReport,
   type SamsungFirmwareArchiveReport,
   type SamsungFlashPlan,
   type WorkflowPolicy,
@@ -116,6 +118,8 @@ export default function RepairCommandCenter() {
   const [samsungFirmwareReports, setSamsungFirmwareReports] = useState<SamsungFirmwareArchiveReport[]>([]);
   const [samsungFlashPlan, setSamsungFlashPlan] = useState<SamsungFlashPlan | null>(null);
   const [samsungFirmwareBusy, setSamsungFirmwareBusy] = useState(false);
+  const [samsungProbe, setSamsungProbe] = useState<SamsungDownloadProbeReport | null>(null);
+  const [samsungProbeBusy, setSamsungProbeBusy] = useState(false);
   const [selectedSamsungBundleDirectory, setSelectedSamsungBundleDirectory] = useState('');
   const [firmwareCatalog, setFirmwareCatalog] = useState<FirmwareChipsetProfile[]>([]);
   const [firmwareQuery, setFirmwareQuery] = useState('');
@@ -153,7 +157,7 @@ export default function RepairCommandCenter() {
       label: `ADB · ${device.serial}${device.authorized ? ' · authorized' : ' · unauthorized'}`,
     }));
     const recoveryTargets = transportDevices
-      .filter((device) => ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download'].includes(device.mode))
+      .filter((device) => ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download', 'samsung-usb'].includes(device.mode))
       .map((device) => ({
         key: `usb:${device.deviceUid}`,
         kind: device.mode,
@@ -196,6 +200,31 @@ export default function RepairCommandCenter() {
     const serial = selectedTarget.key.slice('adb:'.length);
     return adbDevices.find((device) => device.serial === serial) || null;
   }, [selectedTarget, adbDevices]);
+
+  const selectedSamsungTransport = useMemo(() => {
+    if (!selectedTarget || !['samsung-usb', 'samsung-download'].includes(selectedTarget.kind)) {
+      return null;
+    }
+    const deviceUid = selectedTarget.key.slice('usb:'.length);
+    return transportDevices.find((device) => device.deviceUid === deviceUid) || null;
+  }, [selectedTarget, transportDevices]);
+
+  const samsungPlanningTargetQualified = Boolean(
+    selectedSamsungTransport &&
+      (
+        selectedSamsungTransport.mode === 'samsung-download' ||
+        (
+          samsungProbe?.protocolQualified &&
+          samsungProbe.deviceUid === selectedSamsungTransport.deviceUid
+        )
+      ),
+  );
+
+  useEffect(() => {
+    setSamsungProbe(null);
+    setSamsungFirmwareReports([]);
+    setSamsungFlashPlan(null);
+  }, [selectedTargetKey]);
 
   const samsungVerifiedBundles = useMemo(
     () => (firmwareReport?.bundles ?? []).filter(
@@ -241,11 +270,14 @@ export default function RepairCommandCenter() {
       case 'samsung-download':
         ids.add('samsung.odin-plan');
         break;
+      case 'samsung-usb':
+        if (samsungPlanningTargetQualified) ids.add('samsung.odin-plan');
+        break;
       default:
         break;
     }
     return ids;
-  }, [selectedTarget]);
+  }, [selectedTarget, samsungPlanningTargetQualified]);
 
   const active = useMemo(
     () => catalog.filter((item) => item.activeInBobfwtools && applicableWorkflowIds.has(item.id)),
@@ -283,11 +315,17 @@ export default function RepairCommandCenter() {
       };
     }
     if (workflow.id === 'samsung.odin-plan') {
-      return {
-        label: 'PLANNING READY',
-        detail: 'Selected Samsung Download Mode target can use stock firmware inspection and guarded planning.',
-        ready: true,
-      };
+      return samsungPlanningTargetQualified
+        ? {
+            label: 'PLANNING READY',
+            detail: 'Samsung Odin/Download Mode is protocol-qualified for stock firmware inspection and guarded planning; write execution remains qualification-locked.',
+            ready: true,
+          }
+        : {
+            label: 'PROTOCOL PROOF REQUIRED',
+            detail: 'Samsung USB attachment is not enough. Run the bounded read-only Odin/PIT probe first.',
+            ready: false,
+          };
     }
     if (workflow.id === 'calibration.backup') {
       return selectedAdbDevice?.authorized
@@ -346,7 +384,7 @@ export default function RepairCommandCenter() {
         const availableTargetKeys = [
           ...adb.map((device) => `adb:${device.serial}`),
           ...transport
-            .filter((device) => ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download'].includes(device.mode))
+            .filter((device) => ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download', 'samsung-usb'].includes(device.mode))
             .map((device) => `usb:${device.deviceUid}`),
         ];
         setSelectedTargetKey((current) =>
@@ -403,8 +441,24 @@ export default function RepairCommandCenter() {
     }
   };
 
+  const runSamsungDownloadProbe = async () => {
+    if (samsungProbeBusy || !selectedSamsungTransport) return;
+    setSamsungProbeBusy(true);
+    setSamsungProbe(null);
+    setSamsungFirmwareReports([]);
+    setSamsungFlashPlan(null);
+    setError(null);
+    try {
+      setSamsungProbe(await probeSamsungDownloadMode(selectedSamsungTransport.deviceUid));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSamsungProbeBusy(false);
+    }
+  };
+
   const inspectSamsungFirmware = async () => {
-    if (samsungFirmwareBusy || selectedTarget?.kind !== 'samsung-download') return;
+    if (samsungFirmwareBusy || !samsungPlanningTargetQualified) return;
     const paths = await chooseSamsungFirmwarePackages();
     if (!paths.length) return;
     setSamsungFirmwareBusy(true);
@@ -428,7 +482,7 @@ export default function RepairCommandCenter() {
   const inspectVerifiedSamsungBundle = async () => {
     if (
       samsungFirmwareBusy ||
-      selectedTarget?.kind !== 'samsung-download' ||
+      !samsungPlanningTargetQualified ||
       !selectedSamsungBundleDirectory
     ) return;
 
@@ -1702,7 +1756,51 @@ export default function RepairCommandCenter() {
         </div>
       </div>
 
-      {selectedTarget?.kind === 'samsung-download' && (
+      {selectedSamsungTransport && selectedSamsungTransport.mode === 'samsung-usb' && (
+        <div className="mt-4 rounded-lg border border-amber-900/60 bg-amber-950/10 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-400">
+                Samsung Download Mode protocol proof
+              </div>
+              <div className="mt-1 text-sm font-medium text-white">
+                Samsung USB is attached. Prove Odin mode with a bounded read-only PIT exchange.
+              </div>
+              <div className="mt-2 max-w-3xl text-xs leading-5 text-slate-400">
+                VID/PID and product strings are not enough. This probe runs only
+                <span className="mx-1 font-mono text-slate-300">heimdall print-pit --no-reboot</span>
+                against the one selected Samsung USB target, stops after the bounded timeout, and never flashes, repartitions, unlocks, or changes setup/FRP state.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => void runSamsungDownloadProbe()}
+              disabled={samsungProbeBusy}
+              className="rounded bg-amber-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 hover:bg-amber-600"
+            >
+              {samsungProbeBusy ? 'Probing…' : 'Run read-only Odin/PIT probe'}
+            </button>
+          </div>
+
+          {samsungProbe && (
+            <div className={samsungProbe.protocolQualified
+              ? 'mt-3 rounded border border-emerald-900/60 bg-emerald-950/20 p-3'
+              : 'mt-3 rounded border border-amber-900/60 bg-black/20 p-3'}>
+              <div className={samsungProbe.protocolQualified ? 'text-xs font-semibold text-emerald-300' : 'text-xs font-semibold text-amber-300'}>
+                {samsungProbe.protocolQualified ? 'ODIN/DOWNLOAD MODE PROTOCOL QUALIFIED' : 'DOWNLOAD MODE NOT YET QUALIFIED'}
+              </div>
+              <div className="mt-1 text-[11px] leading-5 text-slate-400">{samsungProbe.detail}</div>
+              <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-500">
+                <span>tool {samsungProbe.toolAvailable ? 'ready' : 'missing'}</span>
+                <span>PIT {samsungProbe.pitRead ? 'read' : 'not read'}</span>
+                <span>timeout {samsungProbe.timedOut ? 'yes' : 'no'}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {samsungPlanningTargetQualified && (
         <div className="mt-4 rounded-lg border border-blue-900/60 bg-blue-950/10 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>

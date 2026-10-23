@@ -42,6 +42,7 @@ mod edl_programmer_vault;
 mod firmware_library;
 mod firmware_manifest_commands;
 mod mode_control;
+mod samsung_probe;
 mod driver_binding;
 #[cfg(feature = "legacy-backends")]
 use python_backend::{launch_python_backend, shutdown_python_backend};
@@ -61,6 +62,7 @@ use edl_programmer_vault::{edl_inspect_programmer, edl_enroll_programmer, edl_li
 use firmware_library::{firmware_bundle_planning_artifacts, firmware_chipset_catalog, firmware_chipset_lookup, firmware_library_scan, firmware_provenance_write};
 use firmware_manifest_commands::{firmware_manifest_inspect, firmware_manifest_compare};
 use mode_control::{fastboot_mode_devices, fastboot_reboot_mode, mode_transition_verify};
+use samsung_probe::samsung_download_probe;
 use driver_binding::{driver_binding_scan, driver_binding_release_and_rescan, driver_binding_candidates, driver_binding_conflict_plan, driver_binding_cleanup_report, driver_binding_snapshot, driver_binding_rollback_plan, driver_binding_stability_test, driver_binding_elevation_status, driver_binding_inspect_inf, driver_binding_stage_and_relatch};
 
 #[cfg(target_os = "windows")]
@@ -6038,6 +6040,7 @@ fn main() {
             fastboot_mode_devices,
             fastboot_reboot_mode,
             mode_transition_verify,
+            samsung_download_probe,
             driver_binding_scan,
             driver_binding_release_and_rescan,
             driver_binding_candidates,

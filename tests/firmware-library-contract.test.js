@@ -286,6 +286,31 @@ describe('Device-aware mode capability matrix', () => {
 });
 
 
+describe('Samsung Odin read-only protocol proof', () => {
+  it('does not promote composite Samsung USB to Download Mode without a bounded PIT handshake', () => {
+    const backend = read('src-tauri/src/samsung_probe.rs');
+    const main = read('src-tauri/src/main.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('print-pit');
+    expect(backend).toContain('--no-reboot');
+    expect(backend).toContain('PROBE_TIMEOUT');
+    expect(backend).toContain('samsung.len() != 1');
+    expect(backend).toContain('protocol_qualified');
+    expect(backend).not.toContain('heimdall flash');
+    expect(backend).not.toContain('--repartition');
+
+    expect(main).toContain('samsung_download_probe');
+    expect(desktop).toContain('probeSamsungDownloadMode');
+    expect(ui).toContain("'samsung-usb'");
+    expect(ui).toContain('Run read-only Odin/PIT probe');
+    expect(ui).toContain('ODIN/DOWNLOAD MODE PROTOCOL QUALIFIED');
+    expect(ui).toContain('samsungPlanningTargetQualified');
+  });
+});
+
+
 describe('Samsung qualified firmware handoff', () => {
   it('uses provenance-valid managed bundles without weakening live identity or physical qualification gates', () => {
     const desktop = read('src/lib/desktop.ts');

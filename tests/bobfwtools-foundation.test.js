@@ -258,7 +258,8 @@ describe('device-specific command center', () => {
     expect(commandCenter).toContain('READY TO VERIFY');
     expect(commandCenter).toContain('selectedAdbDevice.serial');
     expect(commandCenter).toContain("selectedTarget?.kind === 'qualcomm-edl'");
-    expect(commandCenter).toContain("selectedTarget?.kind === 'samsung-download'");
+    expect(commandCenter).toContain('samsungPlanningTargetQualified');
+    expect(commandCenter).toContain("case 'samsung-usb'");
     expect(commandCenter).toContain('Samsung stock firmware inspector');
     expect(commandCenter).toContain('MODEL MATCH NOT CERTIFIED');
     expect(commandCenter).toContain('Choose & inspect stock packages');

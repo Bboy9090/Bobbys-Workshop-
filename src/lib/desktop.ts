@@ -1500,6 +1500,26 @@ export async function scanTransportDevices(): Promise<TransportDevice[]> {
   return invoke<TransportDevice[]>('bootforgeusb_transport_scan');
 }
 
+export type SamsungDownloadProbeReport = {
+  deviceUid: string;
+  toolAvailable: boolean;
+  samsungUsbPresent: boolean;
+  protocolQualified: boolean;
+  pitRead: boolean;
+  timedOut: boolean;
+  detail: string;
+  evidence: string[];
+};
+
+export async function probeSamsungDownloadMode(
+  deviceUid: string,
+): Promise<SamsungDownloadProbeReport> {
+  return invoke<SamsungDownloadProbeReport>('samsung_download_probe', {
+    deviceUid,
+  });
+}
+
+
 export type SamsungFirmwareEntry = {
   path: string;
   size: number;
