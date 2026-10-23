@@ -13,6 +13,7 @@ pub struct ReadBenchmark {
     pub bus: u8,
     pub address: u8,
     pub endpoint: u8,
+    pub interface: u8,
     pub chunk_bytes: usize,
     pub requested_reads: u32,
     pub completed_reads: u32,
@@ -23,7 +24,7 @@ pub struct ReadBenchmark {
     pub stop_reason: Option<String>,
 }
 
-pub fn benchmark_bulk_in(bus: u8, address: u8, reads: u32, timeout_ms: u64) -> Result<ReadBenchmark, String> {
+pub fn benchmark_bulk_in(bus: u8, address: u8, interface: Option<u8>, reads: u32, timeout_ms: u64) -> Result<ReadBenchmark, String> {
     if reads == 0 || reads > 4096 || timeout_ms == 0 || timeout_ms > 30_000 {
         return Err("reads must be 1..4096 and timeout-ms 1..30000".into());
     }
@@ -31,9 +32,10 @@ pub fn benchmark_bulk_in(bus: u8, address: u8, reads: u32, timeout_ms: u64) -> R
     let transport = scan_transports().map_err(|e: TransportError| e.to_string())?
         .into_iter().find(|d| d.bus_number == bus && d.device_address == address)
         .ok_or("target bus/address not found")?;
-    let pairs = candidate_bulk_pairs(&transport.endpoints);
+    let pairs: Vec<_> = candidate_bulk_pairs(&transport.endpoints)
+        .into_iter().filter(|pair| interface.is_none_or(|wanted| pair.interface == wanted)).collect();
     if pairs.len() != 1 {
-        return Err(format!("expected exactly one matching bulk endpoint pair; found {}", pairs.len()));
+        return Err(format!("expected exactly one matching bulk endpoint pair after interface selection; found {}", pairs.len()));
     }
     let pair = &pairs[0];
     let context = Context::new().map_err(|e| e.to_string())?;
@@ -70,7 +72,7 @@ pub fn benchmark_bulk_in(bus: u8, address: u8, reads: u32, timeout_ms: u64) -> R
     handle.release_interface(pair.interface).ok();
     let rate = completed_bytes_per_second(completed_bytes, elapsed);
     Ok(ReadBenchmark {
-        bus, address, endpoint: pair.in_address, chunk_bytes: config.chunk_bytes,
+        bus, address, endpoint: pair.in_address, interface: pair.interface, chunk_bytes: config.chunk_bytes,
         requested_reads: reads, completed_reads, completed_bytes,
         elapsed_seconds: elapsed.as_secs_f64(),
         bytes_per_second: rate,
