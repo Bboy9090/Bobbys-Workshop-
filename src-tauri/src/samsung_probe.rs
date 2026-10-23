@@ -24,7 +24,7 @@ fn probe_args() -> [&'static str; 2] {
     ["print-pit", "--no-reboot"]
 }
 
-fn read_pipe(mut pipe: Option<impl Read>) -> Vec<u8> {
+fn read_pipe<R: Read>(mut pipe: Option<R>) -> Vec<u8> {
     let mut bytes = Vec::new();
     if let Some(ref mut reader) = pipe {
         let _ = reader.read_to_end(&mut bytes);
