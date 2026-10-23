@@ -473,11 +473,9 @@ fn assess_provenance(root: &Path, directory: &str, entries: &[FirmwareLibraryEnt
         assessment.warnings.push("Provenance manifest must hash-bind at least one package artifact.".into());
     }
 
-    let expected_chipset = format!(
-        "{}:{}",
-        manifest.vendor.trim().to_ascii_lowercase(),
-        manifest.chipset_family.trim()
-    );
+    let manifest_vendor = manifest.vendor.trim().to_ascii_lowercase();
+    let chipset_family = manifest.chipset_family.trim();
+    let expected_chipset = format!("{}:{}", manifest_vendor, chipset_family);
     let observed_chipsets = entries
         .iter()
         .filter(|entry| {
@@ -491,15 +489,27 @@ fn assess_provenance(root: &Path, directory: &str, entries: &[FirmwareLibraryEnt
         .flat_map(|entry| entry.chipset_matches.iter())
         .cloned()
         .collect::<BTreeSet<_>>();
-    if !observed_chipsets.is_empty() && !observed_chipsets.contains(&expected_chipset) {
+    let chipset_matches_manifest = if manifest_vendor == "samsung" {
+        // Samsung is the package/OEM vendor, not necessarily the silicon vendor.
+        // Accept independently observed Qualcomm/Exynos/MediaTek-style catalog
+        // evidence when the family itself matches the provenance declaration.
+        observed_chipsets.iter().any(|observed| {
+            observed
+                .rsplit_once(':')
+                .map(|(_, family)| family.eq_ignore_ascii_case(chipset_family))
+                .unwrap_or(false)
+        })
+    } else {
+        observed_chipsets.contains(&expected_chipset)
+    };
+    if !observed_chipsets.is_empty() && !chipset_matches_manifest {
         assessment.warnings.push(format!(
-            "Provenance chipset {} does not match observed package chipset evidence ({}).",
-            expected_chipset,
-            observed_chipsets.into_iter().collect::<Vec<_>>().join(", ")
+            "Provenance chipset family {} does not match observed package chipset evidence ({}).",
+            chipset_family,
+            observed_chipsets.iter().cloned().collect::<Vec<_>>().join(", ")
         ));
     }
 
-    let manifest_vendor = manifest.vendor.trim().to_ascii_lowercase();
     let observed_vendors = entries
         .iter()
         .filter(|entry| {
@@ -679,12 +689,18 @@ fn summarize_bundles(root: &Path, entries: &[FirmwareLibraryEntry]) -> Vec<Firmw
                 .map(|kind| (*kind).to_string())
                 .collect::<Vec<_>>();
 
-            let vendor_chipsets = acc
-                .chipsets
-                .iter()
-                .filter(|chipset| chipset.starts_with(&format!("{vendor_hint}:")))
-                .cloned()
-                .collect::<BTreeSet<_>>();
+            let vendor_chipsets = if vendor_hint == "samsung" {
+                acc.chipsets
+                    .iter()
+                    .filter_map(|chipset| chipset.rsplit_once(':').map(|(_, family)| family.to_string()))
+                    .collect::<BTreeSet<_>>()
+            } else {
+                acc.chipsets
+                    .iter()
+                    .filter(|chipset| chipset.starts_with(&format!("{vendor_hint}:")))
+                    .cloned()
+                    .collect::<BTreeSet<_>>()
+            };
             let chipset_conflict = matches!(vendor_hint.as_str(), "qualcomm" | "mediatek" | "samsung")
                 && vendor_chipsets.len() > 1;
 
@@ -1258,7 +1274,7 @@ mod tests {
             modified_unix_ms: None,
             vendor_hint: "samsung".into(),
             artifact_kind: kind.into(),
-            chipset_matches: vec![],
+            chipset_matches: vec!["qualcomm:SM6150".into()],
             blocked: false,
             eligible_for_planning: true,
             warnings: vec![],
