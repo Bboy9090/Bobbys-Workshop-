@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { WorkspaceTaskAvailability } from '../lib/workspace-availability';
 
 export const WORKSPACE_VIEWS = [
@@ -31,7 +31,7 @@ export function WorkspacePanel({view,active,children}: {
   view:WorkspaceView; active:WorkspaceView; children:ReactNode;
 }) {
   const [visited,setVisited]=useState(view===active);
-  useEffect(()=>{if(view===active)setVisited(true);},[view,active]);
+  if(view===active && !visited)setVisited(true);
   if(view!==active && !visited)return null;
   const meta=WORKSPACE_VIEWS.find(item=>item.id===view)!;
   return <section data-workspace-panel={view} hidden={view!==active}
@@ -50,7 +50,11 @@ export function ExpertPanel({id,title,description,children,reveal=false}: {
 }) {
   const [open,setOpen]=useState(reveal);
   const [visited,setVisited]=useState(reveal);
-  useEffect(()=>{if(reveal){setOpen(true);setVisited(true);}},[reveal]);
+  const [previousReveal,setPreviousReveal]=useState(reveal);
+  if(reveal!==previousReveal){
+    setPreviousReveal(reveal);
+    if(reveal){setOpen(true);setVisited(true);}
+  }
   return <details id={id} open={open} onToggle={event=>{
     const next=event.currentTarget.open;setOpen(next);if(next)setVisited(true);
   }} className="mb-3 rounded-xl border border-slate-800 bg-slate-900/40">

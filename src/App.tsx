@@ -23,7 +23,6 @@ import {
   prepareAdb,
   isTauriRuntime,
   saveAdbScreenshot,
-  getFastbootModeDevices,
   fastbootRebootMode,
   verifyModeTransition,
   listMtpDirectory,
@@ -31,12 +30,10 @@ import {
   uploadMtpPath,
   listAdbUserPackages,
   runUsbCableDoctor,
-  scanRecoveryCandidates,
   chooseRecoveryArtifacts,
   autodiscoverRecoveryArtifacts,
   buildRecoveryPlan,
   prepareRecoveryJob,
-  scanFirmwareLibrary,
   getVerifiedFirmwareBundleArtifacts,
   revalidateRecoveryJob,
   exportRecoveryEvidence,
@@ -855,15 +852,23 @@ export default function App() {
   }, []);
 
   const selectRecoveryArtifacts = async () => {
-    if (recoveryBusy) return;
-    const paths = await chooseRecoveryArtifacts();
-    if (!paths.length) return;
-    setRecoveryArtifacts(paths);
-    setRecoveryPlan(null);
-    setRecoveryJob(null);
-    setRecoveryEvidencePath(null);
-    setRecoveryCertificatePath(null);
-    setRecoveryCertificateReview(null);
+    if (recoveryBusy || !nativeRuntime) return;
+    setRecoveryBusy(true);
+    setNativeError(null);
+    try {
+      const paths = await chooseRecoveryArtifacts();
+      if (!paths.length) return;
+      setRecoveryArtifacts(paths);
+      setRecoveryPlan(null);
+      setRecoveryJob(null);
+      setRecoveryEvidencePath(null);
+      setRecoveryCertificatePath(null);
+      setRecoveryCertificateReview(null);
+    } catch (error) {
+      setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveryBusy(false);
+    }
   };
 
   const autoPrepareRecoveryForCandidate = async (candidate: RecoveryCandidate) => {
@@ -934,7 +939,7 @@ export default function App() {
     }
   };
 
-  const useVerifiedFirmwareBundle = async () => {
+  const applyVerifiedFirmwareBundle = async () => {
     if (recoveryBusy || refreshing || !selectedVerifiedBundle) return;
     setRecoveryBusy(true);
     setNativeError(null);
@@ -1330,8 +1335,7 @@ export default function App() {
             </section>
           )}
 
-<ExpertPanel id="bootloader-controls" title="Observed bootloader connection" description="Guided mode controls. A connection never grants flash permission." reveal={requestedPanel==='bootloader-controls'}>
-          {fastbootModeDevices.length > 0 && (
+{fastbootModeDevices.length > 0 && <ExpertPanel id="bootloader-controls" title="Observed bootloader connection" description="Guided mode controls. A connection never grants flash permission." reveal={requestedPanel==='bootloader-controls'}>
             <section className="mb-4 rounded-lg border border-cyan-900/60 bg-cyan-950/10 p-5">
               <div>
                 <h2 className="text-base font-semibold text-white">Fastboot mode controls</h2>
@@ -1396,10 +1400,7 @@ export default function App() {
                 ))}
               </div>
             </section>
-          )}
-
-{fastbootModeDevices.length===0 && <p className="text-sm text-slate-500">{scanFailures.includes('fastboot') ? 'Bootloader status is unverified.' : 'No Fastboot connection observed.'}</p>}
-</ExpertPanel>
+</ExpertPanel>}
 </WorkspacePanel>
 <WorkspacePanel view="diagnose" active={workspaceView}>
           <section className="mb-4 rounded-lg border border-cyan-900/70 bg-cyan-950/10 p-5">
@@ -2319,7 +2320,7 @@ export default function App() {
                     </select>
                     <button
                       type="button"
-                      onClick={() => void useVerifiedFirmwareBundle()}
+                      onClick={() => void applyVerifiedFirmwareBundle()}
                       disabled={
                         recoveryBusy ||
                         refreshing ||
@@ -2356,6 +2357,11 @@ export default function App() {
                     className="rounded bg-slate-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-40 hover:bg-slate-600"
                   >
                     {recoveryBusy ? 'Searching artifacts…' : 'Find artifacts & inspect'}
+                  </button>
+                  <button type="button" onClick={() => void selectRecoveryArtifacts()}
+                    disabled={!nativeRuntime || recoveryBusy}
+                    className="rounded border border-slate-700 px-3 py-2 text-xs font-medium text-slate-200 disabled:opacity-40 hover:bg-slate-800">
+                    Choose artifacts
                   </button>
                   <button
                     type="button"
