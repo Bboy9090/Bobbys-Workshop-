@@ -21,7 +21,14 @@ enum Commands {
         #[arg(long)]
         endpoints: bool,
     },
-    /// Benchmark a single native bulk IN endpoint on an explicitly selected USB device.\n    ReadBenchmark {\n        #[arg(long)] bus: u8,\n        #[arg(long)] address: u8,\n        #[arg(long, default_value_t = 16)] reads: u32,\n        #[arg(long, default_value_t = 1000)] timeout_ms: u64,\n    },\n    /// Verify and inspect one or more firmware TAR/.tar.md5 packages.
+    /// Benchmark a single native bulk IN endpoint on an explicitly selected USB device.
+    ReadBenchmark {
+        #[arg(long)] bus: u8,
+        #[arg(long)] address: u8,
+        #[arg(long, default_value_t = 16)] reads: u32,
+        #[arg(long, default_value_t = 1000)] timeout_ms: u64,
+    },
+    /// Verify and inspect one or more firmware TAR/.tar.md5 packages.
     Inspect {
         #[arg(required = true)]
         packages: Vec<PathBuf>,
@@ -79,7 +86,10 @@ fn main() {
                 scan().map(|v| json(&v)).map_err(|e| e.to_string())
             }
         }
-        Commands::ReadBenchmark { bus, address, reads, timeout_ms } =>\n            bootforgeusb::read_benchmark::benchmark_bulk_in(bus, address, reads, timeout_ms)\n                .map(|result| json(&result)),\n        Commands::Inspect { packages } => firmware::inspect_many(packages)
+        Commands::ReadBenchmark { bus, address, reads, timeout_ms } =>
+            bootforgeusb::read_benchmark::benchmark_bulk_in(bus, address, reads, timeout_ms)
+                .map(|result| json(&result)),
+        Commands::Inspect { packages } => firmware::inspect_many(packages)
             .map(|v| json(&v))
             .map_err(|e| e.to_string()),
         Commands::Plan { packages } => firmware::inspect_many(packages)
