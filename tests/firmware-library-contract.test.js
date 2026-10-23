@@ -970,7 +970,9 @@ describe('One-click hardware flow readiness orchestrator', () => {
     expect(desktop).toContain("id: 'device-identity'");
     expect(desktop).toContain('Transport detection is not exact identity proof.');
     expect(desktop).toContain("title: 'Verified package + exact-device binding'");
-    expect(desktop).toContain('this gate stays missing until one package is bound to the independently proven live model/board/SKU');
+    expect(desktop).toContain('Exact-device binding is assessed in the recovery/qualification console');
+    expect(desktop).toContain("assessment: 'qualification-console'");
+    expect(ui).toContain('QUALIFICATION CONSOLE');
     expect(desktop).toContain('satisfied: false');
   });
 });
