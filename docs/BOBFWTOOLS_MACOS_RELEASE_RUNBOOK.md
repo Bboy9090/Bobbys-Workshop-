@@ -6,20 +6,22 @@ This runbook covers the public **standard BobFWTools macOS app**. It does not au
 
 The manual `BobFWTools macOS Release` workflow must exist on the repository default branch (`main-tool-kit`) before GitHub will normally expose it as a Run workflow action.
 
-The default branch already has a separately evolved signed app + DMG workflow. This integration lane uses the workflow and secret names documented below. Reconcile both versions when promoting integration changes to `main-tool-kit`; preserve the default branch's installer, DMG notarization, and receipt stages. An integration-only merge does not update the default release lane.
+The default branch has a separately evolved signed app + DMG workflow. The integration lane now preserves those installer, DMG notarization, and v2 receipt stages, along with its newer packaged API and Rust checks. An integration-only merge does not update the default release lane. The branches still contain independent work and require a separate convergence review before promotion to `main-tool-kit`.
 
 ## Required GitHub Actions secrets
 
 Configure these repository or environment secrets in GitHub Actions:
 
-- `BOBFW_DEVELOPER_ID_P12_BASE64` — base64-encoded Developer ID Application certificate and private key exported as PKCS#12.
-- `BOBFW_DEVELOPER_ID_P12_PASSWORD` — password used when the PKCS#12 was exported.
-- `BOBFW_DEVELOPER_IDENTITY` — exact Developer ID Application identity shown by macOS `security find-identity -v -p codesigning`.
+- `MACOS_CERTIFICATE_P12_BASE64` — base64-encoded Developer ID Application certificate and private key exported as PKCS#12.
+- `MACOS_CERTIFICATE_PASSWORD` — password used when the PKCS#12 was exported.
+- `MACOS_SIGNING_IDENTITY` — exact Developer ID Application identity shown by macOS `security find-identity -v -p codesigning`.
 - `APPLE_ID` — Apple account used for notarization.
 - `APPLE_APP_SPECIFIC_PASSWORD` — app-specific password for that Apple account.
 - `APPLE_TEAM_ID` — Apple Developer Team ID. The signing certificate TeamIdentifier must match this value.
 
 Do not commit any certificate, private key, password, Apple ID credential, or secret value to the repository.
+
+The integration lane also accepts the earlier `BOBFW_DEVELOPER_ID_P12_BASE64`, `BOBFW_DEVELOPER_ID_P12_PASSWORD`, and `BOBFW_DEVELOPER_IDENTITY` names as fallbacks. The `MACOS_*` values take precedence. Use a consistent certificate/password/identity set; mismatched credentials fail signing or team verification. Secret availability has not been verified through this connector.
 
 ## Run the release
 
@@ -49,9 +51,14 @@ The release job:
 11. Requires Gatekeeper `spctl` acceptance.
 12. Confirms both `x86_64` and `arm64` architecture evidence through the normal app verifier.
 13. Confirms the built binary contains the source revision.
-14. Produces a machine-readable release provenance receipt.
-15. Uploads the notarized app, Apple notarization receipt, and BobFWTools release receipt.
-16. Deletes the temporary signing keychain even when the job fails.
+14. Builds a compressed DMG containing `BobFWTools.app` and an `/Applications` shortcut. The shared packaging script rejects the qualified destructive executor, verifies the DMG, mounts it read-only, and checks an isolated byte-matching app copy.
+15. Signs and notarizes the DMG, requires `Accepted` with a submission ID, staples its ticket, and requires Gatekeeper acceptance.
+16. Mounts the final stapled DMG read-only again and verifies the copied app's signature, ticket, and Gatekeeper acceptance.
+17. Produces a v2 machine-readable provenance receipt binding both notarization receipts and the executable, Info.plist, and final DMG hashes. The receipt independently rejects incorrect source, architectures, team, missing hardened runtime, or missing signing timestamp.
+18. Uploads the DMG, a `ditto` ZIP preserving the copied app bundle, both Apple receipts, and the BobFWTools receipt.
+19. Deletes the temporary signing keychain even when import or a later step fails.
+
+These are artifact checks. `releaseQualified`, `hardwareQualified`, and `executionAuthorized` remain false, and `nativeGuiStatus` remains `NOT TESTED`. The signed lane has not run for this integration source. Command fixtures in receipt regression tests are simulated test inputs and supply no real signing evidence.
 
 ## Expected artifacts
 
@@ -61,8 +68,10 @@ The workflow uploads an artifact named:
 
 It contains:
 
-- `BobFWTools-DeveloperID.app`
+- `BobFWTools-<label>-universal-macOS.dmg`
+- `BobFWTools-<label>-universal-macOS.app.zip`
 - `bobfwtools-notarization-receipt.json`
+- `bobfwtools-dmg-notarization-receipt.json`
 - `bobfwtools-release-receipt.json`
 
 The BobFWTools release receipt records:
@@ -71,13 +80,12 @@ The BobFWTools release receipt records:
 - source revision
 - executable SHA-256
 - Info.plist SHA-256
+- final DMG SHA-256
 - architectures
 - Developer ID authority
 - TeamIdentifier
 - signing identifier
-- Apple notarization status
-- Apple notarization submission ID
-- notarization receipt SHA-256
+- separate app and DMG notarization status, submission ID, and receipt SHA-256
 - stapling validation
 - Gatekeeper acceptance
 - an explicit declaration that the qualified destructive writer is not included
@@ -112,3 +120,7 @@ Desktop Commander reached its monthly limit during this session. The changed wor
 Standard release preparation does not authorize any destructive device operation. Every flash, wipe, unlock, repartition, calibration restore, and removable-media write remains separately blocked until exact-device evidence, trusted compatible firmware, recovery readiness, and explicit approval for the named device and operation are established.
 
 The macOS Core workflow also builds a CI-only unsigned DMG, mounts it read-only, checks the Applications link, and verifies an isolated byte-matching universal app copy. It uploads the DMG with a source-bound ledger and hash-verified matrix. These packaging receipts do not attest signing, notarization, connected-Mac Gatekeeper, native GUI, or any device operation.
+
+Both installer lanes call `scripts/package-bobfwtools-dmg.sh APP DMG COPIED_APP [create|verify]`. `create` refuses existing output paths. `verify` checks an existing DMG without modifying it. The app copy must be a new isolated path. The script never installs into `/Applications`, launches the app, or communicates with a phone.
+
+The receipt command is now `scripts/create-bobfwtools-release-receipt.sh APP DMG APP_NOTARY_JSON DMG_NOTARY_JSON OUTPUT_JSON`. The earlier three-argument app-only interface is intentionally rejected. Set a full `BOBFWTOOLS_SOURCE_REVISION`, `BOBFWTOOLS_RELEASE_LABEL`, and expected signing team (`BOBFW_EXPECTED_TEAM_ID` or `APPLE_TEAM_ID`).

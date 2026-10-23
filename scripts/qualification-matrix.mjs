@@ -2,7 +2,6 @@
 import {readFileSync, realpathSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {dirname, relative, resolve, isAbsolute, sep} from 'node:path';
-import {pathToFileURL} from 'node:url';
 import {buildQualificationMatrix, matrixMarkdown} from './lib/qualification-matrix.mjs';
 
 export function reportQualificationFile(filename, now = Date.now()) {
@@ -24,7 +23,7 @@ export function reportQualificationFile(filename, now = Date.now()) {
   return {schema:'bobfwtools.qualification-matrix.v1', generatedAt:new Date(now).toISOString(),
     executionAuthorized:false, rows};
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (import.meta.main === true) {
   try {
     const [filename, format = 'json', ...extra] = process.argv.slice(2);
     if (!filename || extra.length || !['json','markdown'].includes(format)) throw Error('Usage: node scripts/qualification-matrix.mjs ledger.json [json|markdown]');

@@ -1,0 +1,589 @@
+{
+  "schema": "bobfwtools.ci-evidence.v1",
+  "sourceRevision": "31c2ecf442036608c675098659d2175d687f74d1",
+  "pullRequestHead": "85829de8ba974b2dba02f3e0ce939386458e1265",
+  "sourceTree": "1b04a356471ffef445a72141de3e66492ebf9230",
+  "mergedCommit": "c5579317892c3f29afe157274341411666c50408",
+  "runUrl": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39929620644",
+  "executor": "GitHub Actions macos-latest",
+  "conclusion": "success",
+  "observedAt": "2026-10-23T09:24:58Z",
+  "jobs": [
+    {
+      "id": 120334763865,
+      "run_id": 39929620644,
+      "workflow_name": "BobFWTools macOS Core",
+      "head_branch": "fix/workspace-applicable-controls-20261023",
+      "run_url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/runs/39929620644",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOQozhBM8AAAAcBILHWQ",
+      "head_sha": "85829de8ba974b2dba02f3e0ce939386458e1265",
+      "url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/jobs/120334763865",
+      "html_url": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/39929620644/job/120334763865",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-23T09:08:52Z",
+      "started_at": "2026-10-23T09:08:55Z",
+      "completed_at": "2026-10-23T09:24:58Z",
+      "name": "macos-core",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-23T09:08:55Z",
+          "completed_at": "2026-10-23T09:08:57Z"
+        },
+        {
+          "name": "Run actions/checkout@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-23T09:08:57Z",
+          "completed_at": "2026-10-23T09:09:01Z"
+        },
+        {
+          "name": "Use Node.js",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-23T09:09:01Z",
+          "completed_at": "2026-10-23T09:09:02Z"
+        },
+        {
+          "name": "Install frontend dependencies",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-23T09:09:02Z",
+          "completed_at": "2026-10-23T09:09:12Z"
+        },
+        {
+          "name": "Install packaged API dependencies",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-23T09:09:12Z",
+          "completed_at": "2026-10-23T09:09:13Z"
+        },
+        {
+          "name": "Rust toolchain",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-23T09:09:13Z",
+          "completed_at": "2026-10-23T09:09:17Z"
+        },
+        {
+          "name": "Validate macOS entitlements",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-23T09:09:17Z",
+          "completed_at": "2026-10-23T09:09:17Z"
+        },
+        {
+          "name": "Production reality gate",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-23T09:09:17Z",
+          "completed_at": "2026-10-23T09:09:17Z"
+        },
+        {
+          "name": "Typecheck frontend",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-23T09:09:17Z",
+          "completed_at": "2026-10-23T09:09:22Z"
+        },
+        {
+          "name": "Build frontend",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-23T09:09:22Z",
+          "completed_at": "2026-10-23T09:09:25Z"
+        },
+        {
+          "name": "Run BobFWTools production contract tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-23T09:09:25Z",
+          "completed_at": "2026-10-23T09:09:33Z"
+        },
+        {
+          "name": "Validate workflow definitions",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-10-23T09:09:33Z",
+          "completed_at": "2026-10-23T09:09:34Z"
+        },
+        {
+          "name": "Audit root npm dependency tree",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2026-10-23T09:09:34Z",
+          "completed_at": "2026-10-23T09:09:35Z"
+        },
+        {
+          "name": "Check BootForge USB",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-10-23T09:09:35Z",
+          "completed_at": "2026-10-23T09:10:02Z"
+        },
+        {
+          "name": "Check BobFWTools Tauri core",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-10-23T09:10:02Z",
+          "completed_at": "2026-10-23T09:11:29Z"
+        },
+        {
+          "name": "Check qualified destructive writer build",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 16,
+          "started_at": "2026-10-23T09:11:29Z",
+          "completed_at": "2026-10-23T09:11:35Z"
+        },
+        {
+          "name": "Test standard app Rust gates",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17,
+          "started_at": "2026-10-23T09:11:35Z",
+          "completed_at": "2026-10-23T09:13:15Z"
+        },
+        {
+          "name": "Test qualified destructive writer gates",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-10-23T09:13:15Z",
+          "completed_at": "2026-10-23T09:13:23Z"
+        },
+        {
+          "name": "Run BootForge USB tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19,
+          "started_at": "2026-10-23T09:13:23Z",
+          "completed_at": "2026-10-23T09:13:37Z"
+        },
+        {
+          "name": "Build universal BobFWTools.app",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 20,
+          "started_at": "2026-10-23T09:13:37Z",
+          "completed_at": "2026-10-23T09:21:39Z"
+        },
+        {
+          "name": "Seal standard CI bundle ad-hoc",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21,
+          "started_at": "2026-10-23T09:21:39Z",
+          "completed_at": "2026-10-23T09:21:40Z"
+        },
+        {
+          "name": "Verify universal app bundle",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 22,
+          "started_at": "2026-10-23T09:21:40Z",
+          "completed_at": "2026-10-23T09:21:40Z"
+        },
+        {
+          "name": "Inspect unsigned CI artifact",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 23,
+          "started_at": "2026-10-23T09:21:40Z",
+          "completed_at": "2026-10-23T09:21:40Z"
+        },
+        {
+          "name": "Upload BobFWTools app artifact",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 24,
+          "started_at": "2026-10-23T09:21:40Z",
+          "completed_at": "2026-10-23T09:21:46Z"
+        },
+        {
+          "name": "Build and check unsigned installer",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 25,
+          "started_at": "2026-10-23T09:21:46Z",
+          "completed_at": "2026-10-23T09:22:07Z"
+        },
+        {
+          "name": "Upload unsigned installer qualification artifact",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 26,
+          "started_at": "2026-10-23T09:22:07Z",
+          "completed_at": "2026-10-23T09:22:10Z"
+        },
+        {
+          "name": "Build qualified universal BobFWTools.app",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 27,
+          "started_at": "2026-10-23T09:22:10Z",
+          "completed_at": "2026-10-23T09:24:42Z"
+        },
+        {
+          "name": "Seal qualified CI bundle ad-hoc",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 28,
+          "started_at": "2026-10-23T09:24:42Z",
+          "completed_at": "2026-10-23T09:24:42Z"
+        },
+        {
+          "name": "Verify qualified universal app bundle",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 29,
+          "started_at": "2026-10-23T09:24:42Z",
+          "completed_at": "2026-10-23T09:24:43Z"
+        },
+        {
+          "name": "Upload qualified BobFWTools app artifact",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 30,
+          "started_at": "2026-10-23T09:24:43Z",
+          "completed_at": "2026-10-23T09:24:48Z"
+        },
+        {
+          "name": "Post Use Node.js",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 59,
+          "started_at": "2026-10-23T09:24:48Z",
+          "completed_at": "2026-10-23T09:24:48Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 60,
+          "started_at": "2026-10-23T09:24:48Z",
+          "completed_at": "2026-10-23T09:24:49Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 61,
+          "started_at": "2026-10-23T09:24:49Z",
+          "completed_at": "2026-10-23T09:24:55Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/check-runs/120334763865",
+      "labels": [
+        "macos-latest"
+      ],
+      "runner_id": 1000097817,
+      "runner_name": "GitHub Actions 1000097817",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    }
+  ],
+  "results": {
+    "repositoryAndPackagedApiTests": 296,
+    "standardRustTests": 35,
+    "qualifiedFeatureRustTests": 86,
+    "bootforgeUsbTests": 49,
+    "universalStandardBuild": "PASS",
+    "universalQualifiedBuild": "PASS",
+    "unsignedInstaller": "PASS"
+  },
+  "installerReceipt": {
+    "schema": "bobfwtools.unsigned-installer-evidence.v1",
+    "sourceRevision": "31c2ecf442036608c675098659d2175d687f74d1",
+    "observedAt": "2026-10-23T09:22:07.683522+00:00",
+    "scope": "macOS CI runner; unsigned installer structure and isolated copy only",
+    "status": "PASS",
+    "executionAuthorized": false,
+    "hardwareQualified": false,
+    "signatureMode": "adhoc",
+    "artifacts": {
+      "dmgSha256": "4f8ab404faff96343e167c7ebffac26a5fe3b64ce8ef3b5ae0857cc3b02ffacc",
+      "copiedExecutableSha256": "7ed06b146983794becffed6eee40e39aa725bc4adb9cb305c8a565b1e8e6a566",
+      "copiedInfoPlistSha256": "32d95929a9afce0de2db53d0116302461849f5cec268fcd2ba5791765fb4bce5"
+    },
+    "checks": [
+      {
+        "capability": "DMG integrity",
+        "status": "PASS"
+      },
+      {
+        "capability": "Read-only mount and Applications link",
+        "status": "PASS"
+      },
+      {
+        "capability": "Isolated app copy matches original bundle bytes",
+        "status": "PASS"
+      },
+      {
+        "capability": "Copied universal bundle preflight",
+        "status": "PASS"
+      },
+      {
+        "capability": "Developer ID release signature",
+        "status": "BLOCKED"
+      },
+      {
+        "capability": "App and DMG notarization",
+        "status": "BLOCKED"
+      },
+      {
+        "capability": "Release Gatekeeper acceptance",
+        "status": "NOT TESTED"
+      },
+      {
+        "capability": "Native GUI on the connected Mac",
+        "status": "BLOCKED"
+      }
+    ],
+    "releaseQualified": false,
+    "cases": [
+      {
+        "caseId": "installer-1",
+        "model": "macOS-universal",
+        "deviceAlias": "github-macos-ci",
+        "protocol": "dmg",
+        "operation": "DMG integrity",
+        "scope": "release",
+        "sourceRevision": "31c2ecf442036608c675098659d2175d687f74d1"
+      },
+      {
+        "caseId": "installer-2",
+        "model": "macOS-universal",
+        "deviceAlias": "github-macos-ci",
+        "protocol": "dmg",
+        "operation": "Read-only mount and Applications link",
+        "scope": "release",
+        "sourceRevision": "31c2ecf442036608c675098659d2175d687f74d1"
+      },
+      {
+        "caseId": "installer-3",
+        "model": "macOS-universal",
+        "deviceAlias": "github-macos-ci",
+        "protocol": "dmg",
+        "operation": "Isolated app copy matches original bundle bytes",
+        "scope": "release",
+        "sourceRevision": "31c2ecf442036608c675098659d2175d687f74d1"
+      },
+      {
+        "caseId": "installer-4",
+        "model": "macOS-universal",
+        "deviceAlias": "github-macos-ci",
+        "protocol": "dmg",
+        "operation": "Copied universal bundle preflight",
+        "scope": "release",
+        "sourceRevision": "31c2ecf442036608c675098659d2175d687f74d1"
+      },
+      {
+        "caseId": "installer-5",
+        "model": "macOS-universal",
+        "deviceAlias": "github-macos-ci",
+        "protocol": "dmg",
+        "operation": "Developer ID release signature",
+        "scope": "release",
+        "sourceRevision": "31c2ecf442036608c675098659d2175d687f74d1",
+        "exception": "Outside this unsigned CI packaging check: Developer ID release signature"
+      },
+      {
+        "caseId": "installer-6",
+        "model": "macOS-universal",
+        "deviceAlias": "github-macos-ci",
+        "protocol": "dmg",
+        "operation": "App and DMG notarization",
+        "scope": "release",
+        "sourceRevision": "31c2ecf442036608c675098659d2175d687f74d1",
+        "exception": "Outside this unsigned CI packaging check: App and DMG notarization"
+      },
+      {
+        "caseId": "installer-7",
+        "model": "macOS-universal",
+        "deviceAlias": "github-macos-ci",
+        "protocol": "dmg",
+        "operation": "Release Gatekeeper acceptance",
+        "scope": "release",
+        "sourceRevision": "31c2ecf442036608c675098659d2175d687f74d1"
+      },
+      {
+        "caseId": "installer-8",
+        "model": "macOS-universal",
+        "deviceAlias": "connected-mac",
+        "protocol": "dmg",
+        "operation": "Native GUI on the connected Mac",
+        "scope": "release",
+        "sourceRevision": "31c2ecf442036608c675098659d2175d687f74d1",
+        "exception": "Outside this unsigned CI packaging check: Native GUI on the connected Mac"
+      }
+    ],
+    "receipts": [
+      {
+        "caseId": "installer-1",
+        "model": "macOS-universal",
+        "deviceAlias": "github-macos-ci",
+        "protocol": "dmg",
+        "operation": "DMG integrity",
+        "scope": "release",
+        "sourceRevision": "31c2ecf442036608c675098659d2175d687f74d1",
+        "status": "PASS",
+        "observedAt": "2026-10-23T09:22:07.683522+00:00",
+        "detail": "DMG integrity passed on the macOS CI runner; no release or device execution authority.",
+        "artifacts": [
+          {
+            "path": "BobFWTools-universal-macOS-unsigned.dmg",
+            "sha256": "4f8ab404faff96343e167c7ebffac26a5fe3b64ce8ef3b5ae0857cc3b02ffacc"
+          }
+        ]
+      },
+      {
+        "caseId": "installer-2",
+        "model": "macOS-universal",
+        "deviceAlias": "github-macos-ci",
+        "protocol": "dmg",
+        "operation": "Read-only mount and Applications link",
+        "scope": "release",
+        "sourceRevision": "31c2ecf442036608c675098659d2175d687f74d1",
+        "status": "PASS",
+        "observedAt": "2026-10-23T09:22:07.683522+00:00",
+        "detail": "Read-only mount and Applications link passed on the macOS CI runner; no release or device execution authority.",
+        "artifacts": [
+          {
+            "path": "BobFWTools-universal-macOS-unsigned.dmg",
+            "sha256": "4f8ab404faff96343e167c7ebffac26a5fe3b64ce8ef3b5ae0857cc3b02ffacc"
+          }
+        ]
+      },
+      {
+        "caseId": "installer-3",
+        "model": "macOS-universal",
+        "deviceAlias": "github-macos-ci",
+        "protocol": "dmg",
+        "operation": "Isolated app copy matches original bundle bytes",
+        "scope": "release",
+        "sourceRevision": "31c2ecf442036608c675098659d2175d687f74d1",
+        "status": "PASS",
+        "observedAt": "2026-10-23T09:22:07.683522+00:00",
+        "detail": "Isolated app copy matches original bundle bytes passed on the macOS CI runner; no release or device execution authority.",
+        "artifacts": [
+          {
+            "path": "BobFWTools-universal-macOS-unsigned.dmg",
+            "sha256": "4f8ab404faff96343e167c7ebffac26a5fe3b64ce8ef3b5ae0857cc3b02ffacc"
+          }
+        ]
+      },
+      {
+        "caseId": "installer-4",
+        "model": "macOS-universal",
+        "deviceAlias": "github-macos-ci",
+        "protocol": "dmg",
+        "operation": "Copied universal bundle preflight",
+        "scope": "release",
+        "sourceRevision": "31c2ecf442036608c675098659d2175d687f74d1",
+        "status": "PASS",
+        "observedAt": "2026-10-23T09:22:07.683522+00:00",
+        "detail": "Copied universal bundle preflight passed on the macOS CI runner; no release or device execution authority.",
+        "artifacts": [
+          {
+            "path": "BobFWTools-universal-macOS-unsigned.dmg",
+            "sha256": "4f8ab404faff96343e167c7ebffac26a5fe3b64ce8ef3b5ae0857cc3b02ffacc"
+          }
+        ]
+      }
+    ]
+  },
+  "artifacts": [
+    {
+      "id": 12492265381,
+      "name": "BobFWTools-universal-macOS-unsigned",
+      "size_in_bytes": 8488447,
+      "url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/artifacts/12492265381",
+      "archive_download_url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/artifacts/12492265381/zip",
+      "expired": false,
+      "created_at": "2026-10-23T09:21:46Z",
+      "expires_at": "2027-01-21T09:07:52Z",
+      "updated_at": "2026-10-23T09:21:46Z",
+      "digest": "sha256:a426381715f273649e5253cce695915a46063fc009ffc22f0a71f09a98990337",
+      "workflow_run": {
+        "id": 39929620644,
+        "repository_id": 1116528900,
+        "head_repository_id": 1116528900,
+        "head_branch": "fix/workspace-applicable-controls-20261023",
+        "head_sha": "85829de8ba974b2dba02f3e0ce939386458e1265"
+      }
+    },
+    {
+      "id": 12492250419,
+      "name": "BobFWTools-universal-macOS-installer-unsigned",
+      "size_in_bytes": 9181240,
+      "url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/artifacts/12492250419",
+      "archive_download_url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/artifacts/12492250419/zip",
+      "expired": false,
+      "created_at": "2026-10-23T09:22:10Z",
+      "expires_at": "2027-01-21T09:07:52Z",
+      "updated_at": "2026-10-23T09:22:10Z",
+      "digest": "sha256:08c5a7491c1749444a07e3fed68c72e04b1e265813a00a320a7f9f0ae374e1ec",
+      "workflow_run": {
+        "id": 39929620644,
+        "repository_id": 1116528900,
+        "head_repository_id": 1116528900,
+        "head_branch": "fix/workspace-applicable-controls-20261023",
+        "head_sha": "85829de8ba974b2dba02f3e0ce939386458e1265"
+      }
+    },
+    {
+      "id": 12491234470,
+      "name": "BobFWTools-universal-macOS-qualified-unsigned",
+      "size_in_bytes": 8845055,
+      "url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/artifacts/12491234470",
+      "archive_download_url": "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/actions/artifacts/12491234470/zip",
+      "expired": false,
+      "created_at": "2026-10-23T09:24:48Z",
+      "expires_at": "2027-01-21T09:07:52Z",
+      "updated_at": "2026-10-23T09:24:48Z",
+      "digest": "sha256:a6b348c5bed3a5bff2eaaaae273c67e3768e5bdeaf163d1390fbbe6426613132",
+      "workflow_run": {
+        "id": 39929620644,
+        "repository_id": 1116528900,
+        "head_repository_id": 1116528900,
+        "head_branch": "fix/workspace-applicable-controls-20261023",
+        "head_sha": "85829de8ba974b2dba02f3e0ce939386458e1265"
+      }
+    }
+  ],
+  "downloadVerification": {
+    "archiveSha256": "08c5a7491c1749444a07e3fed68c72e04b1e265813a00a320a7f9f0ae374e1ec",
+    "dmgSha256": "4f8ab404faff96343e167c7ebffac26a5fe3b64ce8ef3b5ae0857cc3b02ffacc",
+    "archiveHashVerified": true,
+    "dmgHashVerified": true,
+    "liveInstallerMatrix": {
+      "PASS": 4,
+      "BLOCKED": 3,
+      "NOT TESTED": 1
+    },
+    "scope": "Downloaded archive and DMG checked locally; actual mount/copy checks ran on macOS CI. No native GUI or signing proof."
+  },
+  "hardwareQualified": false,
+  "releaseQualified": false,
+  "executionAuthorized": false
+}

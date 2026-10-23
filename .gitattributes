@@ -1,0 +1,5 @@
+# Vite's SSR import transform must see a leading hashbang before hoisted imports.
+# Keep imported Node CLI modules executable under Windows core.autocrlf checkouts.
+*.mjs text eol=lf
+# Captured evidence is hashed as bytes. Never rewrite its line endings at checkout.
+docs/evidence/** -text

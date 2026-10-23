@@ -35,7 +35,7 @@ export function qualifyA176U(evidence = {}) {
   };
 }
 
-if (process.argv[1] && import.meta.url === new URL('file://' + process.argv[1]).href) {
+if (import.meta.main === true) {
   const args = process.argv.slice(2);
   if (args.includes('--help')) {
     console.log('Usage: node scripts/a176u-qualification.mjs --evidence /path/to/read-only-evidence.json');

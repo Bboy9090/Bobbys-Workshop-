@@ -11,7 +11,7 @@
   "app": {
     "windows": [
       {
-        "title": "BobFWTools — Android Tools for macOS",
+        "title": "BobFWTools — Android Device Tools",
         "width": 1400,
         "height": 900,
         "resizable": true,
@@ -42,8 +42,8 @@
     "resources": [],
     "copyright": "© 2026 Bobby Blanco",
     "category": "Utilities",
-    "shortDescription": "Android connectivity and diagnostics for macOS.",
-    "longDescription": "BobFWTools provides professional Android device connectivity, MTP file transfer, ADB and Fastboot diagnostics, USB troubleshooting, device information, logging, and support workflows on macOS.",
+    "shortDescription": "Android connectivity and device diagnostics.",
+    "longDescription": "BobFWTools provides Android device connectivity, MTP file transfer, ADB and Fastboot diagnostics, USB troubleshooting, device information, logging, and evidence-gated support workflows on macOS, Windows, and Linux.",
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",

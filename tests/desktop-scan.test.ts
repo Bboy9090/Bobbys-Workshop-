@@ -68,8 +68,8 @@ test('device-specific mode probes share the same overall deadline', async () => 
   expect(result.failures[0].probe).toBe('adb-mode:phone-one');
 });
 test('failed folder listing falls back to root without retaining another folder contents', async () => {
-  host({mtp_status:()=>({connected:true,storages:[{}]}),mtp_list_directory:()=>{throw new Error('Disconnected');}});
-  const result=await createDesktopScanner()(99,['old-folder']);
+  host({mtp_status:()=>({connected:true,targetId:'a'.repeat(64),storages:[{}]}),mtp_list_directory:()=>{throw new Error('Disconnected');}});
+  const result=await createDesktopScanner()(99,['old-folder'],'a'.repeat(64));
   expect(result.directory).toEqual({objects:[],storageIndex:0,path:[]});
   expect(result.failures.filter(f=>f.probe.startsWith('mtp-directory:'))).toHaveLength(2);
 });
@@ -101,4 +101,20 @@ test('a late response from an expired scan cannot populate a later scan', async 
   expect(during.adb).toEqual([]);
   expect((await scan()).adb).toEqual([{serial:'fresh-target',authorized:false}]);
   expect(calls).toBe(2);
+});
+
+test('a changed MTP target resets folder and storage and binds the new listing', async () => {
+  const targetId='b'.repeat(64);
+  host({mtp_status:()=>({connected:true,targetId,storages:[{},{}]}),mtp_list_directory:()=>[]});
+  const result=await createDesktopScanner()(1,['previous-phone-private-folder'],'a'.repeat(64));
+  expect(result.directory).toEqual({objects:[],storageIndex:0,path:[]});
+  expect(invoke).toHaveBeenCalledWith('mtp_list_directory',{storageIndex:0,path:[],targetId});
+});
+test('an unbound connected MTP reply never becomes a usable phone connection', async () => {
+  host({mtp_status:()=>({connected:true,model:'Microsoft NVMe Direct Disk v2',storages:[{}]})});
+  const result=await createDesktopScanner()();
+  expect(result.mtp).toBeNull();
+  expect(result.directory.objects).toEqual([]);
+  expect(result.failures.map(f=>f.probe)).toContain('mtp');
+  expect(vi.mocked(invoke).mock.calls.some(([command])=>command==='mtp_list_directory')).toBe(false);
 });
