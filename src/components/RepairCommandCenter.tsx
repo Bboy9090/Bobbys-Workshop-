@@ -9,6 +9,7 @@ import {
   getWorkflowPolicyCatalog,
   scanAdbDevices,
   scanTransportDevices,
+  probeSamsungDownloadMode,
   chooseSamsungFirmwarePackages,
   inspectSamsungFirmwarePackages,
   buildSamsungFirmwarePlan,
@@ -23,6 +24,7 @@ import {
   getFirmwareChipsetCatalog,
   lookupFirmwareChipset,
   scanFirmwareLibrary,
+  getVerifiedFirmwareBundleArtifacts,
   chooseFirmwareManifest,
   inspectFirmwareManifest,
   compareFirmwareManifest,
@@ -59,6 +61,7 @@ import {
   type EdlProgrammerRecord,
   type UsbDeviceRecord,
   type TransportDevice,
+  type SamsungDownloadProbeReport,
   type SamsungFirmwareArchiveReport,
   type SamsungFlashPlan,
   type WorkflowPolicy,
@@ -118,6 +121,9 @@ export default function RepairCommandCenter({liveSnapshot}: {
   const [samsungFirmwareReports, setSamsungFirmwareReports] = useState<SamsungFirmwareArchiveReport[]>([]);
   const [samsungFlashPlan, setSamsungFlashPlan] = useState<SamsungFlashPlan | null>(null);
   const [samsungFirmwareBusy, setSamsungFirmwareBusy] = useState(false);
+  const [samsungProbe, setSamsungProbe] = useState<SamsungDownloadProbeReport | null>(null);
+  const [samsungProbeBusy, setSamsungProbeBusy] = useState(false);
+  const [selectedSamsungBundleDirectory, setSelectedSamsungBundleDirectory] = useState('');
   const [firmwareCatalog, setFirmwareCatalog] = useState<FirmwareChipsetProfile[]>([]);
   const [firmwareQuery, setFirmwareQuery] = useState('');
   const [firmwareMatches, setFirmwareMatches] = useState<FirmwareChipsetProfile[]>([]);
@@ -156,7 +162,7 @@ export default function RepairCommandCenter({liveSnapshot}: {
       label: `ADB · ${device.serial}${device.authorized ? ' · authorized' : ' · unauthorized'}`,
     }));
     const recoveryTargets = liveTransports
-      .filter((device) => ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download'].includes(device.mode))
+      .filter((device) => ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download', 'samsung-usb'].includes(device.mode))
       .map((device) => ({
         key: `usb:${device.deviceUid}`,
         kind: device.mode,
@@ -172,6 +178,13 @@ export default function RepairCommandCenter({liveSnapshot}: {
       return targets.length === 1 ? targets[0].key : '';
     });
   }, [targets,liveSnapshot?.checking]);
+
+  useEffect(() => {
+    setSelectedTargetKey((current) => {
+      if (current && targets.some((target) => target.key === current)) return current;
+      return targets.length === 1 ? targets[0].key : '';
+    });
+  }, [targets]);
 
   const selectedTarget = useMemo(
     () => liveSnapshot?.checking ? null : targets.find((target) => target.key === selectedTargetKey) || null,
@@ -201,6 +214,57 @@ export default function RepairCommandCenter({liveSnapshot}: {
     return liveAdb.find((device) => device.serial === serial) || null;
   }, [selectedTarget, liveAdb]);
 
+  const selectedSamsungTransport = useMemo(() => {
+    if (!selectedTarget || !['samsung-usb', 'samsung-download'].includes(selectedTarget.kind)) {
+      return null;
+    }
+    const deviceUid = selectedTarget.key.slice('usb:'.length);
+    return liveTransports.find((device) => device.deviceUid === deviceUid) || null;
+  }, [selectedTarget, liveTransports]);
+
+  const samsungPlanningTargetQualified = Boolean(
+    selectedSamsungTransport &&
+      (
+        selectedSamsungTransport.mode === 'samsung-download' ||
+        (
+          samsungProbe?.protocolQualified &&
+          samsungProbe.deviceUid === selectedSamsungTransport.deviceUid
+        )
+      ),
+  );
+
+  useEffect(() => {
+    setSamsungProbe(null);
+    setSamsungFirmwareReports([]);
+    setSamsungFlashPlan(null);
+  }, [selectedTargetKey]);
+
+  const samsungVerifiedBundles = useMemo(
+    () => (firmwareReport?.bundles ?? []).filter(
+      (bundle) =>
+        bundle.vendorHint === 'samsung' &&
+        bundle.planningReady &&
+        Boolean(bundle.packageFingerprint),
+    ),
+    [firmwareReport],
+  );
+
+  useEffect(() => {
+    setSelectedSamsungBundleDirectory((current) => {
+      if (current && samsungVerifiedBundles.some((bundle) => bundle.directory === current)) {
+        return current;
+      }
+      return samsungVerifiedBundles[0]?.directory ?? '';
+    });
+  }, [samsungVerifiedBundles]);
+
+  const selectedSamsungBundle = useMemo(
+    () => samsungVerifiedBundles.find(
+      (bundle) => bundle.directory === selectedSamsungBundleDirectory,
+    ) || null,
+    [samsungVerifiedBundles, selectedSamsungBundleDirectory],
+  );
+
   const applicableWorkflowIds = useMemo(() => {
     const ids = new Set<string>(['diagnostics.usb-scan']);
     switch (selectedTarget?.kind) {
@@ -218,11 +282,14 @@ export default function RepairCommandCenter({liveSnapshot}: {
       case 'samsung-download':
         ids.add('samsung.odin-plan');
         break;
+      case 'samsung-usb':
+        if (samsungPlanningTargetQualified) ids.add('samsung.odin-plan');
+        break;
       default:
         break;
     }
     return ids;
-  }, [selectedTarget]);
+  }, [selectedTarget, samsungPlanningTargetQualified]);
 
   const active = useMemo(
     () => catalog.filter((item) => item.activeInBobfwtools === true && workflowImplementation(item.id) !== null && applicableWorkflowIds.has(item.id)),
@@ -262,11 +329,17 @@ export default function RepairCommandCenter({liveSnapshot}: {
       };
     }
     if (workflow.id === 'samsung.odin-plan') {
-      return {
-        label: 'PLANNING READY',
-        detail: 'Selected Samsung Download Mode target can use stock firmware inspection and guarded planning.',
-        ready: false,
-      };
+      return samsungPlanningTargetQualified
+        ? {
+            label: 'PLANNING READY',
+            detail: 'Samsung Odin/Download Mode is protocol-qualified for stock firmware inspection and guarded planning; write execution remains qualification-locked.',
+            ready: true,
+          }
+        : {
+            label: 'PROTOCOL PROOF REQUIRED',
+            detail: 'Samsung USB attachment is not enough. Run the bounded read-only Odin/PIT probe first.',
+            ready: false,
+          };
     }
     if (workflow.id === 'calibration.backup') {
       return selectedAdbDevice?.authorized
@@ -285,6 +358,20 @@ export default function RepairCommandCenter({liveSnapshot}: {
     }
     return { label: 'UNAVAILABLE', detail: 'No device-specific executor readiness is established for this entry.', ready: false };
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    void scanFirmwareLibrary()
+      .then((report) => {
+        if (!cancelled) setFirmwareReport(report);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -314,7 +401,7 @@ export default function RepairCommandCenter({liveSnapshot}: {
         const availableTargetKeys = [
           ...adb.map((device) => `adb:${device.serial}`),
           ...transport
-            .filter((device) => ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download'].includes(device.mode))
+            .filter((device) => ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download', 'samsung-usb'].includes(device.mode))
             .map((device) => `usb:${device.deviceUid}`),
         ];
         setSelectedTargetKey((current) =>
@@ -371,8 +458,24 @@ export default function RepairCommandCenter({liveSnapshot}: {
     }
   };
 
+  const runSamsungDownloadProbe = async () => {
+    if (samsungProbeBusy || !selectedSamsungTransport) return;
+    setSamsungProbeBusy(true);
+    setSamsungProbe(null);
+    setSamsungFirmwareReports([]);
+    setSamsungFlashPlan(null);
+    setError(null);
+    try {
+      setSamsungProbe(await probeSamsungDownloadMode(selectedSamsungTransport.deviceUid));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSamsungProbeBusy(false);
+    }
+  };
+
   const inspectSamsungFirmware = async () => {
-    if (samsungFirmwareBusy || selectedTarget?.kind !== 'samsung-download') return;
+    if (samsungFirmwareBusy || !samsungPlanningTargetQualified) return;
     const paths = await chooseSamsungFirmwarePackages();
     if (!paths.length) return;
     setSamsungFirmwareBusy(true);
@@ -380,6 +483,43 @@ export default function RepairCommandCenter({liveSnapshot}: {
     setSamsungFlashPlan(null);
     setError(null);
     try {
+      const [reports, plan] = await Promise.all([
+        inspectSamsungFirmwarePackages(paths),
+        buildSamsungFirmwarePlan(paths),
+      ]);
+      setSamsungFirmwareReports(reports);
+      setSamsungFlashPlan(plan);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSamsungFirmwareBusy(false);
+    }
+  };
+
+  const inspectVerifiedSamsungBundle = async () => {
+    if (
+      samsungFirmwareBusy ||
+      !samsungPlanningTargetQualified ||
+      !selectedSamsungBundleDirectory
+    ) return;
+
+    const bundle = samsungVerifiedBundles.find(
+      (item) => item.directory === selectedSamsungBundleDirectory,
+    );
+    if (!bundle || !bundle.planningReady || !bundle.packageFingerprint) {
+      setError('The selected Samsung bundle is no longer provenance-valid and fingerprinted. Rescan the firmware library first.');
+      return;
+    }
+
+    setSamsungFirmwareBusy(true);
+    setSamsungFirmwareReports([]);
+    setSamsungFlashPlan(null);
+    setError(null);
+    try {
+      const paths = await getVerifiedFirmwareBundleArtifacts(bundle.directory);
+      if (!paths.length) {
+        throw new Error('The verified Samsung bundle no longer exposes planning artifacts.');
+      }
       const [reports, plan] = await Promise.all([
         inspectSamsungFirmwarePackages(paths),
         buildSamsungFirmwarePlan(paths),
@@ -1627,7 +1767,51 @@ export default function RepairCommandCenter({liveSnapshot}: {
         </div>
       </div>
 
-      {selectedTarget?.kind === 'samsung-download' && (
+      {selectedSamsungTransport && selectedSamsungTransport.mode === 'samsung-usb' && (
+        <div className="mt-4 rounded-lg border border-amber-900/60 bg-amber-950/10 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-400">
+                Samsung Download Mode protocol proof
+              </div>
+              <div className="mt-1 text-sm font-medium text-white">
+                Samsung USB is attached. Prove Odin mode with a bounded read-only PIT exchange.
+              </div>
+              <div className="mt-2 max-w-3xl text-xs leading-5 text-slate-400">
+                VID/PID and product strings are not enough. This probe runs only
+                <span className="mx-1 font-mono text-slate-300">heimdall print-pit --no-reboot</span>
+                against the one selected Samsung USB target, stops after the bounded timeout, and never flashes, repartitions, unlocks, or changes setup/FRP state.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => void runSamsungDownloadProbe()}
+              disabled={samsungProbeBusy}
+              className="rounded bg-amber-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 hover:bg-amber-600"
+            >
+              {samsungProbeBusy ? 'Probing…' : 'Run read-only Odin/PIT probe'}
+            </button>
+          </div>
+
+          {samsungProbe && (
+            <div className={samsungProbe.protocolQualified
+              ? 'mt-3 rounded border border-emerald-900/60 bg-emerald-950/20 p-3'
+              : 'mt-3 rounded border border-amber-900/60 bg-black/20 p-3'}>
+              <div className={samsungProbe.protocolQualified ? 'text-xs font-semibold text-emerald-300' : 'text-xs font-semibold text-amber-300'}>
+                {samsungProbe.protocolQualified ? 'ODIN/DOWNLOAD MODE PROTOCOL QUALIFIED' : 'DOWNLOAD MODE NOT YET QUALIFIED'}
+              </div>
+              <div className="mt-1 text-[11px] leading-5 text-slate-400">{samsungProbe.detail}</div>
+              <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-500">
+                <span>tool {samsungProbe.toolAvailable ? 'ready' : 'missing'}</span>
+                <span>PIT {samsungProbe.pitRead ? 'read' : 'not read'}</span>
+                <span>timeout {samsungProbe.timedOut ? 'yes' : 'no'}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {samsungPlanningTargetQualified && (
         <div className="mt-4 rounded-lg border border-blue-900/60 bg-blue-950/10 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -1645,6 +1829,73 @@ export default function RepairCommandCenter({liveSnapshot}: {
             >
               {samsungFirmwareBusy ? 'Inspecting…' : 'Choose & inspect stock packages'}
             </button>
+          </div>
+
+          <div className="mt-3 rounded border border-blue-900/50 bg-black/20 p-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="min-w-0 flex-1 text-[10px] uppercase tracking-wide text-slate-500">
+                Provenance-valid managed Samsung bundle
+                <select
+                  value={selectedSamsungBundleDirectory}
+                  onChange={(event) => {
+                    setSelectedSamsungBundleDirectory(event.target.value);
+                    setSamsungFirmwareReports([]);
+                    setSamsungFlashPlan(null);
+                  }}
+                  className="mt-1 w-full rounded border border-slate-800 bg-slate-950 px-3 py-2 text-xs normal-case text-white outline-none focus:border-blue-700"
+                >
+                  {!samsungVerifiedBundles.length && (
+                    <option value="">No verified Samsung bundle available</option>
+                  )}
+                  {samsungVerifiedBundles.map((bundle) => (
+                    <option key={bundle.directory} value={bundle.directory}>
+                      {(bundle.model || 'model unlabelled') + ' · ' + bundle.directory}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() => void inspectVerifiedSamsungBundle()}
+                disabled={samsungFirmwareBusy || !selectedSamsungBundle}
+                className="rounded border border-blue-700 px-3 py-2 text-xs font-semibold text-blue-200 disabled:opacity-30 hover:bg-blue-950/40"
+              >
+                {samsungFirmwareBusy ? 'Inspecting…' : 'Inspect verified managed bundle'}
+              </button>
+            </div>
+
+            {selectedSamsungBundle ? (
+              <div className="mt-3 grid gap-2 text-[10px] text-slate-500 md:grid-cols-2">
+                <div>
+                  <span className="text-slate-600">identity</span>
+                  <div className="mt-1 font-mono text-slate-300">
+                    {selectedSamsungBundle.model || 'model ?'} · {selectedSamsungBundle.board || 'board ?'} · {selectedSamsungBundle.sku || 'SKU ?'}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-600">source</span>
+                  <div className="mt-1 text-slate-300">
+                    {selectedSamsungBundle.sourceCategory || 'unknown'} · {selectedSamsungBundle.sourceReference || 'unlabelled source'}
+                  </div>
+                </div>
+                <div className="md:col-span-2">
+                  <span className="text-slate-600">package fingerprint</span>
+                  <div
+                    className="mt-1 break-all font-mono text-emerald-300"
+                    title={selectedSamsungBundle.packageFingerprint || ''}
+                  >
+                    {selectedSamsungBundle.packageFingerprint}
+                  </div>
+                </div>
+                <div className="md:col-span-2 text-amber-300">
+                  Package identity is verified. Live-device model/board/SKU identity is still a separate gate and is not inferred from this bundle.
+                </div>
+              </div>
+            ) : (
+              <div className="mt-2 text-[10px] text-slate-500">
+                No provenance-valid Samsung managed bundle yet. Build or import stock firmware provenance, then rescan the firmware library.
+              </div>
+            )}
           </div>
 
           {!!samsungFirmwareReports.length && (

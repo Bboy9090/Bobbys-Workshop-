@@ -949,6 +949,27 @@ function qualificationPacketForWorkflow(workflowId: string) {
       benchAction: 'Run one explicitly approved partition trial only; do not format, erase broad regions, or escalate around DA/auth requirements.',
       postVerification: ['Re-detect the same target and transport mode.', 'Verify the trial partition result against expected size/hash where readable.', 'Export audit bundle and reviewer decision before production authority.'],
     },
+    'samsung.odin-plan': {
+      targetEvidence: [
+        'Samsung Download Mode must be independently qualified from the USB descriptor; normal Samsung composite USB attachment is not sufficient.',
+        'Exact live model/board/SKU identity must be proven independently of the Download Mode product/platform string.',
+        'Selected AP/BL/CSC package set must come from a provenance-valid managed Samsung bundle with deterministic package fingerprint; CP is required only when the exact target/package includes a modem payload.',
+      ],
+      hostRequirements: [
+        'Stable Samsung Download/Odin transport with current BobFWTools build recorded.',
+        'Stock firmware inspection must complete without bypass/exploit artifacts and every selected package component must pass structural/hash checks.',
+      ],
+      dryRunArtifact: 'Export the guarded Samsung AP/BL/CP/CSC plan plus package fingerprint, exact target identity evidence, role map, preservation/destructive characteristics, and no-execution receipt.',
+      rollbackRequirement: 'Document the exact stock recovery path and preserve required user/calibration data before any qualification trial; no downgrade or cross-model package may be used.',
+      benchAction: 'Qualification may use only a designated exact-model bench target and the smallest approved stock write that proves transport/package correctness; do not unlock the bootloader, change FRP/setup-lock state, repartition with PIT, or broaden scope.',
+      postVerification: [
+        'Re-detect the same Samsung target and confirm expected Download Mode/boot transition.',
+        'Verify the written component using device/OEM-supported readback or post-boot version evidence where available.',
+        'Confirm model/board/SKU and bootloader revision remain compatible with the approved package.',
+        'Export the audit bundle and independent reviewer decision before any production write authority.',
+      ],
+    },
+
     'calibration.backup': {
       targetEvidence: ['Authorized device identity plus resolved calibration partition/block path from the allowlist.'],
       hostRequirements: ['Required root/service read access verified without bypassing device security controls.', 'Destination storage has enough capacity and is writable.'],
@@ -1014,6 +1035,7 @@ export type HardwareApprovalGate = {
   id: string;
   title: string;
   satisfied: boolean;
+  assessment: 'proven' | 'pending' | 'qualification-console';
   requiredForWrites: boolean;
   detail: string;
 };
@@ -1080,10 +1102,20 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
   );
   const qualcommBundles = verifiedBundles.filter((bundle) => bundle.vendorHint === 'qualcomm');
   const mediatekBundles = verifiedBundles.filter((bundle) => bundle.vendorHint === 'mediatek');
+  const samsungBundles = verifiedBundles.filter((bundle) => bundle.vendorHint === 'samsung');
   const authorizedAdb = adbDevices.filter((device) => device.authorized);
   const unmatchedDrivers = driverBindings.filter((binding) => binding.bindingState !== 'matched');
 
-  const samsungDevices = transportDevices.filter(isSamsungDownloadTransport);
+  const samsungAttachedDevices = transportDevices.filter((device) => {
+    const haystack = [
+      device.mode,
+      device.manufacturer ?? '',
+      device.productName ?? '',
+      device.vendorId.toString(16).padStart(4, '0'),
+    ].join(' ').toLowerCase();
+    return haystack.includes('samsung') || device.vendorId === 0x04e8;
+  });
+  const samsungDownloadDevices = samsungAttachedDevices.filter(isSamsungDownloadTransport);
   const qualcommRecovery = recoveryCandidates.filter((candidate) => candidate.workflow === 'qualcomm-edl');
   const mediatekRecovery = recoveryCandidates.filter((candidate) => candidate.workflow === 'mediatek-download');
 
@@ -1139,15 +1171,23 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       title: 'Samsung Download Mode',
       workflowPolicyId: 'samsung.odin-plan',
       physicallyQualified: null,
-      state: samsungDevices.length ? 'guided' : 'blocked',
+      state: samsungDownloadDevices.length ? 'guided' : 'blocked',
       automation: 'qualified-destructive',
-      detected: samsungDevices.length > 0,
-      applicableDevices: samsungDevices.map((device) => device.deviceUid),
-      firmwareCandidates: [],
-      blockers: samsungDevices.length
-        ? ['Stock Samsung package still requires exact-device package verification and physical qualification before flash execution.']
-        : ['No Samsung Download Mode transport detected.'],
-      nextSteps: ['Inspect stock AP/BL/CP/CSC packages, verify MD5/package structure, then route into qualification rather than auto-flashing.'],
+      detected: samsungDownloadDevices.length > 0,
+      applicableDevices: samsungDownloadDevices.map((device) => device.deviceUid),
+      firmwareCandidates: samsungBundles.map((bundle) => bundle.directory),
+      blockers: samsungDownloadDevices.length
+        ? [
+            ...(!samsungBundles.length ? ['No provenance-valid Samsung stock firmware bundle is available in the managed library.'] : []),
+            ...(samsungBundles.length ? [`${samsungBundles.length} Samsung stock bundle(s) are fingerprinted; exact live model/board/SKU must still match before qualification.`] : []),
+            'Physical qualification remains required before flash execution.',
+          ]
+        : samsungAttachedDevices.length
+          ? ['Samsung USB hardware is attached, but Download Mode has not been independently qualified. Re-enter Download Mode and rescan before firmware planning.']
+          : ['No Samsung Download Mode transport detected.'],
+      nextSteps: samsungDownloadDevices.length
+        ? ['Inspect stock AP/BL/CP/CSC packages, verify MD5/package structure, then route into qualification rather than auto-flashing.']
+        : ['Keep the tablet connected, enter Samsung Download Mode without unlocking the bootloader, then run the safe hardware audit again.'],
     },
     {
       id: 'qualcomm-edl',
@@ -1297,6 +1337,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'workstation',
       title: 'Workstation diagnostics ready',
       satisfied: workstation.readyForDiagnostics,
+      assessment: workstation.readyForDiagnostics ? 'proven' : 'pending',
       requiredForWrites: true,
       detail: workstation.readyForDiagnostics
         ? 'Required host tooling/workspace checks are satisfied.'
@@ -1306,6 +1347,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'driver-claim',
       title: 'Exact USB driver claim resolved',
       satisfied: !probeFailures.some(failure => failure.probe === 'drivers') && unmatchedDrivers.length === 0,
+      assessment: !probeFailures.some(failure => failure.probe === 'drivers') && unmatchedDrivers.length === 0 ? 'proven' : 'pending',
       requiredForWrites: true,
       detail: probeFailures.some(failure => failure.probe === 'drivers')
         ? 'Driver claim probe is unavailable; driver status is unverified.'
@@ -1317,22 +1359,25 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'device-identity',
       title: 'Exact hardware identity',
       satisfied: false,
+      assessment: 'qualification-console',
       requiredForWrites: true,
-      detail: 'Transport detection is not exact identity proof. This gate stays missing until one live target is explicitly locked to verified model/board/SKU evidence in the recovery handoff.',
+      detail: 'Transport detection is not exact identity proof. The safe hardware audit does not certify this gate; the recovery/qualification console must independently lock one live target to verified model/board/SKU evidence.',
     },
     {
       id: 'verified-firmware',
       title: 'Verified package + exact-device binding',
       satisfied: false,
+      assessment: 'qualification-console',
       requiredForWrites: true,
       detail: packageBoundFirmwareIndexed
-        ? `${verifiedBundles.length} planning-ready bundle(s) are indexed, but this gate stays missing until one package is bound to the independently proven live model/board/SKU and its deterministic fingerprint is revalidated for the recovery job.`
+        ? `${verifiedBundles.length} planning-ready bundle(s) are indexed. Exact-device binding is assessed in the recovery/qualification console, where the package fingerprint and independently proven live model/board/SKU are revalidated for the recovery job.`
         : 'No planning-ready firmware bundle with a deterministic package fingerprint is available.',
     },
     {
       id: 'recovery-job',
       title: 'Package-bound recovery job',
       satisfied: false,
+      assessment: 'qualification-console',
       requiredForWrites: true,
       detail: 'Satisfied only after a verified bundle is bound into a prepared recovery job whose job fingerprint validates.',
     },
@@ -1340,6 +1385,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'backup-rollback',
       title: 'Backup / rollback evidence',
       satisfied: false,
+      assessment: 'qualification-console',
       requiredForWrites: true,
       detail: 'Satisfied only after the target-specific backup/rollback path is exported and reviewable.',
     },
@@ -1347,6 +1393,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'qualification-dossier',
       title: 'Designated-device qualification dossier',
       satisfied: false,
+      assessment: 'qualification-console',
       requiredForWrites: true,
       detail: 'Must prove exact device, workstation, transport stability, authorized programmer/service evidence, and current executor build.',
     },
@@ -1354,6 +1401,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'bench-evidence',
       title: 'One-partition bench evidence',
       satisfied: false,
+      assessment: 'qualification-console',
       requiredForWrites: true,
       detail: 'Exactly one approved trial partition must complete with post-write verification before production authority.',
     },
@@ -1361,6 +1409,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'human-decision',
       title: 'Human qualification decision',
       satisfied: false,
+      assessment: 'qualification-console',
       requiredForWrites: true,
       detail: 'A reviewer decision must explicitly accept the physical qualification evidence.',
     },
@@ -1368,6 +1417,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'audit-bundle',
       title: 'Verified audit bundle',
       satisfied: false,
+      assessment: 'qualification-console',
       requiredForWrites: true,
       detail: 'The final audit bundle must recompute and match all qualification fingerprints.',
     },
@@ -1375,6 +1425,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'write-authority',
       title: 'Short-lived production write authority',
       satisfied: false,
+      assessment: 'qualification-console',
       requiredForWrites: true,
       detail: 'Production grant is intentionally unavailable until all prior hardware gates are satisfied.',
     },
@@ -1495,6 +1546,26 @@ export async function scanTransportDevices(): Promise<TransportDevice[]> {
   if (!isTauriRuntime()) return [];
   return invoke<TransportDevice[]>('bootforgeusb_transport_scan');
 }
+
+export type SamsungDownloadProbeReport = {
+  deviceUid: string;
+  toolAvailable: boolean;
+  samsungUsbPresent: boolean;
+  protocolQualified: boolean;
+  pitRead: boolean;
+  timedOut: boolean;
+  detail: string;
+  evidence: string[];
+};
+
+export async function probeSamsungDownloadMode(
+  deviceUid: string,
+): Promise<SamsungDownloadProbeReport> {
+  return invoke<SamsungDownloadProbeReport>('samsung_download_probe', {
+    deviceUid,
+  });
+}
+
 
 export type SamsungFirmwareEntry = {
   path: string;

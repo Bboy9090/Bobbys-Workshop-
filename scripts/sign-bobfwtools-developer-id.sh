@@ -15,7 +15,7 @@ fail() {
 [[ -n "$IDENTITY" ]] || fail "BOBFW_DEVELOPER_IDENTITY is not set"
 security find-identity -v -p codesigning | grep -F "$IDENTITY" >/dev/null || fail "requested signing identity is not available"
 
-rm -rf "$OUTPUT_APP"
+[[ ! -e "$OUTPUT_APP" && ! -L "$OUTPUT_APP" ]] || fail "output app must be a new isolated path"
 ditto "$SOURCE_APP" "$OUTPUT_APP"
 
 codesign \

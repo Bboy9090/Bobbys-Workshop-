@@ -1,0 +1,81 @@
+name: BobFWTools Windows and Linux Packages
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main-tool-kit, feat/bobfwtools-macos-foundation, integration/hardware-readiness-foundation-20261018]
+  push:
+    branches: [integration/hardware-readiness-foundation-20261018]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BOBFWTOOLS_SOURCE_REVISION: ${{ github.sha }}
+
+jobs:
+  packages:
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            name: windows-msi-nsis-unsigned
+            bundles: msi,nsis
+          - os: ubuntu-22.04
+            platform: linux
+            name: linux-appimage-deb-unsigned
+            bundles: appimage,deb
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux native build and accessibility dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential file libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev patchelf xvfb dbus-x11 python3-pyatspi at-spi2-core
+      - run: npm ci
+      - run: npm ci --prefix src-tauri/resources/server --ignore-scripts
+      - run: npm run verify:reality
+      - run: npm run lint
+      - run: npm run typecheck
+      - name: Repository and packaged API tests (Linux)
+        if: runner.os == 'Linux'
+        run: npm test
+      - name: Repository and packaged API tests (Windows)
+        if: runner.os == 'Windows'
+        # POSIX shell command fixtures run in the full Linux and macOS suites.
+        # All portable tests and the actual packaged API run here.
+        run: npm test -- --exclude tests/macos-release-receipt.test.mjs --exclude tests/samsung-readonly-detect.test.ts
+      - run: npm run test:workflows
+      - run: cargo test --manifest-path libs/bootforgeusb/Cargo.toml --locked
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features --features qualified-flash
+      - name: Build standard platform installers
+        run: npx tauri build --bundles ${{ matrix.bundles }}
+      - name: Inspect installer copies and smoke native GUI
+        run: node scripts/qualify-platform-packages.mjs ${{ matrix.platform }} "${{ runner.temp }}/BobFWTools-package-evidence"
+      - name: Retain unsigned packages and qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.name }}
+          path: |
+            ${{ runner.temp }}/BobFWTools-package-evidence/*.msi
+            ${{ runner.temp }}/BobFWTools-package-evidence/*.exe
+            ${{ runner.temp }}/BobFWTools-package-evidence/*.AppImage
+            ${{ runner.temp }}/BobFWTools-package-evidence/*.deb
+            ${{ runner.temp }}/BobFWTools-package-evidence/*.json
+            ${{ runner.temp }}/BobFWTools-package-evidence/*.md
+            ${{ runner.temp }}/BobFWTools-package-evidence/*.log
+            ${{ runner.temp }}/BobFWTools-package-evidence/*.txt
+          if-no-files-found: warn

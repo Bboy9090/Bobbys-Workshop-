@@ -277,9 +277,56 @@ describe('Device-aware mode capability matrix', () => {
     expect(adb).toContain('BROM/preloader entry is intentionally not exposed as a generic ADB command');
 
     expect(desktop).toContain('getAdbModeCapabilities');
+    expect(desktop).toContain('samsungAttachedDevices.filter(isSamsungDownloadTransport)');
+    expect(desktop).toContain('Samsung USB hardware is attached, but Download Mode has not been independently qualified');
     expect(app).toContain('adbModeCapabilities[device.serial]?.download');
     expect(app).toContain('Qualcomm EDL: device/OEM-specific entry required');
     expect(app).toContain('MediaTek BROM/Preloader: device-specific or physical entry required');
+  });
+});
+
+
+describe('Samsung Odin read-only protocol proof', () => {
+  it('does not promote composite Samsung USB to Download Mode without a bounded PIT handshake', () => {
+    const backend = read('src-tauri/src/samsung_probe.rs');
+    const main = read('src-tauri/src/main.rs');
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(backend).toContain('print-pit');
+    expect(backend).toContain('--no-reboot');
+    expect(backend).toContain('PROBE_TIMEOUT');
+    expect(backend).toContain('samsung.len() != 1');
+    expect(backend).toContain('protocol_qualified');
+    expect(backend).not.toContain('heimdall flash');
+    expect(backend).not.toContain('--repartition');
+
+    expect(main).toContain('samsung_download_probe');
+    expect(desktop).toContain('probeSamsungDownloadMode');
+    expect(ui).toContain("'samsung-usb'");
+    expect(ui).toContain('Run read-only Odin/PIT probe');
+    expect(ui).toContain('ODIN/DOWNLOAD MODE PROTOCOL QUALIFIED');
+    expect(ui).toContain('samsungPlanningTargetQualified');
+  });
+});
+
+
+describe('Samsung qualified firmware handoff', () => {
+  it('uses provenance-valid managed bundles without weakening live identity or physical qualification gates', () => {
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(desktop).toContain("'samsung.odin-plan'");
+    expect(desktop).toContain('normal Samsung composite USB attachment is not sufficient');
+    expect(desktop).toContain('provenance-valid managed Samsung bundle');
+    expect(desktop).toContain('do not unlock the bootloader, change FRP/setup-lock state');
+
+    expect(ui).toContain('getVerifiedFirmwareBundleArtifacts');
+    expect(ui).toContain('inspectVerifiedSamsungBundle');
+    expect(ui).toContain('selectedSamsungBundleDirectory');
+    expect(ui).toContain('Inspect verified managed bundle');
+    expect(ui).toContain('MODEL MATCH NOT CERTIFIED');
+    expect(ui).toContain('Live-device model/board/SKU identity is still a separate gate');
   });
 });
 
@@ -903,6 +950,7 @@ describe('One-click hardware flow readiness orchestrator', () => {
 
   it('keeps destructive approval as provable gates instead of an automatic bypass', () => {
     const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/HardwareFlowReadiness.tsx');
 
     for (const gate of [
       'workstation',
@@ -923,7 +971,9 @@ describe('One-click hardware flow readiness orchestrator', () => {
     expect(desktop).toContain("id: 'device-identity'");
     expect(desktop).toContain('Transport detection is not exact identity proof.');
     expect(desktop).toContain("title: 'Verified package + exact-device binding'");
-    expect(desktop).toContain('this gate stays missing until one package is bound to the independently proven live model/board/SKU');
+    expect(desktop).toContain('Exact-device binding is assessed in the recovery/qualification console');
+    expect(desktop).toContain("assessment: 'qualification-console'");
+    expect(ui).toContain('QUALIFICATION CONSOLE');
     expect(desktop).toContain('satisfied: false');
   });
 });
