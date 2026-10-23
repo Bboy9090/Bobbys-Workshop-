@@ -270,3 +270,5 @@ mod python_api {
 }
 
 pub mod mtp;
+
+pub mod device_state;
