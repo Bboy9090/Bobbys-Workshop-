@@ -1030,6 +1030,7 @@ export type HardwareApprovalGate = {
   id: string;
   title: string;
   satisfied: boolean;
+  assessment: 'proven' | 'pending' | 'qualification-console';
   requiredForWrites: boolean;
   detail: string;
 };
@@ -1304,6 +1305,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'workstation',
       title: 'Workstation diagnostics ready',
       satisfied: workstation.readyForDiagnostics,
+      assessment: workstation.readyForDiagnostics ? 'proven' : 'pending',
       requiredForWrites: true,
       detail: workstation.readyForDiagnostics
         ? 'Required host tooling/workspace checks are satisfied.'
@@ -1313,6 +1315,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'driver-claim',
       title: 'Exact USB driver claim resolved',
       satisfied: unmatchedDrivers.length === 0,
+      assessment: unmatchedDrivers.length === 0 ? 'proven' : 'pending',
       requiredForWrites: true,
       detail: unmatchedDrivers.length
         ? `${unmatchedDrivers.length} present Windows USB interface(s) still have an unresolved driver claim.`
@@ -1322,22 +1325,25 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'device-identity',
       title: 'Exact hardware identity',
       satisfied: false,
+      assessment: 'qualification-console',
       requiredForWrites: true,
-      detail: 'Transport detection is not exact identity proof. This gate stays missing until one live target is explicitly locked to verified model/board/SKU evidence in the recovery handoff.',
+      detail: 'Transport detection is not exact identity proof. The safe hardware audit does not certify this gate; the recovery/qualification console must independently lock one live target to verified model/board/SKU evidence.',
     },
     {
       id: 'verified-firmware',
       title: 'Verified package + exact-device binding',
       satisfied: false,
+      assessment: 'qualification-console',
       requiredForWrites: true,
       detail: packageBoundFirmwareIndexed
-        ? `${verifiedBundles.length} planning-ready bundle(s) are indexed, but this gate stays missing until one package is bound to the independently proven live model/board/SKU and its deterministic fingerprint is revalidated for the recovery job.`
+        ? `${verifiedBundles.length} planning-ready bundle(s) are indexed. Exact-device binding is assessed in the recovery/qualification console, where the package fingerprint and independently proven live model/board/SKU are revalidated for the recovery job.`
         : 'No planning-ready firmware bundle with a deterministic package fingerprint is available.',
     },
     {
       id: 'recovery-job',
       title: 'Package-bound recovery job',
       satisfied: false,
+      assessment: 'qualification-console',
       requiredForWrites: true,
       detail: 'Satisfied only after a verified bundle is bound into a prepared recovery job whose job fingerprint validates.',
     },
@@ -1345,6 +1351,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'backup-rollback',
       title: 'Backup / rollback evidence',
       satisfied: false,
+      assessment: 'qualification-console',
       requiredForWrites: true,
       detail: 'Satisfied only after the target-specific backup/rollback path is exported and reviewable.',
     },
@@ -1352,6 +1359,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'qualification-dossier',
       title: 'Designated-device qualification dossier',
       satisfied: false,
+      assessment: 'qualification-console',
       requiredForWrites: true,
       detail: 'Must prove exact device, workstation, transport stability, authorized programmer/service evidence, and current executor build.',
     },
@@ -1359,6 +1367,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'bench-evidence',
       title: 'One-partition bench evidence',
       satisfied: false,
+      assessment: 'qualification-console',
       requiredForWrites: true,
       detail: 'Exactly one approved trial partition must complete with post-write verification before production authority.',
     },
@@ -1366,6 +1375,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'human-decision',
       title: 'Human qualification decision',
       satisfied: false,
+      assessment: 'qualification-console',
       requiredForWrites: true,
       detail: 'A reviewer decision must explicitly accept the physical qualification evidence.',
     },
@@ -1373,6 +1383,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'audit-bundle',
       title: 'Verified audit bundle',
       satisfied: false,
+      assessment: 'qualification-console',
       requiredForWrites: true,
       detail: 'The final audit bundle must recompute and match all qualification fingerprints.',
     },
@@ -1380,6 +1391,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       id: 'write-authority',
       title: 'Short-lived production write authority',
       satisfied: false,
+      assessment: 'qualification-console',
       requiredForWrites: true,
       detail: 'Production grant is intentionally unavailable until all prior hardware gates are satisfied.',
     },
