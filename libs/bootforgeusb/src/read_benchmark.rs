@@ -125,7 +125,12 @@ pub fn mtp_get_device_info(bus: u8, address: u8, interface: u8, timeout_ms: u64)
     if handle.active_configuration().map_err(|e| e.to_string())? != pair.configuration {
         return Err("active USB configuration changed".into());
     }
-    handle.claim_interface(interface).map_err(|e| format!("imaging interface claim failed (macOS may own it): {e}"))?;
+    handle.claim_interface(interface).map_err(|e| {
+        #[cfg(target_os = "macos")]
+        { format!("imaging interface claim failed: {e}. macOS may have a matching DriverKit extension (SamsungComposite/SamsungMTP). Check systemextensionsctl list and System Settings > General > Login Items & Extensions > Driver Extensions; disable the third-party Samsung driver through the supported macOS UI only if appropriate, then unplug/replug and rescan. Do not force-unload drivers or disable system security.") }
+        #[cfg(not(target_os = "macos"))]
+        { format!("imaging interface claim failed: {e}") }
+    })?;
     let result = (|| {
         let timeout = Duration::from_millis(timeout_ms);
         let request = mtp::operation(mtp::GET_DEVICE_INFO, 1, &[])?;
