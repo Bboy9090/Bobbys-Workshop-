@@ -50,6 +50,10 @@ pub fn benchmark_bulk_in(bus: u8, address: u8, interface: Option<u8>, reads: u32
         .ok_or("selected USB interface descriptor missing")?;
     let interface_class = interface_descriptor.class_code();
     let interface_subclass = interface_descriptor.sub_class_code();
+    let interface_protocol = interface_descriptor.protocol_code();
+    if (interface_class, interface_subclass, interface_protocol) != (0x06, 0x01, 0x01) {
+        return Err(format!("interface {} is class {:02x}/{:02x}/{:02x}, not MTP imaging 06/01/01; refusing MTP command", pair.interface, interface_class, interface_subclass, interface_protocol));
+    }
     let handle = device.open().map_err(|e| format!("USB open failed: {e}"))?;
     // Never detach a kernel driver automatically or change device configuration.
     let active = handle.active_configuration().map_err(|e| e.to_string())?;
