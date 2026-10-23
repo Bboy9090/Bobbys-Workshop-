@@ -25,6 +25,7 @@ enum Commands {
     ReadBenchmark {
         #[arg(long)] bus: u8,
         #[arg(long)] address: u8,
+        #[arg(long)] interface: Option<u8>,
         #[arg(long, default_value_t = 16)] reads: u32,
         #[arg(long, default_value_t = 1000)] timeout_ms: u64,
     },
@@ -86,8 +87,8 @@ fn main() {
                 scan().map(|v| json(&v)).map_err(|e| e.to_string())
             }
         }
-        Commands::ReadBenchmark { bus, address, reads, timeout_ms } =>
-            bootforgeusb::read_benchmark::benchmark_bulk_in(bus, address, reads, timeout_ms)
+        Commands::ReadBenchmark { bus, address, interface, reads, timeout_ms } =>
+            bootforgeusb::read_benchmark::benchmark_bulk_in(bus, address, interface, reads, timeout_ms)
                 .map(|result| json(&result)),
         Commands::Inspect { packages } => firmware::inspect_many(packages)
             .map(|v| json(&v))
