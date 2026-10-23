@@ -286,6 +286,26 @@ describe('Device-aware mode capability matrix', () => {
 });
 
 
+describe('Samsung qualified firmware handoff', () => {
+  it('uses provenance-valid managed bundles without weakening live identity or physical qualification gates', () => {
+    const desktop = read('src/lib/desktop.ts');
+    const ui = read('src/components/RepairCommandCenter.tsx');
+
+    expect(desktop).toContain("'samsung.odin-plan'");
+    expect(desktop).toContain('normal Samsung composite USB attachment is not sufficient');
+    expect(desktop).toContain('provenance-valid managed Samsung bundle');
+    expect(desktop).toContain('do not unlock the bootloader, change FRP/setup-lock state');
+
+    expect(ui).toContain('getVerifiedFirmwareBundleArtifacts');
+    expect(ui).toContain('inspectVerifiedSamsungBundle');
+    expect(ui).toContain('selectedSamsungBundleDirectory');
+    expect(ui).toContain('Inspect verified managed bundle');
+    expect(ui).toContain('MODEL MATCH NOT CERTIFIED');
+    expect(ui).toContain('Live-device model/board/SKU identity is still a separate gate');
+  });
+});
+
+
 describe('Mode control stale-state protection', () => {
   it('clears prior transition receipts and offers per-device re-scan after manual entry', () => {
     const app = read('src/App.tsx');
