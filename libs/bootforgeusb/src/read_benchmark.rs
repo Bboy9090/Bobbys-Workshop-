@@ -14,6 +14,8 @@ pub struct ReadBenchmark {
     pub address: u8,
     pub endpoint: u8,
     pub interface: u8,
+    pub interface_class: u8,
+    pub interface_subclass: u8,
     pub chunk_bytes: usize,
     pub requested_reads: u32,
     pub completed_reads: u32,
@@ -42,6 +44,12 @@ pub fn benchmark_bulk_in(bus: u8, address: u8, interface: Option<u8>, reads: u32
     let device = context.devices().map_err(|e| e.to_string())?.iter()
         .find(|d| d.bus_number() == bus && d.address() == address)
         .ok_or("target disconnected before open")?;
+    let descriptor = device.config_descriptor(pair.configuration - 1).map_err(|e| e.to_string())?;
+    let interface_descriptor = descriptor.interfaces().flat_map(|iface| iface.descriptors())
+        .find(|desc| desc.interface_number() == pair.interface && desc.setting_number() == pair.alternate_setting)
+        .ok_or("selected USB interface descriptor missing")?;
+    let interface_class = interface_descriptor.class_code();
+    let interface_subclass = interface_descriptor.sub_class_code();
     let handle = device.open().map_err(|e| format!("USB open failed: {e}"))?;
     // Never detach a kernel driver automatically or change device configuration.
     let active = handle.active_configuration().map_err(|e| e.to_string())?;
@@ -72,7 +80,7 @@ pub fn benchmark_bulk_in(bus: u8, address: u8, interface: Option<u8>, reads: u32
     handle.release_interface(pair.interface).ok();
     let rate = completed_bytes_per_second(completed_bytes, elapsed);
     Ok(ReadBenchmark {
-        bus, address, endpoint: pair.in_address, interface: pair.interface, chunk_bytes: config.chunk_bytes,
+        bus, address, endpoint: pair.in_address, interface: pair.interface, interface_class, interface_subclass, chunk_bytes: config.chunk_bytes,
         requested_reads: reads, completed_reads, completed_bytes,
         elapsed_seconds: elapsed.as_secs_f64(),
         bytes_per_second: rate,
