@@ -148,6 +148,8 @@ fn ensure_firmware_root() -> Result<PathBuf, String> {
         .map_err(|e| format!("failed creating Qualcomm firmware directory: {e}"))?;
     fs::create_dir_all(root.join("mediatek"))
         .map_err(|e| format!("failed creating MediaTek firmware directory: {e}"))?;
+    fs::create_dir_all(root.join("samsung"))
+        .map_err(|e| format!("failed creating Samsung firmware directory: {e}"))?;
     fs::create_dir_all(root.join("quarantine"))
         .map_err(|e| format!("failed creating firmware quarantine directory: {e}"))?;
     Ok(root)
@@ -215,6 +217,23 @@ fn classify(path: &Path) -> (String, String) {
         return ("unknown".into(), "provenance-manifest".into());
     }
 
+    let samsung_component = if name.starts_with("ap_") && (name.ends_with(".tar") || name.ends_with(".tar.md5")) {
+        Some("samsung-ap")
+    } else if name.starts_with("bl_") && (name.ends_with(".tar") || name.ends_with(".tar.md5")) {
+        Some("samsung-bl")
+    } else if name.starts_with("cp_") && (name.ends_with(".tar") || name.ends_with(".tar.md5")) {
+        Some("samsung-cp")
+    } else if (name.starts_with("csc_") || name.starts_with("home_csc_"))
+        && (name.ends_with(".tar") || name.ends_with(".tar.md5"))
+    {
+        Some("samsung-csc")
+    } else {
+        None
+    };
+    if let Some(kind) = samsung_component {
+        return ("samsung".into(), kind.into());
+    }
+
     if (ext == "elf" || ext == "mbn")
         && (name.contains("firehose") || name.starts_with("prog_"))
     {
@@ -271,6 +290,8 @@ fn classify(path: &Path) -> (String, String) {
             "qualcomm"
         } else if full.contains("mediatek") || full.contains("mtk") {
             "mediatek"
+        } else if full.contains("samsung") {
+            "samsung"
         } else {
             "unknown"
         };
@@ -425,8 +446,8 @@ fn assess_provenance(root: &Path, directory: &str, entries: &[FirmwareLibraryEnt
             manifest.schema, PROVENANCE_SCHEMA
         ));
     }
-    if !matches!(manifest.vendor.trim().to_ascii_lowercase().as_str(), "qualcomm" | "mediatek") {
-        assessment.warnings.push("Provenance vendor must be qualcomm or mediatek.".into());
+    if !matches!(manifest.vendor.trim().to_ascii_lowercase().as_str(), "qualcomm" | "mediatek" | "samsung") {
+        assessment.warnings.push("Provenance vendor must be qualcomm, mediatek, or samsung.".into());
     }
     if manifest.chipset_family.trim().is_empty()
         || manifest.oem.trim().is_empty()
@@ -452,11 +473,9 @@ fn assess_provenance(root: &Path, directory: &str, entries: &[FirmwareLibraryEnt
         assessment.warnings.push("Provenance manifest must hash-bind at least one package artifact.".into());
     }
 
-    let expected_chipset = format!(
-        "{}:{}",
-        manifest.vendor.trim().to_ascii_lowercase(),
-        manifest.chipset_family.trim()
-    );
+    let manifest_vendor = manifest.vendor.trim().to_ascii_lowercase();
+    let chipset_family = manifest.chipset_family.trim();
+    let expected_chipset = format!("{}:{}", manifest_vendor, chipset_family);
     let observed_chipsets = entries
         .iter()
         .filter(|entry| {
@@ -470,15 +489,27 @@ fn assess_provenance(root: &Path, directory: &str, entries: &[FirmwareLibraryEnt
         .flat_map(|entry| entry.chipset_matches.iter())
         .cloned()
         .collect::<BTreeSet<_>>();
-    if !observed_chipsets.is_empty() && !observed_chipsets.contains(&expected_chipset) {
+    let chipset_matches_manifest = if manifest_vendor == "samsung" {
+        // Samsung is the package/OEM vendor, not necessarily the silicon vendor.
+        // Accept independently observed Qualcomm/Exynos/MediaTek-style catalog
+        // evidence when the family itself matches the provenance declaration.
+        observed_chipsets.iter().any(|observed| {
+            observed
+                .rsplit_once(':')
+                .map(|(_, family)| family.eq_ignore_ascii_case(chipset_family))
+                .unwrap_or(false)
+        })
+    } else {
+        observed_chipsets.contains(&expected_chipset)
+    };
+    if !observed_chipsets.is_empty() && !chipset_matches_manifest {
         assessment.warnings.push(format!(
-            "Provenance chipset {} does not match observed package chipset evidence ({}).",
-            expected_chipset,
-            observed_chipsets.into_iter().collect::<Vec<_>>().join(", ")
+            "Provenance chipset family {} does not match observed package chipset evidence ({}).",
+            chipset_family,
+            observed_chipsets.iter().cloned().collect::<Vec<_>>().join(", ")
         ));
     }
 
-    let manifest_vendor = manifest.vendor.trim().to_ascii_lowercase();
     let observed_vendors = entries
         .iter()
         .filter(|entry| {
@@ -648,6 +679,7 @@ fn summarize_bundles(root: &Path, entries: &[FirmwareLibraryEntry]) -> Vec<Firmw
             let required: &[&str] = match vendor_hint.as_str() {
                 "qualcomm" => &["firehose-programmer", "rawprogram-manifest"],
                 "mediatek" => &["scatter-manifest", "download-agent"],
+                "samsung" => &["samsung-ap", "samsung-bl", "samsung-csc"],
                 _ => &[],
             };
 
@@ -657,13 +689,19 @@ fn summarize_bundles(root: &Path, entries: &[FirmwareLibraryEntry]) -> Vec<Firmw
                 .map(|kind| (*kind).to_string())
                 .collect::<Vec<_>>();
 
-            let vendor_chipsets = acc
-                .chipsets
-                .iter()
-                .filter(|chipset| chipset.starts_with(&format!("{vendor_hint}:")))
-                .cloned()
-                .collect::<BTreeSet<_>>();
-            let chipset_conflict = matches!(vendor_hint.as_str(), "qualcomm" | "mediatek")
+            let vendor_chipsets = if vendor_hint == "samsung" {
+                acc.chipsets
+                    .iter()
+                    .filter_map(|chipset| chipset.rsplit_once(':').map(|(_, family)| family.to_string()))
+                    .collect::<BTreeSet<_>>()
+            } else {
+                acc.chipsets
+                    .iter()
+                    .filter(|chipset| chipset.starts_with(&format!("{vendor_hint}:")))
+                    .cloned()
+                    .collect::<BTreeSet<_>>()
+            };
+            let chipset_conflict = matches!(vendor_hint.as_str(), "qualcomm" | "mediatek" | "samsung")
                 && vendor_chipsets.len() > 1;
 
             let provenance = assess_provenance(root, &directory, entries);
@@ -687,7 +725,7 @@ fn summarize_bundles(root: &Path, entries: &[FirmwareLibraryEntry]) -> Vec<Firmw
                 warnings.push("Bundle contains blocked bypass/exploit-marked artifacts and is excluded from planning.".into());
             }
             if vendor_hint == "mixed" {
-                warnings.push("Directory mixes Qualcomm and MediaTek artifacts; split it into vendor/model-specific folders before planning.".into());
+                warnings.push("Directory mixes firmware artifacts from multiple vendors; split it into vendor/model-specific folders before planning.".into());
             }
 
             let package_fingerprint = bundle_package_fingerprint(&directory, entries);
@@ -702,7 +740,7 @@ fn summarize_bundles(root: &Path, entries: &[FirmwareLibraryEntry]) -> Vec<Firmw
                 blocked: acc.blocked,
                 planning_ready: !acc.blocked
                     && !chipset_conflict
-                    && matches!(vendor_hint.as_str(), "qualcomm" | "mediatek")
+                    && matches!(vendor_hint.as_str(), "qualcomm" | "mediatek" | "samsung")
                     && missing_required.is_empty()
                     && provenance.present
                     && provenance.valid
@@ -741,8 +779,8 @@ pub fn firmware_provenance_write(input: FirmwareProvenanceWriteInput) -> Result<
     }
 
     let vendor = input.vendor.trim().to_ascii_lowercase();
-    if !matches!(vendor.as_str(), "qualcomm" | "mediatek") {
-        return Err("vendor must be qualcomm or mediatek".into());
+    if !matches!(vendor.as_str(), "qualcomm" | "mediatek" | "samsung") {
+        return Err("vendor must be qualcomm, mediatek, or samsung".into());
     }
     let source_category = input.source_category.trim().to_ascii_lowercase();
     if !matches!(source_category.as_str(), "official-oem" | "authorized-service") {
@@ -926,6 +964,8 @@ pub fn firmware_library_scan() -> Result<FirmwareLibraryReport, String> {
         .map_err(|e| format!("failed creating Qualcomm firmware directory: {e}"))?;
     fs::create_dir_all(root.join("mediatek"))
         .map_err(|e| format!("failed creating MediaTek firmware directory: {e}"))?;
+    fs::create_dir_all(root.join("samsung"))
+        .map_err(|e| format!("failed creating Samsung firmware directory: {e}"))?;
     fs::create_dir_all(root.join("quarantine"))
         .map_err(|e| format!("failed creating firmware quarantine directory: {e}"))?;
 
@@ -1175,6 +1215,97 @@ mod tests {
             .warnings
             .iter()
             .any(|warning| warning.contains("multiple qualcomm chipset families")));
+    }
+
+    #[test]
+    fn classifies_samsung_odin_components() {
+        for (name, kind) in [
+            ("AP_TESTXXU4CVI1.tar.md5", "samsung-ap"),
+            ("BL_TESTXXU4CVI1.tar.md5", "samsung-bl"),
+            ("CP_T875XXU4CVI1.tar.md5", "samsung-cp"),
+            ("CSC_OMC_OXM_TESTOXM4CVI1.tar.md5", "samsung-csc"),
+            ("HOME_CSC_OMC_OXM_TESTOXM4CVI1.tar.md5", "samsung-csc"),
+        ] {
+            let (vendor, observed_kind) = classify(Path::new(&format!("samsung/SM-T870/{name}")));
+            assert_eq!(vendor, "samsung");
+            assert_eq!(observed_kind, kind);
+        }
+    }
+
+    #[test]
+    fn samsung_stock_bundle_requires_ap_bl_csc_and_exact_provenance() {
+        let root = std::env::temp_dir().join(format!(
+            "bobfwtools-samsung-provenance-test-{}",
+            std::process::id()
+        ));
+        let directory = root.join("samsung/SM-TEST/US");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(
+            directory.join(PROVENANCE_MANIFEST_NAME),
+            r#"{
+              "schema":"com.bobbyblanco.bobfwtools.firmware-provenance.v1",
+              "vendor":"samsung",
+              "chipsetFamily":"SM6150",
+              "oem":"Samsung",
+              "model":"SM-TEST",
+              "board":"testboard",
+              "sku":"SM-TEST",
+              "region":"US",
+              "carrier":"wifi",
+              "buildVersion":"TESTXXU4CVI1",
+              "bootloaderRevision":"4",
+              "storage":"ufs",
+              "sourceCategory":"official-oem",
+              "sourceReference":"Samsung stock firmware package",
+              "artifacts":[
+                {"relativePath":"AP_TESTXXU4CVI1.tar.md5","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+                {"relativePath":"BL_TESTXXU4CVI1.tar.md5","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+                {"relativePath":"CSC_OMC_OXM_TESTOXM4CVI1.tar.md5","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}
+              ]
+            }"#,
+        ).unwrap();
+
+        let make = |name: &str, kind: &str, sha: char| FirmwareLibraryEntry {
+            path: directory.join(name).display().to_string(),
+            relative_path: format!("samsung/SM-TEST/US/{name}"),
+            name: name.into(),
+            bytes: 1,
+            sha256: sha.to_string().repeat(64),
+            modified_unix_ms: None,
+            vendor_hint: "samsung".into(),
+            artifact_kind: kind.into(),
+            chipset_matches: vec!["qualcomm:SM6150".into()],
+            blocked: false,
+            eligible_for_planning: true,
+            warnings: vec![],
+        };
+        let entries = vec![
+            make("AP_TESTXXU4CVI1.tar.md5", "samsung-ap", 'a'),
+            make("BL_TESTXXU4CVI1.tar.md5", "samsung-bl", 'b'),
+            make("CSC_OMC_OXM_TESTOXM4CVI1.tar.md5", "samsung-csc", 'c'),
+            FirmwareLibraryEntry {
+                path: directory.join(PROVENANCE_MANIFEST_NAME).display().to_string(),
+                relative_path: format!("samsung/SM-TEST/US/{PROVENANCE_MANIFEST_NAME}"),
+                name: PROVENANCE_MANIFEST_NAME.into(),
+                bytes: 1,
+                sha256: "d".repeat(64),
+                modified_unix_ms: None,
+                vendor_hint: "unknown".into(),
+                artifact_kind: "provenance-manifest".into(),
+                chipset_matches: vec![],
+                blocked: false,
+                eligible_for_planning: true,
+                warnings: vec![],
+            },
+        ];
+
+        let bundles = summarize_bundles(&root, &entries);
+        assert_eq!(bundles.len(), 1);
+        assert!(bundles[0].planning_ready);
+        assert!(bundles[0].missing_required.is_empty());
+        assert_eq!(bundles[0].vendor_hint, "samsung");
+        assert_eq!(bundles[0].model.as_deref(), Some("SM-TEST"));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

@@ -1067,6 +1067,7 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
   );
   const qualcommBundles = verifiedBundles.filter((bundle) => bundle.vendorHint === 'qualcomm');
   const mediatekBundles = verifiedBundles.filter((bundle) => bundle.vendorHint === 'mediatek');
+  const samsungBundles = verifiedBundles.filter((bundle) => bundle.vendorHint === 'samsung');
   const authorizedAdb = adbDevices.filter((device) => device.authorized);
   const unmatchedDrivers = driverBindings.filter((binding) => binding.bindingState !== 'matched');
 
@@ -1141,9 +1142,13 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       automation: 'qualified-destructive',
       detected: samsungDownloadDevices.length > 0,
       applicableDevices: samsungDownloadDevices.map((device) => device.deviceUid),
-      firmwareCandidates: [],
+      firmwareCandidates: samsungBundles.map((bundle) => bundle.directory),
       blockers: samsungDownloadDevices.length
-        ? ['Stock Samsung package still requires exact-device package verification and physical qualification before flash execution.']
+        ? [
+            ...(!samsungBundles.length ? ['No provenance-valid Samsung stock firmware bundle is available in the managed library.'] : []),
+            ...(samsungBundles.length ? [`${samsungBundles.length} Samsung stock bundle(s) are fingerprinted; exact live model/board/SKU must still match before qualification.`] : []),
+            'Physical qualification remains required before flash execution.',
+          ]
         : samsungAttachedDevices.length
           ? ['Samsung USB hardware is attached, but Download Mode has not been independently qualified. Re-enter Download Mode and rescan before firmware planning.']
           : ['No Samsung Download Mode transport detected.'],
