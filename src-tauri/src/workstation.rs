@@ -69,7 +69,7 @@ fn managed_tool_candidates(program: &str) -> Vec<PathBuf> {
     }
 }
 
-fn resolve_command(program: &str, version_args: &[&str]) -> Option<PathBuf> {
+pub(crate) fn resolve_command(program: &str, version_args: &[&str]) -> Option<PathBuf> {
     let path_program = PathBuf::from(program);
     if command_works(&path_program, version_args) {
         return Some(path_program);
@@ -137,6 +137,7 @@ pub fn workstation_readiness() -> WorkstationReadiness {
     let tool_specs = [
         ("adb", &["version"][..], "Android Debug Bridge", true),
         ("fastboot", &["--version"][..], "Android Fastboot", true),
+        ("heimdall", &["version"][..], "Samsung Heimdall read-only Download Mode probe", false),
         ("lz4", &["--version"][..], "LZ4 firmware decompression", false),
         ("simg2img", &["--help"][..], "Android sparse-image conversion", false),
     ];
