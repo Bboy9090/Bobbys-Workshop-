@@ -944,6 +944,27 @@ function qualificationPacketForWorkflow(workflowId: string) {
       benchAction: 'Run one explicitly approved partition trial only; do not format, erase broad regions, or escalate around DA/auth requirements.',
       postVerification: ['Re-detect the same target and transport mode.', 'Verify the trial partition result against expected size/hash where readable.', 'Export audit bundle and reviewer decision before production authority.'],
     },
+    'samsung.odin-plan': {
+      targetEvidence: [
+        'Samsung Download Mode must be independently qualified from the USB descriptor; normal Samsung composite USB attachment is not sufficient.',
+        'Exact live model/board/SKU identity must be proven independently of the Download Mode product/platform string.',
+        'Selected AP/BL/CSC package set must come from a provenance-valid managed Samsung bundle with deterministic package fingerprint; CP is required only when the exact target/package includes a modem payload.',
+      ],
+      hostRequirements: [
+        'Stable Samsung Download/Odin transport with current BobFWTools build recorded.',
+        'Stock firmware inspection must complete without bypass/exploit artifacts and every selected package component must pass structural/hash checks.',
+      ],
+      dryRunArtifact: 'Export the guarded Samsung AP/BL/CP/CSC plan plus package fingerprint, exact target identity evidence, role map, preservation/destructive characteristics, and no-execution receipt.',
+      rollbackRequirement: 'Document the exact stock recovery path and preserve required user/calibration data before any qualification trial; no downgrade or cross-model package may be used.',
+      benchAction: 'Qualification may use only a designated exact-model bench target and the smallest approved stock write that proves transport/package correctness; do not unlock the bootloader, change FRP/setup-lock state, repartition with PIT, or broaden scope.',
+      postVerification: [
+        'Re-detect the same Samsung target and confirm expected Download Mode/boot transition.',
+        'Verify the written component using device/OEM-supported readback or post-boot version evidence where available.',
+        'Confirm model/board/SKU and bootloader revision remain compatible with the approved package.',
+        'Export the audit bundle and independent reviewer decision before any production write authority.',
+      ],
+    },
+
     'calibration.backup': {
       targetEvidence: ['Authorized device identity plus resolved calibration partition/block path from the allowlist.'],
       hostRequirements: ['Required root/service read access verified without bypassing device security controls.', 'Destination storage has enough capacity and is writable.'],
