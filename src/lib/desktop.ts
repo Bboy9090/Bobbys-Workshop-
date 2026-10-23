@@ -1070,15 +1070,18 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
   const authorizedAdb = adbDevices.filter((device) => device.authorized);
   const unmatchedDrivers = driverBindings.filter((binding) => binding.bindingState !== 'matched');
 
-  const samsungDevices = transportDevices.filter((device) => {
+  const samsungAttachedDevices = transportDevices.filter((device) => {
     const haystack = [
       device.mode,
       device.manufacturer ?? '',
       device.productName ?? '',
       device.vendorId.toString(16).padStart(4, '0'),
     ].join(' ').toLowerCase();
-    return haystack.includes('samsung') || haystack.includes('download') || device.vendorId === 0x04e8;
+    return haystack.includes('samsung') || device.vendorId === 0x04e8;
   });
+  const samsungDownloadDevices = samsungAttachedDevices.filter(
+    (device) => device.mode === 'samsung-download',
+  );
   const qualcommRecovery = recoveryCandidates.filter((candidate) => candidate.workflow === 'qualcomm-edl');
   const mediatekRecovery = recoveryCandidates.filter((candidate) => candidate.workflow === 'mediatek-download');
 
@@ -1134,15 +1137,19 @@ export async function buildHardwareFlowReadinessReport(): Promise<HardwareFlowRe
       title: 'Samsung Download Mode',
       workflowPolicyId: 'samsung.odin-plan',
       physicallyQualified: workflowPolicy('samsung.odin-plan')?.physicallyQualified ?? null,
-      state: samsungDevices.length ? 'guided' : 'blocked',
+      state: samsungDownloadDevices.length ? 'guided' : 'blocked',
       automation: 'qualified-destructive',
-      detected: samsungDevices.length > 0,
-      applicableDevices: samsungDevices.map((device) => device.deviceUid),
+      detected: samsungDownloadDevices.length > 0,
+      applicableDevices: samsungDownloadDevices.map((device) => device.deviceUid),
       firmwareCandidates: [],
-      blockers: samsungDevices.length
+      blockers: samsungDownloadDevices.length
         ? ['Stock Samsung package still requires exact-device package verification and physical qualification before flash execution.']
-        : ['No Samsung Download Mode transport detected.'],
-      nextSteps: ['Inspect stock AP/BL/CP/CSC packages, verify MD5/package structure, then route into qualification rather than auto-flashing.'],
+        : samsungAttachedDevices.length
+          ? ['Samsung USB hardware is attached, but Download Mode has not been independently qualified. Re-enter Download Mode and rescan before firmware planning.']
+          : ['No Samsung Download Mode transport detected.'],
+      nextSteps: samsungDownloadDevices.length
+        ? ['Inspect stock AP/BL/CP/CSC packages, verify MD5/package structure, then route into qualification rather than auto-flashing.']
+        : ['Keep the tablet connected, enter Samsung Download Mode without unlocking the bootloader, then run the safe hardware audit again.'],
     },
     {
       id: 'qualcomm-edl',
