@@ -22,6 +22,7 @@ import {
   getFirmwareChipsetCatalog,
   lookupFirmwareChipset,
   scanFirmwareLibrary,
+  getVerifiedFirmwareBundleArtifacts,
   chooseFirmwareManifest,
   inspectFirmwareManifest,
   compareFirmwareManifest,
@@ -115,6 +116,7 @@ export default function RepairCommandCenter() {
   const [samsungFirmwareReports, setSamsungFirmwareReports] = useState<SamsungFirmwareArchiveReport[]>([]);
   const [samsungFlashPlan, setSamsungFlashPlan] = useState<SamsungFlashPlan | null>(null);
   const [samsungFirmwareBusy, setSamsungFirmwareBusy] = useState(false);
+  const [selectedSamsungBundleDirectory, setSelectedSamsungBundleDirectory] = useState('');
   const [firmwareCatalog, setFirmwareCatalog] = useState<FirmwareChipsetProfile[]>([]);
   const [firmwareQuery, setFirmwareQuery] = useState('');
   const [firmwareMatches, setFirmwareMatches] = useState<FirmwareChipsetProfile[]>([]);
@@ -194,6 +196,25 @@ export default function RepairCommandCenter() {
     const serial = selectedTarget.key.slice('adb:'.length);
     return adbDevices.find((device) => device.serial === serial) || null;
   }, [selectedTarget, adbDevices]);
+
+  const samsungVerifiedBundles = useMemo(
+    () => (firmwareReport?.bundles ?? []).filter(
+      (bundle) =>
+        bundle.vendorHint === 'samsung' &&
+        bundle.planningReady &&
+        Boolean(bundle.packageFingerprint),
+    ),
+    [firmwareReport],
+  );
+
+  useEffect(() => {
+    setSelectedSamsungBundleDirectory((current) => {
+      if (current && samsungVerifiedBundles.some((bundle) => bundle.directory === current)) {
+        return current;
+      }
+      return samsungVerifiedBundles[0]?.directory ?? '';
+    });
+  }, [samsungVerifiedBundles]);
 
   const applicableWorkflowIds = useMemo(() => {
     const ids = new Set<string>(['diagnostics.usb-scan']);
@@ -275,6 +296,20 @@ export default function RepairCommandCenter() {
     }
     return { label: 'READY', detail: 'Required live target is selected; normal workflow gates still apply.', ready: true };
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    void scanFirmwareLibrary()
+      .then((report) => {
+        if (!cancelled) setFirmwareReport(report);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -370,6 +405,43 @@ export default function RepairCommandCenter() {
     setSamsungFlashPlan(null);
     setError(null);
     try {
+      const [reports, plan] = await Promise.all([
+        inspectSamsungFirmwarePackages(paths),
+        buildSamsungFirmwarePlan(paths),
+      ]);
+      setSamsungFirmwareReports(reports);
+      setSamsungFlashPlan(plan);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSamsungFirmwareBusy(false);
+    }
+  };
+
+  const inspectVerifiedSamsungBundle = async () => {
+    if (
+      samsungFirmwareBusy ||
+      selectedTarget?.kind !== 'samsung-download' ||
+      !selectedSamsungBundleDirectory
+    ) return;
+
+    const bundle = samsungVerifiedBundles.find(
+      (item) => item.directory === selectedSamsungBundleDirectory,
+    );
+    if (!bundle || !bundle.planningReady || !bundle.packageFingerprint) {
+      setError('The selected Samsung bundle is no longer provenance-valid and fingerprinted. Rescan the firmware library first.');
+      return;
+    }
+
+    setSamsungFirmwareBusy(true);
+    setSamsungFirmwareReports([]);
+    setSamsungFlashPlan(null);
+    setError(null);
+    try {
+      const paths = await getVerifiedFirmwareBundleArtifacts(bundle.directory);
+      if (!paths.length) {
+        throw new Error('The verified Samsung bundle no longer exposes planning artifacts.');
+      }
       const [reports, plan] = await Promise.all([
         inspectSamsungFirmwarePackages(paths),
         buildSamsungFirmwarePlan(paths),
