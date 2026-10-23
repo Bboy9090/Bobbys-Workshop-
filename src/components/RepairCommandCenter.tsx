@@ -8,6 +8,7 @@ import {
   getWorkflowPolicyCatalog,
   scanAdbDevices,
   scanTransportDevices,
+  probeSamsungDownloadMode,
   chooseSamsungFirmwarePackages,
   inspectSamsungFirmwarePackages,
   buildSamsungFirmwarePlan,
@@ -59,6 +60,7 @@ import {
   type EdlProgrammerRecord,
   type UsbDeviceRecord,
   type TransportDevice,
+  type SamsungDownloadProbeReport,
   type SamsungFirmwareArchiveReport,
   type SamsungFlashPlan,
   type WorkflowPolicy,
@@ -117,6 +119,8 @@ export default function RepairCommandCenter() {
   const [samsungFlashPlan, setSamsungFlashPlan] = useState<SamsungFlashPlan | null>(null);
   const [samsungFirmwareBusy, setSamsungFirmwareBusy] = useState(false);
   const [selectedSamsungBundleDirectory, setSelectedSamsungBundleDirectory] = useState('');
+  const [samsungProbeBusy, setSamsungProbeBusy] = useState(false);
+  const [samsungProbe, setSamsungProbe] = useState<SamsungDownloadProbeReport | null>(null);
   const [firmwareCatalog, setFirmwareCatalog] = useState<FirmwareChipsetProfile[]>([]);
   const [firmwareQuery, setFirmwareQuery] = useState('');
   const [firmwareMatches, setFirmwareMatches] = useState<FirmwareChipsetProfile[]>([]);
@@ -153,7 +157,7 @@ export default function RepairCommandCenter() {
       label: `ADB · ${device.serial}${device.authorized ? ' · authorized' : ' · unauthorized'}`,
     }));
     const recoveryTargets = transportDevices
-      .filter((device) => ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download'].includes(device.mode))
+      .filter((device) => ['qualcomm-edl', 'mediatek-brom', 'mediatek-preloader', 'samsung-download', 'samsung-usb'].includes(device.mode))
       .map((device) => ({
         key: `usb:${device.deviceUid}`,
         kind: device.mode,
@@ -196,6 +200,31 @@ export default function RepairCommandCenter() {
     const serial = selectedTarget.key.slice('adb:'.length);
     return adbDevices.find((device) => device.serial === serial) || null;
   }, [selectedTarget, adbDevices]);
+
+  const selectedSamsungTransport = useMemo(() => {
+    if (!selectedTarget || !['samsung-usb', 'samsung-download'].includes(selectedTarget.kind)) {
+      return null;
+    }
+    const deviceUid = selectedTarget.key.slice('usb:'.length);
+    return transportDevices.find((device) => device.deviceUid === deviceUid) || null;
+  }, [selectedTarget, transportDevices]);
+
+  const samsungPlanningTargetQualified = Boolean(
+    selectedSamsungTransport &&
+      (
+        selectedSamsungTransport.mode === 'samsung-download' ||
+        (
+          samsungProbe?.protocolQualified &&
+          samsungProbe.deviceUid === selectedSamsungTransport.deviceUid
+        )
+      ),
+  );
+
+  useEffect(() => {
+    setSamsungProbe(null);
+    setSamsungFirmwareReports([]);
+    setSamsungFlashPlan(null);
+  }, [selectedTargetKey]);
 
   const samsungVerifiedBundles = useMemo(
     () => (firmwareReport?.bundles ?? []).filter(
@@ -241,11 +270,14 @@ export default function RepairCommandCenter() {
       case 'samsung-download':
         ids.add('samsung.odin-plan');
         break;
+      case 'samsung-usb':
+        if (samsungPlanningTargetQualified) ids.add('samsung.odin-plan');
+        break;
       default:
         break;
     }
     return ids;
-  }, [selectedTarget]);
+  }, [selectedTarget, samsungPlanningTargetQualified]);
 
   const active = useMemo(
     () => catalog.filter((item) => item.activeInBobfwtools && applicableWorkflowIds.has(item.id)),
@@ -283,11 +315,17 @@ export default function RepairCommandCenter() {
       };
     }
     if (workflow.id === 'samsung.odin-plan') {
-      return {
-        label: 'PLANNING READY',
-        detail: 'Selected Samsung Download Mode target can use stock firmware inspection and guarded planning.',
-        ready: true,
-      };
+      return samsungPlanningTargetQualified
+        ? {
+            label: 'PLANNING READY',
+            detail: 'Samsung Odin/Download Mode is protocol-qualified for stock firmware inspection and guarded planning; write execution remains qualification-locked.',
+            ready: true,
+          }
+        : {
+            label: 'PROTOCOL PROOF REQUIRED',
+            detail: 'Samsung USB attachment is not enough. Run the bounded read-only Odin/PIT probe first.',
+            ready: false,
+          };
     }
     if (workflow.id === 'calibration.backup') {
       return selectedAdbDevice?.authorized
@@ -403,8 +441,24 @@ export default function RepairCommandCenter() {
     }
   };
 
+  const runSamsungDownloadProbe = async () => {
+    if (samsungProbeBusy || !selectedSamsungTransport) return;
+    setSamsungProbeBusy(true);
+    setSamsungProbe(null);
+    setSamsungFirmwareReports([]);
+    setSamsungFlashPlan(null);
+    setError(null);
+    try {
+      setSamsungProbe(await probeSamsungDownloadMode(selectedSamsungTransport.deviceUid));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSamsungProbeBusy(false);
+    }
+  };
+
   const inspectSamsungFirmware = async () => {
-    if (samsungFirmwareBusy || selectedTarget?.kind !== 'samsung-download') return;
+    if (samsungFirmwareBusy || !samsungPlanningTargetQualified) return;
     const paths = await chooseSamsungFirmwarePackages();
     if (!paths.length) return;
     setSamsungFirmwareBusy(true);
@@ -428,7 +482,7 @@ export default function RepairCommandCenter() {
   const inspectVerifiedSamsungBundle = async () => {
     if (
       samsungFirmwareBusy ||
-      selectedTarget?.kind !== 'samsung-download' ||
+      !samsungPlanningTargetQualified ||
       !selectedSamsungBundleDirectory
     ) return;
 
