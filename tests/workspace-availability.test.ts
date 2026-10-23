@@ -21,7 +21,7 @@ test('unauthorized or truthy malformed ADB authorization never enables app actio
   }
 });
 test('one denied transport does not erase an independent real MTP connection',()=>{
-  const result=deriveWorkspaceAvailability({...base,failedProbes:['adb','fastboot'],mtp:{connected:true} as MtpStatus});
+  const result=deriveWorkspaceAvailability({...base,failedProbes:['adb','fastboot'],mtp:{connected:true,targetId:'a'.repeat(64)} as MtpStatus});
   expect(result.files.state).toBe('available');expect(result.diagnose.state).toBe('unverified');
 });
 test('rescans and browser previews never advertise current hardware readiness',()=>{
@@ -69,4 +69,12 @@ test('Fastboot guidance requires this exact descriptor serial, not another conne
   for(const serialNumber of ['',null,undefined])
     expect(hasMatchingFastbootSerial({serialNumber},['another'])).toBe(false);
   expect(hasMatchingFastbootSerial({serialNumber:' selected '},['another','selected'])).toBe(true);
+});
+
+test('a connected MTP claim without a USB target never enables file workflows',()=>{
+  for(const targetId of [undefined,'','Microsoft NVMe Direct Disk v2','A'.repeat(64)]) {
+    const result=deriveWorkspaceAvailability({...base,mtp:{connected:true,targetId} as MtpStatus});
+    expect(result.files.state).toBe('setup');
+    expect(result.diagnose.state).toBe('setup');
+  }
 });

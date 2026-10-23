@@ -10,7 +10,7 @@ import { createReadOnlyProbeRunner, type HardwareProbeFailure } from './hardware
 export function createDesktopScanner(timeoutMs = 12000) {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('Invalid scan timeout');
   const runProbe = createReadOnlyProbeRunner();
-  return async (storageIndex = 0, path: string[] = []) => {
+  return async (storageIndex = 0, path: string[] = [], previousMtpTargetId: string | null = null) => {
     const failures: HardwareProbeFailure[] = [];
     const deadline = Date.now() + timeoutMs;
     const probe = <T,>(key: string, run: () => Promise<T>, fallback: T): Promise<T> => {
@@ -34,12 +34,14 @@ export function createDesktopScanner(timeoutMs = 12000) {
     });
     const directoryTask = mtpTask.then(async mtp => {
       if (!mtp?.connected || !mtp.storages.length) return {objects:[] as MtpBrowserObject[], storageIndex:0, path:[] as string[]};
-      const index = Math.max(0, Math.min(storageIndex, mtp.storages.length - 1));
+      const sameTarget = mtp.targetId === previousMtpTargetId;
+      const currentPath = sameTarget ? path : [];
+      const index = sameTarget ? Math.max(0, Math.min(storageIndex, mtp.storages.length - 1)) : 0;
       const list = (parts: string[]) => probe<MtpBrowserObject[] | null>(
-        'mtp-directory:' + JSON.stringify([index, parts]), () => listMtpDirectory(index, parts), null);
-      const objects = await list(path);
-      if (objects !== null) return {objects, storageIndex:index, path};
-      return {objects:path.length ? await list([]) ?? [] : [], storageIndex:index, path:[] as string[]};
+        'mtp-directory:' + JSON.stringify([mtp.targetId, index, parts]), () => listMtpDirectory(index, parts, mtp.targetId), null);
+      const objects = await list(currentPath);
+      if (objects !== null) return {objects, storageIndex:index, path:currentPath};
+      return {objects:currentPath.length ? await list([]) ?? [] : [], storageIndex:index, path:[] as string[]};
     });
     const [handshake, usb, recovery, adb, fastboot, mtp, capabilities, firmware, jobs, modes, directory] = await Promise.all([
       probe('handshake', frontendBackendHandshake, null),

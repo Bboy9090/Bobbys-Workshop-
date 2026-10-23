@@ -27,14 +27,18 @@ try {
       $window = [System.Windows.Automation.AutomationElement]::FromHandle($app.MainWindowHandle)
       $elements = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
       $names = @($elements | ForEach-Object { $_.Current.Name } | Where-Object { $_ })
-      if (($names -contains 'Phone') -and ($names -contains 'Diagnostics')) { break }
+      if (($names -contains 'Phone') -and ($names -contains 'Diagnostics') -and ($names -contains 'Device checks complete')) { break }
     }
     Start-Sleep -Milliseconds 500
   }
-  $passed = ($names -contains 'Phone') -and ($names -contains 'Diagnostics')
-  $receipt = @{status=$(if($passed){'PASS'}else{'FAIL'});observedAt=[DateTime]::UtcNow.ToString('o');scope='Windows CI native WebView2 GUI and isolated installer copies';title=$app.MainWindowTitle;navigationNames=$names;executionAuthorized=$false;executables=@(@{location='msi-copy';path=$msiExecutables[0].FullName},@{location='nsis-copy';path=$executable})}
+  # Hosted CI has no attached phone. The previous smoke test passed while WPD
+  # exposed the host NVMe disk as MTP; require the completed real native scan.
+  $scanComplete = $names -contains 'Device checks complete'
+  $hostStorageAsPhone = ($names -contains 'Connected phones') -or ($names -contains 'MTP connection observed')
+  $passed = ($names -contains 'Phone') -and ($names -contains 'Diagnostics') -and ($names -contains 'Desktop connected') -and $scanComplete -and (-not $hostStorageAsPhone)
+  $receipt = @{status=$(if($passed){'PASS'}else{'FAIL'});observedAt=[DateTime]::UtcNow.ToString('o');scope='Windows CI native WebView2 GUI and isolated installer copies';title=$app.MainWindowTitle;navigationNames=$names;deviceScanComplete=$scanComplete;noPhoneOnDisposableRunner=(-not $hostStorageAsPhone);hardwareQualified=$false;releaseQualified=$false;executionAuthorized=$false;executables=@(@{location='msi-copy';path=$msiExecutables[0].FullName},@{location='nsis-copy';path=$executable})}
   $receipt | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 (Join-Path $OutputDirectory 'native-smoke.json')
-  if (-not $passed) { throw 'Native WebView2 navigation did not render within 60 seconds' }
+  if (-not $passed) { throw 'Native WebView2 scan/navigation failed or host storage was exposed as a phone' }
 } finally {
   if (-not $app.HasExited) {
     $null = $app.CloseMainWindow()

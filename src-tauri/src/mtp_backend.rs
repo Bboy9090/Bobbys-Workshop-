@@ -5,6 +5,75 @@ use serde::Serialize;
 use std::path::PathBuf;
 use tokio::io::AsyncReadExt;
 
+#[derive(Clone, Debug)]
+struct UsbMtpTarget {
+    vendor_id: u16,
+    product_id: u16,
+    location_id: u64,
+    serial: Option<String>,
+}
+
+impl UsbMtpTarget {
+    fn token(&self) -> String {
+        use sha2::{Digest, Sha256};
+        // Keep location IDs out of JavaScript numbers and raw serials out of IPC.
+        let identity = serde_json::to_vec(&(
+            self.vendor_id, self.product_id, self.location_id, &self.serial,
+        )).expect("USB identity tuple is serializable");
+        format!("{:x}", Sha256::digest(identity))
+    }
+}
+
+fn usb_mtp_targets() -> Result<Vec<UsbMtpTarget>, String> {
+    // WPD includes fixed host disks. Discover USB MTP interfaces first and
+    // never let the backend select an unrelated first WPD device.
+    MtpDevice::list_devices()
+        .map(|devices| devices.into_iter().map(|device| UsbMtpTarget {
+            vendor_id: device.vendor_id,
+            product_id: device.product_id,
+            location_id: device.location_id,
+            serial: device.serial_number,
+        }).collect())
+        .map_err(|error| format!("USB MTP discovery unavailable: {error}"))
+}
+
+fn select_usb_mtp_target<'a>(
+    targets: &'a [UsbMtpTarget],
+    expected: Option<&str>,
+) -> Result<&'a UsbMtpTarget, String> {
+    if targets.len() != 1 {
+        return Err(if targets.is_empty() {
+            "No USB-backed MTP target detected; host WPD storage is not a phone".to_string()
+        } else {
+            "Multiple USB MTP targets detected; keep one connected before using this file session".to_string()
+        });
+    }
+    let target = &targets[0];
+    if target.serial.as_deref().is_none_or(|serial| serial.trim().is_empty()) {
+        return Err("USB MTP identity has no stable serial; file actions remain unverified".to_string());
+    }
+    if let Some(expected) = expected {
+        if expected.len() != 64
+            || !expected.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            || expected != target.token()
+        {
+            return Err("MTP target changed or disconnected; rescan before using file actions".to_string());
+        }
+    }
+    Ok(target)
+}
+
+async fn open_usb_mtp_target(expected: Option<&str>) -> Result<(MtpDevice, String), String> {
+    let targets = usb_mtp_targets()?;
+    let target = select_usb_mtp_target(&targets, expected)?.clone();
+    let token = target.token();
+    let device = MtpDevice::open_by_location(target.location_id).await
+        .map_err(|error| format!("USB-bound MTP session failed: {error}"))?;
+    // Recheck after the asynchronous WPD/USB open, before storage operations.
+    select_usb_mtp_target(&usb_mtp_targets()?, Some(&token))?;
+    Ok((device, token))
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MtpStorageSummary {
@@ -16,6 +85,7 @@ pub struct MtpStorageSummary {
 #[serde(rename_all = "camelCase")]
 pub struct MtpStatus {
     pub connected: bool,
+    pub target_id: String,
     pub manufacturer: String,
     pub model: String,
     pub serial_number: String,
@@ -140,9 +210,7 @@ fn classify_device_family(manufacturer: &str, model: &str) -> String {
 
 #[tauri::command]
 pub async fn mtp_status() -> Result<MtpStatus, String> {
-    let device = MtpDevice::open_first()
-        .await
-        .map_err(|e| format!("No usable MTP device: {e}"))?;
+    let (device, target_id) = open_usb_mtp_target(None).await?;
 
     let info = device.device_info();
     let manufacturer = info.manufacturer.clone();
@@ -160,32 +228,24 @@ pub async fn mtp_status() -> Result<MtpStatus, String> {
 
     Ok(MtpStatus {
         connected: true,
+        target_id,
         device_family: classify_device_family(&manufacturer, &model),
         manufacturer,
         model,
         serial_number: info.serial_number.clone(),
         storages,
-        capabilities: vec![
-            "device-info",
-            "storage-info",
-            "list",
-            "download",
-            "upload",
-            "delete",
-            "move",
-            "copy",
-            "rename",
-            "create-folder",
-        ],
-        evidence_source: "mtp:GetDeviceInfo+GetStorageInfo",
+        capabilities: if device.supports_upload() {
+            vec!["device-info", "storage-info", "list", "download", "upload"]
+        } else {
+            vec!["device-info", "storage-info", "list", "download"]
+        },
+        evidence_source: "mtp:usb-target+GetDeviceInfo+GetStorageInfo",
     })
 }
 
 #[tauri::command]
-pub async fn mtp_list_root(storage_index: usize) -> Result<Vec<MtpRootObject>, String> {
-    let device = MtpDevice::open_first()
-        .await
-        .map_err(|e| format!("No usable MTP device: {e}"))?;
+pub async fn mtp_list_root(storage_index: usize, target_id: String) -> Result<Vec<MtpRootObject>, String> {
+    let (device, _) = open_usb_mtp_target(Some(&target_id)).await?;
 
     let storages = device
         .storages()
@@ -220,10 +280,9 @@ pub async fn mtp_download_file(
     storage_index: usize,
     handle: String,
     destination_path: String,
+    target_id: String,
 ) -> Result<MtpTransferResult, String> {
-    let device = MtpDevice::open_first()
-        .await
-        .map_err(|e| format!("No usable MTP device: {e}"))?;
+    let (device, _) = open_usb_mtp_target(Some(&target_id)).await?;
 
     let storages = device
         .storages()
@@ -305,10 +364,12 @@ pub async fn mtp_upload_file(
     storage_index: usize,
     parent_handle: Option<String>,
     source_path: String,
+    target_id: String,
 ) -> Result<MtpTransferResult, String> {
-    let device = MtpDevice::open_first()
-        .await
-        .map_err(|e| format!("No usable MTP device: {e}"))?;
+    let (device, _) = open_usb_mtp_target(Some(&target_id)).await?;
+    if !device.supports_upload() {
+        return Err("The observed USB MTP backend does not support upload".to_string());
+    }
 
     let storages = device
         .storages()
@@ -414,10 +475,9 @@ pub async fn mtp_upload_file(
 pub async fn mtp_list_directory(
     storage_index: usize,
     path: Vec<String>,
+    target_id: String,
 ) -> Result<Vec<MtpBrowserObject>, String> {
-    let device = MtpDevice::open_first()
-        .await
-        .map_err(|e| format!("No usable MTP device: {e}"))?;
+    let (device, _) = open_usb_mtp_target(Some(&target_id)).await?;
 
     let storages = device
         .storages()
@@ -456,10 +516,9 @@ pub async fn mtp_download_path(
     storage_index: usize,
     object_path: Vec<String>,
     destination_path: String,
+    target_id: String,
 ) -> Result<MtpTransferResult, String> {
-    let device = MtpDevice::open_first()
-        .await
-        .map_err(|e| format!("No usable MTP device: {e}"))?;
+    let (device, _) = open_usb_mtp_target(Some(&target_id)).await?;
 
     let storages = device
         .storages()
@@ -533,10 +592,12 @@ pub async fn mtp_upload_path(
     storage_index: usize,
     folder_path: Vec<String>,
     source_path: String,
+    target_id: String,
 ) -> Result<MtpTransferResult, String> {
-    let device = MtpDevice::open_first()
-        .await
-        .map_err(|e| format!("No usable MTP device: {e}"))?;
+    let (device, _) = open_usb_mtp_target(Some(&target_id)).await?;
+    if !device.supports_upload() {
+        return Err("The observed USB MTP backend does not support upload".to_string());
+    }
 
     let storages = device
         .storages()
@@ -622,4 +683,68 @@ pub async fn mtp_upload_path(
         destination: format!("mtp:/{}", destination_path.join("/")),
         evidence_source: "mtp:path-resolve+SendObjectInfo+SendObject+post-list-verification",
     })
+}
+
+#[cfg(test)]
+mod target_tests {
+    use super::*;
+
+    // Simulated identities validate selection policy, not physical hardware.
+    fn target() -> UsbMtpTarget {
+        UsbMtpTarget {
+            vendor_id: 0x18d1, product_id: 0x4ee1,
+            location_id: u64::MAX - 7, serial: Some("simulated-usb-a".to_string()),
+        }
+    }
+
+    #[test]
+    fn host_storage_without_usb_mtp_cannot_be_selected() {
+        assert!(select_usb_mtp_target(&[], None).is_err());
+    }
+
+    #[test]
+    fn ambiguous_usb_targets_are_blocked_even_with_a_matching_token() {
+        let first = target();
+        let token = first.token();
+        let mut second = first.clone();
+        second.serial = Some("simulated-usb-b".to_string());
+        assert!(select_usb_mtp_target(&[first, second], Some(&token)).is_err());
+    }
+
+    #[test]
+    fn usb_identity_requires_a_nonempty_stable_serial() {
+        for serial in [None, Some(String::new()), Some("  ".to_string())] {
+            let mut device = target();
+            device.serial = serial;
+            assert!(select_usb_mtp_target(&[device], None).is_err());
+        }
+    }
+
+    #[test]
+    fn exact_observed_target_is_required_for_reopening() {
+        let targets = [target()];
+        let token = targets[0].token();
+        assert_eq!(token.len(), 64);
+        assert!(select_usb_mtp_target(&targets, Some(&token)).is_ok());
+        for invalid in ["", "not-a-target", &"0".repeat(64), &token.to_uppercase()] {
+            assert!(select_usb_mtp_target(&targets, Some(invalid)).is_err());
+        }
+    }
+
+    #[test]
+    fn changed_usb_identity_cannot_reuse_an_old_session() {
+        let original = target();
+        let token = original.token();
+        for field in 0..4 {
+            let mut changed = original.clone();
+            match field {
+                0 => changed.vendor_id += 1,
+                1 => changed.product_id += 1,
+                2 => changed.location_id -= 1,
+                _ => changed.serial = Some("simulated-usb-b".to_string()),
+            }
+            assert_ne!(changed.token(), token);
+            assert!(select_usb_mtp_target(&[changed], Some(&token)).is_err());
+        }
+    }
 }

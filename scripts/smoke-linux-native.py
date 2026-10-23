@@ -39,13 +39,16 @@ with out.with_suffix('.log').open('w') as log:
                         pending.extend(list(node))
                     except Exception:
                         continue
-            if 'Phone' in names and 'Diagnostics' in names:
+            if 'Phone' in names and 'Diagnostics' in names and 'Device checks complete' in names:
                 break
             time.sleep(0.5)
-        passed = 'Phone' in names and 'Diagnostics' in names
-        out.write_text(json.dumps({'status': 'PASS' if passed else 'FAIL', 'observedAt': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'scope': 'Linux CI native WebKitGTK under Xvfb; Debian-extracted application', 'navigationNames': names, 'executionAuthorized': False}, indent=2) + '\n')
+        scan_complete = 'Device checks complete' in names
+        host_storage_as_phone = 'Connected phones' in names or 'MTP connection observed' in names
+        passed = ('Phone' in names and 'Diagnostics' in names and
+                  'Desktop connected' in names and scan_complete and not host_storage_as_phone)
+        out.write_text(json.dumps({'status': 'PASS' if passed else 'FAIL', 'observedAt': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'scope': 'Linux CI native WebKitGTK under Xvfb; Debian-extracted application', 'navigationNames': names, 'deviceScanComplete': scan_complete, 'noPhoneOnDisposableRunner': not host_storage_as_phone, 'hardwareQualified': False, 'releaseQualified': False, 'executionAuthorized': False}, indent=2) + '\n')
         if not passed:
-            raise RuntimeError('Native WebKitGTK navigation did not render within 60 seconds')
+            raise RuntimeError('Native WebKitGTK scan/navigation failed or host storage was exposed as a phone')
     finally:
         if app.poll() is None:
             app.terminate()

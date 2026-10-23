@@ -24,7 +24,8 @@ export function deriveWorkspaceAvailability(input: {
     firmware:status('planning','Inspection only','Package inspection never authorizes a device write.'),
   };
   const adbReady = !input.failedProbes.includes('adb') && input.adb.some(device => device.authorized === true);
-  const mtpReady = !input.failedProbes.includes('mtp') && input.mtp?.connected === true;
+  const mtpReady = !input.failedProbes.includes('mtp') && input.mtp?.connected === true &&
+    /^[a-f0-9]{64}$/.test(input.mtp.targetId ?? '');
   const phoneSeen = input.usb.some(isAndroidUsbCandidate) || input.adb.length > 0 || input.fastboot.length > 0 || mtpReady;
   return {
     diagnose: input.failedProbes.some(name => ['usb','adb','mtp','fastboot'].includes(name))

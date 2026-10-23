@@ -28,6 +28,9 @@ pub async fn workflow_capabilities() -> Result<DeviceCapabilityMatrix, String> {
     let mtp_status = crate::mtp_backend::mtp_status().await.ok();
     let mtp_connected = mtp_status.as_ref().map(|s| s.connected).unwrap_or(false);
 
+    let mtp_upload_enabled = mtp_status.as_ref()
+        .is_some_and(|status| status.connected && status.capabilities.contains(&"upload"));
+
     let authorized_adb: Vec<_> = adb.iter().filter(|d| d.authorized).collect();
     let fastboot_present = std::process::Command::new("fastboot")
         .arg("devices")
@@ -80,8 +83,12 @@ pub async fn workflow_capabilities() -> Result<DeviceCapabilityMatrix, String> {
             WorkflowCapability {
                 id: "mtp-upload",
                 transport: "mtp",
-                enabled: mtp_connected,
-                reason: mtp_reason.clone(),
+                enabled: mtp_upload_enabled,
+                reason: if mtp_upload_enabled {
+                    mtp_reason.clone()
+                } else {
+                    "USB-bound MTP upload is not verified by the current backend".to_string()
+                },
                 evidence: mtp_status
                     .as_ref()
                     .map(|s| vec![s.evidence_source.to_string()])

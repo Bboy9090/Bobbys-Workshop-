@@ -157,6 +157,8 @@ export default function App() {
   const nativeRuntime = useMemo(() => isTauriRuntime(), []);
   const scanner = useMemo(() => createDesktopScanner(), []);
   const refreshRunning = useRef(false);
+  const lastMtpTarget = useRef<string | null>(null);
+  const mtpActionRunning = useRef(false);
   const phoneUsbDevices = useMemo(() => usbDevices.filter(isAndroidUsbCandidate), [usbDevices]);
   const filteredPackages = useMemo(() => {
     const q = packageQuery.trim().toLowerCase();
@@ -400,7 +402,7 @@ export default function App() {
   }, [nativeRuntime]);
 
   const refresh = useCallback(async () => {
-    if (transferBusy || refreshRunning.current) return;
+    if (transferBusy || refreshRunning.current || mtpActionRunning.current) return;
     refreshRunning.current = true;
     setRefreshing(true);
     setNativeError(null);
@@ -412,7 +414,7 @@ export default function App() {
     setCapabilities(null);
     setRecoveryCandidates([]);
     try {
-      const scan = await scanner(storageIndex, mtpPath);
+      const scan = await scanner(storageIndex, mtpPath, lastMtpTarget.current);
       setScanFailures(scan.failures.map(failure=>failure.probe));
       setHandshake(scan.handshake);
       setUsbDevices(scan.usb);
@@ -435,6 +437,7 @@ export default function App() {
       setAdbSelectedSerial(current =>
         current && scan.adb.some(device => device.serial === current)
           ? current : scan.adb.length === 1 ? scan.adb[0].serial : null);
+      lastMtpTarget.current = scan.mtp?.connected === true ? scan.mtp.targetId : null;
       setMtp(scan.mtp?.connected === true ? scan.mtp : null);
       setCapabilities(scan.capabilities);
       const readyBundles = scan.firmware?.bundles.filter(bundle => bundle.planningReady) ?? [];
@@ -543,62 +546,76 @@ export default function App() {
   };
 
   const openStorage = async (index: number) => {
-    if (transferBusy) return;
-    setStorageIndex(index);
-    setMtpPath([]);
+    if (!mtp || transferBusy || refreshRunning.current || mtpActionRunning.current) return;
+    mtpActionRunning.current = true;
+    setTransferBusy(true);
     setNativeError(null);
     try {
-      setMtpObjects(await listMtpDirectory(index, []));
+      const objects = await listMtpDirectory(index, [], mtp.targetId);
+      setStorageIndex(index);
+      setMtpPath([]);
+      setMtpObjects(objects);
     } catch (error) {
       setMtpObjects([]);
       setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      mtpActionRunning.current = false;
+      setTransferBusy(false);
     }
   };
 
   const openMtpFolder = async (path: string[]) => {
-    if (transferBusy) return;
+    if (!mtp || transferBusy || refreshRunning.current || mtpActionRunning.current) return;
+    mtpActionRunning.current = true;
+    setTransferBusy(true);
     setNativeError(null);
     try {
-      setMtpObjects(await listMtpDirectory(storageIndex, path));
+      setMtpObjects(await listMtpDirectory(storageIndex, path, mtp.targetId));
       setMtpPath(path);
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      mtpActionRunning.current = false;
+      setTransferBusy(false);
     }
   };
 
   const uploadFile = async () => {
-    if (!mtp || transferBusy) return;
-    const source = await chooseUploadSource();
-    if (!source) return;
-
+    if (!mtp || !mtp.capabilities.includes('upload') || transferBusy ||
+        refreshRunning.current || mtpActionRunning.current) return;
+    mtpActionRunning.current = true;
     setTransferBusy(true);
     setNativeError(null);
     setLastTransfer(null);
     try {
-      const result = await uploadMtpPath(storageIndex, mtpPath, source);
+      const source = await chooseUploadSource();
+      if (!source) return;
+      const result = await uploadMtpPath(storageIndex, mtpPath, source, mtp.targetId);
       setLastTransfer(result);
-      setMtpObjects(await listMtpDirectory(storageIndex, mtpPath));
+      setMtpObjects(await listMtpDirectory(storageIndex, mtpPath, mtp.targetId));
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
+      mtpActionRunning.current = false;
       setTransferBusy(false);
     }
   };
 
   const downloadFile = async (object: MtpBrowserObject) => {
-    if (object.isFolder || transferBusy) return;
-    const destination = await chooseDownloadDestination(object.filename || 'android-file');
-    if (!destination) return;
-
+    if (!mtp || object.isFolder || transferBusy || refreshRunning.current || mtpActionRunning.current) return;
+    mtpActionRunning.current = true;
     setTransferBusy(true);
     setNativeError(null);
     setLastTransfer(null);
     try {
-      const result = await downloadMtpPath(storageIndex, object.path, destination);
+      const destination = await chooseDownloadDestination(object.filename || 'android-file');
+      if (!destination) return;
+      const result = await downloadMtpPath(storageIndex, object.path, destination, mtp.targetId);
       setLastTransfer(result);
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
+      mtpActionRunning.current = false;
       setTransferBusy(false);
     }
   };
@@ -1132,6 +1149,7 @@ export default function App() {
         </aside>
         <main ref={workspaceMain} id="workspace-main" className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
           <div className="mx-auto w-full max-w-[1120px]">
+            <p role="status" className="sr-only">{refreshing || !scanCompleted ? 'Checking devices' : 'Device checks complete'}</p>
             {nativeError && <details className="mb-4 rounded-lg border border-amber-900/60 bg-amber-950/20 text-xs text-amber-200">
               <summary className="cursor-pointer px-4 py-3 font-medium">Some checks need attention · view details</summary>
               <div className="max-h-48 overflow-auto border-t border-amber-900/40 px-4 py-3 leading-5">{nativeError}</div>
@@ -1957,10 +1975,10 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => void uploadFile()}
-                      disabled={transferBusy}
+                      disabled={transferBusy || refreshing || !mtp.capabilities.includes('upload')}
                       className="rounded bg-cyan-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 hover:bg-cyan-600"
                     >
-                      Upload Mac file here
+                      Upload file here
                     </button>
                   </div>
                 </div>
@@ -2006,7 +2024,7 @@ export default function App() {
                                 onClick={() => void downloadFile(object)}
                                 className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 disabled:opacity-50 hover:bg-slate-800"
                               >
-                                Download to Mac
+                                Download
                               </button>
                             )}
                           </li>
