@@ -1798,7 +1798,7 @@ export default function RepairCommandCenter() {
             </div>
           )}
         </div>
-      ))}
+      )}
 
       {samsungPlanningTargetQualified && (
         <div className="mt-4 rounded-lg border border-blue-900/60 bg-blue-950/10 p-4">
