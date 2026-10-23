@@ -343,7 +343,8 @@ fn expected_family(vendor_id: Option<u16>, product_id: Option<u16>, text: &str) 
     match (vendor_id, product_id) {
         (Some(0x05c6), Some(0x9008)) => "qualcomm-qdloader-9008",
         (Some(0x0e8d), Some(0x0003 | 0x2000 | 0x2001)) => "mediatek-vcom-preloader",
-        (Some(0x04e8), Some(0x6601 | 0x685d)) => "samsung-download",
+        (Some(0x04e8), Some(0x6601)) => "samsung-download",
+        (Some(0x04e8), Some(0x685d)) => "samsung-usb",
         (Some(0x18d1), _) => "google-android",
         (Some(0x04e8), _) => "samsung-android",
         (Some(0x05c6), _) if lower.contains("qualcomm") => "qualcomm-usb",
@@ -411,7 +412,7 @@ fn binding_assessment(expected: &str, service: Option<&str>, inf: Option<&str>, 
         "mediatek-vcom-preloader" | "mediatek-usb" => {
             ["mediatek", "mtk", "vcom", "usbser"].iter().any(|v| evidence.contains(v))
         }
-        "samsung-download" | "samsung-android" => {
+        "samsung-download" | "samsung-usb" | "samsung-android" => {
             ["samsung", "ssud", "ssudadb"].iter().any(|v| evidence.contains(v))
         }
         "google-android" => ["winusb", "android", "google"].iter().any(|v| evidence.contains(v)),
@@ -1495,7 +1496,8 @@ mod tests {
     fn recognizes_common_service_families() {
         assert_eq!(expected_family(Some(0x05c6), Some(0x9008), ""), "qualcomm-qdloader-9008");
         assert_eq!(expected_family(Some(0x0e8d), Some(0x2000), ""), "mediatek-vcom-preloader");
-        assert_eq!(expected_family(Some(0x04e8), Some(0x685d), ""), "samsung-download");
+        assert_eq!(expected_family(Some(0x04e8), Some(0x685d), ""), "samsung-usb");
+        assert_eq!(expected_family(Some(0x04e8), Some(0x6601), ""), "samsung-download");
     }
 
     #[test]
