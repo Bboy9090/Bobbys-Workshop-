@@ -216,6 +216,13 @@ export default function RepairCommandCenter() {
     });
   }, [samsungVerifiedBundles]);
 
+  const selectedSamsungBundle = useMemo(
+    () => samsungVerifiedBundles.find(
+      (bundle) => bundle.directory === selectedSamsungBundleDirectory,
+    ) || null,
+    [samsungVerifiedBundles, selectedSamsungBundleDirectory],
+  );
+
   const applicableWorkflowIds = useMemo(() => {
     const ids = new Set<string>(['diagnostics.usb-scan']);
     switch (selectedTarget?.kind) {
@@ -1713,6 +1720,73 @@ export default function RepairCommandCenter() {
             >
               {samsungFirmwareBusy ? 'Inspecting…' : 'Choose & inspect stock packages'}
             </button>
+          </div>
+
+          <div className="mt-3 rounded border border-blue-900/50 bg-black/20 p-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="min-w-0 flex-1 text-[10px] uppercase tracking-wide text-slate-500">
+                Provenance-valid managed Samsung bundle
+                <select
+                  value={selectedSamsungBundleDirectory}
+                  onChange={(event) => {
+                    setSelectedSamsungBundleDirectory(event.target.value);
+                    setSamsungFirmwareReports([]);
+                    setSamsungFlashPlan(null);
+                  }}
+                  className="mt-1 w-full rounded border border-slate-800 bg-slate-950 px-3 py-2 text-xs normal-case text-white outline-none focus:border-blue-700"
+                >
+                  {!samsungVerifiedBundles.length && (
+                    <option value="">No verified Samsung bundle available</option>
+                  )}
+                  {samsungVerifiedBundles.map((bundle) => (
+                    <option key={bundle.directory} value={bundle.directory}>
+                      {(bundle.model || 'model unlabelled') + ' · ' + bundle.directory}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() => void inspectVerifiedSamsungBundle()}
+                disabled={samsungFirmwareBusy || !selectedSamsungBundle}
+                className="rounded border border-blue-700 px-3 py-2 text-xs font-semibold text-blue-200 disabled:opacity-30 hover:bg-blue-950/40"
+              >
+                {samsungFirmwareBusy ? 'Inspecting…' : 'Inspect verified managed bundle'}
+              </button>
+            </div>
+
+            {selectedSamsungBundle ? (
+              <div className="mt-3 grid gap-2 text-[10px] text-slate-500 md:grid-cols-2">
+                <div>
+                  <span className="text-slate-600">identity</span>
+                  <div className="mt-1 font-mono text-slate-300">
+                    {selectedSamsungBundle.model || 'model ?'} · {selectedSamsungBundle.board || 'board ?'} · {selectedSamsungBundle.sku || 'SKU ?'}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-600">source</span>
+                  <div className="mt-1 text-slate-300">
+                    {selectedSamsungBundle.sourceCategory || 'unknown'} · {selectedSamsungBundle.sourceReference || 'unlabelled source'}
+                  </div>
+                </div>
+                <div className="md:col-span-2">
+                  <span className="text-slate-600">package fingerprint</span>
+                  <div
+                    className="mt-1 break-all font-mono text-emerald-300"
+                    title={selectedSamsungBundle.packageFingerprint || ''}
+                  >
+                    {selectedSamsungBundle.packageFingerprint}
+                  </div>
+                </div>
+                <div className="md:col-span-2 text-amber-300">
+                  Package identity is verified. Live-device model/board/SKU identity is still a separate gate and is not inferred from this bundle.
+                </div>
+              </div>
+            ) : (
+              <div className="mt-2 text-[10px] text-slate-500">
+                No provenance-valid Samsung managed bundle yet. Build or import stock firmware provenance, then rescan the firmware library.
+              </div>
+            )}
           </div>
 
           {!!samsungFirmwareReports.length && (
