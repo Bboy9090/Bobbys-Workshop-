@@ -148,6 +148,8 @@ fn ensure_firmware_root() -> Result<PathBuf, String> {
         .map_err(|e| format!("failed creating Qualcomm firmware directory: {e}"))?;
     fs::create_dir_all(root.join("mediatek"))
         .map_err(|e| format!("failed creating MediaTek firmware directory: {e}"))?;
+    fs::create_dir_all(root.join("samsung"))
+        .map_err(|e| format!("failed creating Samsung firmware directory: {e}"))?;
     fs::create_dir_all(root.join("quarantine"))
         .map_err(|e| format!("failed creating firmware quarantine directory: {e}"))?;
     Ok(root)
@@ -215,6 +217,23 @@ fn classify(path: &Path) -> (String, String) {
         return ("unknown".into(), "provenance-manifest".into());
     }
 
+    let samsung_component = if name.starts_with("ap_") && (name.ends_with(".tar") || name.ends_with(".tar.md5")) {
+        Some("samsung-ap")
+    } else if name.starts_with("bl_") && (name.ends_with(".tar") || name.ends_with(".tar.md5")) {
+        Some("samsung-bl")
+    } else if name.starts_with("cp_") && (name.ends_with(".tar") || name.ends_with(".tar.md5")) {
+        Some("samsung-cp")
+    } else if (name.starts_with("csc_") || name.starts_with("home_csc_"))
+        && (name.ends_with(".tar") || name.ends_with(".tar.md5"))
+    {
+        Some("samsung-csc")
+    } else {
+        None
+    };
+    if let Some(kind) = samsung_component {
+        return ("samsung".into(), kind.into());
+    }
+
     if (ext == "elf" || ext == "mbn")
         && (name.contains("firehose") || name.starts_with("prog_"))
     {
@@ -271,6 +290,8 @@ fn classify(path: &Path) -> (String, String) {
             "qualcomm"
         } else if full.contains("mediatek") || full.contains("mtk") {
             "mediatek"
+        } else if full.contains("samsung") {
+            "samsung"
         } else {
             "unknown"
         };
@@ -425,8 +446,8 @@ fn assess_provenance(root: &Path, directory: &str, entries: &[FirmwareLibraryEnt
             manifest.schema, PROVENANCE_SCHEMA
         ));
     }
-    if !matches!(manifest.vendor.trim().to_ascii_lowercase().as_str(), "qualcomm" | "mediatek") {
-        assessment.warnings.push("Provenance vendor must be qualcomm or mediatek.".into());
+    if !matches!(manifest.vendor.trim().to_ascii_lowercase().as_str(), "qualcomm" | "mediatek" | "samsung") {
+        assessment.warnings.push("Provenance vendor must be qualcomm, mediatek, or samsung.".into());
     }
     if manifest.chipset_family.trim().is_empty()
         || manifest.oem.trim().is_empty()
@@ -648,6 +669,7 @@ fn summarize_bundles(root: &Path, entries: &[FirmwareLibraryEntry]) -> Vec<Firmw
             let required: &[&str] = match vendor_hint.as_str() {
                 "qualcomm" => &["firehose-programmer", "rawprogram-manifest"],
                 "mediatek" => &["scatter-manifest", "download-agent"],
+                "samsung" => &["samsung-ap", "samsung-bl", "samsung-csc"],
                 _ => &[],
             };
 
@@ -663,7 +685,7 @@ fn summarize_bundles(root: &Path, entries: &[FirmwareLibraryEntry]) -> Vec<Firmw
                 .filter(|chipset| chipset.starts_with(&format!("{vendor_hint}:")))
                 .cloned()
                 .collect::<BTreeSet<_>>();
-            let chipset_conflict = matches!(vendor_hint.as_str(), "qualcomm" | "mediatek")
+            let chipset_conflict = matches!(vendor_hint.as_str(), "qualcomm" | "mediatek" | "samsung")
                 && vendor_chipsets.len() > 1;
 
             let provenance = assess_provenance(root, &directory, entries);
@@ -687,7 +709,7 @@ fn summarize_bundles(root: &Path, entries: &[FirmwareLibraryEntry]) -> Vec<Firmw
                 warnings.push("Bundle contains blocked bypass/exploit-marked artifacts and is excluded from planning.".into());
             }
             if vendor_hint == "mixed" {
-                warnings.push("Directory mixes Qualcomm and MediaTek artifacts; split it into vendor/model-specific folders before planning.".into());
+                warnings.push("Directory mixes firmware artifacts from multiple vendors; split it into vendor/model-specific folders before planning.".into());
             }
 
             let package_fingerprint = bundle_package_fingerprint(&directory, entries);
@@ -702,7 +724,7 @@ fn summarize_bundles(root: &Path, entries: &[FirmwareLibraryEntry]) -> Vec<Firmw
                 blocked: acc.blocked,
                 planning_ready: !acc.blocked
                     && !chipset_conflict
-                    && matches!(vendor_hint.as_str(), "qualcomm" | "mediatek")
+                    && matches!(vendor_hint.as_str(), "qualcomm" | "mediatek" | "samsung")
                     && missing_required.is_empty()
                     && provenance.present
                     && provenance.valid
@@ -741,8 +763,8 @@ pub fn firmware_provenance_write(input: FirmwareProvenanceWriteInput) -> Result<
     }
 
     let vendor = input.vendor.trim().to_ascii_lowercase();
-    if !matches!(vendor.as_str(), "qualcomm" | "mediatek") {
-        return Err("vendor must be qualcomm or mediatek".into());
+    if !matches!(vendor.as_str(), "qualcomm" | "mediatek" | "samsung") {
+        return Err("vendor must be qualcomm, mediatek, or samsung".into());
     }
     let source_category = input.source_category.trim().to_ascii_lowercase();
     if !matches!(source_category.as_str(), "official-oem" | "authorized-service") {
