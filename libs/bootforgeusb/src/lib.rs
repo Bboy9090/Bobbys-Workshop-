@@ -14,6 +14,7 @@ pub mod recovery_job;
 pub mod retry_policy;
 pub mod telemetry;
 pub mod transport;
+pub mod transfer_preflight;
 pub mod workflow_catalog;
 
 use model::DeviceRecord;
