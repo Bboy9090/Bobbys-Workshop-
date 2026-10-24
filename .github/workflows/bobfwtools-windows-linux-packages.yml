@@ -1,6 +1,9 @@
 name: BobFWTools Windows and Linux Packages
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feat/native-usb-read-benchmark-20261023
   pull_request:
     paths:
       - 'src-tauri/**'
@@ -37,6 +40,17 @@ jobs:
       - run: cargo test --manifest-path libs/bootforgeusb/Cargo.toml
       - name: Build platform installers
         run: npx tauri build --bundles ${{ matrix.bundles }}
+      - name: Assert native installer outputs exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            test -n "$(find src-tauri/target/release/bundle/msi -type f -name '*.msi' -print -quit)"
+            test -n "$(find src-tauri/target/release/bundle/nsis -type f -name '*.exe' -print -quit)"
+          else
+            test -n "$(find src-tauri/target/release/bundle/appimage -type f -name '*.AppImage' -print -quit)"
+            test -n "$(find src-tauri/target/release/bundle/deb -type f -name '*.deb' -print -quit)"
+          fi
       - name: Upload unsigned package evidence
         uses: actions/upload-artifact@v4
         with:
