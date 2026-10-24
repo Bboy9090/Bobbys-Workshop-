@@ -49,7 +49,7 @@ mod tests {
         EndpointRecord {
             configuration: 1, interface, alternate_setting: alternate, address,
             direction: direction.into(), transfer_type: kind.into(),
-            max_packet_size: 512, interval: 0,
+            max_packet_size: 512, interval: 0, interface_class: 6, interface_subclass: 1, interface_protocol: 1,
         }
     }
 
