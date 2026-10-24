@@ -102,6 +102,7 @@ struct QualifiedFlashGrant {
     expiresAtUnixSeconds: u64,
     dossierFingerprint: String,
     auditBundleFingerprint: Option<String>,
+    qualificationPacketFileSha256: Option<String>,
     qualificationPacketFingerprint: Option<String>,
     grantMac: String,
 }
@@ -2343,6 +2344,8 @@ struct QualificationBenchEvidenceReceipt {
     dossier_fingerprint: String,
     recovery_job_fingerprint: String,
     executor_build_fingerprint: String,
+    qualification_packet_path: String,
+    qualification_packet_file_sha256: String,
     qualification_packet_fingerprint: String,
     partitions: Vec<FlashPartition>,
     physical_checks: QualifiedFlashPhysicalChecks,
@@ -2365,6 +2368,8 @@ fn qualification_bench_evidence_material(
         "dossierFingerprint": receipt.dossier_fingerprint,
         "recoveryJobFingerprint": receipt.recovery_job_fingerprint,
         "executorBuildFingerprint": receipt.executor_build_fingerprint,
+        "qualificationPacketPath": receipt.qualification_packet_path,
+        "qualificationPacketFileSha256": receipt.qualification_packet_file_sha256,
         "qualificationPacketFingerprint": receipt.qualification_packet_fingerprint,
         "partitions": receipt.partitions,
         "physicalChecks": receipt.physical_checks,
@@ -2434,10 +2439,26 @@ fn load_and_verify_qualification_bench_evidence(
             "Qualification bench evidence executor-build fingerprint does not match".to_string(),
         );
     }
+    if receipt.qualification_packet_path.trim().is_empty() {
+        return Err("Qualification bench evidence qualification-packet path is missing".to_string());
+    }
+    if !valid_sha256_hex(&receipt.qualification_packet_file_sha256) {
+        return Err(
+            "Qualification bench evidence qualification-packet file SHA-256 is missing or malformed"
+                .to_string(),
+        );
+    }
     if !valid_sha256_hex(&receipt.qualification_packet_fingerprint) {
         return Err(
             "Qualification bench evidence qualification-packet fingerprint is missing or malformed"
                 .to_string(),
+        );
+    }
+    let actual_packet_file_sha256 =
+        sha256_file(std::path::Path::new(&receipt.qualification_packet_path))?;
+    if !actual_packet_file_sha256.eq_ignore_ascii_case(&receipt.qualification_packet_file_sha256) {
+        return Err(
+            "Qualification bench evidence qualification-packet file hash changed".to_string(),
         );
     }
     if receipt.partitions.is_empty() {
@@ -2516,6 +2537,8 @@ fn bootforge_qualification_bench_evidence_export(
     let qualification_packet_fingerprint = packet_review
         .packet_fingerprint
         .ok_or_else(|| "Verified hardware qualification packet fingerprint is unavailable".to_string())?;
+    let qualification_packet_path = std::path::PathBuf::from(&input.qualificationPacketPath);
+    let qualification_packet_file_sha256 = sha256_file(&qualification_packet_path)?;
 
     let review = bootforge_qualification_review(
         input.dossierPath.clone(),
@@ -2573,6 +2596,8 @@ fn bootforge_qualification_bench_evidence_export(
         dossier_fingerprint,
         recovery_job_fingerprint,
         executor_build_fingerprint: build.executor_build_fingerprint,
+        qualification_packet_path: qualification_packet_path.display().to_string(),
+        qualification_packet_file_sha256,
         qualification_packet_fingerprint,
         partitions: input.partitions,
         physical_checks: input.physicalChecks,
@@ -2606,6 +2631,11 @@ fn bootforge_qualification_bench_evidence_export(
             format!(
                 "executor-build-fingerprint:{}",
                 receipt.executor_build_fingerprint
+            ),
+            format!("qualification-packet-path:{}", receipt.qualification_packet_path),
+            format!(
+                "qualification-packet-file-sha256:{}",
+                receipt.qualification_packet_file_sha256
             ),
             format!(
                 "qualification-packet-fingerprint:{}",
@@ -2646,6 +2676,8 @@ struct QualificationDecisionReceipt {
     recovery_job_fingerprint: String,
     executor_build_fingerprint: String,
     bench_evidence_fingerprint: Option<String>,
+    qualification_packet_path: Option<String>,
+    qualification_packet_file_sha256: Option<String>,
     qualification_packet_fingerprint: Option<String>,
     physical_checks: QualifiedFlashPhysicalChecks,
     generated_unix_seconds: u64,
@@ -2668,6 +2700,8 @@ fn qualification_decision_material(
         "recoveryJobFingerprint": receipt.recovery_job_fingerprint,
         "executorBuildFingerprint": receipt.executor_build_fingerprint,
         "benchEvidenceFingerprint": receipt.bench_evidence_fingerprint,
+        "qualificationPacketPath": receipt.qualification_packet_path,
+        "qualificationPacketFileSha256": receipt.qualification_packet_file_sha256,
         "qualificationPacketFingerprint": receipt.qualification_packet_fingerprint,
         "physicalChecks": receipt.physical_checks,
         "generatedUnixSeconds": receipt.generated_unix_seconds,
@@ -2747,6 +2781,30 @@ fn load_and_verify_qualification_decision(
     }
     if receipt.decision == "accept-evidence"
         && !receipt
+            .qualification_packet_path
+            .as_deref()
+            .map(str::trim)
+            .map(|value| !value.is_empty())
+            .unwrap_or(false)
+    {
+        return Err(
+            "Accepted qualification decision is missing the qualification-packet path".to_string(),
+        );
+    }
+    if receipt.decision == "accept-evidence"
+        && !receipt
+            .qualification_packet_file_sha256
+            .as_deref()
+            .map(valid_sha256_hex)
+            .unwrap_or(false)
+    {
+        return Err(
+            "Accepted qualification decision is missing a valid qualification-packet file SHA-256"
+                .to_string(),
+        );
+    }
+    if receipt.decision == "accept-evidence"
+        && !receipt
             .qualification_packet_fingerprint
             .as_deref()
             .map(valid_sha256_hex)
@@ -2756,6 +2814,22 @@ fn load_and_verify_qualification_decision(
             "Accepted qualification decision is missing a valid qualification-packet fingerprint"
                 .to_string(),
         );
+    }
+    if receipt.decision == "accept-evidence" {
+        let packet_path = receipt
+            .qualification_packet_path
+            .as_deref()
+            .ok_or_else(|| "Accepted qualification decision packet path is unavailable".to_string())?;
+        let expected_packet_file_sha256 = receipt
+            .qualification_packet_file_sha256
+            .as_deref()
+            .ok_or_else(|| "Accepted qualification decision packet file SHA-256 is unavailable".to_string())?;
+        let actual_packet_file_sha256 = sha256_file(std::path::Path::new(packet_path))?;
+        if !actual_packet_file_sha256.eq_ignore_ascii_case(expected_packet_file_sha256) {
+            return Err(
+                "Accepted qualification decision qualification-packet file hash changed".to_string(),
+            );
+        }
     }
     if !all_physical_flash_checks_passed(&receipt.physical_checks) {
         return Err(
@@ -2825,6 +2899,8 @@ fn bootforge_qualification_decision_export(
         return Err("Qualification decision must be recorded by the qualified bench build".to_string());
     }
 
+    let mut qualification_packet_path: Option<String> = None;
+    let mut qualification_packet_file_sha256: Option<String> = None;
     let mut qualification_packet_fingerprint: Option<String> = None;
     let bench_evidence_fingerprint = if input.decision == "accept-evidence" {
         let path = input
@@ -2844,6 +2920,9 @@ fn bootforge_qualification_decision_export(
         if bench.physical_checks != input.physicalChecks {
             return Err("Qualification decision checks do not exactly match the bench-evidence receipt".to_string());
         }
+        qualification_packet_path = Some(bench.qualification_packet_path.clone());
+        qualification_packet_file_sha256 =
+            Some(bench.qualification_packet_file_sha256.clone());
         qualification_packet_fingerprint = Some(bench.qualification_packet_fingerprint.clone());
         Some(bench.receipt_fingerprint)
     } else {
@@ -2867,6 +2946,8 @@ fn bootforge_qualification_decision_export(
         recovery_job_fingerprint,
         executor_build_fingerprint: build.executor_build_fingerprint,
         bench_evidence_fingerprint,
+        qualification_packet_path,
+        qualification_packet_file_sha256,
         qualification_packet_fingerprint,
         physical_checks: input.physicalChecks,
         generated_unix_seconds,
@@ -2894,6 +2975,20 @@ fn bootforge_qualification_decision_export(
             format!(
                 "executor-build-fingerprint:{}",
                 receipt.executor_build_fingerprint
+            ),
+            format!(
+                "qualification-packet-path:{}",
+                receipt
+                    .qualification_packet_path
+                    .clone()
+                    .unwrap_or_else(|| "<none>".to_string())
+            ),
+            format!(
+                "qualification-packet-file-sha256:{}",
+                receipt
+                    .qualification_packet_file_sha256
+                    .clone()
+                    .unwrap_or_else(|| "<none>".to_string())
             ),
             format!(
                 "qualification-packet-fingerprint:{}",
@@ -2992,6 +3087,22 @@ fn bootforge_qualification_audit_bundle_export(
     if !decision_packet_fingerprint.eq_ignore_ascii_case(&bench.qualification_packet_fingerprint) {
         return Err("Decision and bench evidence are bound to different qualification packets".to_string());
     }
+    let decision_packet_path = decision
+        .qualification_packet_path
+        .as_deref()
+        .ok_or_else(|| "Accepted decision is missing qualification-packet path".to_string())?;
+    if decision_packet_path != bench.qualification_packet_path {
+        return Err("Decision and bench evidence reference different qualification-packet paths".to_string());
+    }
+    let decision_packet_file_sha256 = decision
+        .qualification_packet_file_sha256
+        .as_deref()
+        .ok_or_else(|| "Accepted decision is missing qualification-packet file SHA-256".to_string())?;
+    if !decision_packet_file_sha256
+        .eq_ignore_ascii_case(&bench.qualification_packet_file_sha256)
+    {
+        return Err("Decision and bench evidence reference different qualification-packet files".to_string());
+    }
 
     let readiness = if let Some(path) = input
         .readinessCertificatePath
@@ -3020,6 +3131,11 @@ fn bootforge_qualification_audit_bundle_export(
     };
 
     let source_files = serde_json::json!({
+        "qualificationPacket": {
+            "path": bench.qualification_packet_path,
+            "fileSha256": bench.qualification_packet_file_sha256,
+            "packetFingerprint": bench.qualification_packet_fingerprint,
+        },
         "qualificationDossier": {
             "path": input.dossierPath,
             "fileSha256": sha256_file(std::path::Path::new(&input.dossierPath))?,
@@ -3199,7 +3315,7 @@ fn bootforge_qualification_audit_bundle_review(
 
     let mut source_files_match = true;
     let mut source_blockers = Vec::new();
-    for key in ["qualificationDossier", "benchEvidence", "humanDecision"] {
+    for key in ["qualificationPacket", "qualificationDossier", "benchEvidence", "humanDecision"] {
         let Some(entry) = source_files.get(key) else {
             source_files_match = false;
             source_blockers.push(format!("Audit bundle is missing source file entry: {key}"));
@@ -3715,11 +3831,29 @@ mod qualification_decision_tests {
             recovery_job_fingerprint: "b".repeat(64),
             executor_build_fingerprint: "c".repeat(64),
             bench_evidence_fingerprint: Some("d".repeat(64)),
+            qualification_packet_path: {
+                let path = std::env::temp_dir().join(format!(
+                    "bobfwtools-packet-{}.json",
+                    uuid::Uuid::new_v4()
+                ));
+                std::fs::write(&path, b"{\"packet\":\"fixture\"}").expect("write packet fixture");
+                Some(path.display().to_string())
+            },
+            qualification_packet_file_sha256: None,
             qualification_packet_fingerprint: Some("e".repeat(64)),
             physical_checks: passed_checks(),
             generated_unix_seconds: 1_700_000_000,
             receipt_fingerprint: String::new(),
         };
+        receipt.qualification_packet_file_sha256 = Some(
+            sha256_file(std::path::Path::new(
+                receipt
+                    .qualification_packet_path
+                    .as_deref()
+                    .expect("packet fixture path"),
+            ))
+            .expect("packet fixture hash"),
+        );
         receipt.receipt_fingerprint =
             qualification_decision_fingerprint(&receipt).expect("fingerprint");
         receipt
@@ -3824,6 +3958,8 @@ fn qualified_flash_grant_material(grant: &QualifiedFlashGrant) -> Result<Vec<u8>
         "expiresAtUnixSeconds": grant.expiresAtUnixSeconds,
         "dossierFingerprint": grant.dossierFingerprint,
         "auditBundleFingerprint": grant.auditBundleFingerprint,
+        "qualificationPacketFileSha256": grant.qualificationPacketFileSha256,
+        "qualificationPacketFingerprint": grant.qualificationPacketFingerprint,
     });
     serde_json::to_vec(&value)
         .map_err(|e| format!("Could not serialize qualified flash grant material: {e}"))
@@ -3972,6 +4108,7 @@ fn bootforge_issue_qualification_trial_grant(
         expiresAtUnixSeconds: expires_at,
         dossierFingerprint: dossier_fingerprint,
         auditBundleFingerprint: None,
+        qualificationPacketFileSha256: None,
         qualificationPacketFingerprint: None,
         grantMac: String::new(),
     };
@@ -4222,6 +4359,9 @@ fn bootforge_issue_qualified_flash_grant(
         expiresAtUnixSeconds: expires_at,
         dossierFingerprint: dossier_fingerprint,
         auditBundleFingerprint: Some(audit_bundle_fingerprint.clone()),
+        qualificationPacketFileSha256: Some(
+            bench_receipt.qualification_packet_file_sha256.clone(),
+        ),
         qualificationPacketFingerprint: Some(bench_receipt.qualification_packet_fingerprint.clone()),
         grantMac: String::new(),
     };
@@ -4242,6 +4382,10 @@ fn bootforge_issue_qualified_flash_grant(
             format!(
                 "qualification-decision-fingerprint:{}",
                 decision_receipt.receipt_fingerprint
+            ),
+            format!(
+                "qualification-packet-file-sha256:{}",
+                bench_receipt.qualification_packet_file_sha256
             ),
             format!(
                 "qualification-packet-fingerprint:{}",
@@ -4325,6 +4469,13 @@ fn validate_qualified_flash_config(config: &FlashJobConfig, grant_secret: &str) 
         if !valid_sha256_hex(audit_fingerprint) {
             return Err("Production-qualified grant audit-bundle fingerprint is invalid".to_string());
         }
+        let packet_file_sha256 = grant
+            .qualificationPacketFileSha256
+            .as_deref()
+            .ok_or_else(|| "Production-qualified grant is missing its qualification-packet file SHA-256".to_string())?;
+        if !valid_sha256_hex(packet_file_sha256) {
+            return Err("Production-qualified grant qualification-packet file SHA-256 is invalid".to_string());
+        }
         let packet_fingerprint = grant
             .qualificationPacketFingerprint
             .as_deref()
@@ -4332,7 +4483,10 @@ fn validate_qualified_flash_config(config: &FlashJobConfig, grant_secret: &str) 
         if !valid_sha256_hex(packet_fingerprint) {
             return Err("Production-qualified grant qualification-packet fingerprint is invalid".to_string());
         }
-    } else if grant.auditBundleFingerprint.is_some() || grant.qualificationPacketFingerprint.is_some() {
+    } else if grant.auditBundleFingerprint.is_some()
+        || grant.qualificationPacketFileSha256.is_some()
+        || grant.qualificationPacketFingerprint.is_some()
+    {
         return Err("Bench qualification trial must not carry production audit-bundle or qualification-packet authority".to_string());
     }
     if is_trial {
@@ -5598,6 +5752,7 @@ mod qualified_flash_grant_tests {
                 expiresAtUnixSeconds: u64::MAX,
                 dossierFingerprint: "c".repeat(64),
                 auditBundleFingerprint: Some("d".repeat(64)),
+                qualificationPacketFileSha256: Some("f".repeat(64)),
                 qualificationPacketFingerprint: Some("e".repeat(64)),
                 grantMac: String::new(),
             },
@@ -5630,6 +5785,7 @@ mod qualified_flash_grant_tests {
         config.qualificationGrant.qualificationStatus = "qualification-trial".into();
         config.qualificationGrant.executorQualified = false;
         config.qualificationGrant.auditBundleFingerprint = None;
+        config.qualificationGrant.qualificationPacketFileSha256 = None;
         config.qualificationGrant.qualificationPacketFingerprint = None;
         config.qualificationGrant.grantMac =
             qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
@@ -5644,6 +5800,7 @@ mod qualified_flash_grant_tests {
         config.qualificationGrant.qualificationStatus = "qualification-trial".into();
         config.qualificationGrant.executorQualified = false;
         config.qualificationGrant.auditBundleFingerprint = None;
+        config.qualificationGrant.qualificationPacketFileSha256 = None;
         config.qualificationGrant.qualificationPacketFingerprint = None;
         config.qualificationGrant.approvedPartitions[0].name = "bootloader".into();
         config.qualificationGrant.grantMac =
@@ -5658,6 +5815,16 @@ mod qualified_flash_grant_tests {
     fn grant_rejects_forged_mac() {
         let mut config = valid_config();
         config.qualificationGrant.grantMac = "d".repeat(64);
+        assert!(validate_qualified_flash_config(&config, "test-secret")
+            .unwrap_err()
+            .contains("authentication failed"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn grant_mac_binds_qualification_packet_evidence() {
+        let mut config = valid_config();
+        config.qualificationGrant.qualificationPacketFingerprint = Some("1".repeat(64));
         assert!(validate_qualified_flash_config(&config, "test-secret")
             .unwrap_err()
             .contains("authentication failed"));
