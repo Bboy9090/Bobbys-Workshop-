@@ -103,6 +103,8 @@ export default function RepairCommandCenter() {
   const [workstation, setWorkstation] = useState<WorkstationReadiness | null>(null);
   const [initializing, setInitializing] = useState(false);
   const [adbDevices, setAdbDevices] = useState<AdbDeviceRecord[]>([]);
+  const [deploymentSerial, setDeploymentSerial] = useState('');
+  const [deploymentGroup, setDeploymentGroup] = useState(false);
   const [transportDevices, setTransportDevices] = useState<TransportDevice[]>([]);
   const [usbDiagnostics, setUsbDiagnostics] = useState<UsbDiagnosticRegistryItem[]>([]);
   const [usbDiagnosticError, setUsbDiagnosticError] = useState<string | null>(null);
@@ -497,6 +499,23 @@ export default function RepairCommandCenter() {
 
   return (
     <>
+    <section className="mb-4 rounded border border-cyan-900/60 bg-slate-950/70 p-3 text-xs" aria-label="Android deployment targets">
+      <h3 className="font-semibold text-cyan-300">Android deployment · target selection</h3>
+      <p className="mt-1 text-slate-400">Single device by default. Only authorized ADB devices are eligible. This panel is a read-only deployment preview; no commands are sent.</p>
+      <label className="mt-2 block text-slate-200">Deployment mode
+        <select className="ml-2 rounded bg-slate-800 p-1" value={deploymentGroup ? 'group' : 'single'} onChange={event => setDeploymentGroup(event.target.value === 'group')}>
+          <option value="single">Single device</option><option value="group">All authorized devices</option>
+        </select>
+      </label>
+      {!deploymentGroup && <label className="mt-2 block text-slate-200">Target
+        <select className="ml-2 rounded bg-slate-800 p-1" value={adbDevices.some(d => d.serial === deploymentSerial && d.authorized && d.state === 'device') ? deploymentSerial : ''} onChange={event => setDeploymentSerial(event.target.value)}>
+          <option value="">Select authorized device</option>
+          {adbDevices.filter(d => d.authorized && d.state === 'device').map(d => <option key={d.serial} value={d.serial}>{d.serial}</option>)}
+        </select>
+      </label>}
+      <p className="mt-2 text-slate-400">Authorized: {adbDevices.filter(d => d.authorized && d.state === 'device').length} · Unavailable/unauthorized: {adbDevices.filter(d => !d.authorized || d.state !== 'device').length}</p>
+      <p className="mt-1 text-slate-300">{deploymentGroup ? 'Group deployment requires explicit confirmation and is not enabled in this preview.' : deploymentSerial && adbDevices.some(d => d.serial === deploymentSerial && d.authorized && d.state === 'device') ? `Selected ${deploymentSerial}; execution integration pending.` : 'Select an authorized device to prepare a single-device deployment.'}</p>
+    </section>
     <section className="mb-4 rounded border border-cyan-900/60 bg-slate-950/70 p-3 text-xs" aria-label="Read-only USB diagnostics">
         <h3 className="font-semibold text-cyan-300">USB diagnostics · read-only</h3>
         <p className="mt-1 text-slate-400">Live descriptor observations every five seconds. Device setup, FRP and driver ownership are not inferred from USB descriptors.</p>
