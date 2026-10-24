@@ -49,6 +49,8 @@ struct ProvenanceAssessment {
     model: Option<String>,
     board: Option<String>,
     sku: Option<String>,
+    build_version: Option<String>,
+    bootloader_revision: Option<String>,
     source_category: Option<String>,
     source_reference: Option<String>,
     warnings: Vec<String>,
@@ -115,6 +117,8 @@ pub struct FirmwareBundleSummary {
     pub model: Option<String>,
     pub board: Option<String>,
     pub sku: Option<String>,
+    pub build_version: Option<String>,
+    pub bootloader_revision: Option<String>,
     pub source_category: Option<String>,
     pub source_reference: Option<String>,
     pub package_fingerprint: Option<String>,
@@ -435,6 +439,13 @@ fn assess_provenance(root: &Path, directory: &str, entries: &[FirmwareLibraryEnt
     assessment.model = Some(manifest.model.trim().to_string()).filter(|value| !value.is_empty());
     assessment.board = Some(manifest.board.trim().to_string()).filter(|value| !value.is_empty());
     assessment.sku = Some(manifest.sku.trim().to_string()).filter(|value| !value.is_empty());
+    assessment.build_version = Some(manifest.build_version.trim().to_string()).filter(|value| !value.is_empty());
+    assessment.bootloader_revision = manifest
+        .bootloader_revision
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
     assessment.source_category = Some(manifest.source_category.trim().to_string()).filter(|value| !value.is_empty());
     assessment.source_reference = Some(manifest.source_reference.trim().to_string()).filter(|value| !value.is_empty());
     assessment.exact_identity_present =
@@ -468,6 +479,14 @@ fn assess_provenance(root: &Path, directory: &str, entries: &[FirmwareLibraryEnt
     }
     if manifest.source_reference.trim().len() < 3 {
         assessment.warnings.push("sourceReference must identify the package source.".into());
+    }
+    if manifest.vendor.trim().eq_ignore_ascii_case("samsung")
+        && assessment.bootloader_revision.is_none()
+    {
+        assessment.warnings.push(
+            "Samsung provenance must declare bootloaderRevision before the stock bundle is planning-ready."
+                .into(),
+        );
     }
     if manifest.artifacts.is_empty() {
         assessment.warnings.push("Provenance manifest must hash-bind at least one package artifact.".into());
@@ -587,7 +606,6 @@ fn assess_provenance(root: &Path, directory: &str, entries: &[FirmwareLibraryEnt
     let _informational = (
         manifest.region.as_deref(),
         manifest.carrier.as_deref(),
-        manifest.bootloader_revision.as_deref(),
         manifest.storage.as_deref(),
     );
 
@@ -752,6 +770,8 @@ fn summarize_bundles(root: &Path, entries: &[FirmwareLibraryEntry]) -> Vec<Firmw
                 model: provenance.model,
                 board: provenance.board,
                 sku: provenance.sku,
+                build_version: provenance.build_version,
+                bootloader_revision: provenance.bootloader_revision,
                 source_category: provenance.source_category,
                 source_reference: provenance.source_reference,
                 package_fingerprint,
@@ -1305,6 +1325,85 @@ mod tests {
         assert!(bundles[0].missing_required.is_empty());
         assert_eq!(bundles[0].vendor_hint, "samsung");
         assert_eq!(bundles[0].model.as_deref(), Some("SM-TEST"));
+        assert_eq!(bundles[0].build_version.as_deref(), Some("TESTXXU4CVI1"));
+        assert_eq!(bundles[0].bootloader_revision.as_deref(), Some("4"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+
+    #[test]
+    fn samsung_stock_bundle_without_bootloader_revision_is_not_planning_ready() {
+        let root = std::env::temp_dir().join(format!(
+            "bobfwtools-samsung-revision-test-{}",
+            std::process::id()
+        ));
+        let directory = root.join("samsung/SM-TEST/US");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(
+            directory.join(PROVENANCE_MANIFEST_NAME),
+            r#"{
+              "schema":"com.bobbyblanco.bobfwtools.firmware-provenance.v1",
+              "vendor":"samsung",
+              "chipsetFamily":"SM6150",
+              "oem":"Samsung",
+              "model":"SM-TEST",
+              "board":"testboard",
+              "sku":"SM-TEST",
+              "region":"US",
+              "carrier":"wifi",
+              "buildVersion":"TESTXXU4CVI1",
+              "storage":"ufs",
+              "sourceCategory":"official-oem",
+              "sourceReference":"Samsung stock firmware package",
+              "artifacts":[
+                {"relativePath":"AP_TESTXXU4CVI1.tar.md5","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+                {"relativePath":"BL_TESTXXU4CVI1.tar.md5","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+                {"relativePath":"CSC_OMC_OXM_TESTOXM4CVI1.tar.md5","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}
+              ]
+            }"#,
+        ).unwrap();
+
+        let make = |name: &str, kind: &str, sha: char| FirmwareLibraryEntry {
+            path: directory.join(name).display().to_string(),
+            relative_path: format!("samsung/SM-TEST/US/{name}"),
+            name: name.into(),
+            bytes: 1,
+            sha256: sha.to_string().repeat(64),
+            modified_unix_ms: None,
+            vendor_hint: "samsung".into(),
+            artifact_kind: kind.into(),
+            chipset_matches: vec!["qualcomm:SM6150".into()],
+            blocked: false,
+            eligible_for_planning: true,
+            warnings: vec![],
+        };
+        let entries = vec![
+            make("AP_TESTXXU4CVI1.tar.md5", "samsung-ap", 'a'),
+            make("BL_TESTXXU4CVI1.tar.md5", "samsung-bl", 'b'),
+            make("CSC_OMC_OXM_TESTOXM4CVI1.tar.md5", "samsung-csc", 'c'),
+            FirmwareLibraryEntry {
+                path: directory.join(PROVENANCE_MANIFEST_NAME).display().to_string(),
+                relative_path: format!("samsung/SM-TEST/US/{PROVENANCE_MANIFEST_NAME}"),
+                name: PROVENANCE_MANIFEST_NAME.into(),
+                bytes: 1,
+                sha256: "d".repeat(64),
+                modified_unix_ms: None,
+                vendor_hint: "unknown".into(),
+                artifact_kind: "provenance-manifest".into(),
+                chipset_matches: vec![],
+                blocked: false,
+                eligible_for_planning: true,
+                warnings: vec![],
+            },
+        ];
+
+        let bundles = summarize_bundles(&root, &entries);
+        assert_eq!(bundles.len(), 1);
+        assert!(!bundles[0].planning_ready);
+        assert!(bundles[0]
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("bootloaderRevision")));
         let _ = fs::remove_dir_all(root);
     }
 
