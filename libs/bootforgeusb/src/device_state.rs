@@ -39,3 +39,20 @@ mod tests {
         assert!(!state.firmware_write_authorized);
     }
 }
+
+/// Descriptor-only assessment for display in read-only diagnostic surfaces.
+/// This does not attempt to claim the USB interface or infer device lock state.
+pub fn diagnose_transport(device: &crate::transport::TransportDevice) -> Vec<DeviceDiagnostic> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut result = Vec::new();
+    for ep in &device.endpoints {
+        if !seen.insert((ep.configuration, ep.interface, ep.alternate_setting)) { continue; }
+        let imaging = (ep.interface_class, ep.interface_subclass, ep.interface_protocol) == (6, 1, 1);
+        if imaging {
+            result.push(DeviceDiagnostic { status: "imagingInterfaceDetected", detail: format!("Interface {} advertises imaging/PTP 06/01/01; ownership, protocol handshake, and setup/FRP state remain unverified.", ep.interface), safe_to_attempt_mtp: false, firmware_write_authorized: false });
+        } else {
+            result.push(classify_mtp_claim(false, None));
+        }
+    }
+    result
+}

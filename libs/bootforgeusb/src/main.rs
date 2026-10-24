@@ -21,6 +21,8 @@ enum Commands {
         #[arg(long)]
         endpoints: bool,
     },
+    /// Read-only USB registry with conservative diagnostic statuses.
+    Diagnose,
     /// Benchmark a single native bulk IN endpoint on an explicitly selected USB device.
     ReadBenchmark {
         #[arg(long)] bus: u8,
@@ -94,6 +96,9 @@ fn main() {
                 scan().map(|v| json(&v)).map_err(|e| e.to_string())
             }
         }
+        Commands::Diagnose => transport::scan_transports()
+            .map(|devices| { for device in devices { json(&serde_json::json!({"device": device, "diagnostics": bootforgeusb::device_state::diagnose_transport(&device)})); } })
+            .map_err(|e| e.to_string()),
         Commands::ReadBenchmark { bus, address, interface, reads, timeout_ms } =>
             bootforgeusb::read_benchmark::benchmark_bulk_in(bus, address, interface, reads, timeout_ms)
                 .map(|result| json(&result)),
