@@ -7,56 +7,12 @@ on:
     branches: [ "main", "master", "main-tool-kit", "feat/bobfwtools-macos-foundation", "feat/bobfwtools-calibration-edl-safety" ]
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   BOBFWTOOLS_SOURCE_REVISION: ${{ github.sha }}
 
 jobs:
-  lockfile-sync:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v7
-      with:
-        ref: ${{ github.event.pull_request.head.ref }}
-
-    - name: Use Node.js
-      uses: actions/setup-node@v7
-      with:
-        node-version: "24.x"
-        package-manager-cache: false
-
-    - name: Regenerate patched root lockfile
-      run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-
-    - name: Verify patched resolutions
-      run: |
-        node - <<'NODE'
-        const lock = require('./package-lock.json');
-        for (const [name, expected] of Object.entries({
-          'body-parser': '1.20.9',
-          'fast-uri': '3.1.9',
-          'zod': '4.6.7',
-        })) {
-          const actual = lock.packages['node_modules/' + name]?.version;
-          if (actual !== expected) throw new Error(name + ' expected ' + expected + ' but got ' + actual);
-          console.log(name, actual);
-        }
-        NODE
-
-    - name: Commit regenerated lockfile when needed
-      run: |
-        if git diff --quiet -- package-lock.json; then
-          echo "package-lock.json already synchronized"
-          exit 0
-        fi
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git add package-lock.json
-        git commit -m "Lock patched transitive dependency resolutions"
-        git push origin HEAD:${{ github.event.pull_request.head.ref }}
-
   build:
     runs-on: ubuntu-latest
     steps:
@@ -68,31 +24,6 @@ jobs:
         node-version: "24.x"
         package-manager-cache: false
         
-    - name: Regenerate root lockfile for patched overrides
-      run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-
-    - name: Verify regenerated patched resolutions
-      run: |
-        node - <<'NODE'
-        const lock = require('./package-lock.json');
-        for (const [name, expected] of Object.entries({
-          'body-parser': '1.20.9',
-          'fast-uri': '3.1.9',
-          'zod': '4.6.7',
-        })) {
-          const actual = lock.packages['node_modules/' + name]?.version;
-          if (actual !== expected) throw new Error(name + ' expected ' + expected + ' but got ' + actual);
-          console.log(name, actual);
-        }
-        NODE
-
-    - name: Upload regenerated root lockfile
-      uses: actions/upload-artifact@v7
-      with:
-        name: regenerated-package-lock
-        path: package-lock.json
-        if-no-files-found: error
-
     - name: Install Dependencies
       run: npm ci
       
