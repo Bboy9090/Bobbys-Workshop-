@@ -18,7 +18,7 @@ if(args.includes('--help')){
 const refusedActions=['flash','--repartition','close-pc-screen'];
 const run=(executable,commandArgs)=>spawnSync(resolve(executable),commandArgs,{
  encoding:'utf8',
- timeout:20000,
+ timeout:130000,
  maxBuffer:262144,
  env:{PATH:process.env.PATH??''},
 });
