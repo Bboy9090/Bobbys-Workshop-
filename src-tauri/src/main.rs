@@ -35,6 +35,7 @@ mod adb_workflows;
 mod audit;
 mod workflow_capabilities;
 mod diagnostics;
+mod firmware_inspector;
 mod workflow_jobs;
 mod workstation;
 mod calibration_backup_exec;
@@ -617,6 +618,18 @@ fn hardware_service_profile_validate(
 fn bootforgeusb_transport_scan() -> Result<Vec<bootforgeusb::transport::TransportDevice>, String> {
     bootforgeusb::transport::scan_transports()
         .map_err(|e| format!("USB transport scan failed: {e}"))
+}
+
+#[tauri::command]
+async fn bootforgeusb_diagnostics_scan() -> Result<Vec<serde_json::Value>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        bootforgeusb::transport::scan_transports()
+            .map(|devices| devices.into_iter().map(|device| {
+                let diagnostics = bootforgeusb::device_state::diagnose_transport(&device);
+                serde_json::json!({"device": device, "diagnostics": diagnostics})
+            }).collect())
+            .map_err(|e| format!("USB diagnostics scan failed: {e}"))
+    }).await.map_err(|e| format!("USB diagnostics task failed: {e}"))?
 }
 
 #[tauri::command]
@@ -6052,7 +6065,9 @@ fn main() {
             firmware_provenance_write,
             hardware_service_profile_validate,
 bootforgeusb_transport_scan,
+            bootforgeusb_diagnostics_scan,
             bootforge_firmware_inspect,
+            firmware_inspector::inspect_firmware_artifact,
             bootforge_samsung_plan,
             bootforge_recovery_scan,
             bootforge_recovery_autodiscover,

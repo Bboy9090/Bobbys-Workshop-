@@ -21,6 +21,12 @@ pub struct EndpointRecord {
     pub transfer_type: String,
     pub max_packet_size: u16,
     pub interval: u8,
+    #[serde(default)]
+    pub interface_class: u8,
+    #[serde(default)]
+    pub interface_subclass: u8,
+    #[serde(default)]
+    pub interface_protocol: u8,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,6 +143,9 @@ pub fn scan_transports() -> Result<Vec<TransportDevice>, TransportError> {
                             address: ep.address(),
                             direction: direction.to_string(),
                             transfer_type: transfer_type_name(ep.transfer_type()).to_string(),
+                            interface_class: iface.class_code(),
+                            interface_subclass: iface.sub_class_code(),
+                            interface_protocol: iface.protocol_code(),
                             max_packet_size: ep.max_packet_size(),
                             interval: ep.interval(),
                         });

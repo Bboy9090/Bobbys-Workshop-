@@ -21,6 +21,23 @@ enum Commands {
         #[arg(long)]
         endpoints: bool,
     },
+    /// Read-only USB registry with conservative diagnostic statuses.
+    Diagnose,
+    /// Benchmark a single native bulk IN endpoint on an explicitly selected USB device.
+    ReadBenchmark {
+        #[arg(long)] bus: u8,
+        #[arg(long)] address: u8,
+        #[arg(long)] interface: Option<u8>,
+        #[arg(long, default_value_t = 16)] reads: u32,
+        #[arg(long, default_value_t = 1000)] timeout_ms: u64,
+    },
+    /// Query the selected MTP imaging interface using a bounded GetDeviceInfo transaction.
+    MtpDeviceInfo {
+        #[arg(long)] bus: u8,
+        #[arg(long)] address: u8,
+        #[arg(long)] interface: u8,
+        #[arg(long, default_value_t = 1000)] timeout_ms: u64,
+    },
     /// Verify and inspect one or more firmware TAR/.tar.md5 packages.
     Inspect {
         #[arg(required = true)]
@@ -79,6 +96,15 @@ fn main() {
                 scan().map(|v| json(&v)).map_err(|e| e.to_string())
             }
         }
+        Commands::Diagnose => transport::scan_transports()
+            .map(|devices| { for device in devices { json(&serde_json::json!({"device": device, "diagnostics": bootforgeusb::device_state::diagnose_transport(&device)})); } })
+            .map_err(|e| e.to_string()),
+        Commands::ReadBenchmark { bus, address, interface, reads, timeout_ms } =>
+            bootforgeusb::read_benchmark::benchmark_bulk_in(bus, address, interface, reads, timeout_ms)
+                .map(|result| json(&result)),
+        Commands::MtpDeviceInfo { bus, address, interface, timeout_ms } =>
+            bootforgeusb::read_benchmark::mtp_get_device_info(bus, address, interface, timeout_ms)
+                .map(|bytes| json(&serde_json::json!({"deviceInfoPayloadBytes": bytes, "transaction": "GetDeviceInfo"}))),
         Commands::Inspect { packages } => firmware::inspect_many(packages)
             .map(|v| json(&v))
             .map_err(|e| e.to_string()),
