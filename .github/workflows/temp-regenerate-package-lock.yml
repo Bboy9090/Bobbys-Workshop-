@@ -1,4 +1,5 @@
 name: Temporary lockfile regeneration
+# one-shot branch utility; remove after lockfile commit
 
 on:
   push:
