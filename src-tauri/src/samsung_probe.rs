@@ -5,7 +5,7 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
+const PROBE_TIMEOUT: Duration = Duration::from_secs(130);
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -148,7 +148,10 @@ pub fn samsung_download_probe(device_uid: String) -> Result<SamsungDownloadProbe
     let pit_signal = output_text.contains("PIT Entry Count")
         || output_text.contains("PIT Magic")
         || output_text.contains("Entry Count")
-        || success;
+        || output_text.contains("Partition Name")
+        || output_text.contains("Binary Type")
+        || output_text.contains("Device Type")
+        || output_text.contains("Identifier");
     let protocol_qualified = success && pit_signal;
 
     evidence.push(format!("probe-exit-success:{success}"));
@@ -199,7 +202,21 @@ mod tests {
     }
 
     #[test]
-    fn probe_timeout_is_bounded() {
-        assert!(PROBE_TIMEOUT <= Duration::from_secs(10));
+    fn probe_timeout_allows_heimdall_slow_device_window() {
+        assert!(PROBE_TIMEOUT >= Duration::from_secs(120));
+        assert!(PROBE_TIMEOUT <= Duration::from_secs(135));
+    }
+
+    #[test]
+    fn successful_exit_without_pit_structure_does_not_qualify_protocol() {
+        let output_text = "Device detected";
+        let pit_signal = output_text.contains("PIT Entry Count")
+            || output_text.contains("PIT Magic")
+            || output_text.contains("Entry Count")
+            || output_text.contains("Partition Name")
+            || output_text.contains("Binary Type")
+            || output_text.contains("Device Type")
+            || output_text.contains("Identifier");
+        assert!(!pit_signal);
     }
 }
