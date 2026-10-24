@@ -102,6 +102,7 @@ struct QualifiedFlashGrant {
     expiresAtUnixSeconds: u64,
     dossierFingerprint: String,
     auditBundleFingerprint: Option<String>,
+    qualificationPacketFileSha256: Option<String>,
     qualificationPacketFingerprint: Option<String>,
     grantMac: String,
 }
@@ -3830,11 +3831,29 @@ mod qualification_decision_tests {
             recovery_job_fingerprint: "b".repeat(64),
             executor_build_fingerprint: "c".repeat(64),
             bench_evidence_fingerprint: Some("d".repeat(64)),
+            qualification_packet_path: {
+                let path = std::env::temp_dir().join(format!(
+                    "bobfwtools-packet-{}.json",
+                    uuid::Uuid::new_v4()
+                ));
+                std::fs::write(&path, b"{\"packet\":\"fixture\"}").expect("write packet fixture");
+                Some(path.display().to_string())
+            },
+            qualification_packet_file_sha256: None,
             qualification_packet_fingerprint: Some("e".repeat(64)),
             physical_checks: passed_checks(),
             generated_unix_seconds: 1_700_000_000,
             receipt_fingerprint: String::new(),
         };
+        receipt.qualification_packet_file_sha256 = Some(
+            sha256_file(std::path::Path::new(
+                receipt
+                    .qualification_packet_path
+                    .as_deref()
+                    .expect("packet fixture path"),
+            ))
+            .expect("packet fixture hash"),
+        );
         receipt.receipt_fingerprint =
             qualification_decision_fingerprint(&receipt).expect("fingerprint");
         receipt
@@ -3939,6 +3958,8 @@ fn qualified_flash_grant_material(grant: &QualifiedFlashGrant) -> Result<Vec<u8>
         "expiresAtUnixSeconds": grant.expiresAtUnixSeconds,
         "dossierFingerprint": grant.dossierFingerprint,
         "auditBundleFingerprint": grant.auditBundleFingerprint,
+        "qualificationPacketFileSha256": grant.qualificationPacketFileSha256,
+        "qualificationPacketFingerprint": grant.qualificationPacketFingerprint,
     });
     serde_json::to_vec(&value)
         .map_err(|e| format!("Could not serialize qualified flash grant material: {e}"))
@@ -4087,6 +4108,7 @@ fn bootforge_issue_qualification_trial_grant(
         expiresAtUnixSeconds: expires_at,
         dossierFingerprint: dossier_fingerprint,
         auditBundleFingerprint: None,
+        qualificationPacketFileSha256: None,
         qualificationPacketFingerprint: None,
         grantMac: String::new(),
     };
@@ -4337,6 +4359,9 @@ fn bootforge_issue_qualified_flash_grant(
         expiresAtUnixSeconds: expires_at,
         dossierFingerprint: dossier_fingerprint,
         auditBundleFingerprint: Some(audit_bundle_fingerprint.clone()),
+        qualificationPacketFileSha256: Some(
+            bench_receipt.qualification_packet_file_sha256.clone(),
+        ),
         qualificationPacketFingerprint: Some(bench_receipt.qualification_packet_fingerprint.clone()),
         grantMac: String::new(),
     };
@@ -4357,6 +4382,10 @@ fn bootforge_issue_qualified_flash_grant(
             format!(
                 "qualification-decision-fingerprint:{}",
                 decision_receipt.receipt_fingerprint
+            ),
+            format!(
+                "qualification-packet-file-sha256:{}",
+                bench_receipt.qualification_packet_file_sha256
             ),
             format!(
                 "qualification-packet-fingerprint:{}",
@@ -4440,6 +4469,13 @@ fn validate_qualified_flash_config(config: &FlashJobConfig, grant_secret: &str) 
         if !valid_sha256_hex(audit_fingerprint) {
             return Err("Production-qualified grant audit-bundle fingerprint is invalid".to_string());
         }
+        let packet_file_sha256 = grant
+            .qualificationPacketFileSha256
+            .as_deref()
+            .ok_or_else(|| "Production-qualified grant is missing its qualification-packet file SHA-256".to_string())?;
+        if !valid_sha256_hex(packet_file_sha256) {
+            return Err("Production-qualified grant qualification-packet file SHA-256 is invalid".to_string());
+        }
         let packet_fingerprint = grant
             .qualificationPacketFingerprint
             .as_deref()
@@ -4447,7 +4483,10 @@ fn validate_qualified_flash_config(config: &FlashJobConfig, grant_secret: &str) 
         if !valid_sha256_hex(packet_fingerprint) {
             return Err("Production-qualified grant qualification-packet fingerprint is invalid".to_string());
         }
-    } else if grant.auditBundleFingerprint.is_some() || grant.qualificationPacketFingerprint.is_some() {
+    } else if grant.auditBundleFingerprint.is_some()
+        || grant.qualificationPacketFileSha256.is_some()
+        || grant.qualificationPacketFingerprint.is_some()
+    {
         return Err("Bench qualification trial must not carry production audit-bundle or qualification-packet authority".to_string());
     }
     if is_trial {
@@ -5713,6 +5752,7 @@ mod qualified_flash_grant_tests {
                 expiresAtUnixSeconds: u64::MAX,
                 dossierFingerprint: "c".repeat(64),
                 auditBundleFingerprint: Some("d".repeat(64)),
+                qualificationPacketFileSha256: Some("f".repeat(64)),
                 qualificationPacketFingerprint: Some("e".repeat(64)),
                 grantMac: String::new(),
             },
@@ -5745,6 +5785,7 @@ mod qualified_flash_grant_tests {
         config.qualificationGrant.qualificationStatus = "qualification-trial".into();
         config.qualificationGrant.executorQualified = false;
         config.qualificationGrant.auditBundleFingerprint = None;
+        config.qualificationGrant.qualificationPacketFileSha256 = None;
         config.qualificationGrant.qualificationPacketFingerprint = None;
         config.qualificationGrant.grantMac =
             qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
@@ -5759,6 +5800,7 @@ mod qualified_flash_grant_tests {
         config.qualificationGrant.qualificationStatus = "qualification-trial".into();
         config.qualificationGrant.executorQualified = false;
         config.qualificationGrant.auditBundleFingerprint = None;
+        config.qualificationGrant.qualificationPacketFileSha256 = None;
         config.qualificationGrant.qualificationPacketFingerprint = None;
         config.qualificationGrant.approvedPartitions[0].name = "bootloader".into();
         config.qualificationGrant.grantMac =
@@ -5773,6 +5815,16 @@ mod qualified_flash_grant_tests {
     fn grant_rejects_forged_mac() {
         let mut config = valid_config();
         config.qualificationGrant.grantMac = "d".repeat(64);
+        assert!(validate_qualified_flash_config(&config, "test-secret")
+            .unwrap_err()
+            .contains("authentication failed"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn grant_mac_binds_qualification_packet_evidence() {
+        let mut config = valid_config();
+        config.qualificationGrant.qualificationPacketFingerprint = Some("1".repeat(64));
         assert!(validate_qualified_flash_config(&config, "test-secret")
             .unwrap_err()
             .contains("authentication failed"));
