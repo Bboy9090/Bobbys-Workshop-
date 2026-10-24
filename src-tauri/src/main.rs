@@ -620,6 +620,18 @@ fn bootforgeusb_transport_scan() -> Result<Vec<bootforgeusb::transport::Transpor
 }
 
 #[tauri::command]
+async fn bootforgeusb_diagnostics_scan() -> Result<Vec<serde_json::Value>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        bootforgeusb::transport::scan_transports()
+            .map(|devices| devices.into_iter().map(|device| {
+                let diagnostics = bootforgeusb::device_state::diagnose_transport(&device);
+                serde_json::json!({"device": device, "diagnostics": diagnostics})
+            }).collect())
+            .map_err(|e| format!("USB diagnostics scan failed: {e}"))
+    }).await.map_err(|e| format!("USB diagnostics task failed: {e}"))?
+}
+
+#[tauri::command]
 fn bootforge_firmware_inspect(paths: Vec<String>) -> Result<Vec<bootforgeusb::firmware::FirmwareArchiveReport>, String> {
     if paths.is_empty() {
         return Err("At least one firmware package path is required".to_string());

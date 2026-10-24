@@ -1469,6 +1469,23 @@ export type TransportDevice = {
   bulkOut: number[];
 };
 
+export type UsbDeviceDiagnostic = {
+  status: string;
+  detail: string;
+  safeToAttemptMtp: boolean;
+  firmwareWriteAuthorized: boolean;
+};
+
+export type UsbDiagnosticRegistryItem = {
+  device: TransportDevice;
+  diagnostics: UsbDeviceDiagnostic[];
+};
+
+export async function scanUsbDiagnostics(): Promise<UsbDiagnosticRegistryItem[]> {
+  if (!isTauriRuntime()) return [];
+  return invoke<UsbDiagnosticRegistryItem[]>('bootforgeusb_diagnostics_scan');
+}
+
 export async function scanTransportDevices(): Promise<TransportDevice[]> {
   if (!isTauriRuntime()) return [];
   return invoke<TransportDevice[]>('bootforgeusb_transport_scan');
