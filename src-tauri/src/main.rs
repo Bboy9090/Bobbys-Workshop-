@@ -35,6 +35,7 @@ mod adb_workflows;
 mod audit;
 mod workflow_capabilities;
 mod diagnostics;
+mod firmware_inspector;
 mod workflow_jobs;
 mod workstation;
 mod calibration_backup_exec;
@@ -6064,7 +6065,9 @@ fn main() {
             firmware_provenance_write,
             hardware_service_profile_validate,
 bootforgeusb_transport_scan,
+            bootforgeusb_diagnostics_scan,
             bootforge_firmware_inspect,
+            firmware_inspector::inspect_firmware_artifact,
             bootforge_samsung_plan,
             bootforge_recovery_scan,
             bootforge_recovery_autodiscover,

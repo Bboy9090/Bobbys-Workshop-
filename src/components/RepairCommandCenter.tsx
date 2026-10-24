@@ -8,6 +8,8 @@ import {
   getWorkflowPolicyCatalog,
   scanAdbDevices,
   scanTransportDevices,
+  scanUsbDiagnostics,
+  type UsbDiagnosticRegistryItem,
   chooseSamsungFirmwarePackages,
   inspectSamsungFirmwarePackages,
   buildSamsungFirmwarePlan,
@@ -102,6 +104,8 @@ export default function RepairCommandCenter() {
   const [initializing, setInitializing] = useState(false);
   const [adbDevices, setAdbDevices] = useState<AdbDeviceRecord[]>([]);
   const [transportDevices, setTransportDevices] = useState<TransportDevice[]>([]);
+  const [usbDiagnostics, setUsbDiagnostics] = useState<UsbDiagnosticRegistryItem[]>([]);
+  const [usbDiagnosticError, setUsbDiagnosticError] = useState<string | null>(null);
   const [selectedTargetKey, setSelectedTargetKey] = useState('');
   const [backupPartition, setBackupPartition] = useState('efs');
   const [backupBusy, setBackupBusy] = useState(false);
@@ -275,6 +279,20 @@ export default function RepairCommandCenter() {
     }
     return { label: 'READY', detail: 'Required live target is selected; normal workflow gates still apply.', ready: true };
   };
+
+  useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      void scanUsbDiagnostics().then(items => {
+        if (active) { setUsbDiagnostics(items); setUsbDiagnosticError(null); }
+      }).catch(error => {
+        if (active) setUsbDiagnosticError(String(error));
+      });
+    };
+    refresh();
+    const interval = setInterval(refresh, 5000);
+    return () => { active = false; clearInterval(interval); };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -478,6 +496,18 @@ export default function RepairCommandCenter() {
   };
 
   return (
+    <>
+    <section className="mb-4 rounded border border-cyan-900/60 bg-slate-950/70 p-3 text-xs" aria-label="Read-only USB diagnostics">
+        <h3 className="font-semibold text-cyan-300">USB diagnostics · read-only</h3>
+        <p className="mt-1 text-slate-400">Live descriptor observations every five seconds. Device setup, FRP and driver ownership are not inferred from USB descriptors.</p>
+        {usbDiagnosticError && <p role="alert" className="mt-2 text-amber-300">USB scan unavailable: {usbDiagnosticError}</p>}
+        {!usbDiagnosticError && usbDiagnostics.length === 0 && <p className="mt-2 text-slate-400">No USB devices reported, or scan pending.</p>}
+        {usbDiagnostics.map(({ device, diagnostics }) => <div key={device.deviceUid} className="mt-2 rounded border border-slate-700 p-2">
+          <div className="font-medium text-slate-200">{device.productName || `USB ${device.vendorId.toString(16)}:${device.productId.toString(16)}`}</div>
+          {diagnostics.map((item, index) => <p key={`${item.status}-${index}`} className="mt-1 text-amber-200">{item.status}: {item.detail}</p>)}
+          <p className="mt-1 text-slate-500">Firmware write authorization: unavailable in Diagnostics Edition</p>
+        </div>)}
+    </section>
     <section id="repair-command-center" className="mb-4 rounded-xl border border-orange-900/70 bg-gradient-to-br from-slate-950 via-slate-950 to-orange-950/20 p-5 shadow-2xl shadow-black/20">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -1897,5 +1927,6 @@ export default function RepairCommandCenter() {
         FRP/activation-lock circumvention, and identity rewriting do not become executable paths in BobFWTools.
       </div>
     </section>
+    </>
   );
 }
