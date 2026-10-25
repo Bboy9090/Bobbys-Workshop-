@@ -59,7 +59,7 @@ use workflow_jobs::{workflow_job_start, workflow_job_list, workflow_job_get, wor
 use workstation::{workstation_readiness, workstation_initialize};
 use calibration_backup_exec::{backup_calibration_partition, inspect_calibration_backup};
 use edl_programmer_vault::{edl_inspect_programmer, edl_enroll_programmer, edl_list_programmers};
-use firmware_library::{firmware_bundle_planning_artifacts, firmware_chipset_catalog, firmware_chipset_lookup, firmware_library_scan, firmware_provenance_write};
+use firmware_library::{firmware_bundle_planning_artifacts, firmware_chipset_catalog, firmware_chipset_lookup, firmware_library_scan, firmware_provenance_write, samsung_firmware_compatibility};
 use firmware_manifest_commands::{firmware_manifest_inspect, firmware_manifest_compare};
 use mode_control::{fastboot_mode_devices, fastboot_reboot_mode, mode_transition_verify};
 use samsung_probe::samsung_download_probe;
@@ -6204,6 +6204,7 @@ fn main() {
             firmware_manifest_inspect,
             firmware_manifest_compare,
             firmware_bundle_planning_artifacts,
+            samsung_firmware_compatibility,
             fastboot_mode_devices,
             fastboot_reboot_mode,
             mode_transition_verify,
