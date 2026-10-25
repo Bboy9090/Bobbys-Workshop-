@@ -1760,6 +1760,9 @@ export default function RepairCommandCenter() {
               </div>
             </div>
             <div className="min-w-[260px]">
+              <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-amber-400">
+                Run read-only Odin/PIT probe
+              </div>
               <PitDiagnosticPanel
                 deviceUid={selectedSamsungTransport.deviceUid}
                 disabled={samsungProbeBusy}
