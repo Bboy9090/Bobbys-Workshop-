@@ -5,8 +5,28 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use tauri::Emitter;
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(130);
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PitProgressEvent {
+    pub progress: u8,
+    pub phase: String,
+}
+
+fn emit_pit_progress(app: Option<&tauri::AppHandle>, progress: u8, phase: &str) {
+    if let Some(app) = app {
+        let _ = app.emit(
+            "pit-progress",
+            PitProgressEvent {
+                progress,
+                phase: phase.to_string(),
+            },
+        );
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,7 +48,6 @@ pub struct SamsungDownloadProbeReport {
     pub detail: String,
     pub evidence: Vec<String>,
 }
-
 
 fn observed_unix_ms() -> Result<u64, String> {
     Ok(SystemTime::now()
@@ -118,15 +137,21 @@ fn run_bounded_probe(program: &Path) -> Result<(bool, bool, Vec<u8>, Vec<u8>), S
     Ok((success, timed_out, stdout, stderr))
 }
 
-#[tauri::command]
-pub fn samsung_download_probe(device_uid: String) -> Result<SamsungDownloadProbeReport, String> {
+fn samsung_download_probe_impl(
+    device_uid: String,
+    progress_app: Option<&tauri::AppHandle>,
+) -> Result<SamsungDownloadProbeReport, String> {
+    emit_pit_progress(progress_app, 5, "Validating selected Samsung USB target");
     let device_uid = device_uid.trim().to_string();
     if device_uid.is_empty() {
-        return Err("Samsung Download Mode probe requires an exact selected USB device UID".to_string());
+        return Err(
+            "Samsung Download Mode probe requires an exact selected USB device UID".to_string(),
+        );
     }
 
     let observed_unix_ms = observed_unix_ms()?;
 
+    emit_pit_progress(progress_app, 15, "Scanning USB transport identity");
     let devices = bootforgeusb::transport::scan_transports()
         .map_err(|e| format!("USB transport scan failed before Samsung probe: {e}"))?;
     let samsung = devices
@@ -182,7 +207,9 @@ pub fn samsung_download_probe(device_uid: String) -> Result<SamsungDownloadProbe
             exact_model_verified: false,
             cross_mode_identity_verified: false,
             report_fingerprint: None,
-            detail: "The selected Samsung USB identity no longer matches the currently attached target.".to_string(),
+            detail:
+                "The selected Samsung USB identity no longer matches the currently attached target."
+                    .to_string(),
             evidence,
         });
     }
@@ -196,6 +223,11 @@ pub fn samsung_download_probe(device_uid: String) -> Result<SamsungDownloadProbe
         target.serial_number.as_deref().unwrap_or("<unavailable>")
     ));
 
+    emit_pit_progress(
+        progress_app,
+        25,
+        "Resolving managed Heimdall read-only probe",
+    );
     let Some(heimdall) = crate::workstation::resolve_command("heimdall", &["version"]) else {
         let report_fingerprint = fingerprint_probe_report(
             &target.device_uid,
@@ -231,7 +263,13 @@ pub fn samsung_download_probe(device_uid: String) -> Result<SamsungDownloadProbe
     evidence.push(format!("heimdall:{}", heimdall.display()));
     evidence.push("command:heimdall print-pit --no-reboot".to_string());
 
+    emit_pit_progress(
+        progress_app,
+        40,
+        "Executing bounded read-only Odin/PIT exchange",
+    );
     let (success, timed_out, stdout, stderr) = run_bounded_probe(&heimdall)?;
+    emit_pit_progress(progress_app, 85, "Validating returned PIT structure");
     let stdout_text = String::from_utf8_lossy(&stdout);
     let stderr_text = String::from_utf8_lossy(&stderr);
     let output_text = format!("{stdout_text}\n{stderr_text}");
@@ -246,7 +284,10 @@ pub fn samsung_download_probe(device_uid: String) -> Result<SamsungDownloadProbe
 
     evidence.push(format!("probe-exit-success:{success}"));
     evidence.push(format!("probe-timed-out:{timed_out}"));
-    evidence.push(format!("probe-output-bytes:{}", stdout.len() + stderr.len()));
+    evidence.push(format!(
+        "probe-output-bytes:{}",
+        stdout.len() + stderr.len()
+    ));
     evidence.push(format!("pit-signal:{pit_signal}"));
 
     let detail = if protocol_qualified {
@@ -261,7 +302,11 @@ pub fn samsung_download_probe(device_uid: String) -> Result<SamsungDownloadProbe
         "Samsung",
         "download-mode-readonly-probe",
         "read-only",
-        if protocol_qualified { "qualified" } else { "blocked" },
+        if protocol_qualified {
+            "qualified"
+        } else {
+            "blocked"
+        },
         Some(target.device_uid.clone()),
         detail.clone(),
         evidence.clone(),
@@ -283,6 +328,16 @@ pub fn samsung_download_probe(device_uid: String) -> Result<SamsungDownloadProbe
     evidence.push("exact-model-verified:false".to_string());
     evidence.push("cross-mode-identity-verified:false".to_string());
 
+    emit_pit_progress(
+        progress_app,
+        100,
+        if protocol_qualified {
+            "Read-only PIT exchange qualified"
+        } else {
+            "Read-only PIT exchange completed without qualification"
+        },
+    );
+
     Ok(SamsungDownloadProbeReport {
         device_uid: target.device_uid.clone(),
         observed_unix_ms,
@@ -301,6 +356,30 @@ pub fn samsung_download_probe(device_uid: String) -> Result<SamsungDownloadProbe
         detail,
         evidence,
     })
+}
+
+#[tauri::command]
+pub fn samsung_download_probe(device_uid: String) -> Result<SamsungDownloadProbeReport, String> {
+    samsung_download_probe_impl(device_uid, None)
+}
+
+#[tauri::command]
+pub async fn execute_pit_dry_run(
+    app: tauri::AppHandle,
+    device_uid: String,
+) -> Result<SamsungDownloadProbeReport, String> {
+    emit_pit_progress(Some(&app), 0, "Starting PIT diagnostic");
+    let worker_app = app.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        samsung_download_probe_impl(device_uid, Some(&worker_app))
+    })
+    .await
+    .map_err(|e| format!("PIT dry-run worker failed: {e}"))?;
+
+    if result.is_err() {
+        emit_pit_progress(Some(&app), 0, "PIT diagnostic halted");
+    }
+    result
 }
 
 #[cfg(test)]

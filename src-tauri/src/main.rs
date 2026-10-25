@@ -63,7 +63,7 @@ use edl_programmer_vault::{edl_inspect_programmer, edl_enroll_programmer, edl_li
 use firmware_library::{firmware_bundle_planning_artifacts, firmware_chipset_catalog, firmware_chipset_lookup, firmware_library_scan, firmware_provenance_write, samsung_firmware_compatibility};
 use firmware_manifest_commands::{firmware_manifest_inspect, firmware_manifest_compare};
 use mode_control::{fastboot_mode_devices, fastboot_reboot_mode, mode_transition_verify};
-use samsung_probe::samsung_download_probe;
+use samsung_probe::{execute_pit_dry_run, samsung_download_probe};
 use samsung_service_bundle::samsung_service_bundle_create;
 use driver_binding::{driver_binding_scan, driver_binding_release_and_rescan, driver_binding_candidates, driver_binding_conflict_plan, driver_binding_cleanup_report, driver_binding_snapshot, driver_binding_rollback_plan, driver_binding_stability_test, driver_binding_elevation_status, driver_binding_inspect_inf, driver_binding_stage_and_relatch};
 
@@ -6212,6 +6212,7 @@ fn main() {
             fastboot_reboot_mode,
             mode_transition_verify,
             samsung_download_probe,
+            execute_pit_dry_run,
             driver_binding_scan,
             driver_binding_release_and_rescan,
             driver_binding_candidates,

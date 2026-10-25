@@ -1531,6 +1531,20 @@ export async function probeSamsungDownloadMode(
   });
 }
 
+export type PitProgressEvent = {
+  progress: number;
+  phase: string;
+};
+
+export async function executePitDryRun(
+  deviceUid: string,
+): Promise<SamsungDownloadProbeReport> {
+  return invoke<SamsungDownloadProbeReport>('execute_pit_dry_run', {
+    deviceUid,
+  });
+}
+
+
 
 export type SamsungFirmwareEntry = {
   path: string;
