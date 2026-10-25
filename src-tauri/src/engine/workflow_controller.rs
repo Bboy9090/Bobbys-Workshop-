@@ -68,6 +68,14 @@ impl SessionManager {
         }
         Ok(session)
     }
+    /// Rechecks the token and immutable target after any asynchronous boundary.
+    pub fn resolve_adb_target(&self, token: &str, serial: &str, max_age: Duration) -> Result<DeviceSession, String> {
+        let session = self.resolve(token, max_age)?;
+        if session.serial != serial || session.transport != "adb" {
+            return Err("AUTHORIZATION_REJECTION: Session target or transport mismatch".into());
+        }
+        Ok(session)
+    }
     pub fn revoke(&self, token: &str) -> Result<(), String> {
         self.sessions.lock().map_err(|_| "Session lock unavailable")?.remove(token);
         Ok(())
@@ -177,5 +185,37 @@ mod tests {
     #[test]
     fn empty_identity_is_rejected() {
         assert!(SessionManager::default().register_verified("", "adb").is_err());
+    }
+}
+
+#[cfg(test)]
+mod receipt_authorization_tests {
+    use super::*;
+    const LEASE: Duration = Duration::from_secs(300);
+    #[test]
+    fn unknown_revoked_and_wrong_target_fail_closed() {
+        let manager = SessionManager::default();
+        assert!(manager.resolve_adb_target("unknown", "device-a", LEASE).is_err());
+        let token = manager.register_verified("device-a", "adb").unwrap();
+        assert!(manager.resolve_adb_target(&token, "device-b", LEASE).is_err());
+        assert_eq!(manager.resolve_adb_target(&token, "device-a", LEASE).unwrap().serial, "device-a");
+        manager.revoke(&token).unwrap();
+        assert!(manager.resolve_adb_target(&token, "device-a", LEASE).is_err());
+    }
+    #[test]
+    fn non_adb_transport_and_expired_lease_fail_closed() {
+        let manager = SessionManager::default();
+        let token = manager.register_verified("device-a", "fastboot").unwrap();
+        assert!(manager.resolve_adb_target(&token, "device-a", LEASE).is_err());
+        let adb_token = manager.register_verified("device-a", "adb").unwrap();
+        assert!(manager.resolve_adb_target(&adb_token, "device-a", Duration::ZERO).is_err());
+    }
+    #[test]
+    fn revocation_during_asynchronous_gap_invalidates_final_check() {
+        let manager = SessionManager::default();
+        let token = manager.register_verified("device-a", "adb").unwrap();
+        manager.resolve_adb_target(&token, "device-a", LEASE).unwrap();
+        manager.revoke(&token).unwrap();
+        assert!(manager.resolve_adb_target(&token, "device-a", LEASE).is_err());
     }
 }

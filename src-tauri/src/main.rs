@@ -5994,25 +5994,16 @@ async fn tauri_query_device_package_receipt(
     request: DevicePackageReceiptRequest,
     manager: tauri::State<'_, std::sync::Arc<engine::workflow_controller::SessionManager>>,
 ) -> Result<engine::verification_receipt::PackageVerificationReceipt, String> {
-    let session = manager.resolve(&request.session_token, std::time::Duration::from_secs(300))?;
-    if session.serial != request.target_serial || session.transport != "adb" {
-        return Err("AUTHORIZATION_REJECTION: Session target or transport mismatch".into());
-    }
+    let session = manager.resolve_adb_target(&request.session_token, &request.target_serial, std::time::Duration::from_secs(300))?;
     if !matches!(engine::bounded_adb::check_authorized(&session.serial, std::time::Duration::from_secs(3)).await, Ok(true)) {
         manager.revoke(&request.session_token)?;
         return Err("AUTHORIZATION_REJECTION: Fresh ADB transport challenge failed; session revoked".into());
     }
     // Revalidate lease after the asynchronous hardware challenge.
-    let rechecked = manager.resolve(&request.session_token, std::time::Duration::from_secs(300))?;
-    if rechecked.serial != session.serial || rechecked.transport != "adb" {
-        return Err("AUTHORIZATION_REJECTION: Session changed during transport check".into());
-    }
+    manager.resolve_adb_target(&request.session_token, &session.serial, std::time::Duration::from_secs(300))?;
     let dump = engine::package_verifier::collect_live_dump(&session.serial, &request.package_id).await?;
     // The token may have been revoked while the asynchronous collector was running.
-    let final_session = manager.resolve(&request.session_token, std::time::Duration::from_secs(300))?;
-    if final_session.serial != session.serial || final_session.transport != "adb" {
-        return Err("AUTHORIZATION_REJECTION: Session changed during evidence collection".into());
-    }
+    manager.resolve_adb_target(&request.session_token, &session.serial, std::time::Duration::from_secs(300))?;
     let metadata = engine::package_verifier::parse_package_dump(&dump, &request.package_id, request.expected_version_code)?;
     engine::verification_receipt::PackageVerificationReceipt::from_metadata(&session.serial, request.expected_version_code, &metadata)
 }
