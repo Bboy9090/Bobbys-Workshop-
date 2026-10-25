@@ -126,6 +126,7 @@ pub struct AdbActionResult {
 #[serde(rename_all = "snake_case")]
 pub enum TargetActionToken {
     SamsungInternet,
+    #[serde(rename = "youtube")]
     YouTube,
     GoogleMaps,
     GalaxyStore,
