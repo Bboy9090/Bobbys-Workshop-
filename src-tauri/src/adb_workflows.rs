@@ -236,6 +236,13 @@ fn device_state(serial: &str) -> Result<String, String> {
     Err(format!("ADB device {serial} is not currently connected"))
 }
 
+fn valid_adb_serial(serial: &str) -> bool {
+    !serial.trim().is_empty()
+        && serial
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':'))
+}
+
 fn require_authorized(serial: &str) -> Result<(), String> {
     let state = device_state(serial)?;
     if state != "device" {
@@ -563,11 +570,7 @@ pub fn launch_target_device_action(
     serial: String,
     action: TargetActionToken,
 ) -> Result<AdbActionResult, String> {
-    if serial.trim().is_empty()
-        || !serial
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':'))
-    {
+    if !valid_adb_serial(&serial) {
         return Err("Invalid or malformed ADB transport serial.".to_string());
     }
 
@@ -585,6 +588,50 @@ pub fn launch_target_device_action(
         message: "Android accepted the allowlisted launch intent on the selected authorized target.".to_string(),
         evidence_source: "adb:serial-bound-am-start-allowlist",
     })
+}
+
+#[cfg(test)]
+mod target_action_tests {
+    use super::*;
+
+    #[test]
+    fn adb_serial_allowlist_accepts_realistic_transport_ids() {
+        for serial in ["R9WN929QFKJ", "emulator-5554", "192.168.0.10:5555", "device_01.test"] {
+            assert!(valid_adb_serial(serial), "expected valid serial: {serial}");
+        }
+        for serial in ["", "bad serial", "x;rm", "$(id)", "x/../../y"] {
+            assert!(!valid_adb_serial(serial), "expected invalid serial: {serial}");
+        }
+    }
+
+    #[test]
+    fn target_action_tokens_are_fixed_and_shell_free() {
+        let actions = [
+            TargetActionToken::SamsungInternet,
+            TargetActionToken::YouTube,
+            TargetActionToken::GoogleMaps,
+            TargetActionToken::GalaxyStore,
+        ];
+
+        for action in actions {
+            let args = action.intent_args();
+            assert_eq!(args.get(0), Some(&"shell"));
+            assert_eq!(args.get(1), Some(&"am"));
+            assert_eq!(args.get(2), Some(&"start"));
+            assert!(args.iter().all(|arg| !arg.contains(';')));
+            assert!(args.iter().all(|arg| !arg.contains("&&")));
+            assert!(args.iter().all(|arg| !arg.contains("|")));
+            assert!(args.iter().all(|arg| !arg.contains("$(")));
+        }
+    }
+
+    #[test]
+    fn target_action_tokens_do_not_accept_arbitrary_frontend_values() {
+        assert!(serde_json::from_str::<TargetActionToken>(""youtube"").is_ok());
+        assert!(serde_json::from_str::<TargetActionToken>(""galaxy_store"").is_ok());
+        assert!(serde_json::from_str::<TargetActionToken>(""https://example.com"").is_err());
+        assert!(serde_json::from_str::<TargetActionToken>(""shell"").is_err());
+    }
 }
 
 #[tauri::command]
