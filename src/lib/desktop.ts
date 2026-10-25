@@ -295,6 +295,23 @@ export async function rebootAdbDevice(
   return invoke<AdbActionResult>('adb_reboot_mode', { serial, mode });
 }
 
+export type TargetActionToken =
+  | 'samsung_internet'
+  | 'youtube'
+  | 'google_maps'
+  | 'galaxy_store';
+
+export async function openAdvancedDeviceActionsWindow(serial: string): Promise<void> {
+  return invoke<void>('open_advanced_actions_window', { serial });
+}
+
+export async function launchTargetDeviceAction(
+  serial: string,
+  action: TargetActionToken,
+): Promise<AdbActionResult> {
+  return invoke<AdbActionResult>('launch_target_device_action', { serial, action });
+}
+
 export async function openAndroidNetworkSettings(serial: string): Promise<AdbActionResult> {
   return invoke<AdbActionResult>('adb_open_network_settings', { serial });
 }
