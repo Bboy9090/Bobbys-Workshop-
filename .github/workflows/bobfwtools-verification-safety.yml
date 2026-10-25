@@ -22,13 +22,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Install frontend dependencies
         run: npm ci
-      - name: Rust authorization and collector tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --bin bobfwtools
       - name: Frontend integration and lifecycle tests
         run: npm run test:integration
       - name: Typecheck
         run: npm run typecheck
-      - name: Build frontend
+      - name: Build frontend for Tauri compile context
         run: npm run build
+      - name: Rust authorization and collector tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --bin bobfwtools
       - name: Verify source is clean
         run: git diff --exit-code
