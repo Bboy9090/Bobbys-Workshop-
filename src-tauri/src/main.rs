@@ -6004,6 +6004,13 @@ async fn tauri_query_device_package_receipt(
     let dump = engine::package_verifier::collect_live_dump(&session.serial, &request.package_id).await?;
     // The token may have been revoked while the asynchronous collector was running.
     manager.resolve_adb_target(&request.session_token, &session.serial, std::time::Duration::from_secs(300))?;
+    // An authorized transport at the beginning does not prove it survived collection.
+    if !matches!(engine::bounded_adb::check_authorized(&session.serial, std::time::Duration::from_secs(3)).await, Ok(true)) {
+        manager.revoke(&request.session_token)?;
+        return Err("AUTHORIZATION_REJECTION: ADB authorization lost during package collection; session revoked".into());
+    }
+    // The final asynchronous challenge itself may race with revocation or expiry.
+    manager.resolve_adb_target(&request.session_token, &session.serial, std::time::Duration::from_secs(300))?;
     let metadata = engine::package_verifier::parse_package_dump(&dump, &request.package_id, request.expected_version_code)?;
     engine::verification_receipt::PackageVerificationReceipt::from_metadata(&session.serial, request.expected_version_code, &metadata)
 }
