@@ -11,6 +11,7 @@ export function useDeviceSession(targetSerial: string | null | undefined) {
   const [leaseAge, setLeaseAge] = useState(0);
   const [active, setActive] = useState(false);
   const tokenRef = useRef<string | null>(null);
+  const intentRef = useRef<string | null>(null);
   const epochRef = useRef(0);
   const startRef = useRef(0);
   const deadlineRef = useRef(0);
@@ -19,6 +20,12 @@ export function useDeviceSession(targetSerial: string | null | undefined) {
 
   const clearSession = useCallback(() => {
     epochRef.current += 1;
+    const intent = intentRef.current;
+    intentRef.current = null;
+    if (intent) {
+      void invoke<void>('tauri_cancel_adb_intent', { request: { intentId: intent } })
+        .catch((e) => console.warn('Native intent cancellation failed:', e));
+    }
     const token = tokenRef.current;
     tokenRef.current = null;
     if (token) {
@@ -39,8 +46,18 @@ export function useDeviceSession(targetSerial: string | null | undefined) {
     setError(null);
     setStatus('AUTHORIZING');
     try {
-      const result = await invoke<InitResponse>('tauri_initialize_adb_session', { request: { targetSerial: serial } });
-      if (epoch !== epochRef.current || serial !== serialRef.current) return;
+      const intentId = await invoke<string>('tauri_allocate_adb_intent', { request: { targetSerial: serial } });
+      if (epoch !== epochRef.current || serial !== serialRef.current) {
+        void invoke<void>('tauri_cancel_adb_intent', { request: { intentId } }).catch(console.warn);
+        return;
+      }
+      intentRef.current = intentId;
+      const result = await invoke<InitResponse>('tauri_initialize_adb_session', { request: { targetSerial: serial, intentId } });
+      if (epoch !== epochRef.current || serial !== serialRef.current || intentRef.current !== intentId) {
+        if (result.token) void invoke<boolean>('tauri_revoke_adb_session', { request: { token: result.token } }).catch(console.warn);
+        return;
+      }
+      intentRef.current = null;
       if (!result.token || result.status !== 'adb_transport_authorized') throw new Error('Native authorization was not confirmed');
       tokenRef.current = result.token;
       startRef.current = Date.now();
