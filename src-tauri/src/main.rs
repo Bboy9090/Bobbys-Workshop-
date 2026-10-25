@@ -53,7 +53,7 @@ use py_client::PyWorkerClient;
 use fastapi_backend::{launch_fastapi_backend, shutdown_fastapi_backend};
 use mtp_backend::{mtp_status, mtp_list_root, mtp_download_file, mtp_upload_file, mtp_list_directory, mtp_download_path, mtp_upload_path};
 use audit::{audit_recent, audit_log_path};
-use adb_workflows::{adb_scan, adb_device_info, samsung_adb_identity_receipt, adb_logcat_snapshot, adb_screenshot, adb_prepare, adb_battery_info, adb_mode_capabilities, adb_reboot_mode, adb_open_network_settings, adb_open_factory_reset_settings, adb_install_apk, adb_list_user_packages, adb_package_action};
+use adb_workflows::{adb_scan, adb_device_info, samsung_adb_identity_receipt, adb_logcat_snapshot, adb_screenshot, adb_prepare, adb_battery_info, adb_mode_capabilities, adb_reboot_mode, adb_open_network_settings, adb_open_factory_reset_settings, adb_install_apk, adb_list_user_packages, adb_package_action, open_advanced_actions_window, launch_target_device_action};
 use workflow_capabilities::workflow_capabilities;
 use diagnostics::{diagnose_phone, usb_cable_doctor};
 use workflow_jobs::{workflow_job_start, workflow_job_list, workflow_job_get, workflow_job_retry};
@@ -6213,6 +6213,8 @@ fn main() {
             mode_transition_verify,
             samsung_download_probe,
             execute_pit_dry_run,
+            open_advanced_actions_window,
+            launch_target_device_action,
             driver_binding_scan,
             driver_binding_release_and_rescan,
             driver_binding_candidates,
