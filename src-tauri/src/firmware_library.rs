@@ -127,6 +127,81 @@ pub struct FirmwareBundleSummary {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SamsungFirmwareCompatibilityReport {
+    pub directory: String,
+    pub device_model: String,
+    pub firmware_model: String,
+    pub device_bootloader_revision: String,
+    pub firmware_bootloader_revision: String,
+    pub model_match: bool,
+    pub revision_compatible: bool,
+    pub planning_compatible: bool,
+    pub execution_authorized: bool,
+    pub device_identity_fingerprint: String,
+    pub firmware_package_fingerprint: Option<String>,
+    pub assessment_fingerprint: String,
+    pub blockers: Vec<String>,
+}
+
+fn normalized_samsung_model(value: &str) -> String {
+    value.trim().to_ascii_uppercase()
+}
+
+fn samsung_revision_rank(value: &str) -> Option<u32> {
+    let normalized = value.trim().to_ascii_uppercase();
+    if normalized.is_empty() {
+        return None;
+    }
+    if normalized.chars().all(|c| c.is_ascii_digit()) {
+        return normalized.parse::<u32>().ok();
+    }
+    if normalized.len() == 1 {
+        let c = normalized.as_bytes()[0];
+        if c.is_ascii_uppercase() {
+            return Some(10 + u32::from(c - b'A'));
+        }
+    }
+    None
+}
+
+fn valid_sha256_hex(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compatibility_fingerprint(
+    directory: &str,
+    device_model: &str,
+    firmware_model: &str,
+    device_revision: &str,
+    firmware_revision: &str,
+    model_match: bool,
+    revision_compatible: bool,
+    planning_compatible: bool,
+    device_identity_fingerprint: &str,
+    firmware_package_fingerprint: Option<&str>,
+) -> Result<String, String> {
+    let material = serde_json::json!({
+        "schema": "bobfwtools.samsung.firmware-compatibility.v1",
+        "directory": directory,
+        "deviceModel": device_model,
+        "firmwareModel": firmware_model,
+        "deviceBootloaderRevision": device_revision,
+        "firmwareBootloaderRevision": firmware_revision,
+        "modelMatch": model_match,
+        "revisionCompatible": revision_compatible,
+        "planningCompatible": planning_compatible,
+        "executionAuthorized": false,
+        "deviceIdentityFingerprint": device_identity_fingerprint,
+        "firmwarePackageFingerprint": firmware_package_fingerprint,
+    });
+    let bytes = serde_json::to_vec(&material)
+        .map_err(|e| format!("Could not canonicalize Samsung compatibility evidence: {e}"))?;
+    Ok(format!("{:x}", Sha256::digest(&bytes)))
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FirmwareLibraryReport {
     pub root: String,
     pub entries: Vec<FirmwareLibraryEntry>,
@@ -917,6 +992,113 @@ pub fn firmware_provenance_write(input: FirmwareProvenanceWriteInput) -> Result<
 }
 
 #[tauri::command]
+pub fn samsung_firmware_compatibility(
+    directory: String,
+    device_model: String,
+    device_bootloader_revision: String,
+    device_identity_fingerprint: String,
+) -> Result<SamsungFirmwareCompatibilityReport, String> {
+    let requested = directory.trim().replace('\\', "/");
+    if requested.is_empty()
+        || requested.starts_with('/')
+        || requested.split('/').any(|part| part == ".." || part.is_empty())
+    {
+        return Err("firmware bundle directory must be a safe managed-library relative path".into());
+    }
+
+    let device_model = normalized_samsung_model(&device_model);
+    if device_model.is_empty() {
+        return Err("Samsung compatibility requires an exact device model from verified identity evidence".into());
+    }
+    let device_revision = device_bootloader_revision.trim().to_ascii_uppercase();
+    let Some(device_rank) = samsung_revision_rank(&device_revision) else {
+        return Err("Samsung compatibility requires an explicit normalized device bootloader revision; ambiguous raw bootloader strings are not accepted".into());
+    };
+    let identity_fingerprint = device_identity_fingerprint.trim().to_ascii_lowercase();
+    if !valid_sha256_hex(&identity_fingerprint) {
+        return Err("Samsung compatibility requires a valid SHA-256 device identity fingerprint".into());
+    }
+
+    let report = firmware_library_scan()?;
+    let bundle = report
+        .bundles
+        .iter()
+        .find(|bundle| bundle.directory.replace('\\', "/") == requested)
+        .ok_or_else(|| "selected firmware bundle is no longer present in the managed library".to_string())?;
+
+    let firmware_model = bundle
+        .model
+        .as_deref()
+        .map(normalized_samsung_model)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "selected firmware bundle has no exact model provenance".to_string())?;
+    let firmware_revision = bundle
+        .bootloader_revision
+        .as_deref()
+        .map(|value| value.trim().to_ascii_uppercase())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "selected Samsung firmware bundle has no bootloader revision provenance".to_string())?;
+    let Some(firmware_rank) = samsung_revision_rank(&firmware_revision) else {
+        return Err("selected Samsung firmware bootloader revision is not in a supported normalized revision form".into());
+    };
+
+    let model_match = device_model == firmware_model;
+    let revision_compatible = firmware_rank >= device_rank;
+    let mut blockers = Vec::new();
+    if bundle.vendor_hint != "samsung" {
+        blockers.push("selected firmware bundle is not identified as Samsung".to_string());
+    }
+    if !bundle.planning_ready {
+        blockers.push("selected firmware bundle is not planning-ready".to_string());
+    }
+    if !bundle.exact_identity_present {
+        blockers.push("selected firmware bundle lacks exact identity provenance".to_string());
+    }
+    if !model_match {
+        blockers.push(format!(
+            "exact model mismatch: device {} vs firmware {}",
+            device_model, firmware_model
+        ));
+    }
+    if !revision_compatible {
+        blockers.push(format!(
+            "bootloader rollback blocked: device revision {} is newer than firmware revision {}",
+            device_revision, firmware_revision
+        ));
+    }
+
+    let planning_compatible = blockers.is_empty();
+    let assessment_fingerprint = compatibility_fingerprint(
+        &requested,
+        &device_model,
+        &firmware_model,
+        &device_revision,
+        &firmware_revision,
+        model_match,
+        revision_compatible,
+        planning_compatible,
+        &identity_fingerprint,
+        bundle.package_fingerprint.as_deref(),
+    )?;
+
+    Ok(SamsungFirmwareCompatibilityReport {
+        directory: requested,
+        device_model,
+        firmware_model,
+        device_bootloader_revision: device_revision,
+        firmware_bootloader_revision: firmware_revision,
+        model_match,
+        revision_compatible,
+        planning_compatible,
+        execution_authorized: false,
+        device_identity_fingerprint: identity_fingerprint,
+        firmware_package_fingerprint: bundle.package_fingerprint.clone(),
+        assessment_fingerprint,
+        blockers,
+    })
+}
+
+#[tauri::command]
 pub fn firmware_bundle_planning_artifacts(directory: String) -> Result<Vec<String>, String> {
     let requested = directory.trim().replace('\\', "/");
     if requested.is_empty()
@@ -1412,5 +1594,52 @@ mod tests {
         assert!(blocked_marker("prog_firehose_auth-bypass.elf").is_some());
         assert!(blocked_marker("mtk_sla_bypass.bin").is_some());
         assert!(blocked_marker("stock_prog_firehose.elf").is_none());
+    }
+}
+
+#[cfg(test)]
+mod samsung_compatibility_tests {
+    use super::*;
+
+    #[test]
+    fn normalized_revision_rank_supports_decimal_and_post_nine_letters() {
+        assert_eq!(samsung_revision_rank("8"), Some(8));
+        assert_eq!(samsung_revision_rank("10"), Some(10));
+        assert_eq!(samsung_revision_rank("A"), Some(10));
+        assert_eq!(samsung_revision_rank("B"), Some(11));
+        assert_eq!(samsung_revision_rank("raw-T500XXU8"), None);
+    }
+
+    #[test]
+    fn compatibility_fingerprint_binds_model_and_revision_decision() {
+        let allowed = compatibility_fingerprint(
+            "samsung/SM-T500/US",
+            "SM-T500",
+            "SM-T500",
+            "8",
+            "8",
+            true,
+            true,
+            true,
+            &"a".repeat(64),
+            Some(&"b".repeat(64)),
+        )
+        .expect("allowed fingerprint");
+        let downgrade = compatibility_fingerprint(
+            "samsung/SM-T500/US",
+            "SM-T500",
+            "SM-T500",
+            "8",
+            "7",
+            true,
+            false,
+            false,
+            &"a".repeat(64),
+            Some(&"b".repeat(64)),
+        )
+        .expect("blocked fingerprint");
+        assert_eq!(allowed.len(), 64);
+        assert_eq!(downgrade.len(), 64);
+        assert_ne!(allowed, downgrade);
     }
 }
