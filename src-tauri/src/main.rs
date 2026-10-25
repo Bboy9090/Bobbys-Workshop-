@@ -5919,7 +5919,25 @@ mod qualified_flash_grant_tests {
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct AdbSessionInitRequest { target_serial: String }
+struct AdbIntentRequest { intent_id: String }
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AdbIntentAllocateRequest { target_serial: String }
+
+#[tauri::command]
+async fn tauri_allocate_adb_intent(request: AdbIntentAllocateRequest, manager: tauri::State<'_, std::sync::Arc<engine::workflow_controller::SessionManager>>) -> Result<String, String> {
+    manager.allocate_intent(&request.target_serial)
+}
+
+#[tauri::command]
+async fn tauri_cancel_adb_intent(request: AdbIntentRequest, manager: tauri::State<'_, std::sync::Arc<engine::workflow_controller::SessionManager>>) -> Result<(), String> {
+    manager.cancel_intent(&request.intent_id)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AdbSessionInitRequest { target_serial: String, intent_id: String }
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -5935,7 +5953,7 @@ async fn tauri_initialize_adb_session(
         return Err("ADB target is not authorized".into());
     }
     // Token issuance follows a bounded native authorization challenge.
-    let token = manager.register_verified(&serial, "adb")?;
+    let token = manager.commit_intent(&request.intent_id, &serial)?;
     Ok(AdbSessionInitResponse { token, status: "adb_transport_authorized", expires_in_seconds: 300 })
 }
 
@@ -6083,6 +6101,8 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            tauri_allocate_adb_intent,
+            tauri_cancel_adb_intent,
             tauri_initialize_adb_session,
             tauri_validate_adb_session,
             tauri_revoke_adb_session,

@@ -15,6 +15,30 @@ pub struct DeviceSession {
 #[derive(Default)]
 pub struct SessionManager {
     sessions: Mutex<HashMap<String, DeviceSession>>,
+    pending_intents: Mutex<HashMap<String, (String, Instant)>>,
+}
+
+impl SessionManager {
+    pub fn allocate_intent(&self, serial: &str) -> Result<String, String> {
+        if serial.is_empty() { return Err("Missing target serial".into()); }
+        let id = Uuid::new_v4().to_string();
+        self.pending_intents.lock().map_err(|_| "Intent lock unavailable")?
+            .insert(id.clone(), (serial.to_string(), Instant::now()));
+        Ok(id)
+    }
+    pub fn cancel_intent(&self, id: &str) -> Result<(), String> {
+        self.pending_intents.lock().map_err(|_| "Intent lock unavailable")?.remove(id);
+        Ok(())
+    }
+    /// Holds the intent lock through session insertion so cancellation cannot interleave.
+    pub fn commit_intent(&self, id: &str, serial: &str) -> Result<String, String> {
+        let mut intents = self.pending_intents.lock().map_err(|_| "Intent lock unavailable")?;
+        let (expected, created) = intents.remove(id).ok_or("Authorization intent cancelled or unknown")?;
+        if expected != serial || created.elapsed() >= Duration::from_secs(10) {
+            return Err("Authorization intent target mismatch or expired".into());
+        }
+        self.register_verified(serial, "adb")
+    }
 }
 
 impl SessionManager {
@@ -132,6 +156,23 @@ mod tests {
         let next = manager.register_verified("device-a", "adb").unwrap();
         manager.revoke(&next).unwrap();
         assert!(manager.resolve(&next, Duration::from_secs(300)).is_err());
+    }
+    #[test]
+    fn cancelled_intent_cannot_mint_session() {
+        let manager = SessionManager::default();
+        let id = manager.allocate_intent("device-a").unwrap();
+        manager.cancel_intent(&id).unwrap();
+        assert!(manager.commit_intent(&id, "device-a").is_err());
+    }
+    #[test]
+    fn intent_is_target_bound_and_single_use() {
+        let manager = SessionManager::default();
+        let id = manager.allocate_intent("device-a").unwrap();
+        assert!(manager.commit_intent(&id, "device-b").is_err());
+        assert!(manager.commit_intent(&id, "device-a").is_err());
+        let next = manager.allocate_intent("device-a").unwrap();
+        assert!(manager.commit_intent(&next, "device-a").is_ok());
+        assert!(manager.commit_intent(&next, "device-a").is_err());
     }
     #[test]
     fn empty_identity_is_rejected() {
