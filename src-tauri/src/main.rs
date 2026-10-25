@@ -31,6 +31,7 @@ mod py_client;
 mod fastapi_backend;
 mod mtp_backend;
 mod adb_command;
+mod engine;
 mod adb_workflows;
 mod audit;
 mod workflow_capabilities;
@@ -5916,6 +5917,50 @@ mod qualified_flash_grant_tests {
     }
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AdbSessionInitRequest { target_serial: String }
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AdbSessionInitResponse { token: String, status: &'static str, expires_in_seconds: u64 }
+
+#[tauri::command]
+async fn tauri_initialize_adb_session(
+    request: AdbSessionInitRequest,
+    manager: tauri::State<'_, std::sync::Arc<engine::workflow_controller::SessionManager>>,
+) -> Result<AdbSessionInitResponse, String> {
+    let serial = request.target_serial;
+    if !engine::bounded_adb::check_authorized(&serial, std::time::Duration::from_secs(5)).await? {
+        return Err("ADB target is not authorized".into());
+    }
+    // Token issuance follows a bounded native authorization challenge.
+    let token = manager.register_verified(&serial, "adb")?;
+    Ok(AdbSessionInitResponse { token, status: "adb_transport_authorized", expires_in_seconds: 300 })
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AdbSessionValidateRequest { token: String }
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AdbSessionValidateResponse { valid: bool, status: &'static str }
+
+#[tauri::command]
+async fn tauri_validate_adb_session(
+    request: AdbSessionValidateRequest,
+    manager: tauri::State<'_, std::sync::Arc<engine::workflow_controller::SessionManager>>,
+) -> Result<AdbSessionValidateResponse, String> {
+    let session = manager.resolve(&request.token, std::time::Duration::from_secs(300))?;
+    let authorized = engine::bounded_adb::check_authorized(&session.serial, std::time::Duration::from_secs(3)).await;
+    if !matches!(authorized, Ok(true)) {
+        manager.revoke(&request.token)?;
+        return Err("ADB authorization lost, timed out, or failed; token revoked".into());
+    }
+    Ok(AdbSessionValidateResponse { valid: true, status: "adb_transport_authorized" })
+}
+
 fn main() {
     // Initialize app state
     let app_state = AppState {
@@ -5947,6 +5992,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
+        .manage(std::sync::Arc::new(engine::workflow_controller::SessionManager::default()))
         .setup(|app| {
             let state = app.state::<AppState>();
             let handle = app.handle();
@@ -6024,6 +6070,8 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            tauri_initialize_adb_session,
+            tauri_validate_adb_session,
             frontend_backend_handshake,
             get_backend_status,
             get_app_version,
