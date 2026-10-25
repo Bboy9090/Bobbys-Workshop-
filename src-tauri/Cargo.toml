@@ -30,6 +30,8 @@ default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 legacy-backends = []
 qualified-flash = []
+# Explicit opt-in for legacy command registry. Never enable in diagnostic releases.
+device-write-operations = []
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

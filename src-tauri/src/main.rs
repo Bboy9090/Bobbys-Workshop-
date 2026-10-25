@@ -1534,7 +1534,7 @@ fn main() {
         fastapi_backend: Mutex::new(None),
     };
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
         .setup(|app| {
@@ -1613,8 +1613,34 @@ fn main() {
                 }
             }
         })
-        .manage(std::sync::Arc::new(engine::workflow_controller::SessionManager::default()))
-        .invoke_handler(tauri::generate_handler![
+        .manage(std::sync::Arc::new(engine::workflow_controller::SessionManager::default()));
+
+    // Diagnostic releases register only audited read-only handlers.
+    #[cfg(not(feature = "device-write-operations"))]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        tauri_allocate_adb_intent,
+        tauri_cancel_adb_intent,
+        tauri_initialize_adb_session,
+        tauri_validate_adb_session,
+        tauri_query_device_package_receipt,
+        tauri_revoke_adb_session,
+        frontend_backend_handshake,
+        get_backend_status,
+        get_app_version,
+        adb_scan,
+        adb_device_info,
+        adb_logcat_snapshot,
+        adb_battery_info,
+        adb_list_user_packages,
+        mtp_status,
+        mtp_list_root,
+        mtp_list_directory,
+        diagnose_phone,
+        usb_cable_doctor,
+    ]);
+
+    #[cfg(feature = "device-write-operations")]
+    let builder = builder.invoke_handler(tauri::generate_handler![
             tauri_allocate_adb_intent,
             tauri_cancel_adb_intent,
             tauri_initialize_adb_session,
@@ -1659,7 +1685,7 @@ fn main() {
             workflow_job_list,
             workflow_job_get,
             workflow_job_retry,
-        ])
-        .run(tauri::generate_context!())
+        ]);
+    builder.run(tauri::generate_context!())
         .expect("error while building tauri application");
 }
