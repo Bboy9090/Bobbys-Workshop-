@@ -2255,6 +2255,8 @@ export type FirmwareBundleSummary = {
   model?: string | null;
   board?: string | null;
   sku?: string | null;
+  buildVersion?: string | null;
+  bootloaderRevision?: string | null;
   sourceCategory?: string | null;
   sourceReference?: string | null;
   packageFingerprint?: string | null;
