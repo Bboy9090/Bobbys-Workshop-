@@ -1,6 +1,75 @@
 //! Read-only, fail-closed parser for Android `dumpsys package PACKAGE` evidence.
 //! Package-manager output is not cryptographic APK attestation.
 use serde::{Deserialize, Serialize};
+use std::process::Stdio;
+use std::time::Duration;
+use tokio::io::AsyncReadExt;
+use tokio::process::Command;
+
+const MAX_DUMP_BYTES: u64 = 65_536;
+
+/// Read-only collection. This is a transport observation, not APK attestation.
+pub async fn collect_live_dump(serial: &str, package: &str) -> Result<String, String> {
+    if serial.is_empty() || serial.starts_with('-') || serial.chars().any(char::is_whitespace) || serial.len() > 128 {
+        return Err("Invalid ADB serial".into());
+    }
+    if package.is_empty() || !package.split('.').all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')) {
+        return Err("Invalid package name".into());
+    }
+    collect_bounded_dump_stream("adb", &["-s", serial, "shell", "dumpsys", "package", package], Duration::from_secs(4)).await
+}
+
+/// Executes a bounded, read-only evidence query. `program` is internal-only and used for tests.
+async fn collect_bounded_dump_stream(program: &str, args: &[&str], deadline: Duration) -> Result<String, String> {
+    let mut command = Command::new(program);
+    command.args(args)
+        .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).kill_on_drop(true);
+    #[cfg(unix)]
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 { return Err(std::io::Error::last_os_error()); }
+            Ok(())
+        });
+    }
+    let child = command.spawn().map_err(|e| format!("Collector spawn failed: {e}"))?;
+    #[cfg(unix)]
+    let guard = CollectorGroupGuard(child.id().unwrap_or(0) as i32);
+    let collection = async {
+        let mut child = child;
+        let mut stdout = child.stdout.take().ok_or("Collector stdout missing")?;
+        let mut bytes = Vec::new();
+        (&mut stdout).take(MAX_DUMP_BYTES + 1).read_to_end(&mut bytes).await
+            .map_err(|e| format!("Collector read failed: {e}"))?;
+        if bytes.len() as u64 > MAX_DUMP_BYTES { return Err("BUFFER_OVERFLOW: Collector output exceeds 64 KiB".into()); }
+        let status = child.wait().await.map_err(|e| format!("Collector wait failed: {e}"))?;
+        if !status.success() { return Err("EXIT_STATUS_REJECTION: Collector returned unsuccessful exit status".into()); }
+        if bytes.is_empty() { return Err("Collector returned empty evidence".into()); }
+        String::from_utf8(bytes).map_err(|_| "Collector returned invalid UTF-8".into())
+    };
+    let result = tokio::time::timeout(deadline, collection).await
+        .map_err(|_| "COLLECTOR_TIMEOUT: Deadline exceeded".to_string())?;
+    #[cfg(unix)]
+    drop(guard); // Cleanup remaining process-group descendants even on success.
+    result
+}
+
+#[cfg(unix)]
+struct CollectorGroupGuard(i32);
+#[cfg(unix)]
+impl Drop for CollectorGroupGuard {
+    fn drop(&mut self) {
+        if self.0 > 1 {
+            let rc = unsafe { libc::kill(-self.0, libc::SIGKILL) };
+            if rc != 0 {
+                let error = std::io::Error::last_os_error();
+                if error.raw_os_error() != Some(libc::ESRCH) {
+                    eprintln!("Collector group cleanup failed: {error}");
+                }
+            }
+        }
+    }
+}
+
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PackageMetadata {
@@ -77,4 +146,31 @@ mod tests {
         let parsed = parse_package_dump(&GOOD.replace(" codePath=/data/app/com.example.app/base.apk\n", ""), "com.example.app", 9005).unwrap();
         assert_eq!(parsed.code_path, None);
     }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn collector_rejects_oversized_stream() {
+        let result = collect_bounded_dump_stream("/bin/sh", &["-c", "yes v | head -c 131072"], Duration::from_secs(3)).await;
+        assert!(result.unwrap_err().contains("BUFFER_OVERFLOW"));
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn collector_rejects_nonzero_exit() {
+        let result = collect_bounded_dump_stream("/bin/sh", &["-c", "printf 'Package [com.example]'; exit 1"], Duration::from_secs(3)).await;
+        assert!(result.unwrap_err().contains("EXIT_STATUS_REJECTION"));
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn collector_times_out_and_cleans_up() {
+        let started = std::time::Instant::now();
+        let result = collect_bounded_dump_stream("/bin/sh", &["-c", "sleep 10"], Duration::from_millis(120)).await;
+        assert!(result.unwrap_err().contains("COLLECTOR_TIMEOUT"));
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn collector_reads_multiple_chunks_through_eof() {
+        let result = collect_bounded_dump_stream("/bin/sh", &["-c", "printf abc; sleep 0.02; printf def"], Duration::from_secs(3)).await.unwrap();
+        assert_eq!(result, "abcdef");
+    }
+
 }
