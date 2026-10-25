@@ -1,7 +1,9 @@
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::{Command, Output};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,6 +22,61 @@ pub struct AdbDeviceInfo {
     pub properties: BTreeMap<String, String>,
     pub verified: bool,
     pub evidence_source: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SamsungAdbIdentityReceipt {
+    pub adb_transport_serial: String,
+    pub device_serial: Option<String>,
+    pub observed_unix_ms: u64,
+    pub manufacturer: Option<String>,
+    pub brand: Option<String>,
+    pub model: Option<String>,
+    pub device: Option<String>,
+    pub bootloader: Option<String>,
+    pub exact_model_verified: bool,
+    pub cross_mode_identity_verified: bool,
+    pub report_fingerprint: String,
+    pub evidence_source: &'static str,
+}
+
+fn observed_unix_ms() -> Result<u64, String> {
+    Ok(SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("System clock error before Samsung identity capture: {e}"))?
+        .as_millis()
+        .min(u128::from(u64::MAX)) as u64)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn samsung_identity_fingerprint(
+    adb_transport_serial: &str,
+    device_serial: Option<&str>,
+    observed_unix_ms: u64,
+    manufacturer: Option<&str>,
+    brand: Option<&str>,
+    model: Option<&str>,
+    device: Option<&str>,
+    bootloader: Option<&str>,
+    exact_model_verified: bool,
+) -> Result<String, String> {
+    let material = serde_json::json!({
+        "schema": "bobfwtools.samsung.adb-identity.v1",
+        "adbTransportSerial": adb_transport_serial,
+        "deviceSerial": device_serial,
+        "observedUnixMs": observed_unix_ms,
+        "manufacturer": manufacturer,
+        "brand": brand,
+        "model": model,
+        "device": device,
+        "bootloader": bootloader,
+        "exactModelVerified": exact_model_verified,
+        "crossModeIdentityVerified": false,
+    });
+    let bytes = serde_json::to_vec(&material)
+        .map_err(|e| format!("Could not canonicalize Samsung ADB identity evidence: {e}"))?;
+    Ok(format!("{:x}", Sha256::digest(&bytes)))
 }
 
 #[derive(Debug, Serialize)]
@@ -188,6 +245,58 @@ pub fn adb_device_info(serial: String) -> Result<AdbDeviceInfo, String> {
         properties,
         verified: true,
         evidence_source: "adb:shell-getprop",
+    })
+}
+
+#[tauri::command]
+pub fn samsung_adb_identity_receipt(serial: String) -> Result<SamsungAdbIdentityReceipt, String> {
+    require_authorized(&serial)?;
+
+    let observed_unix_ms = observed_unix_ms()?;
+    let manufacturer = get_property(&serial, "ro.product.manufacturer").ok().filter(|v| !v.is_empty());
+    let brand = get_property(&serial, "ro.product.brand").ok().filter(|v| !v.is_empty());
+    let model = get_property(&serial, "ro.product.model").ok().filter(|v| !v.is_empty());
+    let device = get_property(&serial, "ro.product.device").ok().filter(|v| !v.is_empty());
+    let bootloader = get_property(&serial, "ro.bootloader").ok().filter(|v| !v.is_empty());
+    let device_serial = get_property(&serial, "ro.serialno").ok().filter(|v| !v.is_empty());
+
+    let samsung_claim = manufacturer
+        .as_deref()
+        .into_iter()
+        .chain(brand.as_deref())
+        .any(|value| value.eq_ignore_ascii_case("samsung"));
+    if !samsung_claim {
+        return Err("Authorized ADB target is not independently identified as Samsung.".to_string());
+    }
+
+    let exact_model_verified = model.as_deref().is_some_and(|value| !value.trim().is_empty())
+        && device.as_deref().is_some_and(|value| !value.trim().is_empty());
+
+    let report_fingerprint = samsung_identity_fingerprint(
+        &serial,
+        device_serial.as_deref(),
+        observed_unix_ms,
+        manufacturer.as_deref(),
+        brand.as_deref(),
+        model.as_deref(),
+        device.as_deref(),
+        bootloader.as_deref(),
+        exact_model_verified,
+    )?;
+
+    Ok(SamsungAdbIdentityReceipt {
+        adb_transport_serial: serial,
+        device_serial,
+        observed_unix_ms,
+        manufacturer,
+        brand,
+        model,
+        device,
+        bootloader,
+        exact_model_verified,
+        cross_mode_identity_verified: false,
+        report_fingerprint,
+        evidence_source: "adb:shell-getprop+samsung-identity-v1",
     })
 }
 
@@ -541,4 +650,41 @@ pub fn adb_package_action(
         message: format!("{workflow} completed for {package_name}"),
         evidence_source: "adb:pm+verified-output",
     })
+}
+
+#[cfg(test)]
+mod samsung_identity_tests {
+    use super::*;
+
+    #[test]
+    fn samsung_identity_fingerprint_binds_model_and_never_claims_cross_mode_identity() {
+        let first = samsung_identity_fingerprint(
+            "R58MTEST",
+            Some("R58MTEST"),
+            1234,
+            Some("samsung"),
+            Some("samsung"),
+            Some("SM-T500"),
+            Some("gta4lwifi"),
+            Some("T500XXU8"),
+            true,
+        )
+        .expect("first fingerprint");
+        let other_model = samsung_identity_fingerprint(
+            "R58MTEST",
+            Some("R58MTEST"),
+            1234,
+            Some("samsung"),
+            Some("samsung"),
+            Some("SM-T505"),
+            Some("gta4l"),
+            Some("T505XXU8"),
+            true,
+        )
+        .expect("second fingerprint");
+
+        assert_eq!(first.len(), 64);
+        assert_eq!(other_model.len(), 64);
+        assert_ne!(first, other_model);
+    }
 }
