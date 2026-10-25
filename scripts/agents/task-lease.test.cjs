@@ -133,3 +133,29 @@ test('prepared receipt handle belongs to its destination instance', async () => 
   const handle = await one.prepare(claim, { action: 'validation', artifactSha256: 'a'.repeat(64) });
   await assert.rejects(two.commit(handle), /Unknown/);
 });
+
+test('staged receipt cannot be redirected to another branch or repository', async () => {
+  for (const field of ['branch', 'base']) {
+    const claim = await fixture().leases.acquire('rec123', 'worker', revision);
+    const { store, calls } = destinationProvider(claim); const destination = new GitHubReceiptDestination(store);
+    const handle = await destination.prepare(claim, { action: 'validation', artifactSha256: 'a'.repeat(64) });
+    const before = calls.length; store[field] += '-changed';
+    await assert.rejects(destination.commit(handle), /scope changed/);
+    assert.equal(calls.length, before);
+  }
+});
+test('destination scope drift during preparation stops before further writes', async () => {
+  const claim = await fixture().leases.acquire('rec123', 'worker', revision);
+  const { store, calls } = destinationProvider(claim); const request = store.request.bind(store);
+  store.request = async (...args) => { const response = await request(...args); if (calls.length === 2) store.branch = 'different'; return response; };
+  await assert.rejects(new GitHubReceiptDestination(store).prepare(claim, { action: 'validation', artifactSha256: 'a'.repeat(64) }), /scope changed/);
+  assert.equal(calls.length, 2);
+});
+test('claim mutation after validation cannot alter the staged receipt identity', async () => {
+  const claim = await fixture().leases.acquire('rec123', 'worker', revision);
+  const { store, calls } = destinationProvider(claim); const request = store.request.bind(store);
+  store.request = async (...args) => { const response = await request(...args); if (calls.length === 3) { claim.generation = 99; claim.owner = 'changed'; } return response; };
+  const handle = await new GitHubReceiptDestination(store).prepare(claim, { action: 'validation', artifactSha256: 'a'.repeat(64) });
+  const receipt = JSON.parse(JSON.parse(calls[3].options.body).content);
+  assert.equal(handle.generation, 1); assert.equal(receipt.generation, 1); assert.equal(receipt.owner, 'worker');
+});
