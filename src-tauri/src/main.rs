@@ -36,6 +36,11 @@ mod observation_scheduler;
 mod audit;
 mod workflow_capabilities;
 mod diagnostics;
+mod detection_state;
+#[cfg(test)]
+mod read_only_extractor;
+#[cfg(test)]
+mod fault_injection;
 mod workflow_jobs;
 mod workstation;
 mod calibration_backup_exec;
@@ -5459,6 +5464,7 @@ fn start_device_monitor_once(app_handle: &AppHandle, state: tauri::State<'_, App
     let app = app_handle.clone();
     std::thread::spawn(move || {
         let mut seen: HashMap<String, bootforgeusb::model::DeviceRecord> = HashMap::new();
+        let mut observation_registry = detection_state::ObservationRegistry::default();
 
         loop {
             let mut current: HashMap<String, bootforgeusb::model::DeviceRecord> = HashMap::new();
@@ -5471,6 +5477,7 @@ fn start_device_monitor_once(app_handle: &AppHandle, state: tauri::State<'_, App
 
             for (uid, device) in current.iter() {
                 if !seen.contains_key(uid) {
+                    observation_registry.observe_usb(uid, true);
                     let display_name = device
                         .product_name
                         .clone()
@@ -5506,6 +5513,7 @@ fn start_device_monitor_once(app_handle: &AppHandle, state: tauri::State<'_, App
 
             for (uid, device) in seen.iter() {
                 if !current.contains_key(uid) {
+                    observation_registry.observe_usb(uid, false);
                     let display_name = device
                         .product_name
                         .clone()
