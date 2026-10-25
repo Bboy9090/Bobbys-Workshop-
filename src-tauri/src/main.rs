@@ -27,6 +27,8 @@ mod py_client;
 mod fastapi_backend;
 mod mtp_backend;
 mod adb_workflows;
+mod adb_command;
+mod engine;
 mod workflow_capabilities;
 mod diagnostics;
 mod workflow_jobs;
@@ -1401,6 +1403,117 @@ fn stop_backend_server(app_handle: &AppHandle) {
     }
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AdbIntentRequest { intent_id: String }
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AdbIntentAllocateRequest { target_serial: String }
+
+#[tauri::command]
+async fn tauri_allocate_adb_intent(request: AdbIntentAllocateRequest, manager: tauri::State<'_, std::sync::Arc<engine::workflow_controller::SessionManager>>) -> Result<String, String> {
+    manager.allocate_intent(&request.target_serial)
+}
+
+#[tauri::command]
+async fn tauri_cancel_adb_intent(request: AdbIntentRequest, manager: tauri::State<'_, std::sync::Arc<engine::workflow_controller::SessionManager>>) -> Result<(), String> {
+    manager.cancel_intent(&request.intent_id)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AdbSessionInitRequest { target_serial: String, intent_id: String }
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AdbSessionInitResponse { token: String, status: &'static str, expires_in_seconds: u64 }
+
+#[tauri::command]
+async fn tauri_initialize_adb_session(
+    request: AdbSessionInitRequest,
+    manager: tauri::State<'_, std::sync::Arc<engine::workflow_controller::SessionManager>>,
+) -> Result<AdbSessionInitResponse, String> {
+    let serial = request.target_serial;
+    if !engine::bounded_adb::check_authorized(&serial, std::time::Duration::from_secs(5)).await? {
+        return Err("ADB target is not authorized".into());
+    }
+    // Token issuance follows a bounded native authorization challenge.
+    let token = manager.commit_intent(&request.intent_id, &serial)?;
+    Ok(AdbSessionInitResponse { token, status: "adb_transport_authorized", expires_in_seconds: 300 })
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AdbSessionValidateRequest { token: String }
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AdbSessionValidateResponse { valid: bool, status: &'static str }
+
+#[tauri::command]
+async fn tauri_validate_adb_session(
+    request: AdbSessionValidateRequest,
+    manager: tauri::State<'_, std::sync::Arc<engine::workflow_controller::SessionManager>>,
+) -> Result<AdbSessionValidateResponse, String> {
+    let session = manager.resolve(&request.token, std::time::Duration::from_secs(300))?;
+    let authorized = engine::bounded_adb::check_authorized(&session.serial, std::time::Duration::from_secs(3)).await;
+    if !matches!(authorized, Ok(true)) {
+        manager.revoke(&request.token)?;
+        return Err("ADB authorization lost, timed out, or failed; token revoked".into());
+    }
+    Ok(AdbSessionValidateResponse { valid: true, status: "adb_transport_authorized" })
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DevicePackageReceiptRequest {
+    session_token: String,
+    target_serial: String,
+    package_id: String,
+    expected_version_code: u64,
+}
+
+/// Read-only metadata observation, never APK integrity attestation.
+#[tauri::command]
+async fn tauri_query_device_package_receipt(
+    request: DevicePackageReceiptRequest,
+    manager: tauri::State<'_, std::sync::Arc<engine::workflow_controller::SessionManager>>,
+) -> Result<engine::verification_receipt::PackageVerificationReceipt, String> {
+    let session = manager.resolve_adb_target(&request.session_token, &request.target_serial, std::time::Duration::from_secs(300))?;
+    if !matches!(engine::bounded_adb::check_authorized(&session.serial, std::time::Duration::from_secs(3)).await, Ok(true)) {
+        manager.revoke(&request.session_token)?;
+        return Err("AUTHORIZATION_REJECTION: Fresh ADB transport challenge failed; session revoked".into());
+    }
+    // Revalidate lease after the asynchronous hardware challenge.
+    manager.resolve_adb_target(&request.session_token, &session.serial, std::time::Duration::from_secs(300))?;
+    let dump = engine::package_verifier::collect_live_dump(&session.serial, &request.package_id).await?;
+    // The token may have been revoked while the asynchronous collector was running.
+    manager.resolve_adb_target(&request.session_token, &session.serial, std::time::Duration::from_secs(300))?;
+    // An authorized transport at the beginning does not prove it survived collection.
+    if !matches!(engine::bounded_adb::check_authorized(&session.serial, std::time::Duration::from_secs(3)).await, Ok(true)) {
+        manager.revoke(&request.session_token)?;
+        return Err("AUTHORIZATION_REJECTION: ADB authorization lost during package collection; session revoked".into());
+    }
+    // The final asynchronous challenge itself may race with revocation or expiry.
+    manager.resolve_adb_target(&request.session_token, &session.serial, std::time::Duration::from_secs(300))?;
+    let metadata = engine::package_verifier::parse_package_dump(&dump, &request.package_id, request.expected_version_code)?;
+    engine::verification_receipt::PackageVerificationReceipt::from_metadata(&session.serial, request.expected_version_code, &metadata)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AdbSessionRevokeRequest { token: String }
+
+#[tauri::command]
+async fn tauri_revoke_adb_session(
+    request: AdbSessionRevokeRequest,
+    manager: tauri::State<'_, std::sync::Arc<engine::workflow_controller::SessionManager>>,
+) -> Result<bool, String> {
+    manager.revoke(&request.token)?;
+    Ok(true)
+}
+
 fn main() {
     // Initialize app state
     let app_state = AppState {
@@ -1500,7 +1613,14 @@ fn main() {
                 }
             }
         })
+        .manage(std::sync::Arc::new(engine::workflow_controller::SessionManager::default()))
         .invoke_handler(tauri::generate_handler![
+            tauri_allocate_adb_intent,
+            tauri_cancel_adb_intent,
+            tauri_initialize_adb_session,
+            tauri_validate_adb_session,
+            tauri_query_device_package_receipt,
+            tauri_revoke_adb_session,
             frontend_backend_handshake,
             get_backend_status,
             get_app_version,

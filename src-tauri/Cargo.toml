@@ -30,3 +30,6 @@ default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 legacy-backends = []
 qualified-flash = []
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
