@@ -1435,11 +1435,11 @@ async fn tauri_initialize_adb_session(
     manager: tauri::State<'_, std::sync::Arc<engine::workflow_controller::SessionManager>>,
 ) -> Result<AdbSessionInitResponse, String> {
     let serial = request.target_serial;
-    if !engine::bounded_adb::check_authorized(&serial, std::time::Duration::from_secs(5)).await? {
-        return Err("ADB target is not authorized".into());
-    }
-    // Token issuance follows a bounded native authorization challenge.
-    let token = manager.commit_intent(&request.intent_id, &serial)?;
+    // All scan failures consume the pending intent before returning to the frontend.
+    let token = manager.initialize_after_scan(
+        &request.intent_id, &serial,
+        engine::bounded_adb::check_authorized(&serial, std::time::Duration::from_secs(5)),
+    ).await?;
     Ok(AdbSessionInitResponse { token, status: "adb_transport_authorized", expires_in_seconds: 300 })
 }
 

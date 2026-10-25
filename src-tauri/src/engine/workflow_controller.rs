@@ -26,6 +26,23 @@ impl SessionManager {
             .insert(id.clone(), (serial.to_string(), Instant::now()));
         Ok(id)
     }
+    /// Complete a bounded authorization challenge; every failed scan consumes its intent.
+    pub async fn initialize_after_scan<F>(
+        &self, intent_id: &str, serial: &str, scan: F,
+    ) -> Result<String, String>
+    where F: std::future::Future<Output = Result<bool, String>> {
+        match scan.await {
+            Ok(true) => self.commit_intent(intent_id, serial),
+            Ok(false) => {
+                self.cancel_intent(intent_id)?;
+                Err("ADB target is not authorized; intent cleared".into())
+            }
+            Err(error) => {
+                self.cancel_intent(intent_id)?;
+                Err(format!("ADB authorization failed; intent cleared: {error}"))
+            }
+        }
+    }
     pub fn cancel_intent(&self, id: &str) -> Result<(), String> {
         self.pending_intents.lock().map_err(|_| "Intent lock unavailable")?.remove(id);
         Ok(())
@@ -217,5 +234,27 @@ mod receipt_authorization_tests {
         manager.resolve_adb_target(&token, "device-a", LEASE).unwrap();
         manager.revoke(&token).unwrap();
         assert!(manager.resolve_adb_target(&token, "device-a", LEASE).is_err());
+    }
+}
+
+#[cfg(test)]
+mod initialization_purge_tests {
+    use super::*;
+    #[tokio::test]
+    async fn failed_scan_and_timeout_consume_intent() {
+        for outcome in [Ok(false), Err("COLLECTOR_TIMEOUT".to_string())] {
+            let manager = SessionManager::default();
+            let id = manager.allocate_intent("device-a").unwrap();
+            assert!(manager.initialize_after_scan(&id, "device-a", async { outcome }).await.is_err());
+            assert!(manager.commit_intent(&id, "device-a").is_err());
+        }
+    }
+    #[tokio::test]
+    async fn successful_scan_issues_only_one_session() {
+        let manager = SessionManager::default();
+        let id = manager.allocate_intent("device-a").unwrap();
+        let token = manager.initialize_after_scan(&id, "device-a", async { Ok(true) }).await.unwrap();
+        assert_eq!(manager.resolve_adb_target(&token, "device-a", Duration::from_secs(300)).unwrap().serial, "device-a");
+        assert!(manager.commit_intent(&id, "device-a").is_err());
     }
 }
