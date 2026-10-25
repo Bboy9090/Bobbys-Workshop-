@@ -1,3 +1,4 @@
+import { WorkflowControlPanel } from './components/WorkflowControlPanel';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   chooseDownloadDestination,
@@ -625,6 +626,12 @@ export default function App() {
                 ))}
               </div>
             </section>
+          )}
+
+          {nativeRuntime && (
+            <div className="mb-4">
+              <WorkflowControlPanel targetSerial={adbSelectedSerial} />
+            </div>
           )}
 
           {lastTransfer && (

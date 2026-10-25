@@ -1,0 +1,25 @@
+name: BobFWTools Production Read-Only Port
+on:
+  push:
+    branches:
+      - integration/read-only-verification-20261025
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  port-qualification:
+    runs-on: macos-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - run: npm run test:integration
+      - run: npm run typecheck
+      - run: npm run build
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --bin bobfwtools
+      - run: git diff --exit-code
