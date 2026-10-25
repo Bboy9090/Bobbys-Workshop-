@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import WorkflowWalkthrough, { type GuidedWorkflowKind } from './WorkflowWalkthrough';
 import HardwareFlowReadiness from './HardwareFlowReadiness';
 import FirmwareProvenanceBuilder from './FirmwareProvenanceBuilder';
+import PitDiagnosticPanel from './PitDiagnosticPanel';
 import {
   getCalibrationPartitionAllowlist,
   getEdl9008Devices,
@@ -438,22 +439,6 @@ export default function RepairCommandCenter() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setEdlBusy(false);
-    }
-  };
-
-  const runSamsungDownloadProbe = async () => {
-    if (samsungProbeBusy || !selectedSamsungTransport) return;
-    setSamsungProbeBusy(true);
-    setSamsungProbe(null);
-    setSamsungFirmwareReports([]);
-    setSamsungFlashPlan(null);
-    setError(null);
-    try {
-      setSamsungProbe(await probeSamsungDownloadMode(selectedSamsungTransport.deviceUid));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSamsungProbeBusy(false);
     }
   };
 
@@ -1774,14 +1759,22 @@ export default function RepairCommandCenter() {
                 against the one selected Samsung USB target, stops after the bounded timeout, and never flashes, repartitions, unlocks, or changes setup/FRP state.
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => void runSamsungDownloadProbe()}
-              disabled={samsungProbeBusy}
-              className="rounded bg-amber-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 hover:bg-amber-600"
-            >
-              {samsungProbeBusy ? 'Probing…' : 'Run read-only Odin/PIT probe'}
-            </button>
+            <div className="min-w-[260px]">
+              <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-amber-400">
+                Run read-only Odin/PIT probe
+              </div>
+              <PitDiagnosticPanel
+                deviceUid={selectedSamsungTransport.deviceUid}
+                disabled={samsungProbeBusy}
+                onResult={(report) => {
+                  setSamsungProbe(report);
+                  setSamsungFirmwareReports([]);
+                  setSamsungFlashPlan(null);
+                  setError(null);
+                }}
+                onError={(message) => setError(message)}
+              />
+            </div>
           </div>
 
           {samsungProbe && (

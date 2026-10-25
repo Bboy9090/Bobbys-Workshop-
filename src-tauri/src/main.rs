@@ -43,6 +43,7 @@ mod firmware_library;
 mod firmware_manifest_commands;
 mod mode_control;
 mod samsung_probe;
+mod samsung_service_bundle;
 mod driver_binding;
 #[cfg(feature = "legacy-backends")]
 use python_backend::{launch_python_backend, shutdown_python_backend};
@@ -52,7 +53,7 @@ use py_client::PyWorkerClient;
 use fastapi_backend::{launch_fastapi_backend, shutdown_fastapi_backend};
 use mtp_backend::{mtp_status, mtp_list_root, mtp_download_file, mtp_upload_file, mtp_list_directory, mtp_download_path, mtp_upload_path};
 use audit::{audit_recent, audit_log_path};
-use adb_workflows::{adb_scan, adb_device_info, samsung_adb_identity_receipt, adb_logcat_snapshot, adb_screenshot, adb_prepare, adb_battery_info, adb_mode_capabilities, adb_reboot_mode, adb_open_network_settings, adb_open_factory_reset_settings, adb_install_apk, adb_list_user_packages, adb_package_action};
+use adb_workflows::{adb_scan, adb_device_info, samsung_adb_identity_receipt, adb_logcat_snapshot, adb_screenshot, adb_prepare, adb_battery_info, adb_mode_capabilities, adb_reboot_mode, adb_open_network_settings, adb_open_factory_reset_settings, adb_install_apk, adb_list_user_packages, adb_package_action, open_advanced_actions_window, launch_target_device_action};
 use workflow_capabilities::workflow_capabilities;
 use diagnostics::{diagnose_phone, usb_cable_doctor};
 use workflow_jobs::{workflow_job_start, workflow_job_list, workflow_job_get, workflow_job_retry};
@@ -62,7 +63,8 @@ use edl_programmer_vault::{edl_inspect_programmer, edl_enroll_programmer, edl_li
 use firmware_library::{firmware_bundle_planning_artifacts, firmware_chipset_catalog, firmware_chipset_lookup, firmware_library_scan, firmware_provenance_write, samsung_firmware_compatibility};
 use firmware_manifest_commands::{firmware_manifest_inspect, firmware_manifest_compare};
 use mode_control::{fastboot_mode_devices, fastboot_reboot_mode, mode_transition_verify};
-use samsung_probe::samsung_download_probe;
+use samsung_probe::{execute_pit_dry_run, samsung_download_probe};
+use samsung_service_bundle::samsung_service_bundle_create;
 use driver_binding::{driver_binding_scan, driver_binding_release_and_rescan, driver_binding_candidates, driver_binding_conflict_plan, driver_binding_cleanup_report, driver_binding_snapshot, driver_binding_rollback_plan, driver_binding_stability_test, driver_binding_elevation_status, driver_binding_inspect_inf, driver_binding_stage_and_relatch};
 
 #[cfg(target_os = "windows")]
@@ -6205,10 +6207,14 @@ fn main() {
             firmware_manifest_compare,
             firmware_bundle_planning_artifacts,
             samsung_firmware_compatibility,
+            samsung_service_bundle_create,
             fastboot_mode_devices,
             fastboot_reboot_mode,
             mode_transition_verify,
             samsung_download_probe,
+            execute_pit_dry_run,
+            open_advanced_actions_window,
+            launch_target_device_action,
             driver_binding_scan,
             driver_binding_release_and_rescan,
             driver_binding_candidates,

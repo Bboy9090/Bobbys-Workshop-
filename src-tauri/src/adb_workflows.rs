@@ -1,9 +1,10 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{Emitter, Manager};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -121,6 +122,74 @@ pub struct AdbActionResult {
     pub evidence_source: &'static str,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TargetActionToken {
+    SamsungInternet,
+    #[serde(rename = "youtube")]
+    YouTube,
+    GoogleMaps,
+    GalaxyStore,
+}
+
+impl TargetActionToken {
+    fn workflow(self) -> &'static str {
+        match self {
+            Self::SamsungInternet => "launch-samsung-internet",
+            Self::YouTube => "launch-youtube",
+            Self::GoogleMaps => "launch-google-maps",
+            Self::GalaxyStore => "launch-galaxy-store",
+        }
+    }
+
+    fn intent_args(self) -> &'static [&'static str] {
+        match self {
+            Self::SamsungInternet => &[
+                "shell",
+                "am",
+                "start",
+                "-a",
+                "android.intent.action.VIEW",
+                "-d",
+                "https://www.google.com",
+                "-p",
+                "com.sec.android.app.sbrowser",
+            ],
+            Self::YouTube => &[
+                "shell",
+                "am",
+                "start",
+                "-a",
+                "android.intent.action.VIEW",
+                "-d",
+                "https://www.youtube.com",
+            ],
+            Self::GoogleMaps => &[
+                "shell",
+                "am",
+                "start",
+                "-a",
+                "android.intent.action.VIEW",
+                "-d",
+                "geo:0,0?q=Samsung+Support",
+                "-p",
+                "com.google.android.apps.maps",
+            ],
+            Self::GalaxyStore => &[
+                "shell",
+                "am",
+                "start",
+                "-a",
+                "android.intent.action.VIEW",
+                "-d",
+                "samsungapps://MainPage",
+                "-p",
+                "com.sec.android.app.samsungapps",
+            ],
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AdbFileResult {
@@ -166,6 +235,13 @@ fn device_state(serial: &str) -> Result<String, String> {
     }
 
     Err(format!("ADB device {serial} is not currently connected"))
+}
+
+fn valid_adb_serial(serial: &str) -> bool {
+    !serial.trim().is_empty()
+        && serial
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':'))
 }
 
 fn require_authorized(serial: &str) -> Result<(), String> {
@@ -462,6 +538,101 @@ pub fn adb_reboot_mode(serial: String, mode: String) -> Result<AdbActionResult, 
         message: "ADB accepted the reboot command. The device will temporarily disconnect while changing modes.".to_string(),
         evidence_source: "adb:reboot-command-accepted",
     })
+}
+
+#[tauri::command]
+pub fn open_advanced_actions_window(
+    app: tauri::AppHandle,
+    serial: String,
+) -> Result<(), String> {
+    require_authorized(&serial)?;
+    let window = app
+        .get_webview_window("advanced-device-actions")
+        .ok_or_else(|| "Advanced Device Actions window is not available.".to_string())?;
+
+    app.emit_to(
+        "advanced-device-actions",
+        "advanced-device-target",
+        serde_json::json!({ "serial": serial }),
+    )
+    .map_err(|e| format!("Failed to bind target to Advanced Device Actions window: {e}"))?;
+
+    window
+        .show()
+        .map_err(|e| format!("Failed to show Advanced Device Actions window: {e}"))?;
+    window
+        .set_focus()
+        .map_err(|e| format!("Failed to focus Advanced Device Actions window: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn launch_target_device_action(
+    serial: String,
+    action: TargetActionToken,
+) -> Result<AdbActionResult, String> {
+    if !valid_adb_serial(&serial) {
+        return Err("Invalid or malformed ADB transport serial.".to_string());
+    }
+
+    require_authorized(&serial)?;
+
+    let mut args = vec!["-s", serial.as_str()];
+    args.extend_from_slice(action.intent_args());
+    require_success(run_adb(&args)?, action.workflow())?;
+
+    Ok(AdbActionResult {
+        serial,
+        workflow: action.workflow(),
+        accepted: true,
+        verified: true,
+        message: "Android accepted the allowlisted launch intent on the selected authorized target.".to_string(),
+        evidence_source: "adb:serial-bound-am-start-allowlist",
+    })
+}
+
+#[cfg(test)]
+mod target_action_tests {
+    use super::*;
+
+    #[test]
+    fn adb_serial_allowlist_accepts_realistic_transport_ids() {
+        for serial in ["R9WN929QFKJ", "emulator-5554", "192.168.0.10:5555", "device_01.test"] {
+            assert!(valid_adb_serial(serial), "expected valid serial: {serial}");
+        }
+        for serial in ["", "bad serial", "x;rm", "$(id)", "x/../../y"] {
+            assert!(!valid_adb_serial(serial), "expected invalid serial: {serial}");
+        }
+    }
+
+    #[test]
+    fn target_action_tokens_are_fixed_and_shell_free() {
+        let actions = [
+            TargetActionToken::SamsungInternet,
+            TargetActionToken::YouTube,
+            TargetActionToken::GoogleMaps,
+            TargetActionToken::GalaxyStore,
+        ];
+
+        for action in actions {
+            let args = action.intent_args();
+            assert_eq!(args.get(0), Some(&"shell"));
+            assert_eq!(args.get(1), Some(&"am"));
+            assert_eq!(args.get(2), Some(&"start"));
+            assert!(args.iter().all(|arg| !arg.contains(';')));
+            assert!(args.iter().all(|arg| !arg.contains("&&")));
+            assert!(args.iter().all(|arg| !arg.contains("|")));
+            assert!(args.iter().all(|arg| !arg.contains("$(")));
+        }
+    }
+
+    #[test]
+    fn target_action_tokens_do_not_accept_arbitrary_frontend_values() {
+        assert!(serde_json::from_str::<TargetActionToken>(r#""youtube""#).is_ok());
+        assert!(serde_json::from_str::<TargetActionToken>(r#""galaxy_store""#).is_ok());
+        assert!(serde_json::from_str::<TargetActionToken>(r#""https://example.com""#).is_err());
+        assert!(serde_json::from_str::<TargetActionToken>(r#""shell""#).is_err());
+    }
 }
 
 #[tauri::command]
