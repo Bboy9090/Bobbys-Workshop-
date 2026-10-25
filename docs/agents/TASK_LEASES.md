@@ -52,3 +52,9 @@ GitHub does not atomically evaluate wall-clock expiry during a ref update. A pre
 Tests cover immutable source reads, exact parent binding, non-forced ref update, stale publication rejection, stale owners, path validation and forged/reused handles. The explicit live qualifier now stages worker A's receipt, waits through expiry/takeover, publishes worker B's receipt, then attempts A's stale commit and verifies B's digest remains current.
 
 Live destination qualification passed at `21ddbbaf3de277258fbd9c13247648862b50c095` on macOS/Node26.7.0. The staged former-owner commit was rejected after the replacement owner published, and independent connector readback preserved generation2 and the replacement digest. The synthetic lease was released. Receipt: `docs/agents/receipts/2026-10-20-fenced-publication.json`. Eighteen local Node tests, local lint/build and the dedicated lease CI passed at this implementation; broader fresh Node/macOS CI remains subject to its actual run status.
+
+## Destination scope hardening — 2026-10-25
+
+Each receipt destination captures its initial repository API base and branch. Every request verifies those values have not changed, including after staging a handle and between asynchronous preparation steps. Drift fails before another request is sent. A claim is copied into an immutable identity snapshot before the first asynchronous operation; caller mutation cannot change the owner, generation, source revision or task used in the staged receipt.
+
+Three additional regressions cover repository/branch redirection, mid-preparation scope drift, and claim mutation after validation. The recovered implementation passes all21 local contract tests. These guards preserve the receipt-only and strict-expiry limitations above; no dispatch, hardware workflow or release action is enabled.
