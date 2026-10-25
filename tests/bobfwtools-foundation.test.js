@@ -59,6 +59,7 @@ describe('BobFWTools production foundation', () => {
     const adb = read('src-tauri/src/adb_workflows.rs');
     expect(adb).toContain('pub fn adb_scan');
     expect(adb).toContain('pub fn adb_device_info');
+    expect(adb).toContain('pub fn samsung_adb_identity_receipt');
     expect(adb).toContain('pub fn adb_logcat_snapshot');
     expect(adb).toContain('pub fn adb_screenshot');
     expect(adb).toContain('ADB device');
