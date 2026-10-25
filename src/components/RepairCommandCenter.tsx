@@ -1610,6 +1610,8 @@ export default function RepairCommandCenter() {
                           <div><span className="text-slate-500">model:</span> {bundle.model || '—'}</div>
                           <div><span className="text-slate-500">board:</span> {bundle.board || '—'}</div>
                           <div><span className="text-slate-500">SKU:</span> {bundle.sku || '—'}</div>
+                          <div><span className="text-slate-500">build:</span> {bundle.buildVersion || '—'}</div>
+                          <div><span className="text-slate-500">bootloader revision:</span> {bundle.bootloaderRevision || '—'}</div>
                           <div><span className="text-slate-500">source:</span> {bundle.sourceCategory || '—'}{bundle.sourceReference ? ' · ' + bundle.sourceReference : ''}</div>
                         </div>
                       )}
