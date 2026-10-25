@@ -1,3 +1,4 @@
+import { WorkflowControlPanel } from './WorkflowControlPanel';
 import { useEffect, useMemo, useState } from 'react';
 import WorkflowWalkthrough, { type GuidedWorkflowKind } from './WorkflowWalkthrough';
 import HardwareFlowReadiness from './HardwareFlowReadiness';
@@ -1860,6 +1861,12 @@ export default function RepairCommandCenter() {
           </div>
         )}
       </div>
+      )}
+
+      {selectedTarget?.kind === 'adb' && (
+        <div className="mt-4">
+          <WorkflowControlPanel targetSerial={selectedTarget.key.slice('adb:'.length)} />
+        </div>
       )}
 
       <div className="mt-4 grid gap-3 lg:grid-cols-2">

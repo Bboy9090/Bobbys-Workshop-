@@ -5961,6 +5961,19 @@ async fn tauri_validate_adb_session(
     Ok(AdbSessionValidateResponse { valid: true, status: "adb_transport_authorized" })
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AdbSessionRevokeRequest { token: String }
+
+#[tauri::command]
+async fn tauri_revoke_adb_session(
+    request: AdbSessionRevokeRequest,
+    manager: tauri::State<'_, std::sync::Arc<engine::workflow_controller::SessionManager>>,
+) -> Result<bool, String> {
+    manager.revoke(&request.token)?;
+    Ok(true)
+}
+
 fn main() {
     // Initialize app state
     let app_state = AppState {
@@ -6072,6 +6085,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             tauri_initialize_adb_session,
             tauri_validate_adb_session,
+            tauri_revoke_adb_session,
             frontend_backend_handshake,
             get_backend_status,
             get_app_version,

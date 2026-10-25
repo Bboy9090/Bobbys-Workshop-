@@ -40,6 +40,13 @@ mod tests {
         assert_eq!(result, ProcessOutcome::Completed {success: false, exit_code: Some(7)});
     }
     #[tokio::test]
+    async fn stalled_direct_child_returns_within_deadline() {
+        let started = std::time::Instant::now();
+        let result = run_bounded("/bin/sleep", &["30"], Duration::from_millis(100)).await;
+        assert_eq!(result, ProcessOutcome::TimedOut);
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+    #[tokio::test]
     async fn bounded_timeout() {
         let result = run_bounded("/bin/sh", &["-c", "sleep 5"], Duration::from_millis(50)).await;
         assert_eq!(result, ProcessOutcome::TimedOut);
