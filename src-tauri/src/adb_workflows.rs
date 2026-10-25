@@ -627,10 +627,10 @@ mod target_action_tests {
 
     #[test]
     fn target_action_tokens_do_not_accept_arbitrary_frontend_values() {
-        assert!(serde_json::from_str::<TargetActionToken>(""youtube"").is_ok());
-        assert!(serde_json::from_str::<TargetActionToken>(""galaxy_store"").is_ok());
-        assert!(serde_json::from_str::<TargetActionToken>(""https://example.com"").is_err());
-        assert!(serde_json::from_str::<TargetActionToken>(""shell"").is_err());
+        assert!(serde_json::from_str::<TargetActionToken>(r#""youtube""#).is_ok());
+        assert!(serde_json::from_str::<TargetActionToken>(r#""galaxy_store""#).is_ok());
+        assert!(serde_json::from_str::<TargetActionToken>(r#""https://example.com""#).is_err());
+        assert!(serde_json::from_str::<TargetActionToken>(r#""shell""#).is_err());
     }
 }
 
