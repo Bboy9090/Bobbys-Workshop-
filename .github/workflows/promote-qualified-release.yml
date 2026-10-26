@@ -69,15 +69,22 @@ jobs:
           echo "policy=$POLICY" >> "$GITHUB_OUTPUT"
       - name: Build fail-closed promotion plan
         shell: bash
+        env:
+          POLICY_PATH: ${{ steps.evidence.outputs.policy }}
+          CANDIDATE_PATH: ${{ steps.evidence.outputs.candidate }}
+          CHANNEL: ${{ inputs.channel }}
+          SOURCE_BUCKET: ${{ inputs.source_bucket }}
+          SOURCE_KEY: ${{ inputs.source_key }}
+          RELEASE_BUCKET: ${{ inputs.release_bucket }}
         run: |
           set -euo pipefail
           node scripts/release/create-promotion-plan.mjs \
-            --policy '${{ steps.evidence.outputs.policy }}' \
-            --candidate '${{ steps.evidence.outputs.candidate }}' \
-            --channel '${{ inputs.channel }}' \
-            --source-bucket '${{ inputs.source_bucket }}' \
-            --source-key '${{ inputs.source_key }}' \
-            --release-bucket '${{ inputs.release_bucket }}' \
+            --policy "$POLICY_PATH" \
+            --candidate "$CANDIDATE_PATH" \
+            --channel "$CHANNEL" \
+            --source-bucket "$SOURCE_BUCKET" \
+            --source-key "$SOURCE_KEY" \
+            --release-bucket "$RELEASE_BUCKET" \
             --output promotion-plan.json
       - name: Assume BobFWTools release role through GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v6.3.0

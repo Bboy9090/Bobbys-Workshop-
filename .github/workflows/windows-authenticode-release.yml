@@ -42,10 +42,11 @@ jobs:
       - name: Authenticode sign and verify exact artifact
         shell: pwsh
         env:
+          SIGNING_INPUT_PATH: ${{ steps.artifact.outputs.path }}
           WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
           WINDOWS_SIGNING_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
           WINDOWS_SIGNING_CERT_THUMBPRINT: ${{ secrets.WINDOWS_SIGNING_CERT_THUMBPRINT }}
-        run: ./scripts/release/sign-windows-authenticode.ps1 -InputPath '${{ steps.artifact.outputs.path }}' -ReceiptPath 'windows-authenticode-receipt.json'
+        run: ./scripts/release/sign-windows-authenticode.ps1 -InputPath $env:SIGNING_INPUT_PATH -ReceiptPath 'windows-authenticode-receipt.json'
       - uses: actions/upload-artifact@v7
         with:
           name: windows-authenticode-${{ github.run_id }}
