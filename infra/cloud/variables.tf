@@ -39,3 +39,8 @@ variable "gcp_bigquery_dataset_id" {
   type    = string
   default = "bobfwtools_release_evidence"
 }
+
+variable "aws_release_bucket_name" {
+  type = string
+}
+
