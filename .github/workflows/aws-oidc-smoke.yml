@@ -1,0 +1,39 @@
+name: AWS OIDC smoke
+
+on:
+  push:
+    branches:
+      - feat/bobfwtools-macos-foundation
+    paths:
+      - '.github/workflows/aws-oidc-smoke.yml'
+      - 'infra/cloud/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify-live-release-foundation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Assume BobFWTools release role through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::960763460596:role/bobfwtools-github-release
+          aws-region: us-east-1
+          allowed-account-ids: '960763460596'
+          role-session-name: bobfwtools-${{ github.run_id }}
+      - name: Verify immutable evidence and signing controls
+        shell: bash
+        env:
+          EVIDENCE_BUCKET: bobfwtools-evidence-960763460596-us-east-1
+        run: |
+          set -euo pipefail
+          aws sts get-caller-identity
+          test "$(aws s3api get-bucket-versioning --bucket "$EVIDENCE_BUCKET" --query Status --output text)" = "Enabled"
+          test "$(aws s3api get-object-lock-configuration --bucket "$EVIDENCE_BUCKET" --query 'ObjectLockConfiguration.ObjectLockEnabled' --output text)" = "Enabled"
+          test "$(aws s3api get-public-access-block --bucket "$EVIDENCE_BUCKET" --query 'PublicAccessBlockConfiguration.BlockPublicAcls' --output text)" = "True"
+          test "$(aws s3api get-bucket-encryption --bucket "$EVIDENCE_BUCKET" --query 'ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault.SSEAlgorithm' --output text)" = "aws:kms"
+          aws kms get-public-key --key-id alias/bobfwtools-release-signing >/dev/null
