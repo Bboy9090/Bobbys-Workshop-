@@ -8,6 +8,7 @@ export type MtpStorageSummary = {
 
 export type MtpStatus = {
   connected: boolean;
+  targetId: string;
   manufacturer: string;
   model: string;
   serialNumber: string;
@@ -102,18 +103,28 @@ export async function verifyModeTransition(
   return invoke<ModeTransitionVerification>('mode_transition_verify', { serial, requestedMode });
 }
 
-export async function getMtpStatus(): Promise<MtpStatus | null> {
+export async function getMtpStatus(strict = false): Promise<MtpStatus | null> {
   if (!isTauriRuntime()) return null;
   try {
-    return await invoke<MtpStatus>('mtp_status');
-  } catch {
+    const status = await invoke<MtpStatus>('mtp_status');
+    if (status.connected) requireMtpTargetId(status.targetId);
+    return status;
+  } catch (error) {
+    if (strict) throw error;
     return null;
   }
 }
 
-export async function listMtpRoot(storageIndex: number): Promise<MtpRootObject[]> {
+function requireMtpTargetId(targetId: string): string {
+  if (typeof targetId !== 'string' || !/^[a-f0-9]{64}$/.test(targetId)) {
+    throw new Error('MTP target is unverified; rescan before using file actions.');
+  }
+  return targetId;
+}
+
+export async function listMtpRoot(storageIndex: number, targetId: string): Promise<MtpRootObject[]> {
   if (!isTauriRuntime()) return [];
-  return invoke<MtpRootObject[]>('mtp_list_root', { storageIndex });
+  return invoke<MtpRootObject[]>('mtp_list_root', { storageIndex, targetId: requireMtpTargetId(targetId) });
 }
 
 export { isTauriRuntime };
@@ -141,7 +152,7 @@ export async function chooseUploadSource(): Promise<string | null> {
 export async function chooseDownloadDestination(defaultName: string): Promise<string | null> {
   if (!isTauriRuntime()) return null;
   return save({
-    title: 'Save Android file to Mac',
+    title: 'Save device file to this computer',
     defaultPath: defaultName,
   });
 }
@@ -149,9 +160,11 @@ export async function chooseDownloadDestination(defaultName: string): Promise<st
 export async function uploadMtpFile(
   storageIndex: number,
   sourcePath: string,
+  targetId: string,
   parentHandle?: string | null,
 ): Promise<MtpTransferResult> {
   return invoke<MtpTransferResult>('mtp_upload_file', {
+    targetId: requireMtpTargetId(targetId),
     storageIndex,
     sourcePath,
     parentHandle: parentHandle ?? null,
@@ -162,8 +175,10 @@ export async function downloadMtpFile(
   storageIndex: number,
   handle: string,
   destinationPath: string,
+  targetId: string,
 ): Promise<MtpTransferResult> {
   return invoke<MtpTransferResult>('mtp_download_file', {
+    targetId: requireMtpTargetId(targetId),
     storageIndex,
     handle,
     destinationPath,
@@ -458,17 +473,20 @@ export type MtpBrowserObject = {
 export async function listMtpDirectory(
   storageIndex: number,
   path: string[],
+  targetId: string,
 ): Promise<MtpBrowserObject[]> {
   if (!isTauriRuntime()) return [];
-  return invoke<MtpBrowserObject[]>('mtp_list_directory', { storageIndex, path });
+  return invoke<MtpBrowserObject[]>('mtp_list_directory', { storageIndex, path, targetId: requireMtpTargetId(targetId) });
 }
 
 export async function downloadMtpPath(
   storageIndex: number,
   objectPath: string[],
   destinationPath: string,
+  targetId: string,
 ): Promise<MtpTransferResult> {
   return invoke<MtpTransferResult>('mtp_download_path', {
+    targetId: requireMtpTargetId(targetId),
     storageIndex,
     objectPath,
     destinationPath,
@@ -479,8 +497,10 @@ export async function uploadMtpPath(
   storageIndex: number,
   folderPath: string[],
   sourcePath: string,
+  targetId: string,
 ): Promise<MtpTransferResult> {
   return invoke<MtpTransferResult>('mtp_upload_path', {
+    targetId: requireMtpTargetId(targetId),
     storageIndex,
     folderPath,
     sourcePath,

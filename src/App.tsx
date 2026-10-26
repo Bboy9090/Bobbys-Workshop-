@@ -461,10 +461,10 @@ export default function App() {
         const safeIndex = Math.min(storageIndex, mtpStatus.storages.length - 1);
         setStorageIndex(safeIndex);
         try {
-          setMtpObjects(await listMtpDirectory(safeIndex, mtpPath));
+          setMtpObjects(await listMtpDirectory(safeIndex, mtpPath, mtpStatus.targetId));
         } catch {
           setMtpPath([]);
-          setMtpObjects(await listMtpDirectory(safeIndex, []));
+          setMtpObjects(await listMtpDirectory(safeIndex, [], mtpStatus.targetId));
         }
       } else {
         setMtpObjects([]);
@@ -549,12 +549,12 @@ export default function App() {
   };
 
   const openStorage = async (index: number) => {
-    if (transferBusy) return;
+    if (!mtp || transferBusy) return;
     setStorageIndex(index);
     setMtpPath([]);
     setNativeError(null);
     try {
-      setMtpObjects(await listMtpDirectory(index, []));
+      setMtpObjects(await listMtpDirectory(index, [], mtp.targetId));
     } catch (error) {
       setMtpObjects([]);
       setNativeError(error instanceof Error ? error.message : String(error));
@@ -562,10 +562,10 @@ export default function App() {
   };
 
   const openMtpFolder = async (path: string[]) => {
-    if (transferBusy) return;
+    if (!mtp || transferBusy) return;
     setNativeError(null);
     try {
-      setMtpObjects(await listMtpDirectory(storageIndex, path));
+      setMtpObjects(await listMtpDirectory(storageIndex, path, mtp.targetId));
       setMtpPath(path);
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
@@ -581,9 +581,9 @@ export default function App() {
     setNativeError(null);
     setLastTransfer(null);
     try {
-      const result = await uploadMtpPath(storageIndex, mtpPath, source);
+      const result = await uploadMtpPath(storageIndex, mtpPath, source, mtp.targetId);
       setLastTransfer(result);
-      setMtpObjects(await listMtpDirectory(storageIndex, mtpPath));
+      setMtpObjects(await listMtpDirectory(storageIndex, mtpPath, mtp.targetId));
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -592,7 +592,7 @@ export default function App() {
   };
 
   const downloadFile = async (object: MtpBrowserObject) => {
-    if (object.isFolder || transferBusy) return;
+    if (!mtp || object.isFolder || transferBusy) return;
     const destination = await chooseDownloadDestination(object.filename || 'android-file');
     if (!destination) return;
 
@@ -600,7 +600,7 @@ export default function App() {
     setNativeError(null);
     setLastTransfer(null);
     try {
-      const result = await downloadMtpPath(storageIndex, object.path, destination);
+      const result = await downloadMtpPath(storageIndex, object.path, destination, mtp.targetId);
       setLastTransfer(result);
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
