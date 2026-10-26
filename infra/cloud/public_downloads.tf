@@ -1,5 +1,5 @@
 resource "aws_s3_bucket" "release_downloads" {
-  bucket = "${var.aws_release_bucket_name}"
+  bucket = var.aws_release_bucket_name
 
   lifecycle {
     prevent_destroy = true
