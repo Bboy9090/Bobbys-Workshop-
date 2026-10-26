@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::{Command, Output};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::sync::atomic::{AtomicU64, Ordering};
-use tokio::sync::{Mutex as AsyncMutex, Notify, Semaphore};
+use tokio::sync::{Mutex as AsyncMutex, Notify};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager};
 
@@ -52,7 +52,6 @@ impl Default for AdbObservationState {
 }
 
 struct AdbObservationCoordinator {
-    permits: Arc<Semaphore>,
     state: AsyncMutex<AdbObservationState>,
 }
 
@@ -60,7 +59,6 @@ static ADB_OBSERVATION_COORDINATOR: OnceLock<AdbObservationCoordinator> = OnceLo
 
 fn adb_observation_coordinator() -> &'static AdbObservationCoordinator {
     ADB_OBSERVATION_COORDINATOR.get_or_init(|| AdbObservationCoordinator {
-        permits: Arc::new(Semaphore::new(2)),
         state: AsyncMutex::new(AdbObservationState::default()),
     })
 }
@@ -437,12 +435,7 @@ async fn coalesced_adb_scan() -> Result<Vec<AdbDeviceRecord>, String> {
         state.completed_at = None;
         drop(state);
 
-        let permit = coordinator
-            .permits
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|_| "ADB observation semaphore closed unexpectedly.".to_string())?;
+        let permit = crate::observation_scheduler::acquire_observation_permit().await?;
 
         let producer_generation = generation;
         let result = tauri::async_runtime::spawn_blocking(cached_adb_scan)
@@ -803,9 +796,9 @@ mod adb_observation_coordinator_tests {
     use super::*;
 
     #[test]
-    fn observation_pool_is_bounded_to_two_workers() {
-        let coordinator = adb_observation_coordinator();
-        assert_eq!(coordinator.permits.available_permits(), 2);
+    fn observation_pool_uses_shared_bounded_scheduler() {
+        assert_eq!(crate::observation_scheduler::MAX_OBSERVATION_WORKERS, 2);
+        assert_eq!(crate::observation_scheduler::available_observation_permits(), 2);
     }
 
     #[test]
