@@ -6,12 +6,20 @@ resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = [data.tls_certificate.github.certificates[0].sha1_fingerprint]
+  tags = {
+    Project   = "BobFWTools"
+    ManagedBy = "ChatGPT-bootstrap-20261026"
+  }
 }
 
 resource "aws_kms_key" "evidence" {
   description             = "BobFWTools evidence-vault encryption"
   deletion_window_in_days = 30
   enable_key_rotation     = true
+  tags = {
+    Project   = "BobFWTools"
+    ManagedBy = "ChatGPT-bootstrap-20261026"
+  }
 }
 
 resource "aws_kms_alias" "evidence" {
@@ -24,6 +32,10 @@ resource "aws_kms_key" "release_signing" {
   key_usage                = "SIGN_VERIFY"
   customer_master_key_spec = "ECC_NIST_P256"
   deletion_window_in_days  = 30
+  tags = {
+    Project   = "BobFWTools"
+    ManagedBy = "ChatGPT-bootstrap-20261026"
+  }
 }
 
 resource "aws_kms_alias" "release_signing" {
@@ -34,6 +46,10 @@ resource "aws_kms_alias" "release_signing" {
 resource "aws_s3_bucket" "evidence" {
   bucket              = var.aws_evidence_bucket_name
   object_lock_enabled = true
+  tags = {
+    Project   = "BobFWTools"
+    ManagedBy = "ChatGPT-bootstrap-20261026"
+  }
 
   lifecycle {
     prevent_destroy = true
@@ -83,7 +99,12 @@ resource "aws_s3_bucket_public_access_block" "evidence" {
 }
 
 resource "aws_iam_role" "github_release" {
-  name = "bobfwtools-github-release"
+  name        = "bobfwtools-github-release"
+  description = "BobFWTools GitHub Actions release role (OIDC only)"
+  tags = {
+    Project   = "BobFWTools"
+    ManagedBy = "ChatGPT-bootstrap-20261026"
+  }
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
