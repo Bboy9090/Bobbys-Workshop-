@@ -3,7 +3,8 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::{Command, Output};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager};
 
 #[derive(Debug, Clone, Serialize)]
@@ -14,6 +15,30 @@ pub struct AdbDeviceRecord {
     pub details: Vec<String>,
     pub authorized: bool,
     pub evidence_source: &'static str,
+}
+
+const ADB_SCAN_CACHE_TTL: Duration = Duration::from_millis(600);
+
+#[derive(Debug, Clone)]
+struct AdbScanCacheEntry {
+    observed_at: Instant,
+    devices: Vec<AdbDeviceRecord>,
+}
+
+static ADB_SCAN_CACHE: OnceLock<Mutex<Option<AdbScanCacheEntry>>> = OnceLock::new();
+
+fn adb_scan_cache() -> &'static Mutex<Option<AdbScanCacheEntry>> {
+    ADB_SCAN_CACHE.get_or_init(|| Mutex::new(None))
+}
+
+fn cache_is_fresh(observed_at: Instant, now: Instant) -> bool {
+    now.saturating_duration_since(observed_at) <= ADB_SCAN_CACHE_TTL
+}
+
+fn invalidate_adb_scan_cache() {
+    if let Ok(mut cache) = adb_scan_cache().lock() {
+        *cache = None;
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -221,20 +246,62 @@ fn require_success(output: Output, action: &str) -> Result<Output, String> {
     }
 }
 
-fn device_state(serial: &str) -> Result<String, String> {
-    let output = require_success(run_adb(&["devices", "-l"])?, "adb devices")?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
+fn parse_adb_devices(stdout: &str) -> Vec<AdbDeviceRecord> {
+    let mut devices = Vec::new();
 
     for line in stdout.lines().skip(1) {
-        let mut parts = line.split_whitespace();
-        let Some(found_serial) = parts.next() else { continue };
-        let Some(state) = parts.next() else { continue };
-        if found_serial == serial {
-            return Ok(state.to_string());
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 2 {
+            continue;
+        }
+
+        let serial = parts[0].to_string();
+        let state = parts[1].to_string();
+        devices.push(AdbDeviceRecord {
+            serial,
+            authorized: state == "device",
+            state,
+            details: parts.iter().skip(2).map(|s| (*s).to_string()).collect(),
+            evidence_source: "adb:devices-l",
+        });
+    }
+
+    devices
+}
+
+fn fresh_adb_scan() -> Result<Vec<AdbDeviceRecord>, String> {
+    let output = require_success(run_adb(&["devices", "-l"])?, "adb devices")?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(parse_adb_devices(&stdout))
+}
+
+fn cached_adb_scan() -> Result<Vec<AdbDeviceRecord>, String> {
+    let now = Instant::now();
+
+    if let Ok(cache) = adb_scan_cache().lock() {
+        if let Some(entry) = cache.as_ref() {
+            if cache_is_fresh(entry.observed_at, now) {
+                return Ok(entry.devices.clone());
+            }
         }
     }
 
-    Err(format!("ADB device {serial} is not currently connected"))
+    let devices = fresh_adb_scan()?;
+    if let Ok(mut cache) = adb_scan_cache().lock() {
+        *cache = Some(AdbScanCacheEntry {
+            observed_at: now,
+            devices: devices.clone(),
+        });
+    }
+    Ok(devices)
+}
+
+fn device_state(serial: &str) -> Result<String, String> {
+    fresh_adb_scan()?
+        .into_iter()
+        .find(|device| device.serial == serial)
+        .map(|device| device.state)
+        .ok_or_else(|| format!("ADB device {serial} is not currently connected"))
 }
 
 fn valid_adb_serial(serial: &str) -> bool {
@@ -254,6 +321,39 @@ fn require_authorized(serial: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn parse_getprop_snapshot(stdout: &str) -> BTreeMap<String, String> {
+    let mut properties = BTreeMap::new();
+
+    for line in stdout.lines() {
+        let Some((raw_key, raw_value)) = line.split_once("]: [") else {
+            continue;
+        };
+        let key = raw_key.trim().trim_start_matches('[').trim();
+        let value = raw_value.trim().trim_end_matches(']').trim();
+        if !key.is_empty() && !value.is_empty() {
+            properties.insert(key.to_string(), value.to_string());
+        }
+    }
+
+    properties
+}
+
+fn get_all_properties(serial: &str) -> Result<BTreeMap<String, String>, String> {
+    let output = require_success(
+        run_adb(&["-s", serial, "shell", "getprop"])?,
+        "adb getprop snapshot",
+    )?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(parse_getprop_snapshot(&stdout))
+}
+
+fn get_property_from_snapshot(
+    properties: &BTreeMap<String, String>,
+    key: &str,
+) -> Option<String> {
+    properties.get(key).cloned().filter(|value| !value.is_empty())
+}
+
 fn get_property(serial: &str, key: &str) -> Result<String, String> {
     let output = require_success(
         run_adb(&["-s", serial, "shell", "getprop", key])?,
@@ -264,27 +364,7 @@ fn get_property(serial: &str, key: &str) -> Result<String, String> {
 
 #[tauri::command]
 pub fn adb_scan() -> Result<Vec<AdbDeviceRecord>, String> {
-    let output = require_success(run_adb(&["devices", "-l"])?, "adb devices")?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut devices = Vec::new();
-
-    for line in stdout.lines().skip(1) {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 2 {
-            continue;
-        }
-        let serial = parts[0].to_string();
-        let state = parts[1].to_string();
-        devices.push(AdbDeviceRecord {
-            serial,
-            authorized: state == "device",
-            state,
-            details: parts.iter().skip(2).map(|s| (*s).to_string()).collect(),
-            evidence_source: "adb:devices-l",
-        });
-    }
-
-    Ok(devices)
+    cached_adb_scan()
 }
 
 #[tauri::command]
@@ -304,10 +384,10 @@ pub fn adb_device_info(serial: String) -> Result<AdbDeviceInfo, String> {
         "ro.boot.verifiedbootstate",
     ];
 
+    let snapshot = get_all_properties(&serial)?;
     let mut properties = BTreeMap::new();
     for key in keys {
-        let value = get_property(&serial, key)?;
-        if !value.is_empty() {
+        if let Some(value) = get_property_from_snapshot(&snapshot, key) {
             properties.insert(key.to_string(), value);
         }
     }
@@ -329,12 +409,13 @@ pub fn samsung_adb_identity_receipt(serial: String) -> Result<SamsungAdbIdentity
     require_authorized(&serial)?;
 
     let observed_unix_ms = observed_unix_ms()?;
-    let manufacturer = get_property(&serial, "ro.product.manufacturer").ok().filter(|v| !v.is_empty());
-    let brand = get_property(&serial, "ro.product.brand").ok().filter(|v| !v.is_empty());
-    let model = get_property(&serial, "ro.product.model").ok().filter(|v| !v.is_empty());
-    let device = get_property(&serial, "ro.product.device").ok().filter(|v| !v.is_empty());
-    let bootloader = get_property(&serial, "ro.bootloader").ok().filter(|v| !v.is_empty());
-    let device_serial = get_property(&serial, "ro.serialno").ok().filter(|v| !v.is_empty());
+    let properties = get_all_properties(&serial)?;
+    let manufacturer = get_property_from_snapshot(&properties, "ro.product.manufacturer");
+    let brand = get_property_from_snapshot(&properties, "ro.product.brand");
+    let model = get_property_from_snapshot(&properties, "ro.product.model");
+    let device = get_property_from_snapshot(&properties, "ro.product.device");
+    let bootloader = get_property_from_snapshot(&properties, "ro.bootloader");
+    let device_serial = get_property_from_snapshot(&properties, "ro.serialno");
 
     let samsung_claim = manufacturer
         .as_deref()
@@ -446,7 +527,8 @@ pub fn adb_screenshot(serial: String, destination_path: String) -> Result<AdbFil
 #[tauri::command]
 pub fn adb_prepare() -> Result<Vec<AdbDeviceRecord>, String> {
     require_success(run_adb(&["start-server"])?, "adb start-server")?;
-    adb_scan()
+    invalidate_adb_scan_cache();
+    fresh_adb_scan()
 }
 
 #[tauri::command]
@@ -472,10 +554,11 @@ pub fn adb_battery_info(serial: String) -> Result<AdbTextResult, String> {
 #[tauri::command]
 pub fn adb_mode_capabilities(serial: String) -> Result<AdbModeCapabilities, String> {
     require_authorized(&serial)?;
-    let manufacturer = get_property(&serial, "ro.product.manufacturer").unwrap_or_default();
-    let brand = get_property(&serial, "ro.product.brand").unwrap_or_default();
-    let model = get_property(&serial, "ro.product.model").unwrap_or_default();
-    let hardware = get_property(&serial, "ro.hardware").unwrap_or_default();
+    let properties = get_all_properties(&serial)?;
+    let manufacturer = get_property_from_snapshot(&properties, "ro.product.manufacturer").unwrap_or_default();
+    let brand = get_property_from_snapshot(&properties, "ro.product.brand").unwrap_or_default();
+    let model = get_property_from_snapshot(&properties, "ro.product.model").unwrap_or_default();
+    let hardware = get_property_from_snapshot(&properties, "ro.hardware").unwrap_or_default();
 
     let identity = format!("{manufacturer} {brand} {model} {hardware}").to_ascii_lowercase();
     let is_samsung = identity.contains("samsung");
@@ -589,6 +672,55 @@ pub fn launch_target_device_action(
         message: "Android accepted the allowlisted launch intent on the selected authorized target.".to_string(),
         evidence_source: "adb:serial-bound-am-start-allowlist",
     })
+}
+
+#[cfg(test)]
+mod adb_snapshot_tests {
+    use super::*;
+
+    #[test]
+    fn parses_adb_devices_into_independent_records() {
+        let devices = parse_adb_devices(
+            "List of devices attached\nSERIAL_A device product:foo model:A\nSERIAL_B unauthorized usb:1-2\n",
+        );
+        assert_eq!(devices.len(), 2);
+        assert_eq!(devices[0].serial, "SERIAL_A");
+        assert!(devices[0].authorized);
+        assert_eq!(devices[1].serial, "SERIAL_B");
+        assert!(!devices[1].authorized);
+    }
+
+    #[test]
+    fn parses_getprop_snapshot_once_for_multi_property_reads() {
+        let properties = parse_getprop_snapshot(
+            "[ro.product.manufacturer]: [samsung]\n[ro.product.model]: [SM-T500]\n[ro.hardware]: [qcom]\n",
+        );
+        assert_eq!(properties.get("ro.product.manufacturer").map(String::as_str), Some("samsung"));
+        assert_eq!(properties.get("ro.product.model").map(String::as_str), Some("SM-T500"));
+        assert_eq!(properties.get("ro.hardware").map(String::as_str), Some("qcom"));
+    }
+
+    #[test]
+    fn observation_cache_expires_quickly() {
+        let now = Instant::now();
+        assert!(cache_is_fresh(now, now));
+        assert!(!cache_is_fresh(
+            now - Duration::from_millis(ADB_SCAN_CACHE_TTL.as_millis() as u64 + 1),
+            now,
+        ));
+    }
+
+    #[test]
+    fn authorization_path_is_bound_to_fresh_scan_source() {
+        let source = include_str!("adb_workflows.rs");
+        let device_state = source
+            .split("fn device_state(serial: &str)")
+            .nth(1)
+            .and_then(|rest| rest.split("fn valid_adb_serial").next())
+            .unwrap_or_default();
+        assert!(device_state.contains("fresh_adb_scan()?"));
+        assert!(!device_state.contains("cached_adb_scan()?"));
+    }
 }
 
 #[cfg(test)]
