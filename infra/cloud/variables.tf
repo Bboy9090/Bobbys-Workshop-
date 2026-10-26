@@ -44,3 +44,15 @@ variable "aws_release_bucket_name" {
   type = string
 }
 
+variable "aws_release_custom_domain" {
+  type        = string
+  default     = ""
+  description = "Optional custom DNS name for the CloudFront release distribution. Must be paired with aws_release_acm_certificate_arn."
+}
+
+variable "aws_release_acm_certificate_arn" {
+  type        = string
+  default     = ""
+  description = "Optional us-east-1 ACM certificate ARN covering aws_release_custom_domain. Must be paired with aws_release_custom_domain."
+}
+
