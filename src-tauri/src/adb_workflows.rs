@@ -3,7 +3,9 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::{Command, Output};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::atomic::{AtomicU64, Ordering};
+use tokio::sync::{Mutex as AsyncMutex, Notify, Semaphore};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager};
 
@@ -26,6 +28,50 @@ struct AdbScanCacheEntry {
 }
 
 static ADB_SCAN_CACHE: OnceLock<Mutex<Option<AdbScanCacheEntry>>> = OnceLock::new();
+static ADB_OBSERVATION_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Debug)]
+struct AdbObservationState {
+    running: bool,
+    result_generation: u64,
+    completed_at: Option<Instant>,
+    result: Option<Result<Vec<AdbDeviceRecord>, String>>,
+    notify: Arc<Notify>,
+}
+
+impl Default for AdbObservationState {
+    fn default() -> Self {
+        Self {
+            running: false,
+            result_generation: 0,
+            completed_at: None,
+            result: None,
+            notify: Arc::new(Notify::new()),
+        }
+    }
+}
+
+struct AdbObservationCoordinator {
+    permits: Arc<Semaphore>,
+    state: AsyncMutex<AdbObservationState>,
+}
+
+static ADB_OBSERVATION_COORDINATOR: OnceLock<AdbObservationCoordinator> = OnceLock::new();
+
+fn adb_observation_coordinator() -> &'static AdbObservationCoordinator {
+    ADB_OBSERVATION_COORDINATOR.get_or_init(|| AdbObservationCoordinator {
+        permits: Arc::new(Semaphore::new(2)),
+        state: AsyncMutex::new(AdbObservationState::default()),
+    })
+}
+
+fn current_observation_generation() -> u64 {
+    ADB_OBSERVATION_GENERATION.load(Ordering::SeqCst)
+}
+
+fn bump_observation_generation() {
+    ADB_OBSERVATION_GENERATION.fetch_add(1, Ordering::SeqCst);
+}
 
 fn adb_scan_cache() -> &'static Mutex<Option<AdbScanCacheEntry>> {
     ADB_SCAN_CACHE.get_or_init(|| Mutex::new(None))
@@ -39,6 +85,7 @@ fn invalidate_adb_scan_cache() {
     if let Ok(mut cache) = adb_scan_cache().lock() {
         *cache = None;
     }
+    bump_observation_generation();
 }
 
 #[derive(Debug, Serialize)]
@@ -362,9 +409,74 @@ fn get_property(serial: &str, key: &str) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+async fn coalesced_adb_scan() -> Result<Vec<AdbDeviceRecord>, String> {
+    let coordinator = adb_observation_coordinator();
+
+    loop {
+        let generation = current_observation_generation();
+        let mut state = coordinator.state.lock().await;
+
+        if state.result_generation == generation {
+            if let (Some(completed_at), Some(result)) = (state.completed_at, state.result.as_ref()) {
+                if cache_is_fresh(completed_at, Instant::now()) {
+                    return result.clone();
+                }
+            }
+        }
+
+        if state.running {
+            let notify = state.notify.clone();
+            let notified = notify.notified();
+            drop(state);
+            notified.await;
+            continue;
+        }
+
+        state.running = true;
+        state.result = None;
+        state.completed_at = None;
+        drop(state);
+
+        let permit = coordinator
+            .permits
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| "ADB observation semaphore closed unexpectedly.".to_string())?;
+
+        let producer_generation = generation;
+        let result = tauri::async_runtime::spawn_blocking(cached_adb_scan)
+            .await
+            .map_err(|e| format!("ADB observation worker failed: {e}"))?;
+
+        drop(permit);
+
+        let mut state = coordinator.state.lock().await;
+        state.running = false;
+
+        if current_observation_generation() == producer_generation {
+            state.result_generation = producer_generation;
+            state.completed_at = Some(Instant::now());
+            state.result = Some(result.clone());
+        } else {
+            state.completed_at = None;
+            state.result = None;
+        }
+
+        state.notify.notify_waiters();
+        drop(state);
+
+        if current_observation_generation() != producer_generation {
+            continue;
+        }
+
+        return result;
+    }
+}
+
 #[tauri::command]
-pub fn adb_scan() -> Result<Vec<AdbDeviceRecord>, String> {
-    cached_adb_scan()
+pub async fn adb_scan() -> Result<Vec<AdbDeviceRecord>, String> {
+    coalesced_adb_scan().await
 }
 
 #[tauri::command]
@@ -525,10 +637,14 @@ pub fn adb_screenshot(serial: String, destination_path: String) -> Result<AdbFil
 
 
 #[tauri::command]
-pub fn adb_prepare() -> Result<Vec<AdbDeviceRecord>, String> {
-    require_success(run_adb(&["start-server"])?, "adb start-server")?;
-    invalidate_adb_scan_cache();
-    fresh_adb_scan()
+pub async fn adb_prepare() -> Result<Vec<AdbDeviceRecord>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        require_success(run_adb(&["start-server"])?, "adb start-server")?;
+        invalidate_adb_scan_cache();
+        fresh_adb_scan()
+    })
+    .await
+    .map_err(|e| format!("ADB prepare worker failed: {e}"))?
 }
 
 #[tauri::command]
@@ -672,6 +788,46 @@ pub fn launch_target_device_action(
         message: "Android accepted the allowlisted launch intent on the selected authorized target.".to_string(),
         evidence_source: "adb:serial-bound-am-start-allowlist",
     })
+}
+
+#[cfg(test)]
+mod adb_observation_coordinator_tests {
+    use super::*;
+
+    #[test]
+    fn observation_pool_is_bounded_to_two_workers() {
+        let coordinator = adb_observation_coordinator();
+        assert_eq!(coordinator.permits.available_permits(), 2);
+    }
+
+    #[test]
+    fn invalidation_advances_observation_generation() {
+        let before = current_observation_generation();
+        bump_observation_generation();
+        let after = current_observation_generation();
+        assert!(after > before);
+    }
+
+    #[test]
+    fn execution_authorization_remains_outside_coalesced_observation_path() {
+        let source = include_str!("adb_workflows.rs");
+        let require_authorized = source
+            .split("fn require_authorized(serial: &str)")
+            .nth(1)
+            .and_then(|rest| rest.split("fn parse_getprop_snapshot").next())
+            .unwrap_or_default();
+        assert!(require_authorized.contains("device_state(serial)?"));
+        assert!(!require_authorized.contains("coalesced_adb_scan"));
+        assert!(!require_authorized.contains("adb_observation_coordinator"));
+    }
+
+    #[test]
+    fn adb_scan_is_async_and_coalesced() {
+        let source = include_str!("adb_workflows.rs");
+        assert!(source.contains("pub async fn adb_scan()"));
+        assert!(source.contains("coalesced_adb_scan().await"));
+        assert!(source.contains("spawn_blocking(cached_adb_scan)"));
+    }
 }
 
 #[cfg(test)]
