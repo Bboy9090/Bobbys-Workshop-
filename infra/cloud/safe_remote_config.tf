@@ -43,8 +43,8 @@ resource "aws_appconfig_configuration_profile" "safe_runtime" {
   validator {
     type = "JSON_SCHEMA"
     content = jsonencode({
-      "$schema" = "http://json-schema.org/draft-07/schema#"
-      type      = "object"
+      "$schema"            = "http://json-schema.org/draft-07/schema#"
+      type                 = "object"
       additionalProperties = false
       required = [
         "schema",
