@@ -1,0 +1,21 @@
+name: Device support catalog contract
+on:
+  pull_request:
+    paths:
+      - 'resources/device-support/**'
+      - 'scripts/device-support/**'
+      - 'tests/device-support/**'
+      - '.github/workflows/device-support-catalog-contract.yml'
+permissions:
+  contents: read
+jobs:
+  catalog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          package-manager-cache: false
+      - run: node scripts/device-support/validate-catalog.mjs
+      - run: node tests/device-support/catalog.test.mjs
