@@ -474,6 +474,14 @@ async fn coalesced_adb_scan() -> Result<Vec<AdbDeviceRecord>, String> {
     }
 }
 
+pub(crate) fn adb_scan_observed_sync() -> Result<Vec<AdbDeviceRecord>, String> {
+    cached_adb_scan()
+}
+
+pub(crate) fn adb_scan_fresh_sync() -> Result<Vec<AdbDeviceRecord>, String> {
+    fresh_adb_scan()
+}
+
 #[tauri::command]
 pub async fn adb_scan() -> Result<Vec<AdbDeviceRecord>, String> {
     coalesced_adb_scan().await
