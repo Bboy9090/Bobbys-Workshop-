@@ -139,7 +139,7 @@ fn summarize_battery(text: &str) -> Option<String> {
 #[tauri::command]
 pub async fn diagnose_phone() -> Result<PhoneDiagnosticReport, String> {
     let usb = bootforgeusb::scan().map_err(|e| format!("USB scan failed: {e}"))?;
-    let adb = crate::adb_workflows::adb_scan().unwrap_or_default();
+    let adb = crate::adb_workflows::adb_scan_observed_sync().unwrap_or_default();
     let mtp = crate::mtp_backend::mtp_status().await.ok();
     let fastboot = fastboot_devices();
 
@@ -495,7 +495,7 @@ pub async fn usb_cable_doctor(target_device_uid: Option<String>) -> Result<Cable
         }
     }
 
-    let adb = crate::adb_workflows::adb_scan().unwrap_or_default();
+    let adb = crate::adb_workflows::adb_scan_observed_sync().unwrap_or_default();
     let adb_state = if adb.iter().any(|d| d.authorized) {
         "authorized".to_string()
     } else if adb.iter().any(|d| d.state == "unauthorized") {
