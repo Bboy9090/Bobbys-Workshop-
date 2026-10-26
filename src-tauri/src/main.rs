@@ -10,7 +10,7 @@
 use std::process::{Command, Stdio};
 #[cfg(feature = "legacy-backends")]
 use std::process::Child;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use tauri::{Manager, AppHandle, Emitter};
 #[cfg(any(feature = "legacy-backends", feature = "qualified-flash"))]
 use std::path::PathBuf;
@@ -32,6 +32,7 @@ mod fastapi_backend;
 mod mtp_backend;
 mod adb_command;
 mod adb_workflows;
+mod observation_scheduler;
 mod audit;
 mod workflow_capabilities;
 mod diagnostics;
@@ -520,9 +521,119 @@ fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+const USB_OBSERVATION_CACHE_TTL: std::time::Duration = std::time::Duration::from_millis(600);
+
+#[derive(Clone)]
+struct UsbDeviceScanCacheEntry {
+    observed_at: std::time::Instant,
+    devices: Vec<bootforgeusb::model::DeviceRecord>,
+}
+
+#[derive(Clone)]
+struct UsbTransportScanCacheEntry {
+    observed_at: std::time::Instant,
+    devices: Vec<bootforgeusb::transport::TransportDevice>,
+}
+
+static USB_DEVICE_SCAN_CACHE: OnceLock<Mutex<Option<UsbDeviceScanCacheEntry>>> = OnceLock::new();
+static USB_TRANSPORT_SCAN_CACHE: OnceLock<Mutex<Option<UsbTransportScanCacheEntry>>> = OnceLock::new();
+static USB_DEVICE_SCAN_FLIGHT: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+static USB_TRANSPORT_SCAN_FLIGHT: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+
+fn usb_cache_is_fresh(observed_at: std::time::Instant, now: std::time::Instant) -> bool {
+    now.saturating_duration_since(observed_at) <= USB_OBSERVATION_CACHE_TTL
+}
+
+fn cached_usb_device_scan() -> Option<Vec<bootforgeusb::model::DeviceRecord>> {
+    let now = std::time::Instant::now();
+    USB_DEVICE_SCAN_CACHE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .ok()
+        .and_then(|cache| cache.as_ref().cloned())
+        .filter(|entry| usb_cache_is_fresh(entry.observed_at, now))
+        .map(|entry| entry.devices)
+}
+
+fn cached_usb_transport_scan() -> Option<Vec<bootforgeusb::transport::TransportDevice>> {
+    let now = std::time::Instant::now();
+    USB_TRANSPORT_SCAN_CACHE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .ok()
+        .and_then(|cache| cache.as_ref().cloned())
+        .filter(|entry| usb_cache_is_fresh(entry.observed_at, now))
+        .map(|entry| entry.devices)
+}
+
+async fn observed_usb_device_scan() -> Result<Vec<bootforgeusb::model::DeviceRecord>, String> {
+    if let Some(devices) = cached_usb_device_scan() {
+        return Ok(devices);
+    }
+
+    let _flight = USB_DEVICE_SCAN_FLIGHT
+        .get_or_init(|| tokio::sync::Mutex::new(()))
+        .lock()
+        .await;
+
+    if let Some(devices) = cached_usb_device_scan() {
+        return Ok(devices);
+    }
+
+    let permit = crate::observation_scheduler::acquire_observation_permit().await?;
+    let devices = tauri::async_runtime::spawn_blocking(|| {
+        bootforgeusb::scan().map_err(|e| format!("USB scan failed: {e}"))
+    })
+    .await
+    .map_err(|e| format!("USB observation worker failed: {e}"))??;
+    drop(permit);
+
+    if let Ok(mut cache) = USB_DEVICE_SCAN_CACHE.get_or_init(|| Mutex::new(None)).lock() {
+        *cache = Some(UsbDeviceScanCacheEntry {
+            observed_at: std::time::Instant::now(),
+            devices: devices.clone(),
+        });
+    }
+
+    Ok(devices)
+}
+
+async fn observed_usb_transport_scan() -> Result<Vec<bootforgeusb::transport::TransportDevice>, String> {
+    if let Some(devices) = cached_usb_transport_scan() {
+        return Ok(devices);
+    }
+
+    let _flight = USB_TRANSPORT_SCAN_FLIGHT
+        .get_or_init(|| tokio::sync::Mutex::new(()))
+        .lock()
+        .await;
+
+    if let Some(devices) = cached_usb_transport_scan() {
+        return Ok(devices);
+    }
+
+    let permit = crate::observation_scheduler::acquire_observation_permit().await?;
+    let devices = tauri::async_runtime::spawn_blocking(|| {
+        bootforgeusb::transport::scan_transports()
+            .map_err(|e| format!("USB transport scan failed: {e}"))
+    })
+    .await
+    .map_err(|e| format!("USB transport observation worker failed: {e}"))??;
+    drop(permit);
+
+    if let Ok(mut cache) = USB_TRANSPORT_SCAN_CACHE.get_or_init(|| Mutex::new(None)).lock() {
+        *cache = Some(UsbTransportScanCacheEntry {
+            observed_at: std::time::Instant::now(),
+            devices: devices.clone(),
+        });
+    }
+
+    Ok(devices)
+}
+
 #[tauri::command]
-fn bootforgeusb_scan() -> Result<Vec<bootforgeusb::model::DeviceRecord>, String> {
-    bootforgeusb::scan().map_err(|e| format!("USB scan failed: {e}"))
+async fn bootforgeusb_scan() -> Result<Vec<bootforgeusb::model::DeviceRecord>, String> {
+    observed_usb_device_scan().await
 }
 
 #[tauri::command]
@@ -539,8 +650,8 @@ fn calibration_partition_allowlist() -> Vec<String> {
 }
 
 #[tauri::command]
-fn edl_9008_devices() -> Result<Vec<bootforgeusb::model::DeviceRecord>, String> {
-    let devices = bootforgeusb::scan().map_err(|e| format!("USB scan failed: {e}"))?;
+async fn edl_9008_devices() -> Result<Vec<bootforgeusb::model::DeviceRecord>, String> {
+    let devices = observed_usb_device_scan().await?;
     Ok(devices
         .into_iter()
         .filter(|device| bootforgeusb::edl::is_edl_9008(device.vendor_id, device.product_id))
@@ -619,9 +730,8 @@ fn hardware_service_profile_validate(
 }
 
 #[tauri::command]
-fn bootforgeusb_transport_scan() -> Result<Vec<bootforgeusb::transport::TransportDevice>, String> {
-    bootforgeusb::transport::scan_transports()
-        .map_err(|e| format!("USB transport scan failed: {e}"))
+async fn bootforgeusb_transport_scan() -> Result<Vec<bootforgeusb::transport::TransportDevice>, String> {
+    observed_usb_transport_scan().await
 }
 
 #[tauri::command]
@@ -644,9 +754,8 @@ fn bootforge_samsung_plan(paths: Vec<String>) -> Result<bootforgeusb::planner::F
 }
 
 #[tauri::command]
-fn bootforge_recovery_scan() -> Result<Vec<bootforgeusb::recovery::RecoveryCandidate>, String> {
-    let devices = bootforgeusb::transport::scan_transports()
-        .map_err(|e| format!("USB transport scan failed: {e}"))?;
+async fn bootforge_recovery_scan() -> Result<Vec<bootforgeusb::recovery::RecoveryCandidate>, String> {
+    let devices = observed_usb_transport_scan().await?;
     Ok(bootforgeusb::recovery::scan_recovery_candidates(&devices))
 }
 
@@ -1850,6 +1959,44 @@ struct QualificationDossierInput {
     operator_notes: String,
 }
 
+
+#[cfg(test)]
+mod observation_scheduler_contract_tests {
+    use super::*;
+
+    #[test]
+    fn usb_observation_cache_is_short_lived() {
+        let now = std::time::Instant::now();
+        assert!(usb_cache_is_fresh(now, now));
+        assert!(!usb_cache_is_fresh(
+            now - std::time::Duration::from_millis(USB_OBSERVATION_CACHE_TTL.as_millis() as u64 + 1),
+            now,
+        ));
+    }
+
+    #[test]
+    fn usb_observation_paths_are_coalesced_but_revalidation_stays_fresh() {
+        let source = include_str!("main.rs");
+        assert!(source.contains("async fn bootforgeusb_scan()"));
+        assert!(source.contains("observed_usb_device_scan().await"));
+        assert!(source.contains("async fn bootforgeusb_transport_scan()"));
+        assert!(source.contains("observed_usb_transport_scan().await"));
+        assert!(source.contains("async fn bootforge_recovery_scan()"));
+
+        let revalidate = source
+            .split("fn bootforge_recovery_revalidate(")
+            .nth(1)
+            .and_then(|rest| rest.split("#[tauri::command]").next())
+            .unwrap_or_default();
+        assert!(revalidate.contains("bootforgeusb::transport::scan_transports()"));
+        assert!(!revalidate.contains("observed_usb_transport_scan().await"));
+    }
+
+    #[test]
+    fn usb_and_adb_share_the_same_global_observation_budget() {
+        assert_eq!(crate::observation_scheduler::MAX_OBSERVATION_WORKERS, 2);
+    }
+}
 
 #[cfg(test)]
 mod qualification_binding_tests {
