@@ -3,6 +3,7 @@ import WorkflowWalkthrough, { type GuidedWorkflowKind } from './WorkflowWalkthro
 import HardwareFlowReadiness from './HardwareFlowReadiness';
 import FirmwareProvenanceBuilder from './FirmwareProvenanceBuilder';
 import PitDiagnosticPanel from './PitDiagnosticPanel';
+import SamsungServiceTransactionsPanel from './SamsungServiceTransactionsPanel';
 import {
   getCalibrationPartitionAllowlist,
   getEdl9008Devices,
@@ -1794,6 +1795,8 @@ export default function RepairCommandCenter() {
           )}
         </div>
       )}
+
+      <SamsungServiceTransactionsPanel />
 
       {samsungPlanningTargetQualified && (
         <div className="mt-4 rounded-lg border border-blue-900/60 bg-blue-950/10 p-4">
