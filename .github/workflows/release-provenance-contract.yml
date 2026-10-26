@@ -1,0 +1,37 @@
+name: Release provenance contract
+on:
+  pull_request:
+    paths:
+      - 'scripts/release/**'
+      - 'tests/release-provenance.test.mjs'
+      - '.github/workflows/release-provenance-contract.yml'
+permissions:
+  contents: read
+jobs:
+  provenance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          package-manager-cache: false
+      - run: node tests/release-provenance.test.mjs
+      - run: npm ci --ignore-scripts
+      - run: |
+          mkdir -p release-contract
+          npm sbom --sbom-format cyclonedx > release-contract/bobfwtools.sbom.cdx.json
+          node scripts/release/create-provenance-manifest.mjs \
+            --artifact package-lock.json \
+            --sbom release-contract/bobfwtools.sbom.cdx.json \
+            --output release-contract/provenance.json \
+            --platform linux
+          node scripts/release/verify-provenance-manifest.mjs \
+            --manifest release-contract/provenance.json \
+            --artifact package-lock.json \
+            --sbom release-contract/bobfwtools.sbom.cdx.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bobfwtools-release-provenance-contract
+          path: release-contract/
+          if-no-files-found: error
