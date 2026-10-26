@@ -104,3 +104,6 @@ src-tauri/target/
 *.dmg
 dist/*.dmg
 dist/*.app
+
+# Terraform provider/cache directories
+**/.terraform/

@@ -152,9 +152,9 @@ resource "aws_iam_role_policy" "github_release_download_promotion" {
         }
       },
       {
-        Sid      = "PromotedReleaseObjects"
-        Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject"]
+        Sid    = "PromotedReleaseObjects"
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject"]
         Resource = [
           "${aws_s3_bucket.release_downloads.arn}/canary/*",
           "${aws_s3_bucket.release_downloads.arn}/qualified/*",
