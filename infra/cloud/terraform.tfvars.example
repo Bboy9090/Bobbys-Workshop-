@@ -1,0 +1,3 @@
+aws_account_id           = "123456789012"
+aws_evidence_bucket_name = "bobfwtools-evidence-123456789012-us-east-1"
+gcp_project_id           = "replace-with-gcp-project-id"
