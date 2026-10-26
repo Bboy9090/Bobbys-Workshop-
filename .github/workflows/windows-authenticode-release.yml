@@ -1,0 +1,55 @@
+name: Windows Authenticode release signing
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        required: true
+        type: string
+      artifact_name:
+        required: true
+        type: string
+      artifact_path:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  sign:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: unsigned-input
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run_id }}
+      - name: Resolve artifact safely
+        id: artifact
+        shell: pwsh
+        env:
+          ARTIFACT_PATH: ${{ inputs.artifact_path }}
+        run: |
+          $root = (Resolve-Path 'unsigned-input').Path
+          $file = (Resolve-Path (Join-Path $root $env:ARTIFACT_PATH)).Path
+          if (-not $file.StartsWith($root + [IO.Path]::DirectorySeparatorChar)) { throw 'Artifact path escaped download root' }
+          if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'Artifact is not a file' }
+          "path=$file" >> $env:GITHUB_OUTPUT
+      - name: Authenticode sign and verify exact artifact
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+          WINDOWS_SIGNING_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+          WINDOWS_SIGNING_CERT_THUMBPRINT: ${{ secrets.WINDOWS_SIGNING_CERT_THUMBPRINT }}
+        run: ./scripts/release/sign-windows-authenticode.ps1 -InputPath '${{ steps.artifact.outputs.path }}' -ReceiptPath 'windows-authenticode-receipt.json'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-authenticode-${{ github.run_id }}
+          path: |
+            ${{ steps.artifact.outputs.path }}
+            windows-authenticode-receipt.json
+          if-no-files-found: error
