@@ -21,6 +21,14 @@ enum Commands {
         #[arg(long)]
         endpoints: bool,
     },
+    /// Benchmark a single native bulk IN endpoint on an explicitly selected USB device.
+    ReadBenchmark {
+        #[arg(long)] bus: u8,
+        #[arg(long)] address: u8,
+        #[arg(long)] interface: Option<u8>,
+        #[arg(long, default_value_t = 16)] reads: u32,
+        #[arg(long, default_value_t = 1000)] timeout_ms: u64,
+    },
     /// Verify and inspect one or more firmware TAR/.tar.md5 packages.
     Inspect {
         #[arg(required = true)]
@@ -79,6 +87,9 @@ fn main() {
                 scan().map(|v| json(&v)).map_err(|e| e.to_string())
             }
         }
+        Commands::ReadBenchmark { bus, address, interface, reads, timeout_ms } =>
+            bootforgeusb::read_benchmark::benchmark_bulk_in(bus, address, interface, reads, timeout_ms)
+                .map(|result| json(&result)),
         Commands::Inspect { packages } => firmware::inspect_many(packages)
             .map(|v| json(&v))
             .map_err(|e| e.to_string()),
