@@ -1,0 +1,39 @@
+name: Observability privacy contract
+
+on:
+  pull_request:
+    paths:
+      - 'src/lib/observability.ts'
+      - 'src/main.tsx'
+      - 'src/vite-env.d.ts'
+      - 'tests/observability-privacy.test.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/observability-privacy-contract.yml'
+  push:
+    branches:
+      - feat/bobfwtools-macos-foundation
+    paths:
+      - 'src/lib/observability.ts'
+      - 'src/main.tsx'
+      - 'src/vite-env.d.ts'
+      - 'tests/observability-privacy.test.ts'
+      - 'package.json'
+      - 'package-lock.json'
+
+permissions:
+  contents: read
+
+jobs:
+  privacy-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - run: npx vitest run tests/observability-privacy.test.ts
+      - run: npm run typecheck
+      - run: npm audit --audit-level=moderate
