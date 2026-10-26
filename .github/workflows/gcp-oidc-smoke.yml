@@ -1,0 +1,38 @@
+name: GCP OIDC smoke
+
+on:
+  push:
+    branches:
+      - feat/bobfwtools-macos-foundation
+    paths:
+      - '.github/workflows/gcp-oidc-smoke.yml'
+      - 'infra/cloud/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify-live-release-identity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - id: auth
+        name: Authenticate to Google Cloud through Workload Identity Federation
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: bobfwtools-prod-20261026
+          workload_identity_provider: projects/370625380318/locations/global/workloadIdentityPools/bobfwtools-github/providers/github
+          service_account: bobfwtools-github-release@bobfwtools-prod-20261026.iam.gserviceaccount.com
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: bobfwtools-prod-20261026
+          version: '>= 390.0.0'
+      - name: Verify federated service-account identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gcloud auth list --filter=status:ACTIVE --format='value(account)')" = 'bobfwtools-github-release@bobfwtools-prod-20261026.iam.gserviceaccount.com'
+          gcloud auth print-access-token >/dev/null
