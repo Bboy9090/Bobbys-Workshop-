@@ -1,7 +1,7 @@
 import { useSamsungServiceTransactions } from '../hooks/useSamsungServiceTransactions';
 
 function stageLabel(stage: string): string {
-  return stage.replaceAll('_', ' ');
+  return stage.split('_').join(' ');
 }
 
 export default function SamsungServiceTransactionsPanel() {
