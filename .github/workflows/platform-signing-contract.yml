@@ -1,0 +1,30 @@
+name: Platform signing contract
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/release/sign-windows-authenticode.ps1'
+      - '.github/workflows/windows-authenticode-release.yml'
+      - '.github/workflows/linux-keyless-signing.yml'
+      - '.github/workflows/platform-signing-contract.yml'
+      - 'tests/platform-signing-contract.test.mjs'
+  push:
+    branches: [feat/bobfwtools-macos-foundation]
+    paths:
+      - 'scripts/release/sign-windows-authenticode.ps1'
+      - '.github/workflows/windows-authenticode-release.yml'
+      - '.github/workflows/linux-keyless-signing.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          package-manager-cache: false
+      - run: node tests/platform-signing-contract.test.mjs

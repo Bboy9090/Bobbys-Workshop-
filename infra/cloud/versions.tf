@@ -1,5 +1,13 @@
 terraform {
-  required_version = ">= 1.7.0"
+  required_version = ">= 1.10.0"
+
+  backend "s3" {
+    bucket       = "bobfwtools-terraform-state-960763460596-us-east-1"
+    key          = "bobfwtools/prod/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
+  }
 
   required_providers {
     aws = {

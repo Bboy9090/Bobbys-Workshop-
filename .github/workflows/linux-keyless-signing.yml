@@ -1,0 +1,72 @@
+name: Linux keyless package signing
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        required: true
+        type: string
+      artifact_name:
+        required: true
+        type: string
+      artifact_path:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: unsigned-input
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run_id }}
+      - name: Install Cosign 3.1.4
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: 'v3.1.4'
+      - name: Resolve artifact safely
+        id: artifact
+        shell: bash
+        env:
+          ARTIFACT_PATH: ${{ inputs.artifact_path }}
+        run: |
+          set -euo pipefail
+          ROOT="$(realpath unsigned-input)"
+          FILE="$(realpath -e "unsigned-input/$ARTIFACT_PATH")"
+          case "$FILE" in "$ROOT"/*) ;; *) echo 'Artifact path escaped download root' >&2; exit 1;; esac
+          test -f "$FILE"
+          echo "path=$FILE" >> "$GITHUB_OUTPUT"
+      - name: Keyless sign and verify exact package
+        shell: bash
+        env:
+          FILE: ${{ steps.artifact.outputs.path }}
+          COSIGN_EXPERIMENTAL: '1'
+        run: |
+          set -euo pipefail
+          BUNDLE="$FILE.sigstore.json"
+          cosign sign-blob --yes --bundle "$BUNDLE" "$FILE"
+          cosign verify-blob "$FILE" \
+            --bundle "$BUNDLE" \
+            --certificate-identity 'https://github.com/Bboy9090/Bobbys-Workshop-/.github/workflows/linux-keyless-signing.yml@refs/heads/feat/bobfwtools-macos-foundation' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
+          SHA="$(sha256sum "$FILE" | awk '{print $1}')"
+          jq -n --arg name "$(basename "$FILE")" --arg sha "$SHA" \
+            '{schema:"com.bobbyblanco.bobfwtools.linux-keyless-signature.v1",artifact:{name:$name,sha256:$sha},verification:{sigstoreBundle:true,keylessOidcVerified:true},security:{deviceWriteAuthorityGranted:false,releasePromotionGranted:false}}' \
+            > linux-signing-receipt.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-keyless-signature-${{ github.run_id }}
+          path: |
+            ${{ steps.artifact.outputs.path }}
+            ${{ steps.artifact.outputs.path }}.sigstore.json
+            linux-signing-receipt.json
+          if-no-files-found: error

@@ -104,6 +104,7 @@ resource "aws_iam_role" "github_release" {
 }
 
 resource "aws_iam_role_policy" "github_release" {
+  name = "bobfwtools-release-foundation"
   role = aws_iam_role.github_release.id
 
   policy = jsonencode({

@@ -1,0 +1,31 @@
+name: Release attestation and promotion contract
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/release/aws-kms-attestation.mjs'
+      - 'scripts/release/create-promotion-plan.mjs'
+      - 'tests/release-attestation-promotion.test.mjs'
+      - '.github/workflows/release-attestation-contract.yml'
+      - '.github/workflows/aws-release-attestation.yml'
+      - '.github/workflows/promote-qualified-release.yml'
+  push:
+    branches: [feat/bobfwtools-macos-foundation]
+    paths:
+      - 'scripts/release/aws-kms-attestation.mjs'
+      - 'scripts/release/create-promotion-plan.mjs'
+      - 'tests/release-attestation-promotion.test.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          package-manager-cache: false
+      - run: node tests/release-attestation-promotion.test.mjs
