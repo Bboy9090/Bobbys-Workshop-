@@ -23,7 +23,7 @@ pub struct DeviceCapabilityMatrix {
 #[tauri::command]
 pub async fn workflow_capabilities() -> Result<DeviceCapabilityMatrix, String> {
     let usb = bootforgeusb::scan().map_err(|e| format!("USB scan failed: {e}"))?;
-    let adb = crate::adb_workflows::adb_scan().unwrap_or_default();
+    let adb = crate::adb_workflows::adb_scan_observed_sync().unwrap_or_default();
 
     let mtp_status = crate::mtp_backend::mtp_status().await.ok();
     let mtp_connected = mtp_status.as_ref().map(|s| s.connected).unwrap_or(false);
