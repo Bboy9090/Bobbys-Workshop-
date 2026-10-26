@@ -1,0 +1,27 @@
+name: Safe remote config contract
+on:
+  pull_request:
+    paths:
+      - 'resources/remote-config/**'
+      - 'scripts/remote-config/**'
+      - 'infra/cloud/safe_remote_config.tf'
+      - '.github/workflows/safe-remote-config-contract.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          package-manager-cache: false
+      - run: node scripts/remote-config/validate.mjs
+      - run: |
+          cp resources/remote-config/default.json /tmp/unsafe.json
+          node -e 'const fs=require("fs");const p="/tmp/unsafe.json";const x=JSON.parse(fs.readFileSync(p));x.flashExecutionEnabled=true;fs.writeFileSync(p,JSON.stringify(x))'
+          if node scripts/remote-config/validate.mjs /tmp/unsafe.json; then
+            echo "unsafe config unexpectedly accepted"
+            exit 1
+          fi
