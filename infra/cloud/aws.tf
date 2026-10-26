@@ -112,7 +112,7 @@ resource "aws_iam_role_policy" "github_release" {
       {
         Sid      = "EvidenceBucketList"
         Effect   = "Allow"
-        Action   = ["s3:ListBucket", "s3:GetBucketVersioning"]
+        Action   = ["s3:ListBucket", "s3:GetBucketVersioning", "s3:GetBucketObjectLockConfiguration", "s3:GetEncryptionConfiguration", "s3:GetBucketPublicAccessBlock"]
         Resource = aws_s3_bucket.evidence.arn
       },
       {
