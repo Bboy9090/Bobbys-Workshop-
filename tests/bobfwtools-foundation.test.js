@@ -57,7 +57,7 @@ describe('BobFWTools production foundation', () => {
 
   it('exposes only allowlisted ADB workflows to the UI layer', () => {
     const adb = read('src-tauri/src/adb_workflows.rs');
-    expect(adb).toContain('pub fn adb_scan');
+    expect(adb).toContain('pub async fn adb_scan');
     expect(adb).toContain('pub fn adb_device_info');
     expect(adb).toContain('pub fn samsung_adb_identity_receipt');
     expect(adb).toContain('pub fn adb_logcat_snapshot');
