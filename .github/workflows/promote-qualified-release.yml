@@ -1,0 +1,110 @@
+name: Promote qualified release artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      evidence_run_id:
+        description: Run containing release candidate and policy result
+        required: true
+        type: string
+      evidence_artifact_name:
+        description: Artifact containing candidate.json and policy-result.json
+        required: true
+        type: string
+      candidate_path:
+        required: true
+        default: candidate.json
+        type: string
+      policy_path:
+        required: true
+        default: policy-result.json
+        type: string
+      source_bucket:
+        description: Private source bucket holding the already-qualified artifact
+        required: true
+        type: string
+      source_key:
+        description: Source object key
+        required: true
+        type: string
+      release_bucket:
+        description: Private S3 origin bucket behind CloudFront
+        required: true
+        type: string
+      channel:
+        required: true
+        type: choice
+        options: [canary, qualified, stable]
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.channel }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: ${{ inputs.evidence_artifact_name }}
+          path: release-evidence
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.evidence_run_id }}
+      - name: Resolve evidence paths safely
+        id: evidence
+        shell: bash
+        env:
+          CANDIDATE_PATH: ${{ inputs.candidate_path }}
+          POLICY_PATH: ${{ inputs.policy_path }}
+        run: |
+          set -euo pipefail
+          ROOT="$(realpath release-evidence)"
+          CANDIDATE="$(realpath -e "release-evidence/$CANDIDATE_PATH")"
+          POLICY="$(realpath -e "release-evidence/$POLICY_PATH")"
+          for FILE in "$CANDIDATE" "$POLICY"; do case "$FILE" in "$ROOT"/*) ;; *) exit 1;; esac; done
+          echo "candidate=$CANDIDATE" >> "$GITHUB_OUTPUT"
+          echo "policy=$POLICY" >> "$GITHUB_OUTPUT"
+      - name: Build fail-closed promotion plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/release/create-promotion-plan.mjs \
+            --policy '${{ steps.evidence.outputs.policy }}' \
+            --candidate '${{ steps.evidence.outputs.candidate }}' \
+            --channel '${{ inputs.channel }}' \
+            --source-bucket '${{ inputs.source_bucket }}' \
+            --source-key '${{ inputs.source_key }}' \
+            --release-bucket '${{ inputs.release_bucket }}' \
+            --output promotion-plan.json
+      - name: Assume BobFWTools release role through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::960763460596:role/bobfwtools-github-release
+          aws-region: us-east-1
+          allowed-account-ids: '960763460596'
+          role-session-name: bobfw-promote-${{ github.run_id }}
+      - name: Download, re-hash, and copy the exact artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC_BUCKET="$(node -p "require('./promotion-plan.json').source.bucket")"
+          SRC_KEY="$(node -p "require('./promotion-plan.json').source.key")"
+          DST_BUCKET="$(node -p "require('./promotion-plan.json').destination.bucket")"
+          DST_KEY="$(node -p "require('./promotion-plan.json').destination.key")"
+          EXPECTED="$(node -p "require('./promotion-plan.json').artifact.sha256")"
+          aws s3 cp "s3://$SRC_BUCKET/$SRC_KEY" promoted-artifact.bin --only-show-errors
+          ACTUAL="$(shasum -a 256 promoted-artifact.bin | awk '{print $1}')"
+          test "$ACTUAL" = "$EXPECTED"
+          aws s3 cp promoted-artifact.bin "s3://$DST_BUCKET/$DST_KEY" \
+            --metadata "sha256=$EXPECTED,source-revision=$(node -p "require('./promotion-plan.json').sourceRevision")" \
+            --only-show-errors
+          REMOTE="$(aws s3api head-object --bucket "$DST_BUCKET" --key "$DST_KEY" --query 'Metadata.sha256' --output text)"
+          test "$REMOTE" = "$EXPECTED"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-promotion-plan-${{ github.run_id }}
+          path: promotion-plan.json
+          if-no-files-found: error

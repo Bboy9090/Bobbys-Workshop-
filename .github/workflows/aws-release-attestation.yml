@@ -1,0 +1,95 @@
+name: AWS KMS release attestation
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: GitHub Actions run containing the provenance artifact
+        required: true
+        type: string
+      artifact_name:
+        description: Artifact containing the provenance manifest
+        required: true
+        type: string
+      manifest_path:
+        description: Relative path to the provenance JSON inside the artifact
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+jobs:
+  attest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Download exact provenance artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: provenance-input
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run_id }}
+      - name: Resolve manifest safely
+        id: manifest
+        shell: bash
+        env:
+          MANIFEST_PATH: ${{ inputs.manifest_path }}
+        run: |
+          set -euo pipefail
+          ROOT="$(realpath provenance-input)"
+          FILE="$(realpath -e "provenance-input/$MANIFEST_PATH")"
+          case "$FILE" in "$ROOT"/*) ;; *) echo 'Manifest path escaped artifact root' >&2; exit 1;; esac
+          test -f "$FILE"
+          echo "path=$FILE" >> "$GITHUB_OUTPUT"
+      - name: Assume BobFWTools release role through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::960763460596:role/bobfwtools-github-release
+          aws-region: us-east-1
+          allowed-account-ids: '960763460596'
+          role-session-name: bobfw-attest-${{ github.run_id }}
+      - name: Sign exact provenance bytes with AWS KMS
+        shell: bash
+        env:
+          MANIFEST: ${{ steps.manifest.outputs.path }}
+        run: |
+          set -euo pipefail
+          openssl dgst -sha256 -binary "$MANIFEST" > manifest.sha256.bin
+          aws kms sign \
+            --key-id alias/bobfwtools-release-signing \
+            --message fileb://manifest.sha256.bin \
+            --message-type DIGEST \
+            --signing-algorithm ECDSA_SHA_256 \
+            --query Signature --output text > signature.b64
+          aws kms get-public-key --key-id alias/bobfwtools-release-signing --query PublicKey --output text | base64 --decode > public-key.der
+          openssl pkey -pubin -inform DER -in public-key.der -out public-key.pem
+          node scripts/release/aws-kms-attestation.mjs receipt \
+            --manifest "$MANIFEST" --signature signature.b64 \
+            --key-id alias/bobfwtools-release-signing --output aws-kms-attestation.json
+          node scripts/release/aws-kms-attestation.mjs verify \
+            --manifest "$MANIFEST" --receipt aws-kms-attestation.json --public-key public-key.pem
+      - name: Persist attestation in immutable evidence vault
+        shell: bash
+        env:
+          MANIFEST: ${{ steps.manifest.outputs.path }}
+          EVIDENCE_BUCKET: bobfwtools-evidence-960763460596-us-east-1
+        run: |
+          set -euo pipefail
+          REVISION="$(node -e "const m=require(process.argv[1]); process.stdout.write(m.source.revision)" "$MANIFEST")"
+          MANIFEST_DIGEST="$(node -e "const m=require(process.argv[1]); process.stdout.write(m.manifestSha256)" "$MANIFEST")"
+          [[ "$REVISION" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$MANIFEST_DIGEST" =~ ^[a-f0-9]{64}$ ]]
+          KEY="release-attestations/$REVISION/$MANIFEST_DIGEST/aws-kms-attestation.json"
+          aws s3 cp aws-kms-attestation.json "s3://$EVIDENCE_BUCKET/$KEY" --content-type application/json --only-show-errors
+          echo "Stored immutable attestation at s3://$EVIDENCE_BUCKET/$KEY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: aws-kms-release-attestation-${{ github.run_id }}
+          path: |
+            aws-kms-attestation.json
+            public-key.pem
+          if-no-files-found: error
