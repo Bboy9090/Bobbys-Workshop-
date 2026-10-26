@@ -130,3 +130,30 @@ output "aws_release_service_secret_arn" {
 output "aws_safe_appconfig_application_id" {
   value = aws_appconfig_application.bobfwtools.id
 }
+
+resource "aws_secretsmanager_secret" "tauri_updater_signing" {
+  name                    = "bobfwtools/tauri-updater-signing-key"
+  description             = "BobFWTools Tauri updater signing private key metadata; secret value is provisioned out-of-band"
+  kms_key_id              = aws_kms_key.evidence.arn
+  recovery_window_in_days = 30
+
+  tags = {
+    Project = "BobFWTools"
+    Purpose = "TauriUpdaterSigning"
+  }
+}
+
+resource "aws_iam_role_policy" "github_release_updater_signing" {
+  name = "bobfwtools-tauri-updater-signing-read"
+  role = aws_iam_role.github_release.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "ReadUpdaterSigningSecret"
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+      Resource = aws_secretsmanager_secret.tauri_updater_signing.arn
+    }]
+  })
+}

@@ -1,0 +1,29 @@
+name: Tauri updater readiness contract
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/release/create-tauri-update-manifest.mjs'
+      - 'tests/tauri-update-manifest.test.mjs'
+      - 'infra/cloud/safe_remote_config.tf'
+      - '.github/workflows/tauri-updater-readiness-contract.yml'
+  push:
+    branches: [feat/bobfwtools-macos-foundation]
+    paths:
+      - 'scripts/release/create-tauri-update-manifest.mjs'
+      - 'tests/tauri-update-manifest.test.mjs'
+      - 'infra/cloud/safe_remote_config.tf'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          package-manager-cache: false
+      - run: node tests/tauri-update-manifest.test.mjs

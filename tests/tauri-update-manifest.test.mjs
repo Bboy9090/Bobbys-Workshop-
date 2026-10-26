@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+
+const dir = await mkdtemp(join(tmpdir(), 'bobfw-updater-'));
+const sig = join(dir, 'bundle.sig');
+const output = join(dir, 'latest.json');
+await writeFile(sig, 'RWQ'.padEnd(96, 'A'));
+const run = (...extra) => spawnSync(process.execPath, ['scripts/release/create-tauri-update-manifest.mjs', '--version', '1.2.3', '--output', output, ...extra], { encoding: 'utf8' });
+let result = run('--platform', `darwin-aarch64,https://downloads.example.com/stable/BobFWTools.app.tar.gz,${sig}`);
+assert.equal(result.status, 0, result.stderr);
+const manifest = JSON.parse(await readFile(output, 'utf8'));
+assert.equal(manifest.version, '1.2.3');
+assert.equal(manifest.platforms['darwin-aarch64'].signature.length, 96);
+assert.match(manifest.platforms['darwin-aarch64'].url, /^https:/);
+result = run('--platform', `darwin-aarch64,http://downloads.example.com/a,${sig}`);
+assert.notEqual(result.status, 0);
+assert.match(result.stderr, /HTTPS/);
+result = run('--platform', `darwin-aarch64,https://downloads.example.com/a,${sig}`, '--platform', `darwin-aarch64,https://downloads.example.com/b,${sig}`);
+assert.notEqual(result.status, 0);
+assert.match(result.stderr, /Duplicate update target/);
+await writeFile(sig, 'short');
+result = run('--platform', `darwin-aarch64,https://downloads.example.com/a,${sig}`);
+assert.notEqual(result.status, 0);
+assert.match(result.stderr, /Invalid updater signature/);
+console.log('Tauri update manifest contract passed');
