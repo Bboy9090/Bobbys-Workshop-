@@ -105,7 +105,7 @@ pub fn backup_calibration_partition(
     partition: String,
     destination_dir: String,
 ) -> Result<CalibrationBackupResult, String> {
-    let devices = crate::adb_workflows::adb_scan()?;
+    let devices = crate::adb_workflows::adb_scan_fresh_sync()?;
     let device = devices
         .iter()
         .find(|d| d.serial == adb_serial)
