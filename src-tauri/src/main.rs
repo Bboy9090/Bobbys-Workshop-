@@ -32,6 +32,7 @@ mod fastapi_backend;
 mod mtp_backend;
 mod adb_command;
 mod adb_workflows;
+mod observation_scheduler;
 mod audit;
 mod workflow_capabilities;
 mod diagnostics;
