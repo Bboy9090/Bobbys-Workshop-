@@ -1,3 +1,8 @@
+locals {
+  release_custom_domain_enabled = trimspace(var.aws_release_custom_domain) != ""
+  release_custom_cert_enabled   = trimspace(var.aws_release_acm_certificate_arn) != ""
+}
+
 resource "aws_s3_bucket" "release_downloads" {
   bucket = var.aws_release_bucket_name
 
@@ -80,6 +85,7 @@ resource "aws_cloudfront_distribution" "release_downloads" {
   comment         = "BobFWTools promoted release downloads"
   price_class     = "PriceClass_100"
   http_version    = "http2and3"
+  aliases         = local.release_custom_domain_enabled ? [var.aws_release_custom_domain] : []
 
   origin {
     domain_name              = aws_s3_bucket.release_downloads.bucket_regional_domain_name
@@ -105,8 +111,17 @@ resource "aws_cloudfront_distribution" "release_downloads" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
-    minimum_protocol_version       = "TLSv1.2_2021"
+    cloudfront_default_certificate = !local.release_custom_domain_enabled
+    acm_certificate_arn            = local.release_custom_domain_enabled ? var.aws_release_acm_certificate_arn : null
+    ssl_support_method             = local.release_custom_domain_enabled ? "sni-only" : null
+    minimum_protocol_version       = local.release_custom_domain_enabled ? "TLSv1.2_2021" : null
+  }
+
+  lifecycle {
+    precondition {
+      condition     = local.release_custom_domain_enabled == local.release_custom_cert_enabled
+      error_message = "aws_release_custom_domain and aws_release_acm_certificate_arn must either both be set or both be empty."
+    }
   }
 }
 
