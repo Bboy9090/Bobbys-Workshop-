@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::process::{Command, Output};
+use std::process::Output;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::{Mutex as AsyncMutex, Notify};
@@ -397,14 +397,6 @@ fn get_property_from_snapshot(
     key: &str,
 ) -> Option<String> {
     properties.get(key).cloned().filter(|value| !value.is_empty())
-}
-
-fn get_property(serial: &str, key: &str) -> Result<String, String> {
-    let output = require_success(
-        run_adb(&["-s", serial, "shell", "getprop", key])?,
-        &format!("getprop {key}"),
-    )?;
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
 async fn coalesced_adb_scan() -> Result<Vec<AdbDeviceRecord>, String> {
