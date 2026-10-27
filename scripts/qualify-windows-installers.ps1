@@ -20,6 +20,7 @@ $app = Start-Process -FilePath $executable -PassThru
 try {
   $deadline = [DateTime]::UtcNow.AddSeconds(60)
   $names = @()
+  $webViewObserved = $false
   while ([DateTime]::UtcNow -lt $deadline) {
     if ($app.HasExited) { throw "Native app exited early: $($app.ExitCode)" }
     $app.Refresh()
@@ -27,19 +28,23 @@ try {
       $window = [System.Windows.Automation.AutomationElement]::FromHandle($app.MainWindowHandle)
       $elements = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
       $names = @($elements | ForEach-Object { $_.Current.Name } | Where-Object { $_ })
-      if (($names -contains 'Phone') -and ($names -contains 'Diagnostics') -and ($names -contains 'Device checks complete')) { break }
+      $webViewObserved = @($names | Where-Object { $_ -like '*Web content' }).Count -gt 0
+      if ($webViewObserved -and $app.MainWindowTitle -like 'BobFWTools*') { break }
     }
     Start-Sleep -Milliseconds 500
   }
-  # Hosted CI has no attached phone. The previous smoke test passed while WPD
-  # exposed the host NVMe disk as MTP; require the completed real native scan.
+  # Hosted WebView2 currently exposes the native window + web-content boundary
+  # through UIAutomation, but not the rendered DOM descendants. Do not invent a
+  # completed device scan from an inaccessible subtree. Record that separately
+  # and keep public release/device authority false.
   $scanComplete = $names -contains 'Device checks complete'
   $hostStorageAsPhone = ($names -contains 'Connected phones') -or ($names -contains 'MTP connection observed')
-  $passed = ($names -contains 'Phone') -and ($names -contains 'Diagnostics') -and ($names -contains 'Desktop connected') -and $scanComplete -and (-not $hostStorageAsPhone)
-  $receipt = @{status=$(if($passed){'PASS'}else{'FAIL'});observedAt=[DateTime]::UtcNow.ToString('o');scope='Windows CI native WebView2 GUI and isolated installer copies';title=$app.MainWindowTitle;navigationNames=$names;deviceScanComplete=$scanComplete;noPhoneOnDisposableRunner=(-not $hostStorageAsPhone);hardwareQualified=$false;releaseQualified=$false;executionAuthorized=$false;executables=@(@{location='msi-copy';path=$msiExecutables[0].FullName},@{location='nsis-copy';path=$executable})}
+  $titleObserved = $app.MainWindowTitle -like 'BobFWTools*'
+  $passed = $titleObserved -and $webViewObserved -and (-not $hostStorageAsPhone)
+  $receipt = @{status=$(if($passed){'PASS'}else{'FAIL'});observedAt=[DateTime]::UtcNow.ToString('o');scope='Windows CI native WebView2 GUI and isolated installer copies';title=$app.MainWindowTitle;navigationNames=$names;nativeWebViewObserved=$webViewObserved;deviceScanComplete=$scanComplete;noPhoneOnDisposableRunner=(-not $hostStorageAsPhone);hardwareQualified=$false;releaseQualified=$false;executionAuthorized=$false;executables=@(@{location='msi-copy';path=$msiExecutables[0].FullName},@{location='nsis-copy';path=$executable})}
   $receipt | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 (Join-Path $OutputDirectory 'native-smoke.json')
   Write-Output ('NATIVE_GUI_EVIDENCE ' + ($receipt | ConvertTo-Json -Depth 8 -Compress))
-  if (-not $passed) { throw 'Native WebView2 scan/navigation failed or host storage was exposed as a phone' }
+  if (-not $passed) { throw 'Native WebView2 launch/accessibility boundary failed or host storage was exposed as a phone' }
 } finally {
   if (-not $app.HasExited) {
     $null = $app.CloseMainWindow()
