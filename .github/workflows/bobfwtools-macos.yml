@@ -25,7 +25,10 @@ jobs:
           package-manager-cache: false
 
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci --ignore-scripts
+
+      - name: Install packaged API dependencies
+        run: npm ci --prefix src-tauri/resources/server --ignore-scripts
 
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -52,6 +55,9 @@ jobs:
 
       - name: Audit root npm dependency tree
         run: npm audit --audit-level=moderate
+
+      - name: Audit packaged API production dependencies
+        run: npm audit --prefix src-tauri/resources/server --omit=dev --audit-level=moderate
 
       - name: Check BootForge USB
         run: cargo check --manifest-path libs/bootforgeusb/Cargo.toml
