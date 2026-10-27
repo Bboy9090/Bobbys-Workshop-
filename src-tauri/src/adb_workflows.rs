@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::process::Output;
+use std::process::{Command, Output};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::{Mutex as AsyncMutex, Notify};
@@ -399,6 +399,14 @@ fn get_property_from_snapshot(
     properties.get(key).cloned().filter(|value| !value.is_empty())
 }
 
+fn get_property(serial: &str, key: &str) -> Result<String, String> {
+    let output = require_success(
+        run_adb(&["-s", serial, "shell", "getprop", key])?,
+        &format!("getprop {key}"),
+    )?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 async fn coalesced_adb_scan() -> Result<Vec<AdbDeviceRecord>, String> {
     let coordinator = adb_observation_coordinator();
 
@@ -417,6 +425,8 @@ async fn coalesced_adb_scan() -> Result<Vec<AdbDeviceRecord>, String> {
         if state.running {
             let notify = state.notify.clone();
             let notified = notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
             drop(state);
             notified.await;
             continue;
@@ -427,14 +437,21 @@ async fn coalesced_adb_scan() -> Result<Vec<AdbDeviceRecord>, String> {
         state.completed_at = None;
         drop(state);
 
-        let permit = crate::observation_scheduler::acquire_observation_permit().await?;
-
         let producer_generation = generation;
-        let result = tauri::async_runtime::spawn_blocking(cached_adb_scan)
-            .await
-            .map_err(|e| format!("ADB observation worker failed: {e}"))?;
 
-        drop(permit);
+        let result = match crate::observation_scheduler::acquire_observation_permit().await {
+            Ok(permit) => {
+                let worker_result = tauri::async_runtime::spawn_blocking(cached_adb_scan)
+                    .await
+                    .map_err(|e| format!("ADB observation worker failed: {e}"));
+                drop(permit);
+                match worker_result {
+                    Ok(result) => result,
+                    Err(error) => Err(error),
+                }
+            }
+            Err(error) => Err(error),
+        };
 
         let mut state = coordinator.state.lock().await;
         state.running = false;
@@ -660,14 +677,14 @@ pub fn adb_battery_info(serial: String) -> Result<AdbTextResult, String> {
     })
 }
 
-fn build_adb_mode_capabilities(
-    serial: String,
-    properties: &BTreeMap<String, String>,
-) -> AdbModeCapabilities {
-    let manufacturer = get_property_from_snapshot(properties, "ro.product.manufacturer").unwrap_or_default();
-    let brand = get_property_from_snapshot(properties, "ro.product.brand").unwrap_or_default();
-    let model = get_property_from_snapshot(properties, "ro.product.model").unwrap_or_default();
-    let hardware = get_property_from_snapshot(properties, "ro.hardware").unwrap_or_default();
+#[tauri::command]
+pub fn adb_mode_capabilities(serial: String) -> Result<AdbModeCapabilities, String> {
+    require_authorized(&serial)?;
+    let properties = get_all_properties(&serial)?;
+    let manufacturer = get_property_from_snapshot(&properties, "ro.product.manufacturer").unwrap_or_default();
+    let brand = get_property_from_snapshot(&properties, "ro.product.brand").unwrap_or_default();
+    let model = get_property_from_snapshot(&properties, "ro.product.model").unwrap_or_default();
+    let hardware = get_property_from_snapshot(&properties, "ro.hardware").unwrap_or_default();
 
     let identity = format!("{manufacturer} {brand} {model} {hardware}").to_ascii_lowercase();
     let is_samsung = identity.contains("samsung");
@@ -689,7 +706,7 @@ fn build_adb_mode_capabilities(
         notes.push("MediaTek hardware detected, but BROM/preloader entry is intentionally not exposed as a generic ADB command because entry is device-specific and commonly physical.".to_string());
     }
 
-    AdbModeCapabilities {
+    Ok(AdbModeCapabilities {
         serial,
         manufacturer: if manufacturer.is_empty() { brand } else { manufacturer },
         model,
@@ -700,47 +717,7 @@ fn build_adb_mode_capabilities(
         qualcomm_edl: false,
         mediatek_brom: false,
         notes,
-    }
-}
-
-fn adb_mode_capabilities_fresh(serial: String) -> Result<AdbModeCapabilities, String> {
-    require_authorized(&serial)?;
-    let properties = get_all_properties(&serial)?;
-    Ok(build_adb_mode_capabilities(serial, &properties))
-}
-
-async fn observed_authorized_device(serial: &str) -> Result<(), String> {
-    let devices = coalesced_adb_scan().await?;
-    let Some(device) = devices.into_iter().find(|device| device.serial == serial) else {
-        return Err(format!("ADB device {serial} is not present in the current observation snapshot"));
-    };
-    if !device.authorized {
-        return Err(format!(
-            "ADB device {serial} is not authorized for observation (state: {})",
-            device.state
-        ));
-    }
-    Ok(())
-}
-
-async fn observed_get_all_properties(serial: String) -> Result<BTreeMap<String, String>, String> {
-    let permit = crate::observation_scheduler::acquire_observation_permit().await?;
-    let worker_serial = serial.clone();
-    let properties = tauri::async_runtime::spawn_blocking(move || get_all_properties(&worker_serial))
-        .await
-        .map_err(|e| format!("ADB capability observation worker failed: {e}"))??;
-    drop(permit);
-    Ok(properties)
-}
-
-#[tauri::command]
-pub async fn adb_mode_capabilities(serial: String) -> Result<AdbModeCapabilities, String> {
-    if !valid_adb_serial(&serial) {
-        return Err("Invalid or malformed ADB transport serial.".to_string());
-    }
-    observed_authorized_device(&serial).await?;
-    let properties = observed_get_all_properties(serial.clone()).await?;
-    Ok(build_adb_mode_capabilities(serial, &properties))
+    })
 }
 
 #[tauri::command]
@@ -751,7 +728,7 @@ pub fn adb_reboot_mode(serial: String, mode: String) -> Result<AdbActionResult, 
         "recovery" => ("reboot-recovery", vec!["-s", &serial, "reboot", "recovery"]),
         "bootloader" => ("reboot-bootloader", vec!["-s", &serial, "reboot", "bootloader"]),
         "download" => {
-            let capabilities = adb_mode_capabilities_fresh(serial.clone())?;
+            let capabilities = adb_mode_capabilities(serial.clone())?;
             if !capabilities.download {
                 return Err("Download Mode is only exposed after BobFWTools identifies the authorized ADB target as Samsung.".to_string());
             }
@@ -855,33 +832,31 @@ mod adb_observation_coordinator_tests {
     }
 
     #[test]
-    fn mode_capability_observation_is_coalesced_but_reboot_stays_fresh() {
+    fn waiter_registers_before_releasing_coordinator_state() {
         let source = include_str!("adb_workflows.rs");
-
-        let observed = source
-            .split("pub async fn adb_mode_capabilities")
+        let scan = source
+            .split("async fn coalesced_adb_scan()")
             .nth(1)
-            .and_then(|rest| rest.split("#[tauri::command]").next())
+            .and_then(|rest| rest.split("pub(crate) fn adb_scan_observed_sync").next())
             .unwrap_or_default();
-        assert!(observed.contains("observed_authorized_device(&serial).await?"));
-        assert!(observed.contains("observed_get_all_properties(serial.clone()).await?"));
-        assert!(!observed.contains("require_authorized(&serial)?"));
+        let enable = scan.find("notified.as_mut().enable()");
+        let unlock = scan.find("drop(state);");
+        assert!(enable.is_some());
+        assert!(unlock.is_some());
+        assert!(enable.unwrap() < unlock.unwrap());
+    }
 
-        let fresh = source
-            .split("fn adb_mode_capabilities_fresh")
+    #[test]
+    fn producer_failure_path_clears_running_and_notifies_waiters() {
+        let source = include_str!("adb_workflows.rs");
+        let scan = source
+            .split("async fn coalesced_adb_scan()")
             .nth(1)
-            .and_then(|rest| rest.split("async fn observed_authorized_device").next())
+            .and_then(|rest| rest.split("pub(crate) fn adb_scan_observed_sync").next())
             .unwrap_or_default();
-        assert!(fresh.contains("require_authorized(&serial)?"));
-        assert!(fresh.contains("get_all_properties(&serial)?"));
-
-        let reboot = source
-            .split("pub fn adb_reboot_mode")
-            .nth(1)
-            .and_then(|rest| rest.split("#[tauri::command]").next())
-            .unwrap_or_default();
-        assert!(reboot.contains("adb_mode_capabilities_fresh(serial.clone())?"));
-        assert!(!reboot.contains("adb_mode_capabilities(serial.clone())"));
+        assert!(scan.contains("state.running = false"));
+        assert!(scan.contains("state.notify.notify_waiters()"));
+        assert!(scan.contains("ADB observation worker failed"));
     }
 
     #[test]
