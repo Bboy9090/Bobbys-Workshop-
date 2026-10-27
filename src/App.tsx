@@ -504,7 +504,7 @@ export default function App() {
         }
       } else {
         setMtpObjects([]);
-        setMtpPath([]);
+        setMtpPath((current) => (current.length === 0 ? current : []));
       }
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
@@ -2495,7 +2495,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => void uploadFile()}
-                      disabled={transferBusy}
+                      disabled={transferBusy || !hasCommand('mtp_upload_path')}
                       className="rounded bg-cyan-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 hover:bg-cyan-600"
                     >
                       Upload Mac file here
@@ -2540,7 +2540,7 @@ export default function App() {
                             ) : (
                               <button
                                 type="button"
-                                disabled={transferBusy}
+                                disabled={transferBusy || !hasCommand('mtp_download_path')}
                                 onClick={() => void downloadFile(object)}
                                 className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 disabled:opacity-50 hover:bg-slate-800"
                               >

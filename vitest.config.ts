@@ -20,7 +20,7 @@ export default defineConfig({
       ]
     },
     include: [
-      'tests/**/*.test.{js,ts}',
+      'tests/**/*.test.{js,ts,tsx}',
       'tests/a176u-qualification.test.mjs',
       'tests/platform-package-evidence.test.mjs',
       'tests/macos-release-receipt.test.mjs',
