@@ -425,6 +425,8 @@ async fn coalesced_adb_scan() -> Result<Vec<AdbDeviceRecord>, String> {
         if state.running {
             let notify = state.notify.clone();
             let notified = notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
             drop(state);
             notified.await;
             continue;
@@ -435,14 +437,21 @@ async fn coalesced_adb_scan() -> Result<Vec<AdbDeviceRecord>, String> {
         state.completed_at = None;
         drop(state);
 
-        let permit = crate::observation_scheduler::acquire_observation_permit().await?;
-
         let producer_generation = generation;
-        let result = tauri::async_runtime::spawn_blocking(cached_adb_scan)
-            .await
-            .map_err(|e| format!("ADB observation worker failed: {e}"))?;
 
-        drop(permit);
+        let result = match crate::observation_scheduler::acquire_observation_permit().await {
+            Ok(permit) => {
+                let worker_result = tauri::async_runtime::spawn_blocking(cached_adb_scan)
+                    .await
+                    .map_err(|e| format!("ADB observation worker failed: {e}"));
+                drop(permit);
+                match worker_result {
+                    Ok(result) => result,
+                    Err(error) => Err(error),
+                }
+            }
+            Err(error) => Err(error),
+        };
 
         let mut state = coordinator.state.lock().await;
         state.running = false;
@@ -820,6 +829,34 @@ mod adb_observation_coordinator_tests {
         assert!(require_authorized.contains("device_state(serial)?"));
         assert!(!require_authorized.contains("coalesced_adb_scan"));
         assert!(!require_authorized.contains("adb_observation_coordinator"));
+    }
+
+    #[test]
+    fn waiter_registers_before_releasing_coordinator_state() {
+        let source = include_str!("adb_workflows.rs");
+        let scan = source
+            .split("async fn coalesced_adb_scan()")
+            .nth(1)
+            .and_then(|rest| rest.split("pub(crate) fn adb_scan_observed_sync").next())
+            .unwrap_or_default();
+        let enable = scan.find("notified.as_mut().enable()");
+        let unlock = scan.find("drop(state);");
+        assert!(enable.is_some());
+        assert!(unlock.is_some());
+        assert!(enable.unwrap() < unlock.unwrap());
+    }
+
+    #[test]
+    fn producer_failure_path_clears_running_and_notifies_waiters() {
+        let source = include_str!("adb_workflows.rs");
+        let scan = source
+            .split("async fn coalesced_adb_scan()")
+            .nth(1)
+            .and_then(|rest| rest.split("pub(crate) fn adb_scan_observed_sync").next())
+            .unwrap_or_default();
+        assert!(scan.contains("state.running = false"));
+        assert!(scan.contains("state.notify.notify_waiters()"));
+        assert!(scan.contains("ADB observation worker failed"));
     }
 
     #[test]
