@@ -40,6 +40,7 @@ mod detection_state;
 #[cfg(test)]
 mod read_only_extractor;
 #[cfg(test)]
+#[path = "../tests/fault_injection.rs"]
 mod fault_injection;
 mod workflow_jobs;
 mod workstation;
