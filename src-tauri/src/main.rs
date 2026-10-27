@@ -36,6 +36,12 @@ mod observation_scheduler;
 mod audit;
 mod workflow_capabilities;
 mod diagnostics;
+mod detection_state;
+#[cfg(test)]
+mod read_only_extractor;
+#[cfg(test)]
+#[path = "../tests/fault_injection.rs"]
+mod fault_injection;
 mod workflow_jobs;
 mod workstation;
 mod calibration_backup_exec;
@@ -5459,6 +5465,7 @@ fn start_device_monitor_once(app_handle: &AppHandle, state: tauri::State<'_, App
     let app = app_handle.clone();
     std::thread::spawn(move || {
         let mut seen: HashMap<String, bootforgeusb::model::DeviceRecord> = HashMap::new();
+        let mut observation_registry = detection_state::ObservationRegistry::default();
 
         loop {
             let mut current: HashMap<String, bootforgeusb::model::DeviceRecord> = HashMap::new();
@@ -5471,6 +5478,7 @@ fn start_device_monitor_once(app_handle: &AppHandle, state: tauri::State<'_, App
 
             for (uid, device) in current.iter() {
                 if !seen.contains_key(uid) {
+                    observation_registry.observe_usb(uid, true);
                     let display_name = device
                         .product_name
                         .clone()
@@ -5506,6 +5514,7 @@ fn start_device_monitor_once(app_handle: &AppHandle, state: tauri::State<'_, App
 
             for (uid, device) in seen.iter() {
                 if !current.contains_key(uid) {
+                    observation_registry.observe_usb(uid, false);
                     let display_name = device
                         .product_name
                         .clone()
@@ -6221,6 +6230,126 @@ mod qualified_flash_grant_tests {
     }
 }
 
+#[tauri::command]
+fn tauri_get_registered_commands() -> Vec<&'static str> {
+    #[allow(unused_mut)]
+    let mut commands = vec![
+        "frontend_backend_handshake",
+        "get_backend_status",
+        "get_app_version",
+        "bootforgeusb_scan",
+        "workflow_policy_catalog",
+        "calibration_partition_allowlist",
+        "edl_9008_devices",
+        "firmware_target_preflight",
+        "calibration_backup_plan",
+        "edl_programmer_qualification",
+        "firehose_write_plan",
+        "transport_retry_decision",
+        "backup_calibration_partition",
+        "inspect_calibration_backup",
+        "calibration_restore_preflight",
+        "edl_inspect_programmer",
+        "edl_enroll_programmer",
+        "edl_list_programmers",
+        "firmware_chipset_catalog",
+        "firmware_chipset_lookup",
+        "firmware_library_scan",
+        "firmware_manifest_inspect",
+        "firmware_manifest_compare",
+        "firmware_bundle_planning_artifacts",
+        "samsung_firmware_compatibility",
+        "samsung_service_bundle_create",
+        "fastboot_mode_devices",
+        "fastboot_reboot_mode",
+        "mode_transition_verify",
+        "samsung_download_probe",
+        "execute_pit_dry_run",
+        "open_advanced_actions_window",
+        "launch_target_device_action",
+        "driver_binding_scan",
+        "driver_binding_release_and_rescan",
+        "driver_binding_candidates",
+        "driver_binding_conflict_plan",
+        "driver_binding_cleanup_report",
+        "driver_binding_snapshot",
+        "driver_binding_rollback_plan",
+        "driver_binding_stability_test",
+        "driver_binding_elevation_status",
+        "driver_binding_inspect_inf",
+        "driver_binding_stage_and_relatch",
+        "firmware_provenance_write",
+        "hardware_service_profile_validate",
+        "bootforgeusb_transport_scan",
+        "bootforge_firmware_inspect",
+        "bootforge_samsung_plan",
+        "bootforge_recovery_scan",
+        "bootforge_recovery_autodiscover",
+        "bootforge_recovery_plan",
+        "bootforge_recovery_prepare",
+        "bootforge_recovery_revalidate",
+        "bootforge_recovery_export_receipt",
+        "bootforge_recovery_export_readiness_certificate",
+        "bootforge_recovery_review_readiness_certificate",
+        "bootforge_qualification_export",
+        "bootforge_qualification_build_identity",
+        "hardware_qualification_packet_export",
+        "hardware_qualification_packet_review",
+        "bootforge_qualification_review",
+        "mtp_status",
+        "mtp_list_root",
+        "mtp_download_file",
+        "mtp_upload_file",
+        "mtp_list_directory",
+        "mtp_download_path",
+        "mtp_upload_path",
+        "adb_scan",
+        "adb_device_info",
+        "samsung_adb_identity_receipt",
+        "adb_logcat_snapshot",
+        "adb_screenshot",
+        "adb_prepare",
+        "adb_battery_info",
+        "adb_mode_capabilities",
+        "adb_reboot_mode",
+        "adb_open_network_settings",
+        "adb_open_factory_reset_settings",
+        "adb_install_apk",
+        "adb_list_user_packages",
+        "adb_package_action",
+        "workflow_capabilities",
+        "diagnose_phone",
+        "usb_cable_doctor",
+        "workflow_job_start",
+        "workflow_job_list",
+        "workflow_job_get",
+        "workflow_job_retry",
+        "workstation_readiness",
+        "workstation_initialize",
+        "audit_recent",
+        "audit_log_path",
+        "tauri_get_registered_commands",
+    ];
+    #[cfg(feature = "qualified-flash")]
+    commands.extend_from_slice(&[
+        "bootforge_qualified_fastboot_devices",
+        "bootforge_qualified_flash_inspect_image",
+        "bootforge_qualification_bench_evidence_export",
+        "bootforge_qualification_decision_export",
+        "bootforge_qualification_audit_bundle_export",
+        "bootforge_qualification_audit_bundle_review",
+        "bootforge_issue_qualification_trial_grant",
+        "bootforge_issue_qualified_flash_grant",
+        "flash_start",
+        "flash_cancel",
+        "flash_status",
+        "flash_history",
+        "flash_active",
+        "bootforge_flash_history",
+        "bootforge_flash_active",
+    ]);
+    commands
+}
 fn main() {
     // Initialize app state
     let app_state = AppState {
@@ -6453,6 +6582,7 @@ bootforgeusb_transport_scan,
             workstation_initialize,
             audit_recent,
             audit_log_path,
+            tauri_get_registered_commands,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

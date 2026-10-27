@@ -1,4 +1,7 @@
+import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { FeatureGate } from './components/Guard/FeatureGate';
+import { canRefreshWithManifest, hasRegisteredCommand } from './lib/featureGates';
 import RepairCommandCenter from './components/RepairCommandCenter';
 import { SamsungDownloadStatus } from './components/SamsungDownloadStatus';
 import OperatorTimeline from './components/OperatorTimeline';
@@ -141,6 +144,33 @@ export default function App() {
   const [recoveryIdentityDraft, setRecoveryIdentityDraft] = useState({ model: '', board: '', sku: '' });
   const [lockedRecoveryIdentity, setLockedRecoveryIdentity] = useState<LockedRecoveryFirmwareIdentity | null>(null);
   const nativeRuntime = useMemo(() => isTauriRuntime(), []);
+  const [registeredCommands, setRegisteredCommands] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!nativeRuntime) {
+      setRegisteredCommands([]);
+      return;
+    }
+
+    invoke<string[]>('tauri_get_registered_commands')
+      .then((commands) => {
+        if (!cancelled) setRegisteredCommands(commands);
+      })
+      .catch(() => {
+        if (!cancelled) setRegisteredCommands([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [nativeRuntime]);
+
+  const hasCommand = useCallback(
+    (command: string) => hasRegisteredCommand(registeredCommands, command),
+    [registeredCommands],
+  );
+
   const filteredPackages = useMemo(() => {
     const q = packageQuery.trim().toLowerCase();
     return q ? adbPackages.filter((pkg) => pkg.packageName.toLowerCase().includes(q)) : adbPackages;
@@ -363,27 +393,28 @@ export default function App() {
   }, [selectedDiagnosticUsb, selectedDeviceActions]);
 
   const refreshJobs = useCallback(async () => {
-    if (!nativeRuntime) return;
+    if (!nativeRuntime || !hasCommand('workflow_job_list')) return;
     try {
       setWorkflowJobs(await listWorkflowJobs());
     } catch {
       // The job ledger should never make core transport refresh fail.
     }
-  }, [nativeRuntime]);
+  }, [nativeRuntime, hasCommand]);
 
   const refresh = useCallback(async () => {
     if (transferBusy) return;
+    if (!canRefreshWithManifest(nativeRuntime, registeredCommands)) return;
     setRefreshing(true);
     setNativeError(null);
 
     try {
       const hello = await frontendBackendHandshake();
       setHandshake(hello);
-      const devices = await getNativeUsbDevices();
+      const devices = hasCommand('bootforgeusb_scan') ? await getNativeUsbDevices() : [];
       setUsbDevices(devices);
 
       try {
-        const recovery = await scanRecoveryCandidates();
+        const recovery = hasCommand('bootforge_recovery_scan') ? await scanRecoveryCandidates() : [];
         setRecoveryCandidates(recovery);
         if (!selectedRecoveryUid && recovery.length) {
           setSelectedRecoveryUid(recovery[0].deviceUid);
@@ -409,24 +440,26 @@ export default function App() {
         setRecoveryCertificateReview(null);
       }
 
-      const adb = await scanAdbDevices();
+      const adb = hasCommand('adb_scan') ? await scanAdbDevices() : [];
       setAdbDevices(adb);
-      const capabilityPairs = await Promise.all(
-        adb
-          .filter((device) => device.authorized)
-          .map(async (device) => {
-            try {
-              return [device.serial, await getAdbModeCapabilities(device.serial)] as const;
-            } catch {
-              return null;
-            }
-          }),
-      );
+      const capabilityPairs = hasCommand('adb_mode_capabilities')
+        ? await Promise.all(
+            adb
+              .filter((device) => device.authorized)
+              .map(async (device) => {
+                try {
+                  return [device.serial, await getAdbModeCapabilities(device.serial)] as const;
+                } catch {
+                  return null;
+                }
+              }),
+          )
+        : [];
       setAdbModeCapabilities(
         Object.fromEntries(capabilityPairs.filter((item): item is readonly [string, AdbModeCapabilities] => item !== null)),
       );
       try {
-        setFastbootModeDevices(await getFastbootModeDevices());
+        setFastbootModeDevices(hasCommand('fastboot_mode_devices') ? await getFastbootModeDevices() : []);
       } catch {
         setFastbootModeDevices([]);
       }
@@ -436,13 +469,13 @@ export default function App() {
         setAdbSelectedSerial(adb[0]?.serial ?? null);
       }
 
-      const mtpStatus = await getMtpStatus();
+      const mtpStatus = hasCommand('mtp_status') ? await getMtpStatus() : null;
       setMtp(mtpStatus);
 
-      const matrix = await getWorkflowCapabilities();
+      const matrix = hasCommand('workflow_capabilities') ? await getWorkflowCapabilities() : null;
       setCapabilities(matrix);
       try {
-        const firmware = await scanFirmwareLibrary();
+        const firmware = hasCommand('firmware_library_scan') ? await scanFirmwareLibrary() : null;
         const readyBundles = firmware?.bundles.filter((bundle) => bundle.planningReady) ?? [];
         setVerifiedFirmwareBundles(readyBundles);
         setSelectedVerifiedBundle((current) =>
@@ -454,30 +487,34 @@ export default function App() {
         setVerifiedFirmwareBundles([]);
         setSelectedVerifiedBundle('');
       }
-      await refreshJobs();
+      if (hasCommand('workflow_job_list')) await refreshJobs();
 
       if (mtpStatus?.storages.length) {
         const safeIndex = Math.min(storageIndex, mtpStatus.storages.length - 1);
         setStorageIndex(safeIndex);
-        try {
-          setMtpObjects(await listMtpDirectory(safeIndex, mtpPath, mtpStatus.targetId));
-        } catch {
-          setMtpPath([]);
-          setMtpObjects(await listMtpDirectory(safeIndex, [], mtpStatus.targetId));
+        if (hasCommand('mtp_list_directory')) {
+          try {
+            setMtpObjects(await listMtpDirectory(safeIndex, mtpPath, mtpStatus.targetId));
+          } catch {
+            setMtpPath([]);
+            setMtpObjects(await listMtpDirectory(safeIndex, [], mtpStatus.targetId));
+          }
+        } else {
+          setMtpObjects([]);
         }
       } else {
         setMtpObjects([]);
-        setMtpPath([]);
+        setMtpPath((current) => (current.length === 0 ? current : []));
       }
     } catch (error) {
       setNativeError(error instanceof Error ? error.message : String(error));
     } finally {
       setRefreshing(false);
     }
-  }, [storageIndex, mtpPath, transferBusy, adbSelectedSerial, selectedRecoveryUid, refreshJobs]);
+  }, [storageIndex, mtpPath, transferBusy, adbSelectedSerial, selectedRecoveryUid, refreshJobs, hasCommand, nativeRuntime, registeredCommands]);
 
   const retryJob = async (id: string) => {
-    if (transferBusy) return;
+    if (!hasCommand('workflow_job_retry') || transferBusy) return;
     setTransferBusy(true);
     setNativeError(null);
     try {
@@ -572,7 +609,7 @@ export default function App() {
   };
 
   const uploadFile = async () => {
-    if (!mtp || transferBusy) return;
+    if (!hasCommand('mtp_upload_path') || !mtp || transferBusy) return;
     const source = await chooseUploadSource();
     if (!source) return;
 
@@ -591,7 +628,7 @@ export default function App() {
   };
 
   const downloadFile = async (object: MtpBrowserObject) => {
-    if (!mtp || object.isFolder || transferBusy) return;
+    if (!hasCommand('mtp_download_path') || !mtp || object.isFolder || transferBusy) return;
     const destination = await chooseDownloadDestination(object.filename || 'android-file');
     if (!destination) return;
 
@@ -609,7 +646,7 @@ export default function App() {
   };
 
   const runOneClickAdb = async () => {
-    if (transferBusy) return;
+    if (!hasCommand('adb_prepare') || transferBusy) return;
     setTransferBusy(true);
     setNativeError(null);
     try {
@@ -718,7 +755,14 @@ export default function App() {
   const runSimpleAdbAction = async (
     action: 'network' | 'factory-reset-settings' | 'install-apk' | 'reboot-normal' | 'reboot-recovery' | 'reboot-bootloader' | 'reboot-download',
   ) => {
-    if (!adbSelectedSerial || transferBusy) return;
+    const command = action === 'network'
+      ? 'adb_open_network_settings'
+      : action === 'factory-reset-settings'
+        ? 'adb_open_factory_reset_settings'
+        : action === 'install-apk'
+          ? 'adb_install_apk'
+          : 'adb_reboot_mode';
+    if (!hasCommand(command) || !adbSelectedSerial || transferBusy) return;
     setTransferBusy(true);
     setNativeError(null);
     try {
@@ -751,7 +795,7 @@ export default function App() {
   };
 
   const refreshPackages = async () => {
-    if (!adbSelectedSerial || transferBusy) return;
+    if (!hasCommand('adb_list_user_packages') || !adbSelectedSerial || transferBusy) return;
     setTransferBusy(true);
     setNativeError(null);
     try {
@@ -768,7 +812,7 @@ export default function App() {
     packageName: string,
     action: 'enable' | 'disable-user' | 'clear-data' | 'uninstall-user',
   ) => {
-    if (!adbSelectedSerial || transferBusy || packageBusy) return;
+    if (!hasCommand('adb_package_action') || !adbSelectedSerial || transferBusy || packageBusy) return;
     if (
       (action === 'clear-data' || action === 'uninstall-user') &&
       !window.confirm(
@@ -826,7 +870,7 @@ export default function App() {
   };
 
   const runAdbScreenshot = async () => {
-    if (!adbSelectedSerial || transferBusy) return;
+    if (!hasCommand('adb_screenshot') || !adbSelectedSerial || transferBusy) return;
     setTransferBusy(true);
     setNativeError(null);
     try {
@@ -1713,6 +1757,11 @@ export default function App() {
             )}
           </section>
 
+          <FeatureGate
+            requiredCommand="bootforge_recovery_scan"
+            registeredCommands={registeredCommands}
+            fallbackMessage="Recovery planning is unavailable in this build. Detection and read-only diagnostics remain available."
+          >
           <section id="safe-repair-workflows" className="mb-4 rounded-lg border border-orange-900/60 bg-orange-950/10 p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -2211,6 +2260,7 @@ export default function App() {
               FRP/security bypasses, and equivalent lock circumvention are not execution paths in this engine.
             </div>
           </section>
+          </FeatureGate>
 
           <section className="mb-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2445,7 +2495,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => void uploadFile()}
-                      disabled={transferBusy}
+                      disabled={transferBusy || !hasCommand('mtp_upload_path')}
                       className="rounded bg-cyan-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 hover:bg-cyan-600"
                     >
                       Upload Mac file here
@@ -2490,7 +2540,7 @@ export default function App() {
                             ) : (
                               <button
                                 type="button"
-                                disabled={transferBusy}
+                                disabled={transferBusy || !hasCommand('mtp_download_path')}
                                 onClick={() => void downloadFile(object)}
                                 className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 disabled:opacity-50 hover:bg-slate-800"
                               >
