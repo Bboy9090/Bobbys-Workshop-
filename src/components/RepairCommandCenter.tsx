@@ -10,7 +10,6 @@ import {
   getWorkflowPolicyCatalog,
   scanAdbDevices,
   scanTransportDevices,
-  probeSamsungDownloadMode,
   chooseSamsungFirmwarePackages,
   inspectSamsungFirmwarePackages,
   buildSamsungFirmwarePlan,
@@ -121,7 +120,6 @@ export default function RepairCommandCenter() {
   const [samsungFlashPlan, setSamsungFlashPlan] = useState<SamsungFlashPlan | null>(null);
   const [samsungFirmwareBusy, setSamsungFirmwareBusy] = useState(false);
   const [samsungProbe, setSamsungProbe] = useState<SamsungDownloadProbeReport | null>(null);
-  const [samsungProbeBusy, setSamsungProbeBusy] = useState(false);
   const [selectedSamsungBundleDirectory, setSelectedSamsungBundleDirectory] = useState('');
   const [firmwareCatalog, setFirmwareCatalog] = useState<FirmwareChipsetProfile[]>([]);
   const [firmwareQuery, setFirmwareQuery] = useState('');
@@ -392,9 +390,9 @@ export default function RepairCommandCenter() {
         setSelectedTargetKey((current) =>
           current && availableTargetKeys.includes(current) ? current : (availableTargetKeys[0] || '')
         );
-        if (partitions.length && !partitions.includes(backupPartition)) {
-          setBackupPartition(partitions[0]);
-        }
+        setBackupPartition((current) =>
+          partitions.length && !partitions.includes(current) ? partitions[0] : current
+        );
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       }
@@ -1766,7 +1764,6 @@ export default function RepairCommandCenter() {
               </div>
               <PitDiagnosticPanel
                 deviceUid={selectedSamsungTransport.deviceUid}
-                disabled={samsungProbeBusy}
                 onResult={(report) => {
                   setSamsungProbe(report);
                   setSamsungFirmwareReports([]);
