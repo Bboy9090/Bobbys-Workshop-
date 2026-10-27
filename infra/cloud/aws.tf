@@ -138,10 +138,16 @@ resource "aws_iam_role_policy" "github_release" {
         Resource = aws_s3_bucket.evidence.arn
       },
       {
-        Sid      = "EvidenceObjects"
+        Sid      = "EvidenceObjectsRead"
         Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject"]
+        Action   = ["s3:GetObject", "s3:GetObjectVersion"]
         Resource = "${aws_s3_bucket.evidence.arn}/*"
+      },
+      {
+        Sid      = "ReleaseAttestationsWrite"
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
+        Resource = "${aws_s3_bucket.evidence.arn}/release-attestations/*"
       },
       {
         Sid      = "EvidenceEncryption"
