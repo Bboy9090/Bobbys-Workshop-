@@ -57,7 +57,8 @@ try {
     run('chmod',['u+x',image]);
     run(image,['--appimage-extract'],{cwd:imageRoot});
     executables.push({location:'appimage-copy',...inspectStandardExecutable(readFileSync(join(imageRoot,'squashfs-root/usr/bin/bobfwtools')),revision,platform)});
-    // Start Xvfb first so the D-Bus daemon and any portal services inherit DISPLAY.\n    run('xvfb-run',['-a','dbus-run-session','--','/usr/bin/python3','scripts/smoke-linux-native.py',executable,join(out,'native-smoke.json')]);
+    // Start Xvfb first so the D-Bus daemon and any portal services inherit DISPLAY.
+    run('xvfb-run',['-a','dbus-run-session','--','/usr/bin/python3','scripts/smoke-linux-native.py',executable,join(out,'native-smoke.json')]);
     smoke = JSON.parse(readFileSync(join(out,'native-smoke.json'),'utf8'));
     checks.push({capability:'Debian package extraction and executable provenance',status:'PASS'},
       {capability:'AppImage extraction and executable provenance',status:'PASS'});
