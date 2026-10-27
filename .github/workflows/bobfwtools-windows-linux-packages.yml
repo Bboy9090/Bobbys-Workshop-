@@ -8,7 +8,7 @@ on:
     branches: [integration/hardware-readiness-foundation-20261018]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -18,6 +18,39 @@ env:
   BOBFWTOOLS_SOURCE_REVISION: ${{ github.sha }}
 
 jobs:
+  lockfile-sync:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          package-manager-cache: false
+      - name: Regenerate packaged API lockfiles
+        run: |
+          npm install --package-lock-only --prefix server --ignore-scripts --no-audit --no-fund
+          npm install --package-lock-only --prefix src-tauri/resources/server --ignore-scripts --no-audit --no-fund
+          npm install --package-lock-only --prefix src-tauri/bundle/resources/server --ignore-scripts --no-audit --no-fund
+      - name: Audit regenerated packaged API trees
+        run: |
+          npm audit --prefix server --audit-level=moderate
+          npm audit --prefix src-tauri/resources/server --audit-level=moderate
+          npm audit --prefix src-tauri/bundle/resources/server --audit-level=moderate
+      - name: Commit synchronized lockfiles
+        run: |
+          if git diff --quiet -- server/package-lock.json src-tauri/resources/server/package-lock.json src-tauri/bundle/resources/server/package-lock.json; then
+            echo "Packaged API lockfiles already synchronized"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/package-lock.json src-tauri/resources/server/package-lock.json src-tauri/bundle/resources/server/package-lock.json
+          git commit -m "Lock patched packaged API dependencies"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+
   packages:
     timeout-minutes: 45
     strategy:
