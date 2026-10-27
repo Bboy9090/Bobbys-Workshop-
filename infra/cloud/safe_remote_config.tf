@@ -109,17 +109,38 @@ resource "aws_iam_role_policy" "github_release_appconfig" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid    = "DeploySafeAppConfig"
-      Effect = "Allow"
-      Action = [
-        "appconfig:StartDeployment",
-        "appconfig:GetDeployment",
-        "appconfig:ListDeployments",
-        "appconfig:GetHostedConfigurationVersion"
-      ]
-      Resource = "*"
-    }]
+    Statement = [
+      {
+        Sid    = "StartSafeAppConfigDeployment"
+        Effect = "Allow"
+        Action = ["appconfig:StartDeployment"]
+        Resource = [
+          aws_appconfig_application.bobfwtools.arn,
+          aws_appconfig_environment.production.arn,
+          aws_appconfig_configuration_profile.safe_runtime.arn,
+          aws_appconfig_deployment_strategy.safe_runtime.arn
+        ]
+      },
+      {
+        Sid    = "ReadSafeAppConfigDeployments"
+        Effect = "Allow"
+        Action = ["appconfig:GetDeployment", "appconfig:ListDeployments"]
+        Resource = [
+          aws_appconfig_application.bobfwtools.arn,
+          aws_appconfig_environment.production.arn,
+          "${aws_appconfig_environment.production.arn}/deployment/*"
+        ]
+      },
+      {
+        Sid    = "ReadSafeHostedConfiguration"
+        Effect = "Allow"
+        Action = ["appconfig:GetHostedConfigurationVersion"]
+        Resource = [
+          aws_appconfig_application.bobfwtools.arn,
+          aws_appconfig_configuration_profile.safe_runtime.arn
+        ]
+      }
+    ]
   })
 }
 
