@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ $# -ge 5 ]]; then
+  exec bash "$(dirname "$0")/create-bobfwtools-release-receipt-v2.sh" "$@"
+fi
+
 APP_PATH="${1:-src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools-DeveloperID.app}"
 NOTARY_RECEIPT="${2:-bobfwtools-notarization-receipt.json}"
 OUTPUT_PATH="${3:-bobfwtools-release-receipt.json}"

@@ -19,7 +19,13 @@ export default defineConfig({
         'server/'
       ]
     },
-    include: ['tests/**/*.test.{js,ts}'],
+    include: [
+      'tests/**/*.test.{js,ts}',
+      'tests/a176u-qualification.test.mjs',
+      'tests/platform-package-evidence.test.mjs',
+      'tests/macos-release-receipt.test.mjs',
+      'tests/qualification-matrix.test.mjs'
+    ],
     testTimeout: 10000
   }
 });
