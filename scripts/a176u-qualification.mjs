@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /** Read-only A17 5G (SM-A176U) qualification report. Never invokes tools or writes to a device. */
 import { readFileSync } from 'node:fs';
 

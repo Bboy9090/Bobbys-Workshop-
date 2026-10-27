@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   exportQualificationDossier,
   getQualificationBuildIdentity,
@@ -169,7 +169,7 @@ export default function QualificationDossier({
 
   const automatedEvidenceReady = automatedGates.every((gate) => gate.passed);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     try {
       const [transport, host, vault, build] = await Promise.all([
         scanTransportDevices(),
@@ -191,13 +191,13 @@ export default function QualificationDossier({
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  };
+  }, [selectedUid]);
 
   useEffect(() => {
     void refresh();
     const id = window.setInterval(() => void refresh(), 5000);
     return () => window.clearInterval(id);
-  }, [selectedUid]);
+  }, [refresh]);
 
   const runAutomatedPreflight = async () => {
     if (busy) return;

@@ -35,7 +35,6 @@ import {
   listAdbUserPackages,
   runUsbCableDoctor,
   scanRecoveryCandidates,
-  chooseRecoveryArtifacts,
   autodiscoverRecoveryArtifacts,
   buildRecoveryPlan,
   prepareRecoveryJob,
@@ -852,17 +851,6 @@ export default function App() {
     return () => window.clearInterval(id);
   }, [refresh, transferBusy]);
 
-  const selectRecoveryArtifacts = async () => {
-    if (recoveryBusy) return;
-    const paths = await chooseRecoveryArtifacts();
-    if (!paths.length) return;
-    setRecoveryArtifacts(paths);
-    setRecoveryPlan(null);
-    setRecoveryJob(null);
-    setRecoveryEvidencePath(null);
-    setRecoveryCertificatePath(null);
-    setRecoveryCertificateReview(null);
-  };
 
   const autoPrepareRecoveryForCandidate = async (candidate: RecoveryCandidate) => {
     if (recoveryBusy || !nativeRuntime) return;
@@ -932,7 +920,7 @@ export default function App() {
     }
   };
 
-  const useVerifiedFirmwareBundle = async () => {
+  const applyVerifiedFirmwareBundle = async () => {
     if (recoveryBusy || !selectedVerifiedBundle) return;
     setRecoveryBusy(true);
     setNativeError(null);
@@ -1934,7 +1922,7 @@ export default function App() {
                     </select>
                     <button
                       type="button"
-                      onClick={() => void useVerifiedFirmwareBundle()}
+                      onClick={() => void applyVerifiedFirmwareBundle()}
                       disabled={
                         recoveryBusy ||
                         !selectedVerifiedBundle ||
