@@ -8,7 +8,7 @@ function namesFromHandler(body: string) {
   const qualified = new Set<string>();
   let qualifiedNext = false;
 
-  for (const raw of body.split('\n')) {
+  for (const raw of body.split(/\r?\n/)) {
     const line = raw.trim().replace(/,$/, '');
     if (line === '#[cfg(feature = "qualified-flash")]') {
       qualifiedNext = true;
@@ -33,10 +33,10 @@ function quotedNames(body: string) {
 describe('native command manifest contract', () => {
   it('matches the actual Tauri handler registry and qualified-flash gate', () => {
     const handler = source.match(
-      /\.invoke_handler\(tauri::generate_handler!\[\n(?<body>.*?)\n\s*\]\)\n\s*\.run\(/s,
+      /\.invoke_handler\(tauri::generate_handler!\[\r?\n(?<body>.*?)\r?\n\s*\]\)\r?\n\s*\.run\(/s,
     );
     const manifest = source.match(
-      /fn tauri_get_registered_commands\(\).*?\{\n(?<body>.*?)\n\}/s,
+      /fn tauri_get_registered_commands\(\).*?\{\r?\n(?<body>.*?)\r?\n\}/s,
     );
 
     expect(handler?.groups?.body).toBeTruthy();
