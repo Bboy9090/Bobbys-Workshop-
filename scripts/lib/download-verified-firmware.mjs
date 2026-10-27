@@ -45,8 +45,8 @@ export async function downloadVerifiedFirmware({url, destination, expectedSha256
       !address.pathname.endsWith('.zip') || /%(?:2f|5c|00)/i.test(address.pathname) ||
       !HEX.test(expectedSha256 ?? ''))
     throw Error('Official allowlisted HTTPS URL and trusted SHA-256 are required');
-  if (!destination || basename(destination) !== destination.split('/').at(-1) ||
-      !basename(destination) || basename(destination) === '.' || basename(destination) === '..')
+  const destinationName = typeof destination === 'string' ? basename(destination) : '';
+  if (!destinationName || destinationName === '.' || destinationName === '..')
     throw Error('A destination file path is required');
   const targetDir = dirname(destination);
   await mkdir(targetDir, {recursive: true});
