@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Shared integration-test helpers are compiled separately per test target.
+
 //! Shared fixtures. Tokens are forged with ed25519-dalek directly, not through the issuer,
 //! so verifier tests do not depend on the code they check.
 
