@@ -1,0 +1,32 @@
+name: Development toolchain audit
+
+on:
+  pull_request:
+    branches: [ "feat/bobfwtools-macos-foundation" ]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/development-toolchain-audit.yml'
+  push:
+    branches: [ "feat/bobfwtools-macos-foundation" ]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/development-toolchain-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - name: Audit full development toolchain
+        run: npm audit --audit-level=moderate
