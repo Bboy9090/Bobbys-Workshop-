@@ -36,8 +36,10 @@ impl ServerInventory {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.provisioned
-            .insert(license_id.to_string(), features.into_iter().map(Into::into).collect());
+        self.provisioned.insert(
+            license_id.to_string(),
+            features.into_iter().map(Into::into).collect(),
+        );
     }
 
     fn features_for(&self, license_id: &str) -> Option<&BTreeSet<String>> {

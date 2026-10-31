@@ -49,10 +49,14 @@ impl LicensePayload {
         }
         // Features must be strictly ascending so there is exactly one canonical list.
         if self.features.windows(2).any(|pair| pair[0] >= pair[1]) {
-            return Err(LicenseError::Malformed("features must be sorted and unique"));
+            return Err(LicenseError::Malformed(
+                "features must be sorted and unique",
+            ));
         }
         if self.issued_at >= self.expires_at {
-            return Err(LicenseError::Malformed("expires_at must be after issued_at"));
+            return Err(LicenseError::Malformed(
+                "expires_at must be after issued_at",
+            ));
         }
         Ok(())
     }
@@ -65,15 +69,25 @@ fn check_slug(value: &str, max_len: usize, field: &'static str) -> Result<(), Li
         && value
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_');
-    if valid { Ok(()) } else { Err(LicenseError::Malformed(field)) }
+    if valid {
+        Ok(())
+    } else {
+        Err(LicenseError::Malformed(field))
+    }
 }
 
 /// License IDs keep their case so support staff can match them against records.
 fn check_license_id(value: &str, max_len: usize) -> Result<(), LicenseError> {
     let valid = !value.is_empty()
         && value.len() <= max_len
-        && value.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
-    if valid { Ok(()) } else { Err(LicenseError::Malformed("license_id")) }
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    if valid {
+        Ok(())
+    } else {
+        Err(LicenseError::Malformed("license_id"))
+    }
 }
 
 /// Clock inputs supplied by the caller. `high_water` is the newest timestamp the client has
@@ -117,9 +131,12 @@ pub fn verify_token(
         return Err(LicenseError::Malformed("token too large"));
     }
     let mut segments = token.split('.');
-    let (Some(prefix), Some(payload_segment), Some(signature_segment), None) =
-        (segments.next(), segments.next(), segments.next(), segments.next())
-    else {
+    let (Some(prefix), Some(payload_segment), Some(signature_segment), None) = (
+        segments.next(),
+        segments.next(),
+        segments.next(),
+        segments.next(),
+    ) else {
         return Err(LicenseError::Malformed("token must have three segments"));
     };
     if prefix != TOKEN_PREFIX {

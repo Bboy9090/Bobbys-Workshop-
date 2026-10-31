@@ -59,7 +59,9 @@ impl TrustStore {
         let raw: RawStore = serde_json::from_str(text)
             .map_err(|_| LicenseError::Malformed("trust store does not match schema"))?;
         if raw.keys.is_empty() || raw.keys.len() > MAX_TRUSTED_KEYS {
-            return Err(LicenseError::Malformed("trust store key count out of range"));
+            return Err(LicenseError::Malformed(
+                "trust store key count out of range",
+            ));
         }
 
         let mut seen = BTreeSet::new();

@@ -1,6 +1,8 @@
 mod support;
 
-use bbw_license_core::{reconcile, FeatureRegistry, LicenseError, ServerInventory, VerifiedLicense};
+use bbw_license_core::{
+    reconcile, FeatureRegistry, LicenseError, ServerInventory, VerifiedLicense,
+};
 
 fn license(features: &[&str]) -> VerifiedLicense {
     VerifiedLicense {
@@ -20,7 +22,12 @@ fn registry() -> FeatureRegistry {
 fn entitled_features_implemented_and_provisioned_are_granted() {
     let mut inventory = ServerInventory::new();
     inventory.provision("lic_example", ["diagnostics", "reports"]);
-    let effective = reconcile(&license(&["diagnostics", "reports"]), &registry(), &inventory).unwrap();
+    let effective = reconcile(
+        &license(&["diagnostics", "reports"]),
+        &registry(),
+        &inventory,
+    )
+    .unwrap();
     assert!(effective.features.contains("diagnostics"));
     assert!(effective.features.contains("reports"));
     assert!(effective.not_granted.is_empty());
@@ -31,7 +38,11 @@ fn feature_unknown_to_this_build_fails_closed() {
     let mut inventory = ServerInventory::new();
     inventory.provision("lic_example", ["diagnostics", "telemetry"]);
     assert_eq!(
-        reconcile(&license(&["diagnostics", "telemetry"]), &registry(), &inventory),
+        reconcile(
+            &license(&["diagnostics", "telemetry"]),
+            &registry(),
+            &inventory
+        ),
         Err(LicenseError::UnknownFeature("telemetry".into()))
     );
 }
@@ -41,7 +52,11 @@ fn feature_not_provisioned_on_server_fails_closed() {
     let mut inventory = ServerInventory::new();
     inventory.provision("lic_example", ["diagnostics"]);
     assert_eq!(
-        reconcile(&license(&["diagnostics", "reports"]), &registry(), &inventory),
+        reconcile(
+            &license(&["diagnostics", "reports"]),
+            &registry(),
+            &inventory
+        ),
         Err(LicenseError::NotProvisioned("reports".into()))
     );
 }
