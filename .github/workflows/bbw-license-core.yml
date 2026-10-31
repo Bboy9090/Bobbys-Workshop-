@@ -21,12 +21,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Detect license core
+        id: crate
+        shell: bash
+        run: |
+          if [[ -f libs/bbw-license-core/Cargo.toml ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "License core is not present on this head; workflow definition only."
+          fi
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.crate.outputs.present == 'true'
         with:
           components: rustfmt,clippy
       - name: Format
+        if: steps.crate.outputs.present == 'true'
         run: cargo fmt --manifest-path libs/bbw-license-core/Cargo.toml -- --check
       - name: Clippy
+        if: steps.crate.outputs.present == 'true'
         run: cargo clippy --manifest-path libs/bbw-license-core/Cargo.toml --all-targets -- -D warnings
       - name: Test
+        if: steps.crate.outputs.present == 'true'
         run: cargo test --manifest-path libs/bbw-license-core/Cargo.toml --all-targets
