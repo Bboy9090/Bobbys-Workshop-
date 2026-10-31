@@ -1,0 +1,44 @@
+name: Multer lock refresh
+
+on:
+  pull_request:
+    branches: [ "feat/bobfwtools-macos-foundation" ]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/multer-lock-refresh.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          package-manager-cache: false
+      - name: Resolve package lock
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Verify minimatch stays patched
+        run: |
+          node -e "const l=require('./package-lock.json'); const bad=Object.entries(l.packages||{}).filter(([k,v])=>(k==='node_modules/minimatch'||k.endsWith('/node_modules/minimatch')) && v.version<'11.0.1'); if(bad.length){console.error(bad);process.exit(1)}"
+      - name: Audit resolved toolchain
+        run: npm audit --audit-level=moderate
+      - name: Commit resolved lockfile
+        if: github.event_name == 'pull_request' && github.head_ref == 'replay/multer-after-security-20261031'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          if git diff --cached --quiet; then
+            echo "Lockfile already resolved."
+          else
+            git commit -m "chore: resolve multer 2.5.0 lockfile"
+            git push origin HEAD:${GITHUB_HEAD_REF}
+          fi
