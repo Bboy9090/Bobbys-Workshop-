@@ -4,6 +4,31 @@ set -e
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="BobFWTools"
 EXEC_NAME="BobFWTools"
+
+# Dynamic --human flag detection: auto-enable on interactive TTY sessions
+HUMAN_MODE=false
+if [[ "$*" == *"--human"* ]] || ([[ -t 1 ]] && [[ -z "$CI" ]]); then
+    HUMAN_MODE=true
+fi
+
+if [ "$HUMAN_MODE" = true ]; then
+    C_CYAN="\033[1;36m"
+    C_GREEN="\033[1;32m"
+    C_YELLOW="\033[1;33m"
+    C_MAGENTA="\033[1;35m"
+    C_BOLD="\033[1m"
+    C_DIM="\033[2m"
+    C_RESET="\033[0m"
+else
+    C_CYAN=""
+    C_GREEN=""
+    C_YELLOW=""
+    C_MAGENTA=""
+    C_BOLD=""
+    C_DIM=""
+    C_RESET=""
+fi
+
 BUILD_ROOT="/tmp/BobFWTools_build"
 rm -rf "${BUILD_ROOT}"
 mkdir -p "${BUILD_ROOT}"
@@ -252,7 +277,16 @@ chmod 600 "${OWNER_DIST_DIR}/BobFWTools-Owner-Private-macOS.zip"
 killall "${APP_NAME}" 2>/dev/null || true
 sleep 1
 if rm -rf "/Applications/${APP_NAME}.app" 2>/dev/null && cp -R "${APP_BUNDLE}" "/Applications/${APP_NAME}.app" 2>/dev/null; then
-    echo "Installed update to /Applications/${APP_NAME}.app"
+    echo ""
+    echo "${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
+    echo "${C_BOLD} 🚀 PRIMARY AGENT HOST & OPERATOR RUNTIME: ${C_CYAN}/Applications/${APP_NAME}.app${C_RESET}"
+    echo "${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
+    echo "  ${C_BOLD}Status:${C_RESET}       ${C_GREEN}● INSTALLED & READY FOR IMMEDIATE USE${C_RESET}"
+    echo "  ${C_BOLD}Architecture:${C_RESET} Universal 2 (Native Apple Silicon arm64 + Intel x86_64)"
+    echo "  ${C_BOLD}Permissions:${C_RESET}  Hardened Runtime + Direct USB/Modem/Fastboot Access"
+    echo "  ${C_BOLD}Launch Now:${C_RESET}   ${C_CYAN}open /Applications/${APP_NAME}.app${C_RESET}"
+    echo "${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
+    echo ""
 else
     echo "Preserved local app in ${OWNER_DIST_DIR}/${APP_NAME}.app"
 fi
@@ -309,7 +343,11 @@ codesign --force --sign - --options runtime --entitlements "${ENTITLEMENTS_STORE
 cp -R "${STORE_BUNDLE}" "${STORE_DIST_DIR}/${APP_NAME}.app"
 ditto -c -k --sequesterRsrc --keepParent "${STORE_BUNDLE}" "${STORE_DIST_DIR}/BobFWTools-Store-Submission-macOS.zip"
 
-echo "Build complete:"
-echo "  1. Owner Private Installed App : /Applications/BobFWTools.app"
-echo "  2. Owner Private Standalone Zip: ${OWNER_DIST_DIR}/BobFWTools-Owner-Private-macOS.zip"
-echo "  3. Public Store Submission Zip : ${STORE_DIST_DIR}/BobFWTools-Store-Submission-macOS.zip"
+echo ""
+echo "${C_CYAN}══════════════════════════════════════════════════════════════════════${C_RESET}"
+echo "${C_BOLD}  BOBFWTOOLS STUDIO · BUILD & DEPLOYMENT SUMMARY${C_RESET}"
+echo "${C_CYAN}══════════════════════════════════════════════════════════════════════${C_RESET}"
+echo "  1. ${C_BOLD}Agent Host Target (Installed):${C_RESET} ${C_GREEN}/Applications/${APP_NAME}.app${C_RESET}"
+echo "  2. ${C_BOLD}Owner Private Standalone Zip :${C_RESET}  ${C_MAGENTA}${OWNER_DIST_DIR}/BobFWTools-Owner-Private-macOS.zip${C_RESET} ${C_DIM}(mode 600)${C_RESET}"
+echo "  3. ${C_BOLD}Public Store Submission Zip  :${C_RESET}  ${C_YELLOW}${STORE_DIST_DIR}/BobFWTools-Store-Submission-macOS.zip${C_RESET}"
+echo "${C_CYAN}══════════════════════════════════════════════════════════════════════${C_RESET}"
