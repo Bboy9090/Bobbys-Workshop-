@@ -1,6 +1,5 @@
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
-use std::process::Command;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -87,23 +86,6 @@ pub struct PhoneDiagnosticReport {
     pub evidence: Vec<DiagnosticEvidence>,
 }
 
-fn fastboot_devices() -> Vec<String> {
-    Command::new("fastboot")
-        .arg("devices")
-        .output()
-        .ok()
-        .filter(|out| out.status.success())
-        .map(|out| {
-            String::from_utf8_lossy(&out.stdout)
-                .lines()
-                .filter_map(|line| line.split_whitespace().next())
-                .filter(|serial| !serial.is_empty())
-                .map(|serial| serial.to_string())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 fn summarize_battery(text: &str) -> Option<String> {
     let mut values = BTreeMap::new();
     for line in text.lines() {
@@ -141,7 +123,7 @@ pub async fn diagnose_phone() -> Result<PhoneDiagnosticReport, String> {
     let usb = bootforgeusb::scan().map_err(|e| format!("USB scan failed: {e}"))?;
     let adb = crate::adb_workflows::adb_scan_observed_sync().unwrap_or_default();
     let mtp = crate::mtp_backend::mtp_status().await.ok();
-    let fastboot = fastboot_devices();
+    let fastboot = crate::mode_control::fastboot_devices_observed().await.unwrap_or_default();
 
     let authorized: Vec<_> = adb.iter().filter(|d| d.authorized).collect();
     let selected = authorized.first().map(|d| d.serial.clone());
@@ -508,7 +490,7 @@ pub async fn usb_cable_doctor(target_device_uid: Option<String>) -> Result<Cable
         adb[0].state.clone()
     };
     let mtp_connected = crate::mtp_backend::mtp_status().await.is_ok();
-    let fastboot_present = !fastboot_devices().is_empty();
+    let fastboot_present = crate::mode_control::fastboot_devices_observed().await.map(|devices| !devices.is_empty()).unwrap_or(false);
 
     evidence.push(DiagnosticEvidence {
         source: "transport-cross-check".to_string(),
