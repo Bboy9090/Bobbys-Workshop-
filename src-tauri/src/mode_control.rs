@@ -1,5 +1,9 @@
 use serde::Serialize;
 use std::process::{Command, Output};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
+use std::time::{Duration, Instant};
+use tokio::sync::{Mutex as AsyncMutex, Notify};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -48,6 +52,123 @@ fn fastboot_devices_internal() -> Result<Vec<String>, String> {
         .filter(|serial| !serial.is_empty())
         .map(ToString::to_string)
         .collect())
+}
+
+
+const FASTBOOT_OBSERVATION_TTL: Duration = Duration::from_millis(600);
+static FASTBOOT_OBSERVATION_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Debug)]
+struct FastbootObservationState {
+    running: bool,
+    result_generation: u64,
+    completed_at: Option<Instant>,
+    result: Option<Result<Vec<String>, String>>,
+    notify: Arc<Notify>,
+}
+
+impl Default for FastbootObservationState {
+    fn default() -> Self {
+        Self {
+            running: false,
+            result_generation: 0,
+            completed_at: None,
+            result: None,
+            notify: Arc::new(Notify::new()),
+        }
+    }
+}
+
+struct FastbootObservationCoordinator {
+    state: AsyncMutex<FastbootObservationState>,
+}
+
+static FASTBOOT_OBSERVATION_COORDINATOR: OnceLock<FastbootObservationCoordinator> = OnceLock::new();
+
+fn fastboot_observation_coordinator() -> &'static FastbootObservationCoordinator {
+    FASTBOOT_OBSERVATION_COORDINATOR.get_or_init(|| FastbootObservationCoordinator {
+        state: AsyncMutex::new(FastbootObservationState::default()),
+    })
+}
+
+fn current_fastboot_observation_generation() -> u64 {
+    FASTBOOT_OBSERVATION_GENERATION.load(Ordering::SeqCst)
+}
+
+fn invalidate_fastboot_observation() {
+    FASTBOOT_OBSERVATION_GENERATION.fetch_add(1, Ordering::SeqCst);
+}
+
+async fn coalesced_fastboot_devices() -> Result<Vec<String>, String> {
+    let coordinator = fastboot_observation_coordinator();
+
+    loop {
+        let generation = current_fastboot_observation_generation();
+        let mut state = coordinator.state.lock().await;
+
+        if state.result_generation == generation {
+            if let (Some(completed_at), Some(result)) = (state.completed_at, state.result.as_ref()) {
+                if Instant::now().saturating_duration_since(completed_at) <= FASTBOOT_OBSERVATION_TTL {
+                    return result.clone();
+                }
+            }
+        }
+
+        if state.running {
+            let notify = state.notify.clone();
+            let notified = notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            drop(state);
+            notified.await;
+            continue;
+        }
+
+        state.running = true;
+        state.result = None;
+        state.completed_at = None;
+        drop(state);
+
+        let producer_generation = generation;
+        let result = match crate::observation_scheduler::acquire_observation_permit().await {
+            Ok(permit) => {
+                let worker = tauri::async_runtime::spawn_blocking(fastboot_devices_internal)
+                    .await
+                    .map_err(|error| format!("Fastboot observation worker failed: {error}"));
+                drop(permit);
+                match worker {
+                    Ok(result) => result,
+                    Err(error) => Err(error),
+                }
+            }
+            Err(error) => Err(error),
+        };
+
+        let mut state = coordinator.state.lock().await;
+        state.running = false;
+
+        if current_fastboot_observation_generation() == producer_generation {
+            state.result_generation = producer_generation;
+            state.completed_at = Some(Instant::now());
+            state.result = Some(result.clone());
+        } else {
+            state.completed_at = None;
+            state.result = None;
+        }
+
+        state.notify.notify_waiters();
+        drop(state);
+
+        if current_fastboot_observation_generation() != producer_generation {
+            continue;
+        }
+
+        return result;
+    }
+}
+
+pub(crate) async fn fastboot_devices_observed() -> Result<Vec<String>, String> {
+    coalesced_fastboot_devices().await
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -301,8 +422,8 @@ fn require_exact_fastboot_target(serial: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn fastboot_mode_devices() -> Result<Vec<String>, String> {
-    fastboot_devices_internal()
+pub async fn fastboot_mode_devices() -> Result<Vec<String>, String> {
+    fastboot_devices_observed().await
 }
 
 #[tauri::command]
@@ -331,6 +452,7 @@ pub fn fastboot_reboot_mode(
     };
 
     require_success(run_fastboot(&args)?, &format!("fastboot reboot {normalized}"))?;
+    invalidate_fastboot_observation();
 
     Ok(FastbootModeActionResult {
         serial,
@@ -345,6 +467,53 @@ pub fn fastboot_reboot_mode(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fastboot_observation_uses_shared_bounded_scheduler() {
+        assert_eq!(crate::observation_scheduler::MAX_OBSERVATION_WORKERS, 2);
+    }
+
+    #[test]
+    fn execution_authorization_uses_fresh_fastboot_scan() {
+        let source = include_str!("mode_control.rs");
+        let require_exact = source
+            .split("fn require_exact_fastboot_target")
+            .nth(1)
+            .and_then(|rest| rest.split("#[tauri::command]").next())
+            .unwrap_or_default();
+        assert!(require_exact.contains("fastboot_devices_internal()?"));
+        assert!(!require_exact.contains("coalesced_fastboot_devices"));
+    }
+
+    #[test]
+    fn transition_verification_uses_fresh_fastboot_scan() {
+        let source = include_str!("mode_control.rs");
+        let verify = source
+            .split("pub fn mode_transition_verify")
+            .nth(1)
+            .and_then(|rest| rest.split("fn require_exact_fastboot_target").next())
+            .unwrap_or_default();
+        assert!(verify.contains("fastboot_devices_internal().unwrap_or_default()"));
+        assert!(!verify.contains("fastboot_devices_observed"));
+    }
+
+    #[test]
+    fn fastboot_ui_scan_is_async_and_coalesced() {
+        let source = include_str!("mode_control.rs");
+        assert!(source.contains("pub async fn fastboot_mode_devices()"));
+        assert!(source.contains("fastboot_devices_observed().await"));
+        assert!(source.contains("spawn_blocking(fastboot_devices_internal)"));
+    }
+
+    #[test]
+    fn fastboot_reboot_invalidates_observation_generation() {
+        let source = include_str!("mode_control.rs");
+        let reboot = source
+            .split("pub fn fastboot_reboot_mode")
+            .nth(1)
+            .unwrap_or_default();
+        assert!(reboot.contains("invalidate_fastboot_observation()"));
+    }
 
     #[test]
     fn download_is_not_exposed_as_generic_fastboot_transition() {
