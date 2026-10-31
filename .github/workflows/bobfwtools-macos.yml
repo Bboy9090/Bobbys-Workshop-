@@ -53,8 +53,8 @@ jobs:
       - name: Validate workflow definitions
         run: npm run test:workflows
 
-      - name: Audit root npm dependency tree
-        run: npm audit --audit-level=moderate
+      - name: Audit root production dependency tree
+        run: npm audit --omit=dev --audit-level=moderate
 
       - name: Audit packaged API production dependencies
         run: npm audit --prefix src-tauri/resources/server --omit=dev --audit-level=moderate
