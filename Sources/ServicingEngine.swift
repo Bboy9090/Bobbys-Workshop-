@@ -1139,6 +1139,8 @@ final class ServicingEngine: ObservableObject {
     @Published var activeCustomerId: String = "WALK_IN_DEFAULT"
     @Published var autoCommitIntakeOnScan: Bool = true
     @Published var logcatSubsystem = LiveLogcatStreamSubsystem()
+    @Published var debloatEngine: AutomatedDebloatEngine?
+    @Published var siphonEngine: AppSideloadSiphonEngine?
     private var lastAutoCommittedSignature: String = ""
     private var hotplugMonitorTimer: Timer?
 
@@ -1281,6 +1283,8 @@ final class ServicingEngine: ObservableObject {
         self.nativeUsbNotifier = notifier
         log(.info, "Native macOS IOKit USB Hotplug Notification Engine armed (kIOMainPortDefault).")
 #endif
+        self.debloatEngine = AutomatedDebloatEngine(engine: self)
+        self.siphonEngine = AppSideloadSiphonEngine(engine: self)
         startWorkbenchDisconnectMonitor()
         Task {
             await refreshDevicesAndTelemetry()
@@ -3688,5 +3692,283 @@ final class LiveLogcatStreamSubsystem: ObservableObject {
 
         try? report.write(to: url, atomically: true, encoding: .utf8)
         return url
+    }
+}
+
+// MARK: - Automated JSON Debloat Registry Subsystem
+
+enum BloatCategory: String, Codable, CaseIterable {
+    case carrier    = "Carrier Bloatware"
+    case vendor     = "OEM / Vendor Services"
+    case telemetry  = "Analytics & Telemetry"
+    case social     = "Pre-installed Social/Media"
+}
+
+struct DebloatPackage: Identifiable, Codable, Hashable {
+    var id: String { packageId }
+    let packageId: String
+    let readableLabel: String
+    let category: BloatCategory
+    let performanceImpact: String
+    var isInstalled: Bool = true
+}
+
+@MainActor
+final class AutomatedDebloatEngine: ObservableObject {
+    private let engine: ServicingEngine
+    @Published var registry: [DebloatPackage] = []
+    @Published var selectedIds: Set<String> = []
+    @Published var statusMessage: String = "Ready"
+    @Published var progress: Double = 0.0
+
+    private var registryFileURL: URL {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("BobFWTools", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("debloat_registry.json")
+    }
+
+    init(engine: ServicingEngine) {
+        self.engine = engine
+        loadRegistry()
+    }
+
+    func loadRegistry() {
+        if let data = try? Data(contentsOf: registryFileURL),
+           let decoded = try? JSONDecoder().decode([DebloatPackage].self, from: data),
+           !decoded.isEmpty {
+            self.registry = decoded
+        } else {
+            self.registry = defaultRegistry()
+            saveRegistry()
+        }
+        self.selectedIds = Set(self.registry.map { $0.packageId })
+    }
+
+    func saveRegistry() {
+        if let data = try? JSONEncoder().encode(registry) {
+            try? data.write(to: registryFileURL)
+        }
+    }
+
+    private func defaultRegistry() -> [DebloatPackage] {
+        [
+            DebloatPackage(packageId: "com.sec.android.app.billing", readableLabel: "Samsung Checkout / Billing", category: .vendor, performanceImpact: "Background RAM & WakeLocks"),
+            DebloatPackage(packageId: "com.wssyncmldm", readableLabel: "Samsung Device Management OTA", category: .telemetry, performanceImpact: "High CPU & Network Drain"),
+            DebloatPackage(packageId: "com.sec.android.soagent", readableLabel: "Samsung System Update Agent", category: .telemetry, performanceImpact: "Periodic WakeLocks"),
+            DebloatPackage(packageId: "com.facebook.system", readableLabel: "Facebook App Installer", category: .carrier, performanceImpact: "Background Telemetry"),
+            DebloatPackage(packageId: "com.facebook.appmanager", readableLabel: "Facebook App Manager", category: .carrier, performanceImpact: "Silent Background Upgrades"),
+            DebloatPackage(packageId: "com.facebook.services", readableLabel: "Facebook Services Stub", category: .carrier, performanceImpact: "Persistent Service Drain"),
+            DebloatPackage(packageId: "com.samsung.android.app.spage", readableLabel: "Samsung Free / Bixby Home", category: .vendor, performanceImpact: "Launcher Lag & RAM Consumption"),
+            DebloatPackage(packageId: "com.microsoft.skydrive", readableLabel: "Microsoft OneDrive Preload", category: .vendor, performanceImpact: "Cloud Sync Background Drain"),
+            DebloatPackage(packageId: "com.netflix.partner.activation", readableLabel: "Netflix Partner Activation", category: .vendor, performanceImpact: "Partner Telemetry"),
+            DebloatPackage(packageId: "com.samsung.android.bixby.agent", readableLabel: "Bixby Voice & Wakeup Agent", category: .vendor, performanceImpact: "Continuous Audio Listener RAM"),
+            DebloatPackage(packageId: "com.samsung.android.game.gamehome", readableLabel: "Samsung Gaming Hub", category: .vendor, performanceImpact: "Game Optimization Telemetry"),
+            DebloatPackage(packageId: "com.aura.oobe.samsung", readableLabel: "IronSource Aura Out-Of-Box Adware", category: .carrier, performanceImpact: "Ad Injection & High Battery Drain")
+        ]
+    }
+
+    func scanInstalledState() async {
+        guard engine.devices.contains(where: { $0.transport == .adb }) else {
+            statusMessage = "Target must be connected with ADB authorized."
+            return
+        }
+        statusMessage = "Scanning active installed packages on target..."
+        let adbPath = engine.toolPaths["adb"] ?? "/usr/local/bin/adb"
+        let res = await engine.runProcess(
+            executable: adbPath,
+            arguments: engine.adbArgs(["shell", "pm", "list", "packages", "-u"]),
+            logCommand: false
+        )
+        let installedLines = res.stdout.components(separatedBy: .newlines)
+            .map { $0.replacingOccurrences(of: "package:", with: "").trimmingCharacters(in: .whitespacesAndNewlines) }
+        let installedSet = Set(installedLines)
+
+        for i in 0..<registry.count {
+            registry[i].isInstalled = installedSet.contains(registry[i].packageId)
+        }
+        statusMessage = "Scan complete: Found \(registry.filter { $0.isInstalled }.count) of \(registry.count) bloat packages on target."
+    }
+
+    func uninstallSelected() async {
+        let targets = registry.filter { selectedIds.contains($0.packageId) && $0.isInstalled }
+        guard !targets.isEmpty else {
+            statusMessage = "No installed bloat packages selected."
+            return
+        }
+        let adbPath = engine.toolPaths["adb"] ?? "/usr/local/bin/adb"
+        var count = 0
+        let total = Double(targets.count)
+
+        for (idx, pkg) in targets.enumerated() {
+            progress = Double(idx) / total
+            statusMessage = "Uninstalling (\(idx + 1)/\(targets.count)): \(pkg.readableLabel)..."
+            let res = await engine.runProcess(
+                executable: adbPath,
+                arguments: engine.adbArgs(["shell", "pm", "uninstall", "-k", "--user", "0", pkg.packageId]),
+                logCommand: true
+            )
+            if res.stdout.contains("Success") {
+                count += 1
+                if let idxInReg = registry.firstIndex(where: { $0.packageId == pkg.packageId }) {
+                    registry[idxInReg].isInstalled = false
+                }
+            }
+        }
+        progress = 1.0
+        statusMessage = "✔ Successfully optimized device. Stripped \(count) bloat packages."
+        engine.log(.success, "✔ Debloat completed: \(count) packages removed for user 0.")
+        engine.recordJob(
+            workflowId: "adb.debloat_batch",
+            title: "Automated Device Debloat (\(count) packages)",
+            verified: count > 0,
+            summary: "Stripped \(count) carrier/OEM bloat packages for profile 0",
+            evidence: targets.map { $0.packageId }
+        )
+    }
+
+    func restorePackage(_ packageId: String) async {
+        let adbPath = engine.toolPaths["adb"] ?? "/usr/local/bin/adb"
+        statusMessage = "Restoring \(packageId)..."
+        let res = await engine.runProcess(
+            executable: adbPath,
+            arguments: engine.adbArgs(["shell", "cmd", "package", "install-existing", packageId]),
+            logCommand: true
+        )
+        if res.stdout.contains("installed") || res.exitCode == 0 {
+            if let idxInReg = registry.firstIndex(where: { $0.packageId == packageId }) {
+                registry[idxInReg].isInstalled = true
+            }
+            statusMessage = "✔ Restored \(packageId)"
+            engine.log(.success, "✔ Restored package \(packageId) to current user profile.")
+        } else {
+            statusMessage = "✖ Failed to restore \(packageId): \(res.stderr)"
+            engine.log(.error, "✖ Restore error for \(packageId): \(res.stderr)")
+        }
+    }
+}
+
+// MARK: - Bulk App Sideload Siphon (Folder-Watcher & Batch Deployer)
+
+struct SideloadJob: Identifiable, Hashable {
+    let id = UUID()
+    let fileURL: URL
+    var fileName: String { fileURL.lastPathComponent }
+    var status: String
+    var progress: Double
+    var errorMessage: String?
+}
+
+@MainActor
+final class AppSideloadSiphonEngine: ObservableObject {
+    private let engine: ServicingEngine
+    @Published var watchedDirectory: URL?
+    @Published var deploymentQueue: [SideloadJob] = []
+    @Published var isProcessing: Bool = false
+    @Published var statusSummary: String = "Select a folder to begin siphon deployment"
+    @Published var currentProgress: Double = 0.0
+
+    private var directorySource: DispatchSourceFileSystemObject?
+    private var dirFileDescriptor: Int32 = -1
+
+    init(engine: ServicingEngine) {
+        self.engine = engine
+        let defaultDrop = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("BobFWTools_SiphonDrop", isDirectory: true)
+        try? FileManager.default.createDirectory(at: defaultDrop, withIntermediateDirectories: true)
+        setWatchedDirectory(defaultDrop)
+    }
+
+    func setWatchedDirectory(_ url: URL) {
+        stopWatcher()
+        self.watchedDirectory = url
+        scanDirectory()
+        startWatcher(url: url)
+    }
+
+    func scanDirectory() {
+        guard let dir = watchedDirectory else { return }
+        let fileURLs = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        let apkFiles = fileURLs.filter { $0.pathExtension.lowercased() == "apk" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+
+        var newQueue: [SideloadJob] = []
+        for apk in apkFiles {
+            if let existing = deploymentQueue.first(where: { $0.fileURL.path == apk.path }) {
+                newQueue.append(existing)
+            } else {
+                newQueue.append(SideloadJob(fileURL: apk, status: "Pending", progress: 0.0, errorMessage: nil))
+            }
+        }
+        self.deploymentQueue = newQueue
+        self.statusSummary = "\(apkFiles.count) APK(s) found in \(dir.lastPathComponent)"
+    }
+
+    private func startWatcher(url: URL) {
+        let fd = open(url.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        self.dirFileDescriptor = fd
+
+        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .link, .rename], queue: DispatchQueue.global(qos: .utility))
+        source.setEventHandler { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.scanDirectory()
+            }
+        }
+        source.setCancelHandler {
+            close(fd)
+        }
+        source.resume()
+        self.directorySource = source
+    }
+
+    private func stopWatcher() {
+        directorySource?.cancel()
+        directorySource = nil
+        if dirFileDescriptor >= 0 {
+            close(dirFileDescriptor)
+            dirFileDescriptor = -1
+        }
+    }
+
+    func executeBulkSideload() async {
+        guard !deploymentQueue.isEmpty else { return }
+        let pending = deploymentQueue.indices.filter { deploymentQueue[$0].status != "Deployed" }
+        guard !pending.isEmpty else {
+            statusSummary = "All APKs already deployed."
+            return
+        }
+
+        isProcessing = true
+        defer { isProcessing = false }
+
+        var successCount = 0
+        let total = Double(pending.count)
+
+        for (stepIdx, idx) in pending.enumerated() {
+            let job = deploymentQueue[idx]
+            currentProgress = Double(stepIdx) / total
+            deploymentQueue[idx].status = "Installing"
+            deploymentQueue[idx].progress = 0.5
+            statusSummary = "Installing (\(stepIdx + 1)/\(pending.count)): \(job.fileName)..."
+
+            do {
+                _ = try await engine.deployApk(url: job.fileURL)
+                deploymentQueue[idx].status = "Deployed"
+                deploymentQueue[idx].progress = 1.0
+                successCount += 1
+            } catch {
+                deploymentQueue[idx].status = "Failed"
+                deploymentQueue[idx].errorMessage = error.localizedDescription
+                deploymentQueue[idx].progress = 1.0
+            }
+        }
+
+        currentProgress = 1.0
+        statusSummary = "🎉 Deployed \(successCount) of \(pending.count) APKs."
+        engine.log(.success, "✔ Bulk Siphon finished: \(successCount) of \(pending.count) packages installed successfully.")
+    }
+
+    deinit {
+        directorySource?.cancel()
     }
 }

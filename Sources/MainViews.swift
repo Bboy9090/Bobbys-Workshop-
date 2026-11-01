@@ -2958,8 +2958,8 @@ struct DeveloperWorkbenchView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             ModuleHeader(
-                title: "Developer Workbench & Live Logcat Stream",
-                subtitle: "Real-time logcat streaming with regex filtering, ABI-verified APK sideloading, and 1-click locale configuration"
+                title: "Developer Workbench & Live Staging Suite",
+                subtitle: "Automated JSON debloat management, bulk APK sideload siphon, live regex-filtered logcat streaming, and locale stager"
             )
 
             // Section 1: 1-Click System Locale Staging Engine
@@ -2994,8 +2994,204 @@ struct DeveloperWorkbenchView: View {
                 .padding(8)
             }
 
-            // Section 2: APK Sideloading with Real Target ABI Verification
-            GroupBox(label: Label("Diagnostic APK Deployment Bench (ABI Verified)", systemImage: "arrow.down.doc.fill")) {
+            // Section 2: Automated JSON Debloat Registry Manager
+            if let debloat = engine.debloatEngine {
+                GroupBox(label: Label("Automated JSON Debloat Registry Manager (Reversible)", systemImage: "trash.circle.fill")) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Strip carrier and OEM background bloatware for User 0 with 1-click restore:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(debloat.statusMessage)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+
+                        if debloat.progress > 0 && debloat.progress < 1.0 {
+                            ProgressView(value: debloat.progress)
+                                .padding(.vertical, 2)
+                        }
+
+                        // Category filtered package list
+                        ScrollView {
+                            VStack(spacing: 4) {
+                                ForEach(debloat.registry) { pkg in
+                                    HStack(spacing: 8) {
+                                        Toggle(isOn: Binding(
+                                            get: { debloat.selectedIds.contains(pkg.packageId) },
+                                            set: { isSel in
+                                                if isSel { debloat.selectedIds.insert(pkg.packageId) }
+                                                else { debloat.selectedIds.remove(pkg.packageId) }
+                                            }
+                                        )) {
+                                            HStack(spacing: 6) {
+                                                Text(pkg.readableLabel)
+                                                    .font(.system(size: 12, weight: .semibold))
+                                                Text("(\(pkg.packageId))")
+                                                    .font(.system(size: 10.5, design: .monospaced))
+                                                    .foregroundColor(.secondary)
+                                            }
+                                        }
+
+                                        Spacer()
+
+                                        Text(pkg.category.rawValue)
+                                            .font(.system(size: 9.5, design: .monospaced))
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1)
+                                            .background(RoundedRectangle(cornerRadius: 3).fill(Color.blue.opacity(0.12)))
+                                            .foregroundColor(.blue)
+
+                                        Text(pkg.performanceImpact)
+                                            .font(.system(size: 9.5, design: .monospaced))
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1)
+                                            .background(RoundedRectangle(cornerRadius: 3).fill(Color.orange.opacity(0.12)))
+                                            .foregroundColor(.orange)
+
+                                        if pkg.isInstalled {
+                                            Text("INSTALLED")
+                                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                                .foregroundColor(.green)
+                                        } else {
+                                            Button("Restore") {
+                                                Task { await debloat.restorePackage(pkg.packageId) }
+                                            }
+                                            .controlSize(.mini)
+                                        }
+                                    }
+                                    .padding(.vertical, 3)
+                                    .padding(.horizontal, 6)
+                                    .background(RoundedRectangle(cornerRadius: 4).fill(Color(NSColor.controlBackgroundColor)))
+                                }
+                            }
+                        }
+                        .frame(height: 180)
+
+                        HStack(spacing: 10) {
+                            Button("Scan Installed Bloat") {
+                                Task { await debloat.scanInstalledState() }
+                            }
+                            .disabled(!engine.devices.contains { $0.transport == .adb })
+
+                            Button {
+                                Task { await debloat.uninstallSelected() }
+                            } label: {
+                                Label("Run 1-Click Debloat (Strip Selected)", systemImage: "sparkles")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!engine.devices.contains { $0.transport == .adb } || debloat.selectedIds.isEmpty)
+
+                            Spacer()
+
+                            Button("Select All") {
+                                debloat.selectedIds = Set(debloat.registry.map { $0.packageId })
+                            }
+                            .controlSize(.small)
+
+                            Button("Deselect All") {
+                                debloat.selectedIds.removeAll()
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                    .padding(8)
+                }
+            }
+
+            // Section 3: 1-Click Bulk App Sideload Siphon (Watched Folder)
+            if let siphon = engine.siphonEngine {
+                GroupBox(label: Label("1-Click Bulk App Sideload Siphon (Watched Directory)", systemImage: "tray.and.arrow.down.fill")) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 10) {
+                            Text("Watched Folder:")
+                                .font(.caption.weight(.semibold))
+                            Text(siphon.watchedDirectory?.path ?? "None")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+
+                            Spacer()
+
+                            Button("Choose Folder...") {
+                                if let chosen = pickDirectory() {
+                                    siphon.setWatchedDirectory(URL(fileURLWithPath: chosen))
+                                }
+                            }
+
+                            if let dir = siphon.watchedDirectory {
+                                Button("Open in Finder") {
+                                    NSWorkspace.shared.open(dir)
+                                }
+                            }
+                        }
+
+                        if siphon.isProcessing {
+                            ProgressView(value: siphon.currentProgress)
+                        }
+
+                        // Queued APKs
+                        ScrollView {
+                            VStack(spacing: 4) {
+                                if siphon.deploymentQueue.isEmpty {
+                                    Text("No .apk installers found. Drop APK files into this folder to auto-populate the siphon queue.")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .padding(.vertical, 20)
+                                } else {
+                                    ForEach(siphon.deploymentQueue) { job in
+                                        HStack {
+                                            Image(systemName: "shippingbox.fill")
+                                                .foregroundColor(.blue)
+                                            Text(job.fileName)
+                                                .font(.system(size: 11.5, design: .monospaced))
+                                            Spacer()
+                                            if let err = job.errorMessage {
+                                                Text(err)
+                                                    .font(.system(size: 10))
+                                                    .foregroundColor(.red)
+                                                    .lineLimit(1)
+                                            }
+                                            Text(job.status.uppercased())
+                                                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                                                .foregroundColor(statusColor(job.status))
+                                        }
+                                        .padding(.vertical, 3)
+                                        .padding(.horizontal, 6)
+                                        .background(RoundedRectangle(cornerRadius: 4).fill(Color(NSColor.controlBackgroundColor)))
+                                    }
+                                }
+                            }
+                        }
+                        .frame(height: 140)
+
+                        HStack(spacing: 12) {
+                            Button {
+                                Task { await siphon.executeBulkSideload() }
+                            } label: {
+                                Label("Deploy Siphon Queue (\(siphon.deploymentQueue.count) APKs)", systemImage: "arrow.down.circle.fill")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(siphon.deploymentQueue.isEmpty || siphon.isProcessing || !engine.devices.contains { $0.transport == .adb })
+
+                            Button("Rescan Folder") {
+                                siphon.scanDirectory()
+                            }
+
+                            Spacer()
+
+                            Text(siphon.statusSummary)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(8)
+                }
+            }
+
+            // Section 4: Single Diagnostic APK Sideloading (ABI Verified)
+            GroupBox(label: Label("Single APK Deployment Bench (ABI Verified)", systemImage: "arrow.down.doc.fill")) {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 10) {
                         TextField("Path to .apk file...", text: $selectedApkPath)
@@ -3027,7 +3223,7 @@ struct DeveloperWorkbenchView: View {
                 .padding(8)
             }
 
-            // Section 3: Live Regex-Filtered Logcat Stream Subsystem
+            // Section 5: Live Regex-Filtered Logcat Stream Subsystem
             GroupBox(label: Label("Live Device Logcat Stream Subsystem (adb logcat -v time)", systemImage: "waveform.path.ecg")) {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 10) {
@@ -3100,7 +3296,7 @@ struct DeveloperWorkbenchView: View {
                             }
                             .padding(8)
                         }
-                        .frame(height: 260)
+                        .frame(height: 220)
                         .background(Color(NSColor.textBackgroundColor))
                         .cornerRadius(6)
                         .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.2), lineWidth: 1))
@@ -3113,6 +3309,15 @@ struct DeveloperWorkbenchView: View {
                 }
                 .padding(8)
             }
+        }
+    }
+
+    private func statusColor(_ status: String) -> Color {
+        switch status {
+        case "Deployed": return .green
+        case "Installing": return .blue
+        case "Failed": return .red
+        default: return .secondary
         }
     }
 
