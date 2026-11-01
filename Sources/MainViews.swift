@@ -12,6 +12,7 @@ enum StudioModule: String, CaseIterable, Identifiable {
     case samsung = "Samsung Servicing & Odin"
     case multiBrandRecovery = "MTK / SPD / EDL & Multi-Brand"
     case fastboot = "Fastboot & Partitions"
+    case developerWorkbench = "Developer Workbench & Logcat"
     case firmware = "Firmware & Inventory Ledger"
     case apple = "Apple / iDevice Recovery"
     case jobsAndBridge = "Audit Jobs, Notes & VM Bridge"
@@ -25,6 +26,7 @@ enum StudioModule: String, CaseIterable, Identifiable {
         case .samsung: return "cpu.fill"
         case .multiBrandRecovery: return "wrench.and.screwdriver.fill"
         case .fastboot: return "bolt.horizontal.circle.fill"
+        case .developerWorkbench: return "terminal.fill"
         case .firmware: return "shippingbox.fill"
         case .apple: return "iphone"
         case .jobsAndBridge: return "checkmark.shield.fill"
@@ -61,6 +63,7 @@ struct MainStudioView: View {
                                 case .samsung: return engine.activePlatform == .samsung
                                 case .apple: return engine.activePlatform == .appleIos
                                 case .fastboot, .multiBrandRecovery: return engine.activePlatform == .genericAndroid
+                                case .developerWorkbench: return engine.activePlatform == .genericAndroid || engine.activePlatform == .samsung
                                 default: return true
                                 }
                             }()
@@ -136,6 +139,8 @@ struct MainStudioView: View {
                                 MultiBrandRecoveryView(engine: engine)
                             case .fastboot:
                                 FastbootWorkshopView(engine: engine)
+                            case .developerWorkbench:
+                                DeveloperWorkbenchView(engine: engine)
                             case .firmware:
                                 FirmwareInspectorView(engine: engine)
                             case .apple:
@@ -2926,4 +2931,219 @@ func pickDirectory() -> String? {
     panel.canChooseDirectories = true
     panel.allowsMultipleSelection = false
     return panel.runModal() == .OK ? panel.url?.path : nil
+}
+
+// MARK: - Developer Utility Workbench & Live Logcat View
+
+struct DeveloperWorkbenchView: View {
+    @ObservedObject var engine: ServicingEngine
+    @State private var selectedApkPath: String = ""
+    @State private var deploymentStatus: String = "Idle"
+    @State private var searchPattern: String = ""
+    @State private var selectedLocale: String = "en-US"
+
+    let commonLocales = [
+        ("en-US", "English (United States)"),
+        ("es-US", "Spanish (Estados Unidos)"),
+        ("fr-FR", "French (France)"),
+        ("de-DE", "German (Deutschland)"),
+        ("ar-SA", "Arabic (العربية)"),
+        ("zh-CN", "Chinese Simplified (简体中文)"),
+        ("ja-JP", "Japanese (日本語)"),
+        ("ko-KR", "Korean (한국어)"),
+        ("pt-BR", "Portuguese (Brasil)"),
+        ("ru-RU", "Russian (Русский)")
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ModuleHeader(
+                title: "Developer Workbench & Live Logcat Stream",
+                subtitle: "Real-time logcat streaming with regex filtering, ABI-verified APK sideloading, and 1-click locale configuration"
+            )
+
+            // Section 1: 1-Click System Locale Staging Engine
+            GroupBox(label: Label("System Localization & Locale Stager (Authorized ADB)", systemImage: "globe")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Stage device language and system locales without wiping or navigating Settings menus:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    HStack(spacing: 12) {
+                        Picker("Select Locale:", selection: $selectedLocale) {
+                            ForEach(commonLocales, id: \.0) { loc in
+                                Text("\(loc.1) [\(loc.0)]").tag(loc.0)
+                            }
+                        }
+                        .frame(width: 320)
+
+                        Button("Apply System Locale") {
+                            Task {
+                                let (ok, msg) = await engine.setDeviceLocale(selectedLocale)
+                                if ok {
+                                    engine.log(.success, "✔ Applied locale: \(selectedLocale)")
+                                } else {
+                                    engine.log(.error, "✖ Failed to apply locale: \(msg)")
+                                }
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!engine.devices.contains { $0.transport == .adb })
+                    }
+                }
+                .padding(8)
+            }
+
+            // Section 2: APK Sideloading with Real Target ABI Verification
+            GroupBox(label: Label("Diagnostic APK Deployment Bench (ABI Verified)", systemImage: "arrow.down.doc.fill")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        TextField("Path to .apk file...", text: $selectedApkPath)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 12, design: .monospaced))
+
+                        Button("Choose APK...") {
+                            if let path = pickFile(allowedExtensions: ["apk"]) {
+                                selectedApkPath = path
+                            }
+                        }
+
+                        Button {
+                            deploySelectedApk()
+                        } label: {
+                            Label("Deploy APK", systemImage: "bolt.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(selectedApkPath.isEmpty || engine.isBusy)
+                    }
+
+                    HStack {
+                        Text("Status: \(deploymentStatus)")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+                }
+                .padding(8)
+            }
+
+            // Section 3: Live Regex-Filtered Logcat Stream Subsystem
+            GroupBox(label: Label("Live Device Logcat Stream Subsystem (adb logcat -v time)", systemImage: "waveform.path.ecg")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        if engine.logcatSubsystem.isStreaming {
+                            Button("Stop Logcat Stream") {
+                                engine.logcatSubsystem.stop()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.red)
+                        } else {
+                            Button("Start Live Logcat Stream") {
+                                startLogcat()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!engine.devices.contains { $0.transport == .adb })
+                        }
+
+                        Button("Clear") {
+                            engine.logcatSubsystem.clear()
+                        }
+
+                        Button("Export Logcat Report...") {
+                            let target = engine.samsungModemInfo?.model ?? engine.selectedDevice?.name ?? "Unknown Target"
+                            if let exportedUrl = engine.logcatSubsystem.exportReport(targetInfo: target) {
+                                engine.log(.success, "Exported logcat report to \(exportedUrl.path)")
+                            }
+                        }
+                        .disabled(engine.logcatSubsystem.filteredEntries.isEmpty)
+
+                        Spacer()
+
+                        Text("\(engine.logcatSubsystem.filteredEntries.count) events captured")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+
+                    HStack {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                            .foregroundColor(.secondary)
+                        TextField("Live regex filter (e.g. fatal|crash|anr|exception|activity)...", text: $searchPattern)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11.5, design: .monospaced))
+                            .onChange(of: searchPattern) { _, newVal in
+                                engine.logcatSubsystem.applyFilter(newVal)
+                            }
+                    }
+
+                    // Logcat Stream Viewport
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 3) {
+                                ForEach(engine.logcatSubsystem.filteredEntries) { entry in
+                                    HStack(alignment: .top, spacing: 6) {
+                                        Text(entry.timestamp)
+                                            .font(.system(size: 10, design: .monospaced))
+                                            .foregroundColor(.secondary)
+                                        Text("[\(entry.logLevel)]")
+                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                            .foregroundColor(colorForLevel(entry.logLevel))
+                                        Text("\(entry.tag):")
+                                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                            .foregroundColor(.blue)
+                                        Text(entry.message)
+                                            .font(.system(size: 10.5, design: .monospaced))
+                                            .foregroundColor(.primary)
+                                            .textSelection(.enabled)
+                                    }
+                                    .id(entry.id)
+                                }
+                            }
+                            .padding(8)
+                        }
+                        .frame(height: 260)
+                        .background(Color(NSColor.textBackgroundColor))
+                        .cornerRadius(6)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+                        .onChange(of: engine.logcatSubsystem.filteredEntries.count) { _, _ in
+                            if let last = engine.logcatSubsystem.filteredEntries.last {
+                                proxy.scrollTo(last.id, anchor: .bottom)
+                            }
+                        }
+                    }
+                }
+                .padding(8)
+            }
+        }
+    }
+
+    private func colorForLevel(_ level: String) -> Color {
+        switch level {
+        case "E", "F": return .red
+        case "W": return .orange
+        case "D": return .green
+        default: return .secondary
+        }
+    }
+
+    private func deploySelectedApk() {
+        guard !selectedApkPath.isEmpty else { return }
+        deploymentStatus = "Verifying target CPU ABI..."
+        Task {
+            do {
+                let url = URL(fileURLWithPath: selectedApkPath)
+                let msg = try await engine.deployApk(url: url)
+                deploymentStatus = "✔ \(msg)"
+            } catch {
+                deploymentStatus = "✖ \(error.localizedDescription)"
+                engine.log(.error, "APK Deployment Error: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func startLogcat() {
+        let adbPath = engine.toolPaths["adb"] ?? "/usr/local/bin/adb"
+        let args = engine.adbArgs(["logcat", "-v", "time"])
+        engine.logcatSubsystem.start(adbPath: adbPath, args: args)
+        engine.log(.info, "Started live logcat streaming from target device.")
+    }
 }

@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import CryptoKit
+import UniformTypeIdentifiers
 #if os(macOS)
 import IOKit
 import IOKit.usb
@@ -1137,6 +1138,7 @@ final class ServicingEngine: ObservableObject {
     @Published var servicingHistoryLedger: [IntakeLedgerRecord] = []
     @Published var activeCustomerId: String = "WALK_IN_DEFAULT"
     @Published var autoCommitIntakeOnScan: Bool = true
+    @Published var logcatSubsystem = LiveLogcatStreamSubsystem()
     private var lastAutoCommittedSignature: String = ""
     private var hotplugMonitorTimer: Timer?
 
@@ -3396,5 +3398,295 @@ final class ServicingEngine: ObservableObject {
             evidence: ["sha256:\(sha256Hex)", "format:\(format)"]
         )
         return report
+    }
+
+    // MARK: - Developer Utility Workbench (APK Deployment & Locale Staging)
+
+    func deployApk(url: URL) async throws -> String {
+        let pipeline = PackageDeploymentPipeline(engine: self)
+        return try await pipeline.deployDiagnosticPackage(at: url)
+    }
+
+    func setDeviceLocale(_ locale: String) async -> (Bool, String) {
+        let hasAdb = devices.contains { $0.transport == .adb }
+        guard hasAdb else {
+            return (false, "Device not connected via ADB (CON(AT,MTP) mode only). Enable USB debugging first.")
+        }
+        let adbPath = toolPaths["adb"] ?? "/usr/local/bin/adb"
+        let res1 = await runProcess(
+            executable: adbPath,
+            arguments: adbArgs(["shell", "content", "insert", "--uri", "content://settings/system", "--bind", "name:s:system_locales", "--bind", "value:s:\(locale)"])
+        )
+        let res2 = await runProcess(
+            executable: adbPath,
+            arguments: adbArgs(["shell", "setprop", "persist.sys.locale", locale])
+        )
+        let ok = res1.exitCode == 0 || res2.exitCode == 0
+        if ok {
+            log(.success, "✔ Set device locale to \(locale)")
+            recordJob(
+                workflowId: "adb.set_locale",
+                title: "Set Device Locale (\(locale))",
+                verified: true,
+                summary: "Applied locale \(locale) via Settings content provider & persist.sys.locale",
+                evidence: ["locale:\(locale)"]
+            )
+        } else {
+            log(.error, "✖ Failed to set device locale: \(res1.stderr) \(res2.stderr)")
+        }
+        return (ok, ok ? "Device locale updated to \(locale)" : "Failed: \(res1.stderr)")
+    }
+}
+
+// MARK: - App Installer & Package Inspector Pipeline
+
+enum PackageDeploymentError: Error, LocalizedError {
+    case deviceUnauthorized
+    case architectureMismatch(device: String, package: String)
+    case insufficientStorage
+    case invalidPackageFile
+    case installationFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .deviceUnauthorized: return "ADB connection unauthorized or disconnected. Enable USB debugging on device."
+        case .architectureMismatch(let dev, let pkg): return "Architecture mismatch! Device is \(dev), but APK requires \(pkg)."
+        case .insufficientStorage: return "INSTALL_FAILED_INSUFFICIENT_STORAGE: Free up storage space on the target device."
+        case .invalidPackageFile: return "The selected APK file is invalid or unreadable."
+        case .installationFailed(let reason): return "Installation failed: \(reason)"
+        }
+    }
+}
+
+final class PackageDeploymentPipeline {
+    private let engine: ServicingEngine
+
+    init(engine: ServicingEngine) {
+        self.engine = engine
+    }
+
+    func deployDiagnosticPackage(at localApkUrl: URL) async throws -> String {
+        guard localApkUrl.pathExtension.lowercased() == "apk" else {
+            throw PackageDeploymentError.invalidPackageFile
+        }
+        guard FileManager.default.fileExists(atPath: localApkUrl.path) else {
+            throw PackageDeploymentError.invalidPackageFile
+        }
+
+        let hasAdb = await MainActor.run { engine.devices.contains { $0.transport == .adb } }
+        guard hasAdb else {
+            throw PackageDeploymentError.deviceUnauthorized
+        }
+
+        let adbPath = await MainActor.run { engine.toolPaths["adb"] ?? "/usr/local/bin/adb" }
+        guard FileManager.default.isExecutableFile(atPath: adbPath) else {
+            throw PackageDeploymentError.deviceUnauthorized
+        }
+
+        // 1. Query device CPU ABI over real ADB
+        let abiResult = await engine.runProcess(
+            executable: adbPath,
+            arguments: await MainActor.run { engine.adbArgs(["shell", "getprop", "ro.product.cpu.abi"]) },
+            logCommand: false
+        )
+        let deviceAbi = abiResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard abiResult.exitCode == 0, !deviceAbi.isEmpty else {
+            throw PackageDeploymentError.deviceUnauthorized
+        }
+
+        await MainActor.run {
+            engine.log(.info, "Target architecture verified: [\(deviceAbi)]")
+        }
+
+        // 2. Dispatch real adb install -r -d
+        let installResult = await engine.runProcess(
+            executable: adbPath,
+            arguments: await MainActor.run { engine.adbArgs(["install", "-r", "-d", localApkUrl.path]) },
+            logCommand: true
+        )
+
+        let combinedOutput = installResult.stdout + "\n" + installResult.stderr
+        if combinedOutput.contains("INSTALL_FAILED_INSUFFICIENT_STORAGE") {
+            throw PackageDeploymentError.insufficientStorage
+        }
+        if combinedOutput.contains("INSTALL_FAILED_NO_MATCHING_ABIS") {
+            throw PackageDeploymentError.architectureMismatch(device: deviceAbi, package: "APK requires different ABI")
+        }
+        if installResult.exitCode != 0 || !combinedOutput.contains("Success") {
+            let errorMsg = combinedOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw PackageDeploymentError.installationFailed(errorMsg.isEmpty ? "Exit code \(installResult.exitCode)" : errorMsg)
+        }
+
+        let successMsg = "Successfully deployed \(localApkUrl.lastPathComponent) on \(deviceAbi) target."
+        await MainActor.run {
+            engine.log(.success, "✔ \(successMsg)")
+            engine.recordJob(
+                workflowId: "adb.deploy_apk",
+                title: "Deploy APK (\(localApkUrl.lastPathComponent))",
+                verified: true,
+                summary: successMsg,
+                evidence: ["abi:\(deviceAbi)", "apk:\(localApkUrl.lastPathComponent)"]
+            )
+        }
+        return successMsg
+    }
+}
+
+// MARK: - Live Regex-Filtered Logcat Viewer Subsystem
+
+struct LogcatEntry: Identifiable, Hashable {
+    let id = UUID()
+    let timestamp: String
+    let logLevel: String
+    let tag: String
+    let message: String
+    let rawText: String
+}
+
+final class ProcessStreamReader {
+    private var process: Process?
+    private var pipe: Pipe?
+
+    func startStreaming(executable: String, arguments: [String], onLine: @escaping (String) -> Void) -> Bool {
+        stop()
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: executable)
+        proc.arguments = arguments
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        proc.environment = env
+
+        let p = Pipe()
+        proc.standardOutput = p
+        proc.standardError = p
+
+        p.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty else { return }
+            if let str = String(data: data, encoding: .utf8) {
+                let lines = str.components(separatedBy: .newlines)
+                for line in lines where !line.isEmpty {
+                    onLine(line)
+                }
+            }
+        }
+
+        do {
+            try proc.run()
+            self.process = proc
+            self.pipe = p
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func stop() {
+        pipe?.fileHandleForReading.readabilityHandler = nil
+        if process?.isRunning == true {
+            process?.terminate()
+        }
+        process = nil
+        pipe = nil
+    }
+
+    deinit {
+        stop()
+    }
+}
+
+@MainActor
+final class LiveLogcatStreamSubsystem: ObservableObject {
+    @Published var filteredEntries: [LogcatEntry] = []
+    @Published var activeFilterPattern: String = ""
+    @Published var isStreaming: Bool = false
+
+    private var allEntries: [LogcatEntry] = []
+    private let streamReader = ProcessStreamReader()
+
+    private let logcatRegex = try? NSRegularExpression(
+        pattern: #"^(\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\.\d{3})\s([VDIWEF])\/(.*?)\(\s*\d+\):\s(.*)$"#,
+        options: []
+    )
+
+    func start(adbPath: String, args: [String]) {
+        guard !isStreaming else { return }
+        let ok = streamReader.startStreaming(executable: adbPath, arguments: args) { [weak self] rawLine in
+            Task { @MainActor [weak self] in
+                self?.handleIncomingLine(rawLine)
+            }
+        }
+        isStreaming = ok
+    }
+
+    func stop() {
+        streamReader.stop()
+        isStreaming = false
+    }
+
+    func clear() {
+        allEntries.removeAll()
+        filteredEntries.removeAll()
+    }
+
+    func applyFilter(_ pattern: String) {
+        activeFilterPattern = pattern
+        if pattern.isEmpty {
+            filteredEntries = allEntries
+        } else {
+            filteredEntries = allEntries.filter { $0.rawText.localizedCaseInsensitiveContains(pattern) }
+        }
+    }
+
+    private func handleIncomingLine(_ line: String) {
+        let entry = dissectLine(line)
+        if allEntries.count > 1000 {
+            allEntries.removeFirst(200)
+        }
+        allEntries.append(entry)
+
+        if activeFilterPattern.isEmpty || entry.rawText.localizedCaseInsensitiveContains(activeFilterPattern) {
+            if filteredEntries.count > 500 {
+                filteredEntries.removeFirst(100)
+            }
+            filteredEntries.append(entry)
+        }
+    }
+
+    private func dissectLine(_ line: String) -> LogcatEntry {
+        let nsString = line as NSString
+        let range = NSRange(location: 0, length: nsString.length)
+
+        guard let match = logcatRegex?.firstMatch(in: line, options: [], range: range) else {
+            return LogcatEntry(timestamp: "", logLevel: "I", tag: "System", message: line, rawText: line)
+        }
+
+        let timeStr = nsString.substring(with: match.range(at: 1))
+        let levelStr = nsString.substring(with: match.range(at: 2))
+        let tagStr = nsString.substring(with: match.range(at: 3)).trimmingCharacters(in: .whitespaces)
+        let msgStr = nsString.substring(with: match.range(at: 4))
+
+        return LogcatEntry(timestamp: timeStr, logLevel: levelStr, tag: tagStr, message: msgStr, rawText: line)
+    }
+
+    func exportReport(targetInfo: String) -> URL? {
+        let savePanel = NSSavePanel()
+        savePanel.nameFieldStringValue = "bobfwtools-logcat-\(Int(Date().timeIntervalSince1970)).txt"
+        savePanel.allowedContentTypes = [UTType.plainText]
+        guard savePanel.runModal() == .OK, let url = savePanel.url else { return nil }
+
+        var report = "=== BOBFWTOOLS LIVE LOGCAT DIAGNOSTIC REPORT ===\n"
+        report += "Date: \(ISO8601DateFormatter().string(from: Date()))\n"
+        report += "Target: \(targetInfo)\n"
+        report += "Filter Query: \(activeFilterPattern.isEmpty ? "(none)" : activeFilterPattern)\n"
+        report += "Total Lines Captured: \(filteredEntries.count)\n"
+        report += "=================================================\n\n"
+
+        for entry in filteredEntries {
+            report += "\(entry.rawText)\n"
+        }
+
+        try? report.write(to: url, atomically: true, encoding: .utf8)
+        return url
     }
 }
