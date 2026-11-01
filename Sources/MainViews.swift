@@ -13,6 +13,7 @@ enum StudioModule: String, CaseIterable, Identifiable {
     case multiBrandRecovery = "MTK / SPD / EDL & Multi-Brand"
     case fastboot = "Fastboot & Partitions"
     case developerWorkbench = "Developer Workbench & Logcat"
+    case dualPlatform = "Dual-Platform Workbench"
     case firmware = "Firmware & Inventory Ledger"
     case apple = "Apple / iDevice Recovery"
     case jobsAndBridge = "Audit Jobs, Notes & VM Bridge"
@@ -27,6 +28,7 @@ enum StudioModule: String, CaseIterable, Identifiable {
         case .multiBrandRecovery: return "wrench.and.screwdriver.fill"
         case .fastboot: return "bolt.horizontal.circle.fill"
         case .developerWorkbench: return "terminal.fill"
+        case .dualPlatform: return "rectangle.split.2x1.fill"
         case .firmware: return "shippingbox.fill"
         case .apple: return "iphone"
         case .jobsAndBridge: return "checkmark.shield.fill"
@@ -141,6 +143,8 @@ struct MainStudioView: View {
                                 FastbootWorkshopView(engine: engine)
                             case .developerWorkbench:
                                 DeveloperWorkbenchView(engine: engine)
+                            case .dualPlatform:
+                                DualPlatformWorkbenchView(engine: engine)
                             case .firmware:
                                 FirmwareInspectorView(engine: engine)
                             case .apple:
@@ -2681,8 +2685,11 @@ struct JobsNotesAndBridgeView: View {
                         Button("Save Repair Notes") {
                             engine.saveRepairNotes()
                         }
-                        Button("Export BobFWTools Diagnostic & Job Receipt (.json)...") {
+                        Button("Export Diagnostic JSON Receipt...") {
                             exportReceiptJSON()
+                        }
+                        Button("Generate Customer Intake Sheet (.pdf)...") {
+                            exportIntakePDF()
                         }
                         .buttonStyle(.borderedProminent)
                     }
@@ -2776,6 +2783,29 @@ struct JobsNotesAndBridgeView: View {
         if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]) {
             try? data.write(to: url)
             engine.log(.success, "Exported BobFWTools Diagnostic Receipt to \(url.path)")
+        }
+    }
+
+    private func exportIntakePDF() {
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.pdf]
+        savePanel.nameFieldStringValue = "bobfwtools-customer-intake-\(Int(Date().timeIntervalSince1970)).pdf"
+        guard savePanel.runModal() == .OK, let url = savePanel.url else { return }
+
+        if let pdfData = engine.generateCustomerIntakePdf(
+            ticketId: "TKT-\(Int.random(in: 10000...99999))",
+            customerName: "Customer Bench Intake",
+            technician: "Bobby Blanco"
+        ) {
+            do {
+                try pdfData.write(to: url)
+                engine.log(.success, "✔ Generated printable Customer Intake Sheet: \(url.path)")
+                NSWorkspace.shared.open(url)
+            } catch {
+                engine.log(.error, "✖ Failed to write PDF report: \(error.localizedDescription)")
+            }
+        } else {
+            engine.log(.error, "✖ Failed to generate Customer Intake PDF report.")
         }
     }
 }
@@ -3350,5 +3380,469 @@ struct DeveloperWorkbenchView: View {
         let args = engine.adbArgs(["logcat", "-v", "time"])
         engine.logcatSubsystem.start(adbPath: adbPath, args: args)
         engine.log(.info, "Started live logcat streaming from target device.")
+    }
+}
+
+// MARK: - Dual-Platform Bench Monitor & Staging Dashboard
+
+struct DualPlatformWorkbenchView: View {
+    @ObservedObject var engine: ServicingEngine
+    @State private var ticketId: String = "TKT-\(Int.random(in: 10000...99999))"
+    @State private var customerName: String = ""
+    @State private var technician: String = "Bobby Blanco"
+
+    // Android Controls
+    @State private var selectedLocale: String = "es_ES"
+    @State private var localeStatus: String = ""
+    @State private var cscStatus: String = ""
+    @State private var showMasterClearAlert: Bool = false
+    @State private var resetStatus: String = ""
+
+    // Apple Controls
+    @State private var iosResetStatus: String = ""
+
+    let commonLocales = [
+        ("en_US", "🇺🇸 English (US)"),
+        ("es_ES", "🇪🇸 Español (ES)"),
+        ("es_US", "🇲🇽 Español (MX)"),
+        ("fr_FR", "🇫🇷 Français (FR)"),
+        ("de_DE", "🇩🇪 Deutsch (DE)"),
+        ("zh_CN", "🇨🇳 中文 (CN)"),
+        ("ja_JP", "🇯🇵 日本語 (JP)"),
+        ("ar_AE", "🇦🇪 العربية (AR)")
+    ]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                ModuleHeader(
+                    title: "Dual-Platform Bench Monitor & Diagnostics Switcher",
+                    subtitle: "Concurrent side-by-side bench management for Android and Apple hardware: automated language staging, multi-CSC preconfig, and printable intake sheets."
+                )
+
+                // Top Bench Intake & PDF Generation Bar
+                GroupBox(label: Label("Bench Intake Ticket & Printable Report Dispatcher", systemImage: "printer.filled.and.paper")) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("INTAKE TICKET ID")
+                                    .font(.system(size: 9.5, weight: .bold))
+                                    .foregroundColor(.secondary)
+                                TextField("Ticket ID", text: $ticketId)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .frame(width: 140)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("CUSTOMER / ASSET NAME")
+                                    .font(.system(size: 9.5, weight: .bold))
+                                    .foregroundColor(.secondary)
+                                TextField("Customer Name", text: $customerName)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(.system(size: 12))
+                                    .frame(minWidth: 160)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("BENCH TECHNICIAN")
+                                    .font(.system(size: 9.5, weight: .bold))
+                                    .foregroundColor(.secondary)
+                                TextField("Technician Name", text: $technician)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(.system(size: 12))
+                                    .frame(width: 150)
+                            }
+
+                            Spacer()
+
+                            Button {
+                                exportIntakeSheet()
+                            } label: {
+                                Label("Generate Customer Intake Sheet (.pdf)", systemImage: "doc.richtext.fill")
+                                    .padding(.vertical, 3)
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                    }
+                    .padding(8)
+                }
+
+                // Dual-Column Split Workstation
+                HStack(alignment: .top, spacing: 16) {
+                    // LEFT COLUMN: Android Workstation
+                    VStack(alignment: .leading, spacing: 14) {
+                        // Android Header Banner
+                        HStack(spacing: 8) {
+                            Image(systemName: "candybarphone")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.green)
+                            Text("ANDROID WORKSTATION")
+                                .font(.system(size: 12, weight: .bold))
+                            Spacer()
+                            let hasAdb = engine.devices.contains { $0.transport == .adb }
+                            let hasModem = !engine.selectedSerialPort.isEmpty || engine.samsungModemInfo != nil
+                            if hasAdb {
+                                Text("ADB AUTHORIZED")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.green.opacity(0.2)))
+                                    .foregroundColor(.green)
+                            } else if hasModem {
+                                Text("AT MODEM ONLY")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.orange.opacity(0.2)))
+                                    .foregroundColor(.orange)
+                            } else {
+                                Text("DISCONNECTED")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(10)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.green.opacity(0.08)))
+
+                        // Android Device Identity
+                        GroupBox(label: Label("Android Device Identity", systemImage: "info.circle")) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                let model = engine.universalMatch?.modelNumber ?? (engine.samsungModemInfo?.model ?? "Android Device")
+                                let sn = engine.universalMatch?.serialOrUdid ?? (engine.samsungModemInfo?.serialNumber ?? "N/A")
+                                let pda = engine.universalMatch?.stockFirmwareBuild ?? (engine.samsungModemInfo?.pdaVersion ?? "N/A")
+                                let csc = engine.universalMatch?.carrierCscOrRegion ?? (engine.samsungModemInfo?.activeCsc ?? "Universal")
+
+                                HStack {
+                                    Text("Model:")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                    Text(model)
+                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    Spacer()
+                                    Text("CSC: \(csc)")
+                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1)
+                                        .background(RoundedRectangle(cornerRadius: 3).fill(Color.blue.opacity(0.15)))
+                                        .foregroundColor(.blue)
+                                }
+
+                                HStack {
+                                    Text("Serial:")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                    Text(sn)
+                                        .font(.system(size: 11, design: .monospaced))
+                                }
+
+                                HStack {
+                                    Text("Build PDA:")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                    Text(pda)
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .lineLimit(1)
+                                }
+                            }
+                            .padding(6)
+                        }
+
+                        // 1. Language Staging Card
+                        GroupBox(label: Label("1. Automated Language Stager", systemImage: "character.book.closed.fill")) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Applies system locales via Content Provider, persist.sys.locale & LOCALE_CHANGED broadcast.")
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(.secondary)
+
+                                Picker("Target Locale", selection: $selectedLocale) {
+                                    ForEach(commonLocales, id: \.0) { item in
+                                        Text(item.1).tag(item.0)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+
+                                HStack {
+                                    Button("Apply System Locale") {
+                                        stageLanguage()
+                                    }
+                                    .buttonStyle(.borderedProminent)
+
+                                    if !localeStatus.isEmpty {
+                                        Text(localeStatus)
+                                            .font(.system(size: 10.5, design: .monospaced))
+                                            .lineLimit(1)
+                                    }
+                                }
+                            }
+                            .padding(6)
+                        }
+
+                        // 2. Samsung Multi-CSC Switcher Card
+                        GroupBox(label: Label("2. Multi-CSC Preconfig Switcher", systemImage: "arrow.triangle.swap")) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Pops on-screen carrier configuration activity on target display for unified multi-CSC containers (OXM).")
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(.secondary)
+
+                                let multiGroup = CscFallbackRegistry.getGroup(forCsc: engine.samsungModemInfo?.activeCsc ?? "EUX")
+                                let compatibleList = CscFallbackRegistry.getOpticsCscs(forGroup: multiGroup)
+
+                                HStack {
+                                    Text("Container:")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(.secondary)
+                                    Text(multiGroup)
+                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 1)
+                                        .background(RoundedRectangle(cornerRadius: 3).fill(Color.purple.opacity(0.15)))
+                                        .foregroundColor(.purple)
+
+                                    Text("Candidates: \(compatibleList.prefix(6).joined(separator: ", "))")
+                                        .font(.system(size: 9.5, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
+
+                                HStack {
+                                    Button("Launch On-Device Preconfig Menu") {
+                                        launchPreconfig()
+                                    }
+                                    .buttonStyle(.borderedProminent)
+
+                                    if !cscStatus.isEmpty {
+                                        Text(cscStatus)
+                                            .font(.system(size: 10.5, design: .monospaced))
+                                            .lineLimit(1)
+                                    }
+                                }
+                            }
+                            .padding(6)
+                        }
+
+                        // 3. Android Sandbox Master Clear Card
+                        GroupBox(label: Label("3. Android Master Clear (Factory Reset)", systemImage: "trash.fill")) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Broadcasts android.intent.action.MASTER_CLEAR to initiate clean recovery formatting.")
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(.secondary)
+
+                                HStack {
+                                    Button("Execute Factory Master Clear") {
+                                        showMasterClearAlert = true
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .foregroundColor(.red)
+
+                                    if !resetStatus.isEmpty {
+                                        Text(resetStatus)
+                                            .font(.system(size: 10.5, design: .monospaced))
+                                            .lineLimit(1)
+                                    }
+                                }
+                            }
+                            .padding(6)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    // RIGHT COLUMN: Apple iOS Workstation
+                    VStack(alignment: .leading, spacing: 14) {
+                        // Apple Header Banner
+                        HStack(spacing: 8) {
+                            Image(systemName: "applelogo")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.primary)
+                            Text("APPLE IDEVICE WORKSTATION")
+                                .font(.system(size: 12, weight: .bold))
+                            Spacer()
+                            if engine.activePlatform == .appleIos {
+                                Text("IDEVICE CONNECTED")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.blue.opacity(0.2)))
+                                    .foregroundColor(.blue)
+                            } else {
+                                Text("NO IDEVICE")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(10)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.blue.opacity(0.08)))
+
+                        // Apple Device Identity
+                        GroupBox(label: Label("Apple Device Identity & Lockdownd", systemImage: "iphone.gen3")) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                let appleDev = engine.devices.first { $0.transport == .ios }
+                                let udid = appleDev?.serial ?? "N/A"
+
+                                HStack {
+                                    Text("UDID:")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                    Text(udid)
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .lineLimit(1)
+                                }
+
+                                HStack {
+                                    Text("Lockdownd Service:")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                    Text(engine.activePlatform == .appleIos ? "Online (VID 05ac)" : "Offline")
+                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                        .foregroundColor(engine.activePlatform == .appleIos ? .green : .secondary)
+                                }
+                            }
+                            .padding(6)
+                        }
+
+                        // Apple Diagnostics & Operations
+                        GroupBox(label: Label("Apple Diagnostic Operations", systemImage: "wrench.and.screwdriver")) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 8) {
+                                    Button("Query Full Info (ideviceinfo)") {
+                                        Task {
+                                            _ = await engine.executeAndLog(
+                                                workflowId: "apple.ideviceinfo",
+                                                title: "ideviceinfo",
+                                                executable: engine.toolPaths["ideviceinfo"]!,
+                                                arguments: []
+                                            )
+                                        }
+                                    }
+                                    Button("Pair & Trust (idevicepair)") {
+                                        Task {
+                                            _ = await engine.executeAndLog(
+                                                workflowId: "apple.pair",
+                                                title: "idevicepair pair",
+                                                executable: engine.toolPaths["idevicepair"]!,
+                                                arguments: ["pair"]
+                                            )
+                                        }
+                                    }
+                                }
+
+                                HStack(spacing: 8) {
+                                    Button("Reset Pairing & Restart Diagnostics") {
+                                        resetIosDiagnostics()
+                                    }
+                                    .buttonStyle(.borderedProminent)
+
+                                    if !iosResetStatus.isEmpty {
+                                        Text(iosResetStatus)
+                                            .font(.system(size: 10.5, design: .monospaced))
+                                            .lineLimit(1)
+                                    }
+                                }
+                            }
+                            .padding(6)
+                        }
+
+                        // Apple Staging & System Restores
+                        GroupBox(label: Label("Apple Staging & Configuration Profiles", systemImage: "doc.badge.gearshape")) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("iOS language preferences & sandbox restrictions require signed Apple Configurator MDM payloads or supervised enrollment profiles.")
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(.secondary)
+
+                                HStack(spacing: 8) {
+                                    Button("Open Apple Configurator.app") {
+                                        NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/Apple Configurator.app"))
+                                        engine.log(.info, "Launched /Applications/Apple Configurator.app")
+                                    }
+
+                                    Button("Open Finder Restore Assistant") {
+                                        NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app"))
+                                        engine.log(.info, "Opened macOS Finder Restore Assistant.")
+                                    }
+                                }
+                            }
+                            .padding(6)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(20)
+        }
+        .alert("Confirm Android Master Clear (Factory Reset)", isPresented: $showMasterClearAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Wipe & Reset Device", role: .destructive) {
+                performMasterClear()
+            }
+        } message: {
+            Text("This will send android.intent.action.MASTER_CLEAR to the target Android device over ADB. All user data will be wiped cleanly and the device will restart into standard setup.")
+        }
+    }
+
+    private func stageLanguage() {
+        localeStatus = "Applying \(selectedLocale)..."
+        Task {
+            let (ok, msg) = await engine.setDeviceLocale(selectedLocale)
+            localeStatus = ok ? "✔ Done" : "✖ Failed"
+            if !ok {
+                engine.log(.error, "Locale staging error: \(msg)")
+            }
+        }
+    }
+
+    private func launchPreconfig() {
+        cscStatus = "Launching Preconfig..."
+        Task {
+            let (ok, msg) = await engine.launchSamsungPreconfig()
+            cscStatus = ok ? "✔ Dispatched" : "✖ Failed"
+            if !ok {
+                engine.log(.error, "Preconfig trigger error: \(msg)")
+            }
+        }
+    }
+
+    private func performMasterClear() {
+        resetStatus = "Dispatching MASTER_CLEAR..."
+        Task {
+            let (ok, msg) = await engine.executeMasterClear()
+            resetStatus = ok ? "✔ Wipe Triggered" : "✖ Failed"
+            if !ok {
+                engine.log(.error, "Master Clear error: \(msg)")
+            }
+        }
+    }
+
+    private func resetIosDiagnostics() {
+        iosResetStatus = "Resetting iOS..."
+        Task {
+            let (ok, msg) = await engine.executeAppleDiagnosticsReset()
+            iosResetStatus = ok ? "✔ Reset Triggered" : "✖ Failed"
+            if !ok {
+                engine.log(.error, "iOS reset error: \(msg)")
+            }
+        }
+    }
+
+    private func exportIntakeSheet() {
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.pdf]
+        savePanel.nameFieldStringValue = "bobfwtools-intake-\(ticketId)-\(Int(Date().timeIntervalSince1970)).pdf"
+        guard savePanel.runModal() == .OK, let url = savePanel.url else { return }
+
+        if let pdfData = engine.generateCustomerIntakePdf(
+            ticketId: ticketId,
+            customerName: customerName,
+            technician: technician
+        ) {
+            do {
+                try pdfData.write(to: url)
+                engine.log(.success, "✔ Generated printable Customer Intake PDF: \(url.path)")
+                NSWorkspace.shared.open(url)
+            } catch {
+                engine.log(.error, "✖ Failed to write PDF report: \(error.localizedDescription)")
+            }
+        } else {
+            engine.log(.error, "✖ Failed to compile Customer Intake PDF.")
+        }
     }
 }
