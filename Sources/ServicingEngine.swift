@@ -1,6 +1,10 @@
 import Foundation
 import AppKit
 import CryptoKit
+#if os(macOS)
+import IOKit
+import IOKit.usb
+#endif
 
 // MARK: - BootForge USB & BobFWTools Models
 
@@ -977,12 +981,125 @@ actor SerialATTransportActor {
         if !collected.isEmpty {
             let str = String(data: collected, encoding: .utf8)
                 ?? String(data: collected, encoding: .ascii)
-                ?? "(binary response)"
-            return (true, str)
+                ?? ""
+            let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // Strict Hayes AT error detection: reject errors, command rejections, and NAKs
+            if trimmed.contains("ERROR") || trimmed.contains("COMMAND NOT SUPPORT") || trimmed.contains("NAK") {
+                return (false, str)
+            }
+
+            // A standard AT passing response contains "OK", "#OK#", or structured payload tokens
+            let isPassing = trimmed.hasSuffix("OK") ||
+                            trimmed.contains("\nOK") ||
+                            trimmed.contains("\rOK") ||
+                            trimmed.contains("#OK#") ||
+                            trimmed.contains("+DEVCONINFO:") ||
+                            trimmed.contains("+VERSNAME:") ||
+                            trimmed.contains("+SWATD:") ||
+                            trimmed.contains("+ACTIVATE:")
+            return (isPassing, str)
         }
-        return (true, "Command sent to \(portPath) (0 bytes returned within \(timeoutMs)ms).")
+
+        // Reboot / download switches disconnect the USB bus immediately; 0 bytes returned is an acknowledged reset.
+        let isRebootCmd = command.contains("REBOOT") || command.contains("FUS")
+        if isRebootCmd {
+            return (true, "Reboot/Download sequence dispatched (USB bus reset acknowledged).")
+        }
+        return (false, "No response from \(portPath) (timed out after \(timeoutMs)ms).")
     }
 }
+
+#if os(macOS)
+// MARK: - Native macOS IOKit USB Hotplug Event Monitor
+
+final class MacOSNativeUsbNotifier {
+    private var notifyPort: IONotificationPortRef?
+    private var matchedIterator: io_iterator_t = 0
+    private var removedIterator: io_iterator_t = 0
+    private var runLoopSource: CFRunLoopSource?
+
+    var onTopologyChanged: (() -> Void)?
+
+    func start() {
+        notifyPort = IONotificationPortCreate(mach_port_t(kIOMainPortDefault))
+        guard let notifyPort = notifyPort,
+              let source = IONotificationPortGetRunLoopSource(notifyPort)?.takeUnretainedValue() else { return }
+        runLoopSource = source
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
+
+        guard let matchDict = IOServiceMatching(kIOUSBDeviceClassName),
+              let removeDict = IOServiceMatching(kIOUSBDeviceClassName) else { return }
+
+        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+
+        let matchedCallback: IOServiceMatchingCallback = { refCon, iterator in
+            guard let refCon = refCon else { return }
+            let instance = Unmanaged<MacOSNativeUsbNotifier>.fromOpaque(refCon).takeUnretainedValue()
+            instance.drainIterator(iterator)
+            instance.onTopologyChanged?()
+        }
+
+        let removedCallback: IOServiceMatchingCallback = { refCon, iterator in
+            guard let refCon = refCon else { return }
+            let instance = Unmanaged<MacOSNativeUsbNotifier>.fromOpaque(refCon).takeUnretainedValue()
+            instance.drainIterator(iterator)
+            instance.onTopologyChanged?()
+        }
+
+        IOServiceAddMatchingNotification(
+            notifyPort,
+            kIOMatchedNotification,
+            matchDict,
+            matchedCallback,
+            selfPtr,
+            &matchedIterator
+        )
+        drainIterator(matchedIterator)
+
+        IOServiceAddMatchingNotification(
+            notifyPort,
+            kIOTerminatedNotification,
+            removeDict,
+            removedCallback,
+            selfPtr,
+            &removedIterator
+        )
+        drainIterator(removedIterator)
+    }
+
+    private func drainIterator(_ iterator: io_iterator_t) {
+        var service = IOIteratorNext(iterator)
+        while service != 0 {
+            IOObjectRelease(service)
+            service = IOIteratorNext(iterator)
+        }
+    }
+
+    func stop() {
+        if let source = runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .defaultMode)
+            runLoopSource = nil
+        }
+        if matchedIterator != 0 {
+            IOObjectRelease(matchedIterator)
+            matchedIterator = 0
+        }
+        if removedIterator != 0 {
+            IOObjectRelease(removedIterator)
+            removedIterator = 0
+        }
+        if let notifyPort = notifyPort {
+            IONotificationPortDestroy(notifyPort)
+            self.notifyPort = nil
+        }
+    }
+
+    deinit {
+        stop()
+    }
+}
+#endif
 
 // MARK: - BobFWTools Native Servicing Engine
 
@@ -1134,6 +1251,9 @@ final class ServicingEngine: ObservableObject {
     }
 
     private var lastObservedModemPorts: [String] = []
+#if os(macOS)
+    private var nativeUsbNotifier: MacOSNativeUsbNotifier?
+#endif
 
     private var appSupportDir: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -1146,6 +1266,19 @@ final class ServicingEngine: ObservableObject {
         loadPersistentData()
         log(.info, "BobFWTools Studio (Bobby's Workshop — Phoenix Forge) initialized.")
         log(.info, "BootForge USB Engine: \(bootforgeBinaryPath)")
+#if os(macOS)
+        let notifier = MacOSNativeUsbNotifier()
+        notifier.onTopologyChanged = { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self = self, !self.isBusy else { return }
+                self.log(.info, "⚡ Native macOS IOKit USB bus transition detected -> refreshing hardware topology...")
+                await self.refreshDevicesAndTelemetry()
+            }
+        }
+        notifier.start()
+        self.nativeUsbNotifier = notifier
+        log(.info, "Native macOS IOKit USB Hotplug Notification Engine armed (kIOMainPortDefault).")
+#endif
         startWorkbenchDisconnectMonitor()
         Task {
             await refreshDevicesAndTelemetry()
@@ -1546,33 +1679,63 @@ final class ServicingEngine: ObservableObject {
             // 1A. Reboot to Download Mode (Odin / Loke protocol)
             if joinedArgs.contains("reboot download") || joinedArgs.contains("download") {
                 _ = await querySerialAT(portPath: activeModemPort, command: "AT+SWATD=0", logOutput: false)
-                let (_, raw) = await querySerialAT(portPath: activeModemPort, command: "AT+FUS?", logOutput: true)
-                log(.success, "✔ Sent Samsung Download Mode switch (AT+SWATD=0; AT+FUS?) to \(activeModemPort). Target is rebooting into Odin Mode (04e8:685d).")
-                recordJob(
-                    workflowId: workflowId,
-                    title: "Reboot into Samsung Download Mode",
-                    serial: info?.serialNumber,
-                    verified: true,
-                    summary: "Sent AT+FUS? over \(activeModemPort) -> Target switching to Odin protocol",
-                    evidence: ["port:\(activeModemPort)", "cmd:AT+FUS?"]
-                )
-                return raw.isEmpty ? "Reboot command sent." : raw
+                let (switched, raw) = await querySerialAT(portPath: activeModemPort, command: "AT+FUS?", logOutput: true)
+                if switched {
+                    log(.success, "✔ Sent Samsung Download Mode switch (AT+SWATD=0; AT+FUS?) to \(activeModemPort). Target is rebooting into Odin Mode (04e8:685d).")
+                    recordJob(
+                        workflowId: workflowId,
+                        title: "Reboot into Samsung Download Mode",
+                        serial: info?.serialNumber,
+                        verified: true,
+                        summary: "Sent AT+FUS? over \(activeModemPort) -> Target switching to Odin protocol",
+                        evidence: ["port:\(activeModemPort)", "cmd:AT+FUS?"]
+                    )
+                    return raw.isEmpty ? "Reboot command sent." : raw
+                } else {
+                    let errMsg = "✖ Download Mode switch failed on \(activeModemPort): \(raw)"
+                    log(.error, errMsg)
+                    recordJob(
+                        workflowId: workflowId,
+                        title: "Reboot into Samsung Download Mode (Failed)",
+                        serial: info?.serialNumber,
+                        verified: false,
+                        state: "failed",
+                        summary: errMsg,
+                        evidence: ["port:\(activeModemPort)", "error:\(raw)"]
+                    )
+                    return errMsg
+                }
             }
 
             // 1B. Reboot to Recovery Mode
             if joinedArgs.contains("reboot recovery") || joinedArgs.contains("recovery") {
                 _ = await querySerialAT(portPath: activeModemPort, command: "AT+SWATD=0", logOutput: false)
-                let (_, raw) = await querySerialAT(portPath: activeModemPort, command: "AT+REBOOT", logOutput: true)
-                log(.success, "✔ Sent Samsung Recovery Reboot sequence to \(activeModemPort). Target is rebooting into Recovery.")
-                recordJob(
-                    workflowId: workflowId,
-                    title: "Reboot into Samsung Recovery",
-                    serial: info?.serialNumber,
-                    verified: true,
-                    summary: "Sent AT+REBOOT over \(activeModemPort)",
-                    evidence: ["port:\(activeModemPort)", "cmd:AT+REBOOT"]
-                )
-                return raw.isEmpty ? "Reboot command sent." : raw
+                let (switched, raw) = await querySerialAT(portPath: activeModemPort, command: "AT+REBOOT", logOutput: true)
+                if switched {
+                    log(.success, "✔ Sent Samsung Recovery Reboot sequence to \(activeModemPort). Target is rebooting into Recovery.")
+                    recordJob(
+                        workflowId: workflowId,
+                        title: "Reboot into Samsung Recovery",
+                        serial: info?.serialNumber,
+                        verified: true,
+                        summary: "Sent AT+REBOOT over \(activeModemPort)",
+                        evidence: ["port:\(activeModemPort)", "cmd:AT+REBOOT"]
+                    )
+                    return raw.isEmpty ? "Reboot command sent." : raw
+                } else {
+                    let errMsg = "✖ Recovery reboot failed on \(activeModemPort): \(raw)"
+                    log(.error, errMsg)
+                    recordJob(
+                        workflowId: workflowId,
+                        title: "Reboot into Samsung Recovery (Failed)",
+                        serial: info?.serialNumber,
+                        verified: false,
+                        state: "failed",
+                        summary: errMsg,
+                        evidence: ["port:\(activeModemPort)", "error:\(raw)"]
+                    )
+                    return errMsg
+                }
             }
 
             // 1C. Samsung Secret Diagnostic Codes (*#0*#, *#06#, *#1234#, *#0228#, *#9900#)
@@ -1611,19 +1774,27 @@ final class ServicingEngine: ObservableObject {
             }
 
             if joinedArgs.contains("hwmoduletest") || joinedArgs.contains("0*#") || joinedArgs.contains("hardware test") {
-                _ = await querySerialAT(portPath: activeModemPort, command: "AT+SWATD=0", logOutput: false)
-                _ = await querySerialAT(portPath: activeModemPort, command: "AT+ACTIVATE=0,0,0", logOutput: false)
-                let rep = """
-                [Samsung Hardware Test Menu Activated]
-                • Diagnostic Interface Activated over Modem AT (\(activeModemPort))
-                • Sent AT+SWATD=0 & AT+ACTIVATE=0,0,0
-                • Partition HVIDs: \(info?.hvidSummary ?? "Data:196609,Cache:262145,System:327681")
-                • Tip: On phones, open Phone / Emergency Call and tap *#0*#. On Wi-Fi tablets, hardware diagnostics are available in Settings → Battery & Device Care → Diagnostics.
-                """
-                log(.success, rep)
-                log(.success, "✔ \(title) [OK via Hardware Test Interface]")
-                recordJob(workflowId: workflowId, title: title, serial: info?.serialNumber, verified: true, summary: "Hardware test mode triggered", evidence: ["swatd", "activate"])
-                return rep
+                let swatdRes = await querySerialAT(portPath: activeModemPort, command: "AT+SWATD=0", logOutput: false)
+                let actRes = await querySerialAT(portPath: activeModemPort, command: "AT+ACTIVATE=0,0,0", logOutput: false)
+                let passed = swatdRes.0 || actRes.0
+                if passed {
+                    let rep = """
+                    [Samsung Hardware Test Menu Activated]
+                    • Diagnostic Interface Activated over Modem AT (\(activeModemPort))
+                    • Status: AT+SWATD=0 (\(swatdRes.0 ? "ACK" : "NAK")) · AT+ACTIVATE=0,0,0 (\(actRes.0 ? "ACK" : "NAK"))
+                    • Partition HVIDs: \(info?.hvidSummary ?? "Data:196609,Cache:262145,System:327681")
+                    • Tip: On phones, open Phone / Emergency Call and tap *#0*#. On Wi-Fi tablets, hardware diagnostics are available in Settings → Battery & Device Care → Diagnostics.
+                    """
+                    log(.success, rep)
+                    log(.success, "✔ \(title) [OK via Hardware Test Interface]")
+                    recordJob(workflowId: workflowId, title: title, serial: info?.serialNumber, verified: true, summary: "Hardware test mode triggered", evidence: ["swatd", "activate"])
+                    return rep
+                } else {
+                    let errMsg = "✖ Hardware Test Menu activation rejected by modem on \(activeModemPort)."
+                    log(.error, errMsg)
+                    recordJob(workflowId: workflowId, title: title, serial: info?.serialNumber, verified: false, state: "failed", summary: errMsg, evidence: ["modem:\(activeModemPort)"])
+                    return errMsg
+                }
             }
 
             if joinedArgs.contains("0228") || joinedArgs.contains("battery") {
@@ -1641,15 +1812,21 @@ final class ServicingEngine: ObservableObject {
             }
 
             if joinedArgs.contains("sysdump") || joinedArgs.contains("9900") {
-                _ = await querySerialAT(portPath: activeModemPort, command: "AT+SWATD=0", logOutput: true)
-                let rep = """
-                [Samsung SysDump Diagnostic Mode]
-                • Target Device  : \(info?.model ?? "SM-T500") (SN: \(info?.serialNumber ?? "R9WN929QFKJ"))
-                • SysDump Status : Diagnostic daemon port (\(activeModemPort)) switched to DDEXE
-                """
-                log(.success, rep)
-                log(.success, "✔ \(title) [OK via SysDump Interface]")
-                return rep
+                let (passed, raw) = await querySerialAT(portPath: activeModemPort, command: "AT+SWATD=0", logOutput: true)
+                if passed {
+                    let rep = """
+                    [Samsung SysDump Diagnostic Mode]
+                    • Target Device  : \(info?.model ?? "SM-T500") (SN: \(info?.serialNumber ?? "R9WN929QFKJ"))
+                    • SysDump Status : Diagnostic daemon port (\(activeModemPort)) switched to DDEXE
+                    """
+                    log(.success, rep)
+                    log(.success, "✔ \(title) [OK via SysDump Interface]")
+                    return rep
+                } else {
+                    let errMsg = "✖ SysDump activation rejected by modem on \(activeModemPort): \(raw)"
+                    log(.error, errMsg)
+                    return errMsg
+                }
             }
 
             // 1D. Application launch intents, package disabling & shell execution
@@ -1750,17 +1927,26 @@ final class ServicingEngine: ObservableObject {
         let outTrim = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         let errTrim = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
 
+        let isAdbFailure = outTrim.contains("device unauthorized") ||
+                           outTrim.contains("device offline") ||
+                           outTrim.contains("no devices/emulators found") ||
+                           errTrim.contains("device unauthorized") ||
+                           errTrim.contains("device offline") ||
+                           errTrim.contains("no devices/emulators found")
+
+        let ok = (result.exitCode == 0) && !isAdbFailure
+
         if !outTrim.isEmpty {
-            log(result.exitCode == 0 ? .success : .info, outTrim)
+            log(ok ? .success : .info, outTrim)
         }
         if !errTrim.isEmpty {
-            log(result.exitCode == 0 ? .info : .error, errTrim)
+            log(ok ? .info : .error, errTrim)
         }
-        let ok = (result.exitCode == 0)
         if ok {
             log(.success, "✔ \(title) [OK]")
         } else {
-            log(.error, "✖ \(title) exited with code \(result.exitCode) [FAIL]")
+            let reason = isAdbFailure ? "device unauthorized or offline" : "exited with code \(result.exitCode)"
+            log(.error, "✖ \(title) (\(reason)) [FAIL]")
         }
         recordJob(
             workflowId: workflowId,
@@ -1968,9 +2154,6 @@ final class ServicingEngine: ObservableObject {
             fastbootList: fastbootSerials,
             odinDetected: odinDetected
         )
-
-        // 8.5 Universal Multi-Platform Hardware & Firmware Auto-Matcher
-        updateUniversalHardwareMatching()
 
         // 8.5 Universal Multi-Platform Hardware & Firmware Auto-Matcher
         updateUniversalHardwareMatching()
