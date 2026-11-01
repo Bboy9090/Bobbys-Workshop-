@@ -1682,37 +1682,20 @@ final class ServicingEngine: ObservableObject {
 
         // 2. Prevent `fastboot` from hanging forever with `< waiting for any device >` when the target is in Samsung Runtime / Modem AT mode!
         if cmdName == "fastboot" && !hasFastbootTarget {
-            if !activeModemPort.isEmpty {
-                let (ok, raw) = await querySerialAT(portPath: activeModemPort, command: "AT+DEVCONINFO", logOutput: false)
-                if let info = samsungModemInfo {
-                    let bit = DiagnosticParser.extractSecurityBit(from: info.pdaVersion)
-                    let fbOut = """
-                    (bootloader) product: \(info.model)
-                    (bootloader) version-bootloader: \(info.bootloaderVersion) (Binary \(bit))
-                    (bootloader) version-baseband: \(info.basebandVersion)
-                    (bootloader) serialno: \(info.serialNumber)
-                    (bootloader) carrier-csc: \(info.activeCsc) (\(info.countryCode))
-                    (bootloader) sim-lock-state: \(info.carrierLock)
-                    (bootloader) sdp-runtime-state: \(info.sdpState)
-                    (bootloader) partition-hvids: \(info.hvidSummary)
-                    Finished. Total time: 0.042s
-                    """
-                    log(.success, fbOut)
-                    log(.success, "✔ \(title) [OK via Samsung Bootloader / Modem Telemetry]")
-                    recordJob(
-                        workflowId: workflowId,
-                        title: "\(title) (Bootloader Telemetry)",
-                        serial: info.serialNumber,
-                        verified: ok,
-                        state: "completed",
-                        summary: "Bootloader \(info.bootloaderVersion) (Binary \(bit)) · SN \(info.serialNumber)",
-                        evidence: ["modem:\(activeModemPort)"]
-                    )
-                    return raw
-                }
-            }
-            log(.warning, "No device in Fastboot mode detected on USB bus.")
-            return "No fastboot device detected."
+            log(.error, "✖ Fastboot Command Failed: The connected device is in Samsung Runtime AT mode (\(activeModemPort)).")
+            log(.error, "➔ ADB USB debugging is disabled, and the device is not in Fastboot mode.")
+            log(.error, "➔ To issue fastboot or low-level flash actions, manual intervention is required to boot the target into Bootloader/Odin/Download mode first.")
+            
+            recordJob(
+                workflowId: workflowId,
+                title: "\(title) (Failed - Transport Gated)",
+                serial: samsungModemInfo?.serialNumber,
+                verified: false,
+                state: "failed",
+                summary: "Aborted fastboot bridge. Device is strictly in AT-modem state, ADB/Fastboot interface is unavailable.",
+                evidence: ["modem:\(activeModemPort)", "error:transport_mismatch"]
+            )
+            return "Error: Device is in Runtime AT mode. Fastboot requires Bootloader/Odin mode."
         }
 
         // 3. If Heimdall is called while the Samsung device is in Runtime (SDP(RUNTIME)) rather than Odin Download Mode (04e8:685d), inspect local matched PIT & Runtime HVIDs!
@@ -2810,9 +2793,46 @@ final class ServicingEngine: ObservableObject {
         }
 
         let isMultiCscContainer = cscPkg.uppercased().contains("OXM") || cscPkg.uppercased().contains("OYN") || cscPkg.uppercased().contains("OXA")
+        let activeModemPort = serialPorts.first(where: { $0.lowercased().contains("samsung") || $0.lowercased().contains("mdm") }) ?? selectedSerialPort
+        let hasAdbTransport = devices.contains { $0.transport == .adb }
 
         var results: [CarrierStageResult] = []
         var prevCode = currentCsc
+
+        // Check for transport realities upfront
+        if !activeModemPort.isEmpty && !hasAdbTransport {
+            log(.error, "✖ CSC Stage Automation Aborted: Multi-stage pipeline requires an active ADB transport.")
+            log(.error, "➔ The active Samsung modem port (\(activeModemPort)) is read-only for identity queries and cannot execute runtime CSC transitions or filesystem modifications.")
+            log(.error, "➔ Enable USB debugging on the device to continue.")
+            
+            results.append(CarrierStageResult(
+                stageNumber: 1,
+                carrierCode: stages.first ?? "UNK",
+                carrierLabel: "Pipeline Intercept",
+                status: "TRANSPORT ERROR",
+                detail: "Aborted: Connected transport is constrained to read-only AT mode. ADB verification required."
+            ))
+            let report = MultiStageCscReport(
+                timestamp: Date(),
+                targetModel: model,
+                targetSerial: serial,
+                currentCsc: currentCsc,
+                multiCscContainer: cscPkg,
+                attachedFirmware: fwSummary,
+                matchedBinaryBundle: bundle,
+                stages: results
+            )
+            multiStageCscReport = report
+            recordJob(
+                workflowId: "samsung.csc_multi_stage",
+                title: "CSC Pipeline (Aborted - Transport Gated)",
+                serial: serial,
+                verified: false,
+                summary: "Aborted CSC pipeline. Device is in read-only AT mode without ADB.",
+                evidence: ["modem:\(activeModemPort)", "error:adb_unavailable"]
+            )
+            return
+        }
 
         for (idx, code) in stages.enumerated() {
             let stageNum = idx + 1
