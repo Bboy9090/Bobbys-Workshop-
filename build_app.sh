@@ -185,9 +185,12 @@ cat > "${ENTITLEMENTS_HELPER_PLIST}" <<HELPER_ENT_EOF
 </plist>
 HELPER_ENT_EOF
 
-echo "[2/5] Installing AppIcon.icns..."
+echo "[2/5] Installing AppIcon.icns & Bundled Resources..."
 if [ -f "${PROJECT_DIR}/store_packaging/macos/AppIcon.icns" ]; then
     cp "${PROJECT_DIR}/store_packaging/macos/AppIcon.icns" "${RESOURCES_DIR}/AppIcon.icns"
+fi
+if [ -f "${PROJECT_DIR}/Resources/chipset_signatures.json" ]; then
+    cp "${PROJECT_DIR}/Resources/chipset_signatures.json" "${RESOURCES_DIR}/chipset_signatures.json"
 fi
 
 echo "[3/5] Bundling native Rust BootForge USB engine, ADB/Fastboot/Heimdall & self-contained libusb dylib..."

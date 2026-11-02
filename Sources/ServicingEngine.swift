@@ -4,6 +4,7 @@ import CryptoKit
 import UniformTypeIdentifiers
 import PDFKit
 import CoreImage
+import SQLite3
 #if os(macOS)
 import IOKit
 import IOKit.usb
@@ -3974,6 +3975,110 @@ final class AutomatedDebloatEngine: ObservableObject {
     }
 }
 
+// MARK: - Kernel-Level File Observer: SiphonFolderWatcher
+
+public final class SiphonFolderWatcher: @unchecked Sendable {
+    private let watchedDirectoryUrl: URL
+    private var fileDescriptor: Int32 = -1
+    private var dispatchSource: DispatchSourceFileSystemObject?
+    private let queue = DispatchQueue(label: "com.bobfwtools.siphon.watcher", qos: .utility)
+
+    public var onPackageDropped: (@MainActor (URL) -> Void)?
+
+    public init(watchedDirectoryUrl: URL) {
+        self.watchedDirectoryUrl = watchedDirectoryUrl
+    }
+
+    deinit {
+        stopMonitoring()
+    }
+
+    public func startMonitoring() -> Bool {
+        let fileManager = FileManager.default
+        if !fileManager.fileExists(atPath: watchedDirectoryUrl.path) {
+            try? fileManager.createDirectory(at: watchedDirectoryUrl, withIntermediateDirectories: true, attributes: nil)
+        }
+
+        fileDescriptor = open(watchedDirectoryUrl.path, O_EVTONLY)
+        guard fileDescriptor >= 0 else {
+            print("✖ SiphonFolderWatcher: Failed to acquire directory file descriptor channel.")
+            return false
+        }
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fileDescriptor,
+            eventMask: .write,
+            queue: queue
+        )
+
+        source.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            self.processFolderDelta()
+        }
+
+        source.setCancelHandler { [weak self] in
+            guard let self = self else { return }
+            if self.fileDescriptor >= 0 {
+                close(self.fileDescriptor)
+                self.fileDescriptor = -1
+            }
+        }
+
+        source.resume()
+        self.dispatchSource = source
+        print("🛰️ Kernel DispatchSource monitoring operational link path: \(watchedDirectoryUrl.lastPathComponent)")
+        return true
+    }
+
+    private func processFolderDelta() {
+        let fileManager = FileManager.default
+        guard let files = try? fileManager.contentsOfDirectory(at: watchedDirectoryUrl, includingPropertiesForKeys: [.creationDateKey], options: .skipsHiddenFiles) else { return }
+
+        let activePackages = files.filter { url in
+            let ext = url.pathExtension.lowercased()
+            return ext == "apk" || ext == "tar" || ext == "xml" || ext == "plist" || ext == "pit"
+        }
+
+        guard let latestPackage = activePackages.sorted(by: { url1, url2 in
+            let date1 = (try? url1.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? Date.distantPast
+            let date2 = (try? url2.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? Date.distantPast
+            return date1 > date2
+        }).first else { return }
+
+        if isFileWriteFinalized(at: latestPackage) {
+            Task { @MainActor in
+                self.onPackageDropped?(latestPackage)
+            }
+        }
+    }
+
+    private func isFileWriteFinalized(at url: URL) -> Bool {
+        var previousSize: Int64 = -1
+        let maxChecks = 5
+
+        for _ in 0..<maxChecks {
+            let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+            let currentSize = attributes?[.size] as? Int64 ?? 0
+
+            if currentSize == previousSize && currentSize > 0 {
+                return true
+            }
+            previousSize = currentSize
+            Thread.sleep(forTimeInterval: 0.15)
+        }
+        return false
+    }
+
+    public func stopMonitoring() {
+        dispatchSource?.cancel()
+        dispatchSource = nil
+        if fileDescriptor >= 0 {
+            close(fileDescriptor)
+            fileDescriptor = -1
+        }
+    }
+}
+
 // MARK: - Bulk App Sideload Siphon (Folder-Watcher & Batch Deployer)
 
 struct SideloadJob: Identifiable, Hashable {
@@ -3994,8 +4099,7 @@ final class AppSideloadSiphonEngine: ObservableObject {
     @Published var statusSummary: String = "Select a folder to begin siphon deployment"
     @Published var currentProgress: Double = 0.0
 
-    private var directorySource: DispatchSourceFileSystemObject?
-    private var dirFileDescriptor: Int32 = -1
+    private var folderWatcher: SiphonFolderWatcher?
 
     init(engine: ServicingEngine) {
         self.engine = engine
@@ -4006,10 +4110,17 @@ final class AppSideloadSiphonEngine: ObservableObject {
     }
 
     func setWatchedDirectory(_ url: URL) {
-        stopWatcher()
+        folderWatcher?.stopMonitoring()
         self.watchedDirectory = url
         scanDirectory()
-        startWatcher(url: url)
+
+        let watcher = SiphonFolderWatcher(watchedDirectoryUrl: url)
+        watcher.onPackageDropped = { [weak self] droppedUrl in
+            self?.scanDirectory()
+            self?.engine.log(.info, "🛰️ Siphon package identified: \(droppedUrl.lastPathComponent)")
+        }
+        _ = watcher.startMonitoring()
+        self.folderWatcher = watcher
     }
 
     func scanDirectory() {
@@ -4027,33 +4138,6 @@ final class AppSideloadSiphonEngine: ObservableObject {
         }
         self.deploymentQueue = newQueue
         self.statusSummary = "\(apkFiles.count) APK(s) found in \(dir.lastPathComponent)"
-    }
-
-    private func startWatcher(url: URL) {
-        let fd = open(url.path, O_EVTONLY)
-        guard fd >= 0 else { return }
-        self.dirFileDescriptor = fd
-
-        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .link, .rename], queue: DispatchQueue.global(qos: .utility))
-        source.setEventHandler { [weak self] in
-            Task { @MainActor [weak self] in
-                self?.scanDirectory()
-            }
-        }
-        source.setCancelHandler {
-            close(fd)
-        }
-        source.resume()
-        self.directorySource = source
-    }
-
-    private func stopWatcher() {
-        directorySource?.cancel()
-        directorySource = nil
-        if dirFileDescriptor >= 0 {
-            close(dirFileDescriptor)
-            dirFileDescriptor = -1
-        }
     }
 
     func executeBulkSideload() async {
@@ -4095,7 +4179,7 @@ final class AppSideloadSiphonEngine: ObservableObject {
     }
 
     deinit {
-        directorySource?.cancel()
+        folderWatcher?.stopMonitoring()
     }
 }
 
@@ -4402,5 +4486,495 @@ final class CustomerIntakePdfGenerator {
         let img = NSImage(size: size)
         img.addRepresentation(rep)
         return img
+    }
+}
+
+// MARK: - Pillar 1: Unsafe Memory Control & Ring Buffer Stream Parser
+
+final class CircularRingBuffer: @unchecked Sendable {
+    private let capacity: Int
+    private let storage: UnsafeMutableRawPointer
+    private var head: Int = 0
+    private var tail: Int = 0
+    private var count: Int = 0
+    private let lock = NSLock()
+
+    init(capacity: Int = 65536) {
+        self.capacity = capacity
+        self.storage = UnsafeMutableRawPointer.allocate(byteCount: capacity, alignment: MemoryLayout<UInt8>.alignment)
+    }
+
+    deinit {
+        storage.deallocate()
+    }
+
+    func write(bytes: UnsafeRawPointer, length: Int) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let bytesToWrite = min(length, capacity - count)
+        guard bytesToWrite > 0 else { return 0 }
+
+        let firstChunk = min(bytesToWrite, capacity - tail)
+        let secondChunk = bytesToWrite - firstChunk
+
+        storage.advanced(by: tail).copyMemory(from: bytes, byteCount: firstChunk)
+        if secondChunk > 0 {
+            storage.copyMemory(from: bytes.advanced(by: firstChunk), byteCount: secondChunk)
+        }
+
+        tail = (tail + bytesToWrite) % capacity
+        count += bytesToWrite
+        return bytesToWrite
+    }
+
+    func siftFrames(magicHeader: [UInt8], frameLength: Int) -> [Data] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        var frames: [Data] = []
+        guard count >= frameLength && !magicHeader.isEmpty else { return frames }
+
+        var searchIndex = head
+        var scanned = 0
+
+        while (count - scanned) >= frameLength {
+            var match = true
+            for (i, byte) in magicHeader.enumerated() {
+                let pos = (searchIndex + i) % capacity
+                let val = storage.advanced(by: pos).load(as: UInt8.self)
+                if val != byte {
+                    match = false
+                    break
+                }
+            }
+
+            if match {
+                var frameData = Data(count: frameLength)
+                frameData.withUnsafeMutableBytes { dst in
+                    let firstChunk = min(frameLength, capacity - searchIndex)
+                    let secondChunk = frameLength - firstChunk
+                    dst.baseAddress?.copyMemory(from: storage.advanced(by: searchIndex), byteCount: firstChunk)
+                    if secondChunk > 0 {
+                        dst.baseAddress?.advanced(by: firstChunk).copyMemory(from: storage, byteCount: secondChunk)
+                    }
+                }
+                frames.append(frameData)
+                searchIndex = (searchIndex + frameLength) % capacity
+                scanned += frameLength
+                head = searchIndex
+                count -= frameLength
+            } else {
+                searchIndex = (searchIndex + 1) % capacity
+                scanned += 1
+                head = searchIndex
+                count -= 1
+            }
+        }
+        return frames
+    }
+}
+
+// MARK: - Uncompressed Layout Header Inspector (Ring Buffer Zero-Copy Sifting)
+
+struct BinaryHeaderSignature: Equatable {
+    let name: String
+    let magic: [UInt8]
+    let offset: Int
+    let category: String
+}
+
+final class LayoutHeaderInspector {
+    static let knownSignatures: [BinaryHeaderSignature] = [
+        BinaryHeaderSignature(name: "Android Boot Image", magic: [0x41, 0x4E, 0x44, 0x52, 0x4F, 0x49, 0x44, 0x21], offset: 0, category: "boot.img"), // "ANDROID!"
+        BinaryHeaderSignature(name: "Samsung PIT Partition Table", magic: [0x76, 0x98, 0x34, 0x12], offset: 0, category: "PIT"), // 0x12349876 LE
+        BinaryHeaderSignature(name: "Qualcomm ELF Binary", magic: [0x7F, 0x45, 0x4C, 0x46], offset: 0, category: "MBN/ELF"), // "\x7FELF"
+        BinaryHeaderSignature(name: "Apple Mach-O 64-bit", magic: [0xCF, 0xFA, 0xED, 0xFE], offset: 0, category: "Mach-O"),
+        BinaryHeaderSignature(name: "MediaTek Preloader", magic: [0x4D, 0x4D, 0x4D, 0x01], offset: 0, category: "MTK_PRELOADER")
+    ]
+
+    static func inspectHeader(from ringBuffer: CircularRingBuffer) -> [BinaryHeaderSignature] {
+        var matched: [BinaryHeaderSignature] = []
+        for sig in knownSignatures {
+            let frames = ringBuffer.siftFrames(magicHeader: sig.magic, frameLength: max(sig.magic.count, 16))
+            if !frames.isEmpty {
+                matched.append(sig)
+            }
+        }
+        return matched
+    }
+}
+
+// MARK: - Pillar 3: Process Deadman Watchdog & Stall Detection
+
+enum ProcessDeadmanError: Error, LocalizedError {
+    case executionTimedOut(durationSeconds: Double)
+    case processTerminatedWithError(exitCode: Int32, stderr: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .executionTimedOut(let s):
+            return "Target response stalled after \(s)s. Verify physical cable link and target screen authorization."
+        case .processTerminatedWithError(let code, let err):
+            return "Process terminated with exit code \(code): \(err)"
+        }
+    }
+}
+
+final class ProcessDeadmanTimer {
+    static func executeWithWatchdog(
+        executable: String,
+        arguments: [String],
+        timeoutSeconds: Double = 5.0
+    ) async throws -> String {
+        try await withThrowingTaskGroup(of: String.self) { group in
+            group.addTask {
+                let proc = Process()
+                proc.executableURL = URL(fileURLWithPath: executable)
+                proc.arguments = arguments
+                var env = ProcessInfo.processInfo.environment
+                env["PATH"] = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+                proc.environment = env
+
+                let stdoutPipe = Pipe()
+                let stderrPipe = Pipe()
+                proc.standardOutput = stdoutPipe
+                proc.standardError = stderrPipe
+
+                try proc.run()
+
+                while proc.isRunning {
+                    if Task.isCancelled {
+                        proc.terminate()
+                        throw ProcessDeadmanError.executionTimedOut(durationSeconds: timeoutSeconds)
+                    }
+                    try await Task.sleep(nanoseconds: 50_000_000)
+                }
+
+                let outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+
+                let stdoutStr = String(data: outData, encoding: .utf8) ?? ""
+                let stderrStr = String(data: errData, encoding: .utf8) ?? ""
+
+                if proc.terminationStatus != 0 {
+                    throw ProcessDeadmanError.processTerminatedWithError(exitCode: proc.terminationStatus, stderr: stderrStr)
+                }
+                return stdoutStr.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+                throw ProcessDeadmanError.executionTimedOut(durationSeconds: timeoutSeconds)
+            }
+
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+    }
+}
+
+// MARK: - Pillar 4: Local Chipset Signatures Registry
+
+struct ChipsetRawSignatureEntry: Codable, Equatable {
+    let chipsetId: String
+    let marketingName: String
+    let architecture: String
+    let vendorId: String
+    let productId: String
+    let bitness: Int
+    let thermalLimitCelsius: Double
+    let hvidSignaturePattern: String
+}
+
+struct ChipsetMetadata: Identifiable, Codable, Equatable {
+    var id: String { chipId }
+    let chipId: String
+    let marketingName: String
+    let manufacturer: String
+    let architecture: String
+    let cpuCores: Int
+    let maxMemoryGb: Int
+    let thermalTdpWatts: Double
+    let fabricationNodeNm: Int
+    let supportedTransports: [String]
+}
+
+final class ChipsetSignatureRegistry {
+    static let shared = ChipsetSignatureRegistry()
+    private var rawJsonEntries: [ChipsetRawSignatureEntry] = []
+
+    private let fallbackSignatures: [String: ChipsetMetadata] = [
+        "SM6115": ChipsetMetadata(
+            chipId: "SM6115",
+            marketingName: "Snapdragon 662",
+            manufacturer: "Qualcomm",
+            architecture: "ARM64 (Kryo 260)",
+            cpuCores: 8,
+            maxMemoryGb: 4,
+            thermalTdpWatts: 4.5,
+            fabricationNodeNm: 11,
+            supportedTransports: ["MTP", "ADB", "Fastboot", "Qualcomm EDL (9008)"]
+        ),
+        "SM8250": ChipsetMetadata(
+            chipId: "SM8250",
+            marketingName: "Snapdragon 865 5G",
+            manufacturer: "Qualcomm",
+            architecture: "ARM64 (Kryo 585)",
+            cpuCores: 8,
+            maxMemoryGb: 12,
+            thermalTdpWatts: 6.0,
+            fabricationNodeNm: 7,
+            supportedTransports: ["MTP", "ADB", "Fastboot", "Qualcomm EDL (9008)"]
+        ),
+        "EXYNOS9611": ChipsetMetadata(
+            chipId: "EXYNOS9611",
+            marketingName: "Exynos 9611",
+            manufacturer: "Samsung Semiconductor",
+            architecture: "ARM64 (Cortex-A73 + A53)",
+            cpuCores: 8,
+            maxMemoryGb: 6,
+            thermalTdpWatts: 5.0,
+            fabricationNodeNm: 10,
+            supportedTransports: ["MTP", "ADB", "Samsung Odin", "Modem AT"]
+        ),
+        "EXYNOS2100": ChipsetMetadata(
+            chipId: "EXYNOS2100",
+            marketingName: "Exynos 2100 5G",
+            manufacturer: "Samsung Semiconductor",
+            architecture: "ARM64 (Cortex-X1 + A78 + A55)",
+            cpuCores: 8,
+            maxMemoryGb: 16,
+            thermalTdpWatts: 7.2,
+            fabricationNodeNm: 5,
+            supportedTransports: ["MTP", "ADB", "Samsung Odin", "Modem AT"]
+        ),
+        "MT6768": ChipsetMetadata(
+            chipId: "MT6768",
+            marketingName: "MediaTek Helio P65 / G85",
+            manufacturer: "MediaTek",
+            architecture: "ARM64 (Cortex-A75 + A55)",
+            cpuCores: 8,
+            maxMemoryGb: 6,
+            thermalTdpWatts: 4.8,
+            fabricationNodeNm: 12,
+            supportedTransports: ["MTP", "ADB", "MediaTek BROM", "Fastboot"]
+        ),
+        "T8110": ChipsetMetadata(
+            chipId: "T8110",
+            marketingName: "Apple A15 Bionic",
+            manufacturer: "Apple",
+            architecture: "ARM64e (Avalanche + Blizzard)",
+            cpuCores: 6,
+            maxMemoryGb: 6,
+            thermalTdpWatts: 5.5,
+            fabricationNodeNm: 5,
+            supportedTransports: ["Lockdownd", "Apple DFU", "Apple Recovery"]
+        ),
+        "T8103": ChipsetMetadata(
+            chipId: "T8103",
+            marketingName: "Apple M1",
+            manufacturer: "Apple",
+            architecture: "ARM64e (Firestorm + Icestorm)",
+            cpuCores: 8,
+            maxMemoryGb: 16,
+            thermalTdpWatts: 15.0,
+            fabricationNodeNm: 5,
+            supportedTransports: ["Lockdownd", "Apple DFU", "Apple Recovery"]
+        )
+    ]
+
+    init() {
+        loadJsonSignatures()
+    }
+
+    private func loadJsonSignatures() {
+        let bundleUrl = Bundle.main.url(forResource: "chipset_signatures", withExtension: "json")
+        let localUrl = URL(fileURLWithPath: "Resources/chipset_signatures.json")
+        let projectUrl = URL(fileURLWithPath: "bobbys-workshop/Resources/chipset_signatures.json")
+        let appSupportUrl = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("BobFWTools/chipset_signatures.json")
+
+        for url in [bundleUrl, localUrl, projectUrl, appSupportUrl].compactMap({ $0 }) {
+            if let data = try? Data(contentsOf: url),
+               let decoded = try? JSONDecoder().decode([ChipsetRawSignatureEntry].self, from: data),
+               !decoded.isEmpty {
+                self.rawJsonEntries = decoded
+                return
+            }
+        }
+    }
+
+    func resolve(hvid: String?, devconInfo: SamsungDevConInfo?, vid: Int, pid: Int) -> ChipsetMetadata? {
+        let token = (hvid ?? devconInfo?.hvidSummary ?? "").uppercased()
+
+        // 1. Check dynamic JSON signature patterns
+        for entry in rawJsonEntries {
+            let pat = entry.hvidSignaturePattern.uppercased()
+            if !pat.isEmpty && (token.contains(pat) || pat.contains(token)) {
+                return ChipsetMetadata(
+                    chipId: entry.chipsetId,
+                    marketingName: entry.marketingName,
+                    manufacturer: entry.chipsetId.contains("QCOM") ? "Qualcomm" : (entry.chipsetId.contains("APPLE") ? "Apple" : (entry.chipsetId.contains("MTK") ? "MediaTek" : "Samsung")),
+                    architecture: entry.architecture,
+                    cpuCores: 8,
+                    maxMemoryGb: entry.bitness == 64 ? 8 : 4,
+                    thermalTdpWatts: entry.thermalLimitCelsius > 80 ? 6.0 : 4.5,
+                    fabricationNodeNm: 10,
+                    supportedTransports: ["MTP", "ADB", "Fastboot"]
+                )
+            }
+        }
+
+        // 2. Fallback static signatures
+        if token.contains("SM6115") || token.contains("KONA") || token.contains("QUALCOMM") {
+            return fallbackSignatures["SM6115"]
+        }
+        if token.contains("9611") || token.contains("EXYNOS") {
+            return fallbackSignatures["EXYNOS9611"]
+        }
+        if token.contains("MT6768") || token.contains("HELIO") {
+            return fallbackSignatures["MT6768"]
+        }
+        if vid == 0x05ac {
+            return fallbackSignatures["T8110"]
+        }
+        return nil
+    }
+}
+
+// MARK: - Pillar 5: Transaction-Safe Workspace Ledger (SQLiteAuditLedger)
+
+actor SQLiteAuditLedger {
+    private var db: OpaquePointer?
+    private let dbPath: String
+
+    init(dbPath: String? = nil) {
+        let path: String
+        if let custom = dbPath {
+            path = custom
+        } else {
+            let recordsDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+                .appendingPathComponent("BobFWTools/records", isDirectory: true)
+            try? FileManager.default.createDirectory(at: recordsDir, withIntermediateDirectories: true)
+            path = recordsDir.appendingPathComponent("workspace.db").path
+        }
+        self.dbPath = path
+        self.db = Self.openAndMigrate(path: path)
+    }
+
+    deinit {
+        if let db = db {
+            sqlite3_close(db)
+        }
+    }
+
+    private static func openAndMigrate(path: String) -> OpaquePointer? {
+        var db: OpaquePointer?
+        if sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) != SQLITE_OK {
+            print("✖ SQLiteAuditLedger: Failed to open workspace database at \(path)")
+            return nil
+        }
+
+        let migrationSql = """
+        PRAGMA foreign_keys = ON;
+        PRAGMA journal_mode = WAL;
+
+        CREATE TABLE IF NOT EXISTS devices (
+            serial TEXT PRIMARY KEY,
+            model TEXT NOT NULL,
+            platform TEXT NOT NULL,
+            csc TEXT,
+            build_pda TEXT,
+            chipset_id TEXT,
+            first_seen INTEGER NOT NULL,
+            last_seen INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS job_events (
+            id TEXT PRIMARY KEY,
+            device_serial TEXT NOT NULL,
+            workflow_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            verified INTEGER NOT NULL,
+            summary TEXT NOT NULL,
+            timestamp INTEGER NOT NULL,
+            FOREIGN KEY (device_serial) REFERENCES devices(serial) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS cable_doctor_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_serial TEXT NOT NULL,
+            impedance REAL NOT NULL,
+            packet_loss REAL NOT NULL,
+            grade TEXT NOT NULL,
+            timestamp INTEGER NOT NULL,
+            FOREIGN KEY (device_serial) REFERENCES devices(serial) ON DELETE CASCADE
+        );
+        """
+
+        var errMsg: UnsafeMutablePointer<CChar>?
+        if sqlite3_exec(db, migrationSql, nil, nil, &errMsg) != SQLITE_OK {
+            if let err = errMsg {
+                print("✖ SQLite migration error: \(String(cString: err))")
+                sqlite3_free(errMsg)
+            }
+        }
+        return db
+    }
+
+    func upsertDevice(serial: String, model: String, platform: String, csc: String?, buildPda: String?, chipsetId: String?) throws {
+        guard let db = db else { return }
+        let sql = """
+        INSERT INTO devices (serial, model, platform, csc, build_pda, chipset_id, first_seen, last_seen)
+        VALUES (?, ?, ?, ?, ?, ?, strftime('%s','now'), strftime('%s','now'))
+        ON CONFLICT(serial) DO UPDATE SET
+            model = excluded.model,
+            platform = excluded.platform,
+            csc = coalesce(excluded.csc, devices.csc),
+            build_pda = coalesce(excluded.build_pda, devices.build_pda),
+            chipset_id = coalesce(excluded.chipset_id, devices.chipset_id),
+            last_seen = strftime('%s','now');
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_text(stmt, 1, (serial as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(stmt, 2, (model as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(stmt, 3, (platform as NSString).utf8String, -1, nil)
+        if let csc = csc { sqlite3_bind_text(stmt, 4, (csc as NSString).utf8String, -1, nil) } else { sqlite3_bind_null(stmt, 4) }
+        if let pda = buildPda { sqlite3_bind_text(stmt, 5, (pda as NSString).utf8String, -1, nil) } else { sqlite3_bind_null(stmt, 5) }
+        if let chip = chipsetId { sqlite3_bind_text(stmt, 6, (chip as NSString).utf8String, -1, nil) } else { sqlite3_bind_null(stmt, 6) }
+
+        sqlite3_step(stmt)
+    }
+
+    func recordJobAtomic(id: String, deviceSerial: String, workflowId: String, title: String, verified: Bool, summary: String) throws {
+        guard let db = db else { return }
+        sqlite3_exec(db, "BEGIN TRANSACTION;", nil, nil, nil)
+
+        let sql = """
+        INSERT INTO job_events (id, device_serial, workflow_id, title, verified, summary, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, strftime('%s','now'));
+        """
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, (id as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(stmt, 2, (deviceSerial as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(stmt, 3, (workflowId as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(stmt, 4, (title as NSString).utf8String, -1, nil)
+            sqlite3_bind_int(stmt, 5, verified ? 1 : 0)
+            sqlite3_bind_text(stmt, 6, (summary as NSString).utf8String, -1, nil)
+
+            if sqlite3_step(stmt) == SQLITE_DONE {
+                sqlite3_finalize(stmt)
+                sqlite3_exec(db, "COMMIT;", nil, nil, nil)
+                return
+            }
+            sqlite3_finalize(stmt)
+        }
+        sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
     }
 }
