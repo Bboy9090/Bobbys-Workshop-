@@ -1122,6 +1122,7 @@ final class ServicingEngine: ObservableObject {
     @Published var jobs: [WorkflowJobRecord] = []
     @Published var firmwareInventory: [FirmwareInventoryRecord] = []
     @Published var repairNotes: String = ""
+    @Published var brandingConfig: BenchBrandingConfig = BenchBrandingConfig()
     @Published var isBusy: Bool = false
     @Published var deviceProperties: [String: String] = [:]
     @Published var installedPackages: [String] = []
@@ -1388,6 +1389,12 @@ final class ServicingEngine: ObservableObject {
             repairNotes = savedNotes
         }
 
+        let brandURL = appSupportDir.appendingPathComponent("branding-config.json")
+        if let data = try? Data(contentsOf: brandURL),
+           let decoded = try? JSONDecoder().decode(BenchBrandingConfig.self, from: data) {
+            brandingConfig = decoded
+        }
+
         let licenseURL = appSupportDir.appendingPathComponent("license.token")
         #if STORE_EDITION
         let storeLicenseURL = appSupportDir.appendingPathComponent("store-license.token")
@@ -1608,6 +1615,14 @@ final class ServicingEngine: ObservableObject {
         let notesURL = appSupportDir.appendingPathComponent("repair-notes.txt")
         try? repairNotes.write(to: notesURL, atomically: true, encoding: .utf8)
         log(.success, "Saved session repair notes to \(notesURL.path)")
+    }
+
+    func saveBrandingConfig() {
+        let brandURL = appSupportDir.appendingPathComponent("branding-config.json")
+        if let data = try? JSONEncoder().encode(brandingConfig) {
+            try? data.write(to: brandURL)
+            log(.success, "Saved custom bench branding preferences.")
+        }
     }
 
     // MARK: - Audited Workflow Job Recording
@@ -4137,6 +4152,14 @@ final class MultiPlatformConfigurationEngine: ObservableObject {
 
 // MARK: - Customer Intake & Bench Diagnostic PDF Report Generator
 
+struct BenchBrandingConfig: Codable, Equatable {
+    var shopName: String = "BOBBY'S WORKSHOP · BOBFWTOOLS BENCH DIAGNOSTICS"
+    var documentSubtitle: String = "HARDWARE INTAKE & SYSTEM REPAIR AUDIT REPORT"
+    var defaultTechnician: String = "Bobby Blanco"
+    var shopContact: String = "bench@bobbysworkshop.com | 1-800-BOB-FORGE"
+    var warrantyTerms: String = "TERMS & VERIFICATION: I hereby acknowledge receipt and verification of the diagnostic servicing and staging detailed on this record. All procedures comply with authorized diagnostic workbench guidelines. Hardware has been audited and returned in authorized configuration."
+}
+
 @MainActor
 final class CustomerIntakePdfGenerator {
     static func buildReport(
@@ -4167,8 +4190,9 @@ final class CustomerIntakePdfGenerator {
         NSColor.white.setFill()
         pageRect.fill()
 
+        let branding = engine.brandingConfig
         let effectiveTicket = ticketId.isEmpty ? "TKT-\(Int.random(in: 10000...99999))" : ticketId
-        let effectiveTech = technician.isEmpty ? "Bobby Blanco" : technician
+        let effectiveTech = technician.isEmpty ? branding.defaultTechnician : technician
         let effectiveCustomer = customerName.isEmpty ? "Customer Walk-in / Intake" : customerName
 
         let dateFormatter = DateFormatter()
@@ -4180,8 +4204,8 @@ final class CustomerIntakePdfGenerator {
         let headerRect = CGRect(x: 36, y: 30, width: 540, height: 56)
         fillRoundedRect(headerRect, radius: 8, color: NSColor(calibratedRed: 0.06, green: 0.09, blue: 0.16, alpha: 1.0))
 
-        drawText("BOBBY'S WORKSHOP · BOBFWTOOLS BENCH DIAGNOSTICS", in: CGRect(x: 48, y: 38, width: 330, height: 18), font: NSFont.boldSystemFont(ofSize: 12), color: .white)
-        drawText("HARDWARE INTAKE & SYSTEM REPAIR AUDIT REPORT", in: CGRect(x: 48, y: 58, width: 330, height: 16), font: NSFont.systemFont(ofSize: 9, weight: .semibold), color: NSColor(calibratedRed: 0.22, green: 0.74, blue: 0.97, alpha: 1.0))
+        drawText(branding.shopName, in: CGRect(x: 48, y: 38, width: 330, height: 18), font: NSFont.boldSystemFont(ofSize: 11), color: .white)
+        drawText(branding.documentSubtitle, in: CGRect(x: 48, y: 58, width: 330, height: 16), font: NSFont.systemFont(ofSize: 9, weight: .semibold), color: NSColor(calibratedRed: 0.22, green: 0.74, blue: 0.97, alpha: 1.0))
 
         drawText("TICKET: \(effectiveTicket)", in: CGRect(x: 390, y: 38, width: 172, height: 18), font: NSFont.boldSystemFont(ofSize: 11), color: .white, alignment: .right)
         drawText(timestampStr, in: CGRect(x: 390, y: 58, width: 172, height: 16), font: NSFont.monospacedSystemFont(ofSize: 8.5, weight: .regular), color: NSColor(calibratedRed: 0.58, green: 0.64, blue: 0.72, alpha: 1.0), alignment: .right)
@@ -4293,7 +4317,7 @@ final class CustomerIntakePdfGenerator {
         let signRect = CGRect(x: 36, y: 561, width: 540, height: 160)
         fillRoundedRect(signRect, radius: 6, color: .white, strokeColor: NSColor(calibratedRed: 0.88, green: 0.91, blue: 0.94, alpha: 1.0))
 
-        let terms = "TERMS & VERIFICATION: I hereby acknowledge receipt and verification of the diagnostic servicing and staging detailed on this record. All procedures comply with authorized diagnostic workbench guidelines. Hardware has been audited and returned in authorized configuration."
+        let terms = branding.warrantyTerms
         drawText(terms, in: CGRect(x: 48, y: 569, width: 516, height: 32), font: NSFont.systemFont(ofSize: 7.2), color: NSColor(calibratedRed: 0.45, green: 0.5, blue: 0.6, alpha: 1.0))
 
         // Customer Signature line
@@ -4311,7 +4335,7 @@ final class CustomerIntakePdfGenerator {
         drawText("Date: \(timestampStr)", in: CGRect(x: 334, y: 681, width: 220, height: 13), font: NSFont.systemFont(ofSize: 8), color: .gray)
 
         // 7. Footer
-        drawText("BobFWTools Studio · Hardware Bench Intake Engine · Universal 2 Native macOS · https://github.com/Bboy9090/Bobbys-Workshop-", in: CGRect(x: 36, y: 735, width: 540, height: 14), font: NSFont.systemFont(ofSize: 7.5), color: NSColor(calibratedRed: 0.6, green: 0.65, blue: 0.72, alpha: 1.0), alignment: .center)
+        drawText("\(branding.shopName) · \(branding.shopContact) · Universal 2 Native macOS", in: CGRect(x: 36, y: 735, width: 540, height: 14), font: NSFont.systemFont(ofSize: 7.5), color: NSColor(calibratedRed: 0.6, green: 0.65, blue: 0.72, alpha: 1.0), alignment: .center)
 
         NSGraphicsContext.current = previousGC
         context.restoreGState()

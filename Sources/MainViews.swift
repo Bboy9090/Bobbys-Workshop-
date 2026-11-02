@@ -3412,6 +3412,9 @@ struct DualPlatformWorkbenchView: View {
         ("ar_AE", "🇦🇪 العربية (AR)")
     ]
 
+    @State private var showBrandingConfig: Bool = false
+    @State private var brandingSavedMessage: String = ""
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -3463,6 +3466,72 @@ struct DualPlatformWorkbenchView: View {
                                     .padding(.vertical, 3)
                             }
                             .buttonStyle(.borderedProminent)
+
+                            Button {
+                                showBrandingConfig.toggle()
+                            } label: {
+                                Image(systemName: "gearshape.fill")
+                                    .foregroundColor(showBrandingConfig ? .accentColor : .secondary)
+                            }
+                            .help("Custom Bench Branding & Intake Disclaimer Settings")
+                        }
+
+                        if showBrandingConfig {
+                            Divider()
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("BENCH & SHOP INTAKE BRANDING PREFERENCES")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.secondary)
+
+                                HStack(spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Shop / Company Name")
+                                            .font(.caption2)
+                                        TextField("Shop Name", text: $engine.brandingConfig.shopName)
+                                            .textFieldStyle(.roundedBorder)
+                                    }
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Report Subtitle")
+                                            .font(.caption2)
+                                        TextField("Report Subtitle", text: $engine.brandingConfig.documentSubtitle)
+                                            .textFieldStyle(.roundedBorder)
+                                    }
+                                }
+
+                                HStack(spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Shop Contact / Support Line")
+                                            .font(.caption2)
+                                        TextField("Contact", text: $engine.brandingConfig.shopContact)
+                                            .textFieldStyle(.roundedBorder)
+                                    }
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Intake Sign-off Disclaimer & Warranty Terms")
+                                        .font(.caption2)
+                                    TextEditor(text: $engine.brandingConfig.warrantyTerms)
+                                        .font(.system(size: 11))
+                                        .frame(height: 50)
+                                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2)))
+                                }
+
+                                HStack {
+                                    Button("Save Branding Preferences") {
+                                        engine.saveBrandingConfig()
+                                        brandingSavedMessage = "✔ Branding saved"
+                                    }
+                                    .buttonStyle(.bordered)
+
+                                    if !brandingSavedMessage.isEmpty {
+                                        Text(brandingSavedMessage)
+                                            .font(.caption)
+                                            .foregroundColor(.green)
+                                    }
+                                }
+                            }
+                            .padding(8)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.controlBackgroundColor)))
                         }
                     }
                     .padding(8)
