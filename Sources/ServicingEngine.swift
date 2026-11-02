@@ -3840,13 +3840,32 @@ struct DebloatPackage: Identifiable, Codable, Hashable {
     var isInstalled: Bool = true
 }
 
+public struct DebloatPackageDescriptor: Codable, Identifiable {
+    public var id: String { packageId }
+    public let packageId: String
+    public let appLabel: String
+    public let impactLevel: String
+
+    public init(packageId: String, appLabel: String, impactLevel: String) {
+        self.packageId = packageId
+        self.appLabel = appLabel
+        self.impactLevel = impactLevel
+    }
+}
+
 @MainActor
 final class AutomatedDebloatEngine: ObservableObject {
-    private let engine: ServicingEngine
+    private let engine: ServicingEngine?
     @Published var registry: [DebloatPackage] = []
     @Published var selectedIds: Set<String> = []
     @Published var statusMessage: String = "Ready"
     @Published var progress: Double = 0.0
+
+    public static let sharedManifest: [DebloatPackageDescriptor] = [
+        DebloatPackageDescriptor(packageId: "com.sec.android.app.billing", appLabel: "Samsung Billing Services", impactLevel: "Background RAM Consumption"),
+        DebloatPackageDescriptor(packageId: "com.facebook.system", appLabel: "Pre-installed App Installer Module", impactLevel: "Unnecessary Background Processes"),
+        DebloatPackageDescriptor(packageId: "com.wssyncmldm", appLabel: "OTA System Sync Client", impactLevel: "High CPU Check Cycles")
+    ]
 
     private var registryFileURL: URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -3855,9 +3874,18 @@ final class AutomatedDebloatEngine: ObservableObject {
         return dir.appendingPathComponent("debloat_registry.json")
     }
 
-    init(engine: ServicingEngine) {
+    init(engine: ServicingEngine? = nil) {
         self.engine = engine
         loadRegistry()
+    }
+
+    public func compileRemovalCommands(for packages: [DebloatPackageDescriptor]) -> [String] {
+        var targets: [String] = []
+        for pkg in packages {
+            targets.append("shell pm uninstall -k --user 0 \(pkg.packageId)")
+            targets.append("shell pm hide \(pkg.packageId)")
+        }
+        return targets
     }
 
     func loadRegistry() {
@@ -3896,6 +3924,10 @@ final class AutomatedDebloatEngine: ObservableObject {
     }
 
     func scanInstalledState() async {
+        guard let engine = self.engine else {
+            statusMessage = "Target engine not attached."
+            return
+        }
         guard engine.devices.contains(where: { $0.transport == .adb }) else {
             statusMessage = "Target must be connected with ADB authorized."
             return
@@ -3918,6 +3950,7 @@ final class AutomatedDebloatEngine: ObservableObject {
     }
 
     func uninstallSelected() async {
+        guard let engine = self.engine else { return }
         let targets = registry.filter { selectedIds.contains($0.packageId) && $0.isInstalled }
         guard !targets.isEmpty else {
             statusMessage = "No installed bloat packages selected."
@@ -3955,6 +3988,7 @@ final class AutomatedDebloatEngine: ObservableObject {
     }
 
     func restorePackage(_ packageId: String) async {
+        guard let engine = self.engine else { return }
         let adbPath = engine.toolPaths["adb"] ?? "/usr/local/bin/adb"
         statusMessage = "Restoring \(packageId)..."
         let res = await engine.runProcess(
@@ -4491,7 +4525,7 @@ final class CustomerIntakePdfGenerator {
 
 // MARK: - Pillar 1: Unsafe Memory Control & Ring Buffer Stream Parser
 
-final class CircularRingBuffer: @unchecked Sendable {
+public final class CircularRingBuffer: @unchecked Sendable {
     private let capacity: Int
     private let storage: UnsafeMutableRawPointer
     private var head: Int = 0
@@ -4499,7 +4533,7 @@ final class CircularRingBuffer: @unchecked Sendable {
     private var count: Int = 0
     private let lock = NSLock()
 
-    init(capacity: Int = 65536) {
+    public init(capacity: Int = 65536) {
         self.capacity = capacity
         self.storage = UnsafeMutableRawPointer.allocate(byteCount: capacity, alignment: MemoryLayout<UInt8>.alignment)
     }
@@ -4508,7 +4542,7 @@ final class CircularRingBuffer: @unchecked Sendable {
         storage.deallocate()
     }
 
-    func write(bytes: UnsafeRawPointer, length: Int) -> Int {
+    public func write(bytes: UnsafeRawPointer, length: Int) -> Int {
         lock.lock()
         defer { lock.unlock() }
 
@@ -4528,7 +4562,7 @@ final class CircularRingBuffer: @unchecked Sendable {
         return bytesToWrite
     }
 
-    func siftFrames(magicHeader: [UInt8], frameLength: Int) -> [Data] {
+    public func siftFrames(magicHeader: [UInt8], frameLength: Int) -> [Data] {
         lock.lock()
         defer { lock.unlock() }
 
@@ -4577,6 +4611,118 @@ final class CircularRingBuffer: @unchecked Sendable {
 
 // MARK: - Uncompressed Layout Header Inspector (Ring Buffer Zero-Copy Sifting)
 
+public struct BinaryFormatDescriptor: Equatable, Identifiable {
+    public var id: String { formatId }
+    public let formatId: String
+    public let description: String
+    public let magicSequence: [UInt8]
+    public let byteOffset: Int
+    public let minimumStreamLength: Int
+    public let targetPartition: String
+
+    public init(
+        formatId: String,
+        description: String,
+        magicSequence: [UInt8],
+        byteOffset: Int,
+        minimumStreamLength: Int,
+        targetPartition: String
+    ) {
+        self.formatId = formatId
+        self.description = description
+        self.magicSequence = magicSequence
+        self.byteOffset = byteOffset
+        self.minimumStreamLength = minimumStreamLength
+        self.targetPartition = targetPartition
+    }
+}
+
+public final class UncompressedLayoutHeaderInspector {
+    public static let supportedFormats: [BinaryFormatDescriptor] = [
+        BinaryFormatDescriptor(
+            formatId: "FMT_ANDROID_BOOT",
+            description: "Android Boot Image Container",
+            magicSequence: [0x41, 0x4E, 0x44, 0x52, 0x4F, 0x49, 0x44, 0x21], // "ANDROID!"
+            byteOffset: 0,
+            minimumStreamLength: 64,
+            targetPartition: "boot"
+        ),
+        BinaryFormatDescriptor(
+            formatId: "FMT_SAMSUNG_PIT",
+            description: "Samsung Partition Information Table",
+            magicSequence: [0x76, 0x98, 0x34, 0x12], // 0x12349876 Little-Endian
+            byteOffset: 0,
+            minimumStreamLength: 28,
+            targetPartition: "pit"
+        ),
+        BinaryFormatDescriptor(
+            formatId: "FMT_QUALCOMM_ELF",
+            description: "Qualcomm Executable & Linkable Binary",
+            magicSequence: [0x7F, 0x45, 0x4C, 0x46], // "\x7FELF"
+            byteOffset: 0,
+            minimumStreamLength: 52,
+            targetPartition: "xbl/sbl1"
+        ),
+        BinaryFormatDescriptor(
+            formatId: "FMT_APPLE_MACHO64",
+            description: "Apple Mach-O 64-bit Binary",
+            magicSequence: [0xCF, 0xFA, 0xED, 0xFE], // MH_MAGIC_64 Little-Endian
+            byteOffset: 0,
+            minimumStreamLength: 32,
+            targetPartition: "kernelcache"
+        ),
+        BinaryFormatDescriptor(
+            formatId: "FMT_MEDIATEK_PRELOAD",
+            description: "MediaTek Preloader ROM Image",
+            magicSequence: [0x4D, 0x4D, 0x4D, 0x01], // "MMM\x01"
+            byteOffset: 0,
+            minimumStreamLength: 32,
+            targetPartition: "preloader"
+        ),
+        BinaryFormatDescriptor(
+            formatId: "FMT_SPRD_PAC",
+            description: "Unisoc PAC Firmware Archive",
+            magicSequence: [0x42, 0x50, 0x41, 0x43], // "BPAC"
+            byteOffset: 0,
+            minimumStreamLength: 48,
+            targetPartition: "fdl1/fdl2"
+        )
+    ]
+
+    public static func inspect(ringBuffer: CircularRingBuffer) -> [BinaryFormatDescriptor] {
+        var detections: [BinaryFormatDescriptor] = []
+        for descriptor in supportedFormats {
+            let extracted = ringBuffer.siftFrames(
+                magicHeader: descriptor.magicSequence,
+                frameLength: descriptor.minimumStreamLength
+            )
+            if !extracted.isEmpty {
+                detections.append(descriptor)
+            }
+        }
+        return detections
+    }
+
+    public static func inspectFileHeader(at fileUrl: URL) -> BinaryFormatDescriptor? {
+        guard let handle = try? FileHandle(forReadingFrom: fileUrl) else { return nil }
+        defer { try? handle.close() }
+
+        let headerData = handle.readData(ofLength: 512)
+        guard !headerData.isEmpty else { return nil }
+
+        for descriptor in supportedFormats {
+            let seq = descriptor.magicSequence
+            guard headerData.count >= (descriptor.byteOffset + seq.count) else { continue }
+
+            let slice = [UInt8](headerData[descriptor.byteOffset..<(descriptor.byteOffset + seq.count)])
+            if slice == seq {
+                return descriptor
+            }
+        }
+        return nil
+    }
+}
+
 struct BinaryHeaderSignature: Equatable {
     let name: String
     let magic: [UInt8]
@@ -4586,9 +4732,9 @@ struct BinaryHeaderSignature: Equatable {
 
 final class LayoutHeaderInspector {
     static let knownSignatures: [BinaryHeaderSignature] = [
-        BinaryHeaderSignature(name: "Android Boot Image", magic: [0x41, 0x4E, 0x44, 0x52, 0x4F, 0x49, 0x44, 0x21], offset: 0, category: "boot.img"), // "ANDROID!"
-        BinaryHeaderSignature(name: "Samsung PIT Partition Table", magic: [0x76, 0x98, 0x34, 0x12], offset: 0, category: "PIT"), // 0x12349876 LE
-        BinaryHeaderSignature(name: "Qualcomm ELF Binary", magic: [0x7F, 0x45, 0x4C, 0x46], offset: 0, category: "MBN/ELF"), // "\x7FELF"
+        BinaryHeaderSignature(name: "Android Boot Image", magic: [0x41, 0x4E, 0x44, 0x52, 0x4F, 0x49, 0x44, 0x21], offset: 0, category: "boot.img"),
+        BinaryHeaderSignature(name: "Samsung PIT Partition Table", magic: [0x76, 0x98, 0x34, 0x12], offset: 0, category: "PIT"),
+        BinaryHeaderSignature(name: "Qualcomm ELF Binary", magic: [0x7F, 0x45, 0x4C, 0x46], offset: 0, category: "MBN/ELF"),
         BinaryHeaderSignature(name: "Apple Mach-O 64-bit", magic: [0xCF, 0xFA, 0xED, 0xFE], offset: 0, category: "Mach-O"),
         BinaryHeaderSignature(name: "MediaTek Preloader", magic: [0x4D, 0x4D, 0x4D, 0x01], offset: 0, category: "MTK_PRELOADER")
     ]
@@ -4605,7 +4751,126 @@ final class LayoutHeaderInspector {
     }
 }
 
-// MARK: - Pillar 3: Process Deadman Watchdog & Stall Detection
+// MARK: - Pillar 1: Multiplexed High-Speed Injection Packet Router (PayloadRouter)
+
+public protocol PayloadStreamConsumer: AnyObject {
+    func ingestPayloadSegment(_ data: Data)
+}
+
+public final class PayloadRouter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var consumers: [String: PayloadStreamConsumer] = [:]
+
+    public init() {}
+
+    public func registerConsumer(_ consumer: PayloadStreamConsumer, for formatId: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        consumers[formatId] = consumer
+    }
+
+    public func routeDataChunk(_ chunk: Data) {
+        guard !chunk.isEmpty else { return }
+
+        lock.lock()
+        let activeConsumers = consumers
+        lock.unlock()
+
+        var matched = false
+        for format in UncompressedLayoutHeaderInspector.supportedFormats {
+            let seq = format.magicSequence
+            if chunk.count >= seq.count && [UInt8](chunk.prefix(seq.count)) == seq {
+                activeConsumers[format.formatId]?.ingestPayloadSegment(chunk)
+                matched = true
+                break
+            }
+        }
+
+        if !matched {
+            activeConsumers["FMT_SAMSUNG_MODEM_AT"]?.ingestPayloadSegment(chunk)
+        }
+    }
+}
+
+// MARK: - Pillar 2: Native POSIX Stream Bridge Interaction Layer (ProcessStreamRouterBridge)
+
+public final class ProcessStreamRouterBridge {
+    private let router: PayloadRouter
+    private var streamingTask: Task<Void, Never>?
+    private let lock = NSLock()
+
+    public init(router: PayloadRouter) {
+        self.router = router
+    }
+
+    public func bridgePipeStream(_ asyncLineStream: AsyncStream<String>) {
+        cancelActiveBridge()
+
+        lock.lock()
+        streamingTask = Task.detached(priority: .userInitiated) { [weak self] in
+            for await line in asyncLineStream {
+                guard let self = self else { break }
+                guard !Task.isCancelled else { break }
+                guard let rawDataBlock = line.data(using: .utf8), !rawDataBlock.isEmpty else { continue }
+
+                self.router.routeDataChunk(rawDataBlock)
+            }
+        }
+        lock.unlock()
+    }
+
+    public func cancelActiveBridge() {
+        lock.lock()
+        defer { lock.unlock() }
+        streamingTask?.cancel()
+        streamingTask = nil
+    }
+}
+
+// MARK: - Pillar 3: Immutable Chip-Specific Diagnostic Manifest
+
+public struct DiagnosticQueryCommand: Identifiable {
+    public var id: String { transactionToken }
+    public let transactionToken: String
+    public let shellCommand: String
+    public let alternativeAtCommand: String?
+    public let logExplanation: String
+
+    public init(
+        transactionToken: String,
+        shellCommand: String,
+        alternativeAtCommand: String? = nil,
+        logExplanation: String
+    ) {
+        self.transactionToken = transactionToken
+        self.shellCommand = shellCommand
+        self.alternativeAtCommand = alternativeAtCommand
+        self.logExplanation = logExplanation
+    }
+}
+
+public final class HardwareDiagnosticManifest {
+    public static func getQueries(for chipsetId: String) -> [DiagnosticQueryCommand] {
+        switch chipsetId {
+        case "QUALCOMM_SM6115":
+            return [
+                DiagnosticQueryCommand(transactionToken: "QCOM_PMIC_POLL", shellCommand: "getprop ro.boot.bootreason", alternativeAtCommand: "AT+GETPMICSTATUS?", logExplanation: "Querying physical Power Management IC boot initialization vectors."),
+                DiagnosticQueryCommand(transactionToken: "QCOM_STORAGE_HEALTH", shellCommand: "cat /sys/block/mmcblk0/device/life_time", alternativeAtCommand: "AT+EMMCSTATUS?", logExplanation: "Reading hardware sector degradation data from internal storage blocks.")
+            ]
+        case "MEDIATEK_MT6765":
+            return [
+                DiagnosticQueryCommand(transactionToken: "MTK_PRELOAD_VERIFY", shellCommand: "getprop ro.mediatek.platform", alternativeAtCommand: "AT+MTKPLATFORM?", logExplanation: "Verifying high-speed MediaTek preloader silicon identification tags."),
+                DiagnosticQueryCommand(transactionToken: "MTK_THERMAL_ZONE", shellCommand: "cat /sys/class/thermal/thermal_zone0/temp", alternativeAtCommand: "AT+GETTSENSOR?", logExplanation: "Extracting raw millidegree core thermal readings from internal registers.")
+            ]
+        default:
+            return [
+                DiagnosticQueryCommand(transactionToken: "GENERIC_PROP_SCAN", shellCommand: "getprop ro.product.model", alternativeAtCommand: "AT+CGMM", logExplanation: "Extracting basic baseline model configuration descriptions.")
+            ]
+        }
+    }
+}
+
+// MARK: - Stall Detection & Watchdog Timer Executive (ProcessDeadmanTimer)
 
 enum ProcessDeadmanError: Error, LocalizedError {
     case executionTimedOut(durationSeconds: Double)
@@ -4621,8 +4886,34 @@ enum ProcessDeadmanError: Error, LocalizedError {
     }
 }
 
-final class ProcessDeadmanTimer {
-    static func executeWithWatchdog(
+public final class ProcessDeadmanTimer {
+    private let strictTimeoutInterval: TimeInterval
+
+    public init(timeoutInterval: TimeInterval = 5.0) {
+        self.strictTimeoutInterval = timeoutInterval
+    }
+
+    public func executeGatedStreamTask(operation: @escaping () async throws -> String) async throws -> String {
+        try await withThrowingTaskGroup(of: String.self) { group in
+            group.addTask {
+                return try await operation()
+            }
+
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(self.strictTimeoutInterval * 1_000_000_000))
+                throw NSError(domain: "ProcessDeadmanTimer", code: 408, userInfo: [NSLocalizedDescriptionKey: "Target response stalled. Verify cable link and target screen authorization."])
+            }
+
+            guard let completedResult = try await group.next() else {
+                throw NSError(domain: "ProcessDeadmanTimer", code: 500, userInfo: [NSLocalizedDescriptionKey: "Execution pipeline terminated unexpectedly."])
+            }
+
+            group.cancelAll()
+            return completedResult
+        }
+    }
+
+    public static func executeWithWatchdog(
         executable: String,
         arguments: [String],
         timeoutSeconds: Double = 5.0
@@ -4675,17 +4966,70 @@ final class ProcessDeadmanTimer {
     }
 }
 
-// MARK: - Pillar 4: Local Chipset Signatures Registry
+// MARK: - Dynamic Chipset Signature Registry
 
-struct ChipsetRawSignatureEntry: Codable, Equatable {
-    let chipsetId: String
-    let marketingName: String
-    let architecture: String
-    let vendorId: String
-    let productId: String
-    let bitness: Int
-    let thermalLimitCelsius: Double
-    let hvidSignaturePattern: String
+public struct ChipsetSignatureDefinition: Codable, Equatable, Identifiable {
+    public var id: String { chipsetId }
+    public let chipsetId: String
+    public let marketingName: String
+    public let architecture: String
+    public let vendorId: String
+    public let productId: String
+    public let bitness: Int
+    public let thermalLimitCelsius: Double
+    public let hvidSignaturePattern: String
+
+    public init(
+        chipsetId: String,
+        marketingName: String,
+        architecture: String,
+        vendorId: String,
+        productId: String,
+        bitness: Int,
+        thermalLimitCelsius: Double,
+        hvidSignaturePattern: String
+    ) {
+        self.chipsetId = chipsetId
+        self.marketingName = marketingName
+        self.architecture = architecture
+        self.vendorId = vendorId
+        self.productId = productId
+        self.bitness = bitness
+        self.thermalLimitCelsius = thermalLimitCelsius
+        self.hvidSignaturePattern = hvidSignaturePattern
+    }
+
+    public var parsedVendorId: Int? {
+        Int(vendorId.replacingOccurrences(of: "0x", with: ""), radix: 16)
+    }
+
+    public var parsedProductId: Int? {
+        Int(productId.replacingOccurrences(of: "0x", with: ""), radix: 16)
+    }
+}
+
+typealias ChipsetRawSignatureEntry = ChipsetSignatureDefinition
+
+public struct HardwareIdentityQuery {
+    public let hvid: String?
+    public let basebandToken: String?
+    public let vendorId: Int?
+    public let productId: Int?
+    public let devconSummary: String?
+
+    public init(
+        hvid: String? = nil,
+        basebandToken: String? = nil,
+        vendorId: Int? = nil,
+        productId: Int? = nil,
+        devconSummary: String? = nil
+    ) {
+        self.hvid = hvid
+        self.basebandToken = basebandToken
+        self.vendorId = vendorId
+        self.productId = productId
+        self.devconSummary = devconSummary
+    }
 }
 
 struct ChipsetMetadata: Identifiable, Codable, Equatable {
@@ -4701,9 +5045,16 @@ struct ChipsetMetadata: Identifiable, Codable, Equatable {
     let supportedTransports: [String]
 }
 
-final class ChipsetSignatureRegistry {
-    static let shared = ChipsetSignatureRegistry()
-    private var rawJsonEntries: [ChipsetRawSignatureEntry] = []
+public final class ChipsetSignatureRegistry: @unchecked Sendable {
+    public static let shared = ChipsetSignatureRegistry()
+    private var rawJsonEntries: [ChipsetSignatureDefinition] = []
+    private let lock = NSLock()
+
+    public var definitions: [ChipsetSignatureDefinition] {
+        lock.lock()
+        defer { lock.unlock() }
+        return rawJsonEntries
+    }
 
     private let fallbackSignatures: [String: ChipsetMetadata] = [
         "SM6115": ChipsetMetadata(
@@ -4785,32 +5136,111 @@ final class ChipsetSignatureRegistry {
         )
     ]
 
-    init() {
-        loadJsonSignatures()
+    public init() {
+        reloadRegistry()
     }
 
-    private func loadJsonSignatures() {
+    public func reloadRegistry() {
+        lock.lock()
+        defer { lock.unlock() }
+
         let bundleUrl = Bundle.main.url(forResource: "chipset_signatures", withExtension: "json")
         let localUrl = URL(fileURLWithPath: "Resources/chipset_signatures.json")
         let projectUrl = URL(fileURLWithPath: "bobbys-workshop/Resources/chipset_signatures.json")
-        let appSupportUrl = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let appSupportUrl = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
             .appendingPathComponent("BobFWTools/chipset_signatures.json")
 
         for url in [bundleUrl, localUrl, projectUrl, appSupportUrl].compactMap({ $0 }) {
             if let data = try? Data(contentsOf: url),
-               let decoded = try? JSONDecoder().decode([ChipsetRawSignatureEntry].self, from: data),
+               let decoded = try? JSONDecoder().decode([ChipsetSignatureDefinition].self, from: data),
                !decoded.isEmpty {
                 self.rawJsonEntries = decoded
                 return
             }
         }
+
+        self.rawJsonEntries = [
+            ChipsetSignatureDefinition(
+                chipsetId: "QUALCOMM_SM6115",
+                marketingName: "Snapdragon 662 (SM6115)",
+                architecture: "ARM64-V8A",
+                vendorId: "0x05C6",
+                productId: "0x9008",
+                bitness: 64,
+                thermalLimitCelsius: 75.0,
+                hvidSignaturePattern: "HVID_QCOM_SM6115_SECURE"
+            ),
+            ChipsetSignatureDefinition(
+                chipsetId: "MEDIATEK_MT6765",
+                marketingName: "MediaTek Helio G35 (MT6765)",
+                architecture: "ARM64-V8A",
+                vendorId: "0x0E8D",
+                productId: "0x0003",
+                bitness: 64,
+                thermalLimitCelsius: 80.0,
+                hvidSignaturePattern: "HVID_MTK_MT6765_PRELOAD"
+            ),
+            ChipsetSignatureDefinition(
+                chipsetId: "APPLE_T8110",
+                marketingName: "Apple A15 Bionic (T8110)",
+                architecture: "ARM64E",
+                vendorId: "0x05AC",
+                productId: "1227",
+                bitness: 64,
+                thermalLimitCelsius: 72.5,
+                hvidSignaturePattern: "CPID:8110"
+            ),
+            ChipsetSignatureDefinition(
+                chipsetId: "UNISOC_UMS512",
+                marketingName: "Unisoc Tiger T610 (UMS512)",
+                architecture: "ARM64-V8A",
+                vendorId: "0x1782",
+                productId: "0x4D00",
+                bitness: 64,
+                thermalLimitCelsius: 82.0,
+                hvidSignaturePattern: "HVID_SPRD_UMS512"
+            )
+        ]
+    }
+
+    public func resolve(query: HardwareIdentityQuery) -> ChipsetSignatureDefinition? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let searchCorpus = [
+            query.hvid,
+            query.basebandToken,
+            query.devconSummary
+        ].compactMap { $0?.uppercased() }.joined(separator: " ")
+
+        if !searchCorpus.isEmpty {
+            for def in rawJsonEntries {
+                let pattern = def.hvidSignaturePattern.uppercased()
+                if !pattern.isEmpty && (searchCorpus.contains(pattern) || pattern.contains(searchCorpus)) {
+                    return def
+                }
+            }
+        }
+
+        if let vid = query.vendorId {
+            for def in rawJsonEntries {
+                if def.parsedVendorId == vid {
+                    if let pid = query.productId {
+                        if def.parsedProductId == pid { return def }
+                    } else {
+                        return def
+                    }
+                }
+            }
+        }
+
+        return rawJsonEntries.first
     }
 
     func resolve(hvid: String?, devconInfo: SamsungDevConInfo?, vid: Int, pid: Int) -> ChipsetMetadata? {
         let token = (hvid ?? devconInfo?.hvidSummary ?? "").uppercased()
 
-        // 1. Check dynamic JSON signature patterns
-        for entry in rawJsonEntries {
+        for entry in definitions {
             let pat = entry.hvidSignaturePattern.uppercased()
             if !pat.isEmpty && (token.contains(pat) || pat.contains(token)) {
                 return ChipsetMetadata(
@@ -4827,7 +5257,6 @@ final class ChipsetSignatureRegistry {
             }
         }
 
-        // 2. Fallback static signatures
         if token.contains("SM6115") || token.contains("KONA") || token.contains("QUALCOMM") {
             return fallbackSignatures["SM6115"]
         }
@@ -4846,135 +5275,302 @@ final class ChipsetSignatureRegistry {
 
 // MARK: - Pillar 5: Transaction-Safe Workspace Ledger (SQLiteAuditLedger)
 
-actor SQLiteAuditLedger {
-    private var db: OpaquePointer?
-    private let dbPath: String
+public final class SQLiteAuditLedger: @unchecked Sendable {
+    private var dbPointer: OpaquePointer?
+    private let queue = DispatchQueue(label: "com.bobfwtools.audit.ledger", qos: .utility)
 
-    init(dbPath: String? = nil) {
-        let path: String
-        if let custom = dbPath {
-            path = custom
-        } else {
-            let recordsDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-                .appendingPathComponent("BobFWTools/records", isDirectory: true)
-            try? FileManager.default.createDirectory(at: recordsDir, withIntermediateDirectories: true)
-            path = recordsDir.appendingPathComponent("workspace.db").path
-        }
-        self.dbPath = path
-        self.db = Self.openAndMigrate(path: path)
+    public init(dbPath: String? = nil) throws {
+        try initializeDatabase(customPath: dbPath)
     }
 
     deinit {
-        if let db = db {
-            sqlite3_close(db)
+        if let ptr = dbPointer {
+            sqlite3_close(ptr)
         }
     }
 
-    private static func openAndMigrate(path: String) -> OpaquePointer? {
-        var db: OpaquePointer?
-        if sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) != SQLITE_OK {
-            print("✖ SQLiteAuditLedger: Failed to open workspace database at \(path)")
-            return nil
+    private func initializeDatabase(customPath: String? = nil) throws {
+        let path: String
+        if let custom = customPath {
+            path = custom
+        } else {
+            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            let dbDir = appSupport.appendingPathComponent("BobFWTools/records", isDirectory: true)
+            try FileManager.default.createDirectory(at: dbDir, withIntermediateDirectories: true)
+            path = dbDir.appendingPathComponent("workspace.db").path
         }
 
-        let migrationSql = """
+        if sqlite3_open_v2(path, &dbPointer, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) != SQLITE_OK {
+            let errorMsg = String(cString: sqlite3_errmsg(dbPointer))
+            throw NSError(domain: "SQLiteAuditLedger", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to open ledger at \(path): \(errorMsg)"])
+        }
+
+        let schema = """
         PRAGMA foreign_keys = ON;
         PRAGMA journal_mode = WAL;
 
         CREATE TABLE IF NOT EXISTS devices (
-            serial TEXT PRIMARY KEY,
-            model TEXT NOT NULL,
+            serial_token TEXT PRIMARY KEY NOT NULL,
             platform TEXT NOT NULL,
+            manufacturer TEXT,
+            model_name TEXT,
             csc TEXT,
             build_pda TEXT,
             chipset_id TEXT,
-            first_seen INTEGER NOT NULL,
-            last_seen INTEGER NOT NULL
+            first_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_seen DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS job_events (
-            id TEXT PRIMARY KEY,
+            id TEXT PRIMARY KEY NOT NULL,
             device_serial TEXT NOT NULL,
             workflow_id TEXT NOT NULL,
             title TEXT NOT NULL,
             verified INTEGER NOT NULL,
-            summary TEXT NOT NULL,
-            timestamp INTEGER NOT NULL,
-            FOREIGN KEY (device_serial) REFERENCES devices(serial) ON DELETE CASCADE
+            summary TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(device_serial) REFERENCES devices(serial_token) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS cable_doctor_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             device_serial TEXT NOT NULL,
-            impedance REAL NOT NULL,
-            packet_loss REAL NOT NULL,
-            grade TEXT NOT NULL,
-            timestamp INTEGER NOT NULL,
-            FOREIGN KEY (device_serial) REFERENCES devices(serial) ON DELETE CASCADE
+            impedance REAL,
+            packet_loss REAL,
+            grade TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(device_serial) REFERENCES devices(serial_token) ON DELETE CASCADE
         );
         """
-
-        var errMsg: UnsafeMutablePointer<CChar>?
-        if sqlite3_exec(db, migrationSql, nil, nil, &errMsg) != SQLITE_OK {
-            if let err = errMsg {
-                print("✖ SQLite migration error: \(String(cString: err))")
-                sqlite3_free(errMsg)
-            }
-        }
-        return db
+        try execute(sql: schema)
     }
 
-    func upsertDevice(serial: String, model: String, platform: String, csc: String?, buildPda: String?, chipsetId: String?) throws {
-        guard let db = db else { return }
-        let sql = """
-        INSERT INTO devices (serial, model, platform, csc, build_pda, chipset_id, first_seen, last_seen)
-        VALUES (?, ?, ?, ?, ?, ?, strftime('%s','now'), strftime('%s','now'))
-        ON CONFLICT(serial) DO UPDATE SET
-            model = excluded.model,
-            platform = excluded.platform,
-            csc = coalesce(excluded.csc, devices.csc),
-            build_pda = coalesce(excluded.build_pda, devices.build_pda),
-            chipset_id = coalesce(excluded.chipset_id, devices.chipset_id),
-            last_seen = strftime('%s','now');
-        """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(stmt) }
-
-        sqlite3_bind_text(stmt, 1, (serial as NSString).utf8String, -1, nil)
-        sqlite3_bind_text(stmt, 2, (model as NSString).utf8String, -1, nil)
-        sqlite3_bind_text(stmt, 3, (platform as NSString).utf8String, -1, nil)
-        if let csc = csc { sqlite3_bind_text(stmt, 4, (csc as NSString).utf8String, -1, nil) } else { sqlite3_bind_null(stmt, 4) }
-        if let pda = buildPda { sqlite3_bind_text(stmt, 5, (pda as NSString).utf8String, -1, nil) } else { sqlite3_bind_null(stmt, 5) }
-        if let chip = chipsetId { sqlite3_bind_text(stmt, 6, (chip as NSString).utf8String, -1, nil) } else { sqlite3_bind_null(stmt, 6) }
-
-        sqlite3_step(stmt)
+    private func execute(sql: String) throws {
+        if sqlite3_exec(dbPointer, sql, nil, nil, nil) != SQLITE_OK {
+            let errorMsg = String(cString: sqlite3_errmsg(dbPointer))
+            throw NSError(domain: "SQLiteAuditLedger", code: 2, userInfo: [NSLocalizedDescriptionKey: "Execution error: \(errorMsg)"])
+        }
     }
 
-    func recordJobAtomic(id: String, deviceSerial: String, workflowId: String, title: String, verified: Bool, summary: String) throws {
-        guard let db = db else { return }
-        sqlite3_exec(db, "BEGIN TRANSACTION;", nil, nil, nil)
+    public func logWorkflowEvent(serial: String, platform: String, model: String, workflowId: String, title: String, verified: Bool, summary: String) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            queue.async {
+                if sqlite3_exec(self.dbPointer, "BEGIN TRANSACTION;", nil, nil, nil) != SQLITE_OK {
+                    continuation.resume(throwing: NSError(domain: "SQLiteAuditLedger", code: 3, userInfo: [NSLocalizedDescriptionKey: "Transaction begin failed"]))
+                    return
+                }
 
-        let sql = """
-        INSERT INTO job_events (id, device_serial, workflow_id, title, verified, summary, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, strftime('%s','now'));
-        """
-        var stmt: OpaquePointer?
-        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            sqlite3_bind_text(stmt, 1, (id as NSString).utf8String, -1, nil)
-            sqlite3_bind_text(stmt, 2, (deviceSerial as NSString).utf8String, -1, nil)
-            sqlite3_bind_text(stmt, 3, (workflowId as NSString).utf8String, -1, nil)
-            sqlite3_bind_text(stmt, 4, (title as NSString).utf8String, -1, nil)
-            sqlite3_bind_int(stmt, 5, verified ? 1 : 0)
-            sqlite3_bind_text(stmt, 6, (summary as NSString).utf8String, -1, nil)
+                let devSql = "INSERT INTO devices (serial_token, platform, model_name, last_seen) VALUES (?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(serial_token) DO UPDATE SET last_seen=CURRENT_TIMESTAMP;"
+                let evSql = "INSERT INTO job_events (id, device_serial, workflow_id, title, verified, summary) VALUES (?, ?, ?, ?, ?, ?);"
 
-            if sqlite3_step(stmt) == SQLITE_DONE {
-                sqlite3_finalize(stmt)
-                sqlite3_exec(db, "COMMIT;", nil, nil, nil)
-                return
+                var devStmt: OpaquePointer?
+                var evStmt: OpaquePointer?
+
+                defer {
+                    sqlite3_finalize(devStmt)
+                    sqlite3_finalize(evStmt)
+                }
+
+                do {
+                    if sqlite3_prepare_v2(self.dbPointer, devSql, -1, &devStmt, nil) == SQLITE_OK {
+                        sqlite3_bind_text(devStmt, 1, (serial as NSString).utf8String, -1, nil)
+                        sqlite3_bind_text(devStmt, 2, (platform as NSString).utf8String, -1, nil)
+                        sqlite3_bind_text(devStmt, 3, (model as NSString).utf8String, -1, nil)
+                        if sqlite3_step(devStmt) != SQLITE_DONE { throw NSError(domain: "SQLiteAuditLedger", code: 4, userInfo: nil) }
+                    }
+
+                    if sqlite3_prepare_v2(self.dbPointer, evSql, -1, &evStmt, nil) == SQLITE_OK {
+                        let uuid = UUID().uuidString
+                        sqlite3_bind_text(evStmt, 1, (uuid as NSString).utf8String, -1, nil)
+                        sqlite3_bind_text(evStmt, 2, (serial as NSString).utf8String, -1, nil)
+                        sqlite3_bind_text(evStmt, 3, (workflowId as NSString).utf8String, -1, nil)
+                        sqlite3_bind_text(evStmt, 4, (title as NSString).utf8String, -1, nil)
+                        sqlite3_bind_int(evStmt, 5, verified ? 1 : 0)
+                        sqlite3_bind_text(evStmt, 6, (summary as NSString).utf8String, -1, nil)
+                        if sqlite3_step(evStmt) != SQLITE_DONE { throw NSError(domain: "SQLiteAuditLedger", code: 5, userInfo: nil) }
+                    }
+
+                    if sqlite3_exec(self.dbPointer, "COMMIT;", nil, nil, nil) == SQLITE_OK {
+                        continuation.resume()
+                    } else {
+                        throw NSError(domain: "SQLiteAuditLedger", code: 6, userInfo: nil)
+                    }
+                } catch {
+                    sqlite3_exec(self.dbPointer, "ROLLBACK;", nil, nil, nil)
+                    continuation.resume(throwing: error)
+                }
             }
-            sqlite3_finalize(stmt)
         }
-        sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+    }
+
+    public func logCableDiagnostic(serial: String, impedance: Double, packetLoss: Double, grade: String) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            queue.async {
+                let sql = "INSERT INTO cable_doctor_logs (device_serial, impedance, packet_loss, grade) VALUES (?, ?, ?, ?);"
+                var stmt: OpaquePointer?
+                defer { sqlite3_finalize(stmt) }
+
+                if sqlite3_prepare_v2(self.dbPointer, sql, -1, &stmt, nil) == SQLITE_OK {
+                    sqlite3_bind_text(stmt, 1, (serial as NSString).utf8String, -1, nil)
+                    sqlite3_bind_double(stmt, 2, impedance)
+                    sqlite3_bind_double(stmt, 3, packetLoss)
+                    sqlite3_bind_text(stmt, 4, (grade as NSString).utf8String, -1, nil)
+
+                    if sqlite3_step(stmt) == SQLITE_DONE {
+                        continuation.resume()
+                    } else {
+                        continuation.resume(throwing: NSError(domain: "SQLiteAuditLedger", code: 7, userInfo: [NSLocalizedDescriptionKey: "Failed to record cable diagnostic"]))
+                    }
+                } else {
+                    continuation.resume(throwing: NSError(domain: "SQLiteAuditLedger", code: 8, userInfo: [NSLocalizedDescriptionKey: "Statement prep failed"]))
+                }
+            }
+        }
+    }
+
+    public func commitJobSession(serial: String, model: String, platform: String, workflowId: String, eventTitle: String, summary: String, verified: Bool) async throws {
+        try await logWorkflowEvent(serial: serial, platform: platform, model: model, workflowId: workflowId, title: eventTitle, verified: verified, summary: summary)
+    }
+
+    public func upsertDevice(serial: String, model: String, platform: String, csc: String? = nil, buildPda: String? = nil, chipsetId: String? = nil) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            queue.async {
+                let sql = """
+                INSERT INTO devices (serial_token, model_name, platform, csc, build_pda, chipset_id, first_seen, last_seen)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT(serial_token) DO UPDATE SET
+                    model_name = excluded.model_name,
+                    platform = excluded.platform,
+                    csc = coalesce(excluded.csc, devices.csc),
+                    build_pda = coalesce(excluded.build_pda, devices.build_pda),
+                    chipset_id = coalesce(excluded.chipset_id, devices.chipset_id),
+                    last_seen = CURRENT_TIMESTAMP;
+                """
+                var stmt: OpaquePointer?
+                defer { sqlite3_finalize(stmt) }
+                if sqlite3_prepare_v2(self.dbPointer, sql, -1, &stmt, nil) == SQLITE_OK {
+                    sqlite3_bind_text(stmt, 1, (serial as NSString).utf8String, -1, nil)
+                    sqlite3_bind_text(stmt, 2, (model as NSString).utf8String, -1, nil)
+                    sqlite3_bind_text(stmt, 3, (platform as NSString).utf8String, -1, nil)
+                    if let csc = csc { sqlite3_bind_text(stmt, 4, (csc as NSString).utf8String, -1, nil) } else { sqlite3_bind_null(stmt, 4) }
+                    if let pda = buildPda { sqlite3_bind_text(stmt, 5, (pda as NSString).utf8String, -1, nil) } else { sqlite3_bind_null(stmt, 5) }
+                    if let chip = chipsetId { sqlite3_bind_text(stmt, 6, (chip as NSString).utf8String, -1, nil) } else { sqlite3_bind_null(stmt, 6) }
+
+                    if sqlite3_step(stmt) == SQLITE_DONE {
+                        continuation.resume()
+                    } else {
+                        continuation.resume(throwing: NSError(domain: "SQLiteAuditLedger", code: 9, userInfo: [NSLocalizedDescriptionKey: "Upsert failed"]))
+                    }
+                } else {
+                    continuation.resume(throwing: NSError(domain: "SQLiteAuditLedger", code: 10, userInfo: [NSLocalizedDescriptionKey: "Statement prep failed"]))
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Pillar 6: Automated Device Staging & Global Localization Pack
+
+public final class LocalizationStager {
+    public init() {}
+
+    public func compileLanguagePayload(localeCode: String) -> [String] {
+        let sanCode = localeCode.replacingOccurrences(of: "_", with: "-")
+        return [
+            "shell content insert --uri content://settings/system --bind name:s:system_locales --bind value:s:\(localeCode)",
+            "shell setprop persist.sys.locale \(sanCode)",
+            "shell am broadcast -a android.intent.action.LOCALE_CHANGED"
+        ]
+    }
+
+    public func compileCscMenuIntent() -> String {
+        return "shell am start -n com.sec.android.app.modemui/.Preconfig"
+    }
+}
+
+// MARK: - Pillar 8: High-Throughput System Metrics Grabber
+
+public struct HardwareMetricsSnapshot {
+    public let chargeLevel: Int
+    public let powerSource: String
+    public let totalStorageBytes: Int64
+    public let availableStorageBytes: Int64
+    public let thermalLevelCelsius: Double
+
+    public init(chargeLevel: Int, powerSource: String, totalStorageBytes: Int64, availableStorageBytes: Int64, thermalLevelCelsius: Double) {
+        self.chargeLevel = chargeLevel
+        self.powerSource = powerSource
+        self.totalStorageBytes = totalStorageBytes
+        self.availableStorageBytes = availableStorageBytes
+        self.thermalLevelCelsius = thermalLevelCelsius
+    }
+}
+
+public final class SystemMetricsCollector {
+    public init() {}
+
+    public func parseBatteryDump(_ output: String) -> (level: Int, source: String) {
+        var parsedLevel = 100
+        var sourceStr = "Battery"
+
+        let lines = output.components(separatedBy: .newlines)
+        for line in lines {
+            if line.contains("level:") {
+                let parts = line.components(separatedBy: ":")
+                if parts.count > 1, let val = Int(parts[1].trimmingCharacters(in: .whitespaces)) {
+                    parsedLevel = val
+                }
+            }
+            if line.contains("AC powered: true") { sourceStr = "AC Wall Charger" }
+            if line.contains("USB powered: true") { sourceStr = "USB Bus Power" }
+        }
+        return (parsedLevel, sourceStr)
+    }
+}
+
+// MARK: - Automated Siphon Pipeline Coordinator
+
+@MainActor
+public final class LiveSiphonSiphonCoordinator: ObservableObject {
+    private var watcher: SiphonFolderWatcher?
+
+    @Published public var activeStagedFile: String = "No package staged"
+    @Published public var detectedFormat: String = "Awaiting input stream"
+    @Published public var targetPartitionHint: String = "Unknown"
+    @Published public var isAnalyzing: Bool = false
+
+    public init() {
+        let homeDirectory = FileManager.default.homeDirectoryForCurrentUser
+        let targetDropFolder = homeDirectory.appendingPathComponent("Downloads/BobFWTools_SiphonDrop")
+
+        self.watcher = SiphonFolderWatcher(watchedDirectoryUrl: targetDropFolder)
+        self.watcher?.onPackageDropped = { [weak self] packageUrl in
+            self?.handleDroppedAsset(at: packageUrl)
+        }
+        _ = self.watcher?.startMonitoring()
+    }
+
+    deinit {
+        watcher?.stopMonitoring()
+    }
+
+    private func handleDroppedAsset(at url: URL) {
+        isAnalyzing = true
+        activeStagedFile = url.lastPathComponent
+
+        Task.detached(priority: .userInitiated) {
+            let format = UncompressedLayoutHeaderInspector.inspectFileHeader(at: url)
+
+            await MainActor.run {
+                if let detected = format {
+                    self.detectedFormat = detected.description
+                    self.targetPartitionHint = detected.targetPartition
+                } else {
+                    self.detectedFormat = "Standard Package (\(url.pathExtension.uppercased()))"
+                    self.targetPartitionHint = "Application / Config"
+                }
+                self.isAnalyzing = false
+            }
+        }
     }
 }

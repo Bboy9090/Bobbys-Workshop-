@@ -14,6 +14,7 @@ enum StudioModule: String, CaseIterable, Identifiable {
     case fastboot = "Fastboot & Partitions"
     case developerWorkbench = "Developer Workbench & Logcat"
     case dualPlatform = "Dual-Platform Workbench"
+    case splitPaneDashboard = "Hardware Split-Pane Console"
     case firmware = "Firmware & Inventory Ledger"
     case apple = "Apple / iDevice Recovery"
     case jobsAndBridge = "Audit Jobs, Notes & VM Bridge"
@@ -29,6 +30,7 @@ enum StudioModule: String, CaseIterable, Identifiable {
         case .fastboot: return "bolt.horizontal.circle.fill"
         case .developerWorkbench: return "terminal.fill"
         case .dualPlatform: return "rectangle.split.2x1.fill"
+        case .splitPaneDashboard: return "play.terminal.fill"
         case .firmware: return "shippingbox.fill"
         case .apple: return "iphone"
         case .jobsAndBridge: return "checkmark.shield.fill"
@@ -145,6 +147,8 @@ struct MainStudioView: View {
                                 DeveloperWorkbenchView(engine: engine)
                             case .dualPlatform:
                                 DualPlatformWorkbenchView(engine: engine)
+                            case .splitPaneDashboard:
+                                UniversalSplitPaneDashboardView(engine: engine)
                             case .firmware:
                                 FirmwareInspectorView(engine: engine)
                             case .apple:
@@ -3915,3 +3919,190 @@ struct DualPlatformWorkbenchView: View {
         }
     }
 }
+
+// MARK: - Pillar 9: High-Density Sidebar Metrics Viewport (ChipsetMetricsSidebarCard)
+
+public struct ChipsetMetricsSidebarCard: View {
+    public let definition: ChipsetSignatureDefinition?
+    public let liveTemperature: Double
+
+    public init(definition: ChipsetSignatureDefinition?, liveTemperature: Double) {
+        self.definition = definition
+        self.liveTemperature = liveTemperature
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "cpu")
+                    .font(.title2)
+                    .foregroundColor(.blue)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("SILICON INTERFACE ARCHITECTURE")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .bold()
+                    Text(definition?.marketingName ?? "Unresolved Processing Node")
+                        .font(.headline)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Text(definition?.architecture ?? "GENERIC")
+                    .font(.system(.caption, design: .monospaced))
+                    .bold()
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.blue.opacity(0.12))
+                    .foregroundColor(.blue)
+                    .cornerRadius(4)
+            }
+
+            Divider()
+
+            if let chip = definition {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text("Register Width").font(.caption).foregroundColor(.secondary)
+                            Text("\(chip.bitness)-Bit Infrastructure").font(.subheadline).bold()
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing) {
+                            Text("Signature Pattern").font(.caption).foregroundColor(.secondary)
+                            Text(chip.hvidSignaturePattern).font(.system(.caption2, design: .monospaced))
+                        }
+                    }
+
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text("Core Thermal Layer").font(.caption).foregroundColor(.secondary)
+                            Text(String(format: "%.2f°C", liveTemperature))
+                                .font(.subheadline).bold()
+                                .foregroundColor(liveTemperature >= chip.thermalLimitCelsius ? .red : .green)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing) {
+                            Text("Silicon Limit").font(.caption).foregroundColor(.secondary)
+                            Text(String(format: "%.1f°C", chip.thermalLimitCelsius)).font(.subheadline).bold()
+                        }
+                    }
+                }
+                .textSelection(.enabled)
+
+                if liveTemperature >= chip.thermalLimitCelsius {
+                    HStack {
+                        Image(systemName: "exclamationmark.shield.fill")
+                        Text("THERMAL BOUNDARY EXCEEDED: Silicon Throttling Operational").font(.system(.caption2, design: .monospaced))
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.red.opacity(0.12))
+                    .foregroundColor(.red)
+                    .cornerRadius(6)
+                }
+            } else {
+                Text("Connect a verified target interface to decode underlying microarchitecture schemas.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 12)
+            }
+        }
+        .padding()
+        .background(Color(.controlBackgroundColor))
+        .cornerRadius(8)
+    }
+}
+
+// MARK: - Pillar 10: Studio Split-Pane Workspace Console GUI (UniversalSplitPaneDashboardView)
+
+public struct UniversalSplitPaneDashboardView: View {
+    @ObservedObject var engine: ServicingEngine
+    @StateObject private var siphonCoordinator = LiveSiphonSiphonCoordinator()
+    @State private var logs: [String] = [
+        "[SYSTEM LOG INITIALIZED] Listening on IOKit USB bus infrastructure...",
+        "[TRANSPORT READY] Active COM port bridges initialized for AT tracking loops."
+    ]
+    @State private var activeChip: ChipsetSignatureDefinition? = nil
+    @State private var simulatedTemp: Double = 32.5
+
+    public init() {
+        self.engine = ServicingEngine()
+    }
+
+    init(engine: ServicingEngine) {
+        self.engine = engine
+    }
+
+    public var body: some View {
+        HSplitView {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Image(systemName: "play.terminal.fill").foregroundColor(.green)
+                    Text("ACTIVE COMPONENT CONTROL PANE").font(.headline)
+                }
+                .padding([.top, .horizontal])
+
+                ScrollView {
+                    VStack(spacing: 16) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Siphon File Watcher status").font(.caption).foregroundColor(.secondary)
+                            Text(siphonCoordinator.activeStagedFile).font(.subheadline).bold()
+                            Text("Resolved Binary Metadata: \(siphonCoordinator.detectedFormat)").font(.caption).foregroundColor(.blue)
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.black.opacity(0.04))
+                        .cornerRadius(6)
+
+                        ChipsetMetricsSidebarCard(definition: activeChip, liveTemperature: simulatedTemp)
+
+                        Button("Simulate Hardware Device Attachment") {
+                            activeChip = ChipsetSignatureRegistry.shared.resolve(query: HardwareIdentityQuery(vendorId: 0x05C6, productId: 0x9008))
+                            simulatedTemp = 76.8
+                            logs.append("[ATTACH EVENT] Qualcomm QDLoader 9008 target identified dynamically on USB path.")
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        Button("Clear Mapped Target") {
+                            activeChip = nil
+                            simulatedTemp = 25.0
+                            logs.append("[DETACH EVENT] Active interface detached completely.")
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .padding()
+                }
+            }
+            .frame(minWidth: 380, maxWidth: .infinity)
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Image(systemName: "terminal")
+                    Text("REAL-TIME REVENUE-SAFE TRANSACTION TRACE").font(.system(.caption, design: .monospaced)).bold()
+                    Spacer()
+                    Button("Flush Console") { logs.removeAll() }.font(.caption).buttonStyle(.borderless)
+                }
+                .padding()
+                .background(Color.black.opacity(0.03))
+
+                Divider()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(logs, id: \.self) { entry in
+                            Text(entry)
+                                .font(.system(.footnote, design: .monospaced))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .padding()
+                }
+                .background(Color.black.opacity(0.05))
+            }
+            .frame(minWidth: 420, maxWidth: .infinity)
+        }
+        .frame(minWidth: 850, minHeight: 550)
+    }
+}
+
