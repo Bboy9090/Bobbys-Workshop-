@@ -55,7 +55,6 @@ runtime/reports/*.bundle
 
 # Rust build artifacts
 /libs/bootforgeusb/target/
-/libs/bootforgeusb/Cargo.lock
 
 # Python artifacts
 __pycache__/
