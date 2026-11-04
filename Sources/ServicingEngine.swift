@@ -583,6 +583,126 @@ struct FirmwareBuildFallbackMatrix {
             multiCscContainer: "G998UOYN9FXH2",
             compatibleCscs: ["XAA", "TMB", "VZW", "ATT", "USC", "CCT", "CHA", "TMK", "TFN"],
             isFusedSafe: true
+        ),
+
+        // SM-S928B (Galaxy S24 Ultra International)
+        CombinationBuildProfile(
+            id: "SM-S928B-B2", model: "SM-S928B", binaryBit: 2,
+            stockBuild: "S928BXXU2AXH7", combinationBuild: "COMBINATION_FAC_FA00_S928BXXU2AXH1",
+            androidTarget: "Android 14 (One UI 6.1.1)", defaultPit: "E3Q_EUR_OPEN.pit",
+            multiCscContainer: "S928BOXM2AXH7",
+            compatibleCscs: ["EUX", "EUY", "BTU", "DBT", "ITV", "XEF", "TUR", "SER", "INS", "THL"],
+            isFusedSafe: true
+        ),
+
+        // SM-S918B (Galaxy S23 Ultra International)
+        CombinationBuildProfile(
+            id: "SM-S918B-B3", model: "SM-S918B", binaryBit: 3,
+            stockBuild: "S918BXXS3CXG8", combinationBuild: "COMBINATION_FAC_FA00_S918BXXU3AXG1",
+            androidTarget: "Android 14 (One UI 6.1)", defaultPit: "DM3Q_EUR_OPEN.pit",
+            multiCscContainer: "S918BOXM3CXG8",
+            compatibleCscs: ["EUX", "EUY", "BTU", "DBT", "ITV", "XEF", "TUR", "SER", "INS", "THL"],
+            isFusedSafe: true
+        ),
+
+        // SM-N986U (Galaxy Note 20 Ultra 5G USA)
+        CombinationBuildProfile(
+            id: "SM-N986U-B5", model: "SM-N986U", binaryBit: 5,
+            stockBuild: "N986USQU5HXE1", combinationBuild: "COMBINATION_FAC_FA00_N986USQU5AXE1",
+            androidTarget: "Android 13 (One UI 5.1)", defaultPit: "C2Q_USA_OPEN.pit",
+            multiCscContainer: "N986UOYN5HXE1",
+            compatibleCscs: ["XAA", "TMB", "VZW", "ATT", "USC", "CCT", "CHA"],
+            isFusedSafe: true
+        ),
+
+        // SM-F946B (Galaxy Z Fold 5 International)
+        CombinationBuildProfile(
+            id: "SM-F946B-B3", model: "SM-F946B", binaryBit: 3,
+            stockBuild: "F946BXXS3CXG6", combinationBuild: "COMBINATION_FAC_FA00_F946BXXU3AXG1",
+            androidTarget: "Android 14 (One UI 6.1.1)", defaultPit: "Q5_EUR_OPEN.pit",
+            multiCscContainer: "F946BOXM3CXG6",
+            compatibleCscs: ["EUX", "EUY", "BTU", "DBT", "ITV", "XEF", "TUR", "SER", "INS"],
+            isFusedSafe: true
+        ),
+
+        // SM-F731B (Galaxy Z Flip 5 International)
+        CombinationBuildProfile(
+            id: "SM-F731B-B3", model: "SM-F731B", binaryBit: 3,
+            stockBuild: "F731BXXS3CXG6", combinationBuild: "COMBINATION_FAC_FA00_F731BXXU3AXG1",
+            androidTarget: "Android 14 (One UI 6.1.1)", defaultPit: "B5_EUR_OPEN.pit",
+            multiCscContainer: "F731BOXM3CXG6",
+            compatibleCscs: ["EUX", "EUY", "BTU", "DBT", "ITV", "XEF", "TUR", "SER", "INS"],
+            isFusedSafe: true
+        ),
+
+        // SM-A546B (Galaxy A54 5G International - Exynos 1380)
+        CombinationBuildProfile(
+            id: "SM-A546B-B6", model: "SM-A546B", binaryBit: 6,
+            stockBuild: "A546BXXS6CXG1", combinationBuild: "COMBINATION_FAC_FA00_A546BXXU6AXG1",
+            androidTarget: "Android 14 (One UI 6.1)", defaultPit: "A54X_EUR_OPEN.pit",
+            multiCscContainer: "A546BOXM6CXG1",
+            compatibleCscs: ["EUX", "EUY", "BTU", "DBT", "ITV", "XEF", "TUR", "SER", "INS", "THL"],
+            isFusedSafe: true
+        ),
+
+        // SM-A536B (Galaxy A53 5G International - Exynos 1280)
+        CombinationBuildProfile(
+            id: "SM-A536B-B8", model: "SM-A536B", binaryBit: 8,
+            stockBuild: "A536BXXS8EXG1", combinationBuild: "COMBINATION_FAC_FA00_A536BXXU8AXG1",
+            androidTarget: "Android 14 (One UI 6.1)", defaultPit: "A53X_EUR_OPEN.pit",
+            multiCscContainer: "A536BOXM8EXG1",
+            compatibleCscs: ["EUX", "EUY", "BTU", "DBT", "ITV", "XEF", "TUR", "SER", "INS"],
+            isFusedSafe: true
+        ),
+
+        // SM-A346B (Galaxy A34 5G - Dimensity 1080)
+        CombinationBuildProfile(
+            id: "SM-A346B-B6", model: "SM-A346B", binaryBit: 6,
+            stockBuild: "A346BXXS6CXG1", combinationBuild: "COMBINATION_FAC_FA00_A346BXXU6AXG1",
+            androidTarget: "Android 14 (One UI 6.1)", defaultPit: "A34X_EUR_OPEN.pit",
+            multiCscContainer: "A346BOXM6CXG1",
+            compatibleCscs: ["EUX", "EUY", "BTU", "DBT", "ITV", "XEF", "TUR", "SER", "INS"],
+            isFusedSafe: true
+        ),
+
+        // SM-A155F (Galaxy A15 4G - Helio G99)
+        CombinationBuildProfile(
+            id: "SM-A155F-B2", model: "SM-A155F", binaryBit: 2,
+            stockBuild: "A155FXXS2BXG1", combinationBuild: "COMBINATION_FAC_FA00_A155FXXU2AXG1",
+            androidTarget: "Android 14 (One UI 6.0)", defaultPit: "A15X_EUR_OPEN.pit",
+            multiCscContainer: "A155FOJM2BXG1",
+            compatibleCscs: ["MID", "EGY", "KSA", "XSG", "AFR", "TUR", "PAK"],
+            isFusedSafe: true
+        ),
+
+        // SM-A145F (Galaxy A14 4G - Exynos 850 / Helio G80)
+        CombinationBuildProfile(
+            id: "SM-A145F-B5", model: "SM-A145F", binaryBit: 5,
+            stockBuild: "A145FXXS5BXG1", combinationBuild: "COMBINATION_FAC_FA00_A145FXXU5AXG1",
+            androidTarget: "Android 14 (One UI 6.0)", defaultPit: "A14X_EUR_OPEN.pit",
+            multiCscContainer: "A145FOJM5BXG1",
+            compatibleCscs: ["MID", "EGY", "KSA", "XSG", "AFR", "TUR", "PAK"],
+            isFusedSafe: true
+        ),
+
+        // SM-X710 (Galaxy Tab S9 Wi-Fi - Snapdragon 8 Gen 2)
+        CombinationBuildProfile(
+            id: "SM-X710-B2", model: "SM-X710", binaryBit: 2,
+            stockBuild: "X710XXS2BXG1", combinationBuild: "COMBINATION_FAC_FA00_X710XXU2AXG1",
+            androidTarget: "Android 14 (One UI 6.1)", defaultPit: "GTS9WIFI_EUR_OPEN.pit",
+            multiCscContainer: "X710OXM2BXG1",
+            compatibleCscs: ["EUX", "EUY", "BTU", "DBT", "ITV", "XEF", "TUR", "SER", "XAR"],
+            isFusedSafe: true
+        ),
+
+        // SM-X210 (Galaxy Tab A9+ Wi-Fi - Snapdragon 695)
+        CombinationBuildProfile(
+            id: "SM-X210-B2", model: "SM-X210", binaryBit: 2,
+            stockBuild: "X210XXS2BXG1", combinationBuild: "COMBINATION_FAC_FA00_X210XXU2AXG1",
+            androidTarget: "Android 14 (One UI 6.0)", defaultPit: "GTA9PWIFI_EUR_OPEN.pit",
+            multiCscContainer: "X210OXM2BXG1",
+            compatibleCscs: ["EUX", "EUY", "BTU", "DBT", "ITV", "XEF", "TUR", "SER", "XAR"],
+            isFusedSafe: true
         )
     ]
 
@@ -595,8 +715,11 @@ struct FirmwareBuildFallbackMatrix {
             return exact
         }
 
+        // Family-aware matching (e.g. S928, S918, S908, G998, A546, A536, A346, A155, A145, X710, X210, X200, T500, T220)
+        let familyPrefix = String(cleanModel.prefix(4))
         if let nearest = knownProfiles.first(where: {
-            $0.model.replacingOccurrences(of: "SM-", with: "").uppercased() == cleanModel
+            let m = $0.model.replacingOccurrences(of: "SM-", with: "").uppercased()
+            return m == cleanModel || m.hasPrefix(familyPrefix)
         }) {
             let stock = currentPda?.isEmpty == false ? currentPda! : "\(cleanModel)XXS\(deviceBit)CXG1"
             let combo = "COMBINATION_FAC_FA00_\(cleanModel)XXU\(deviceBit)AXG1"
@@ -1210,6 +1333,20 @@ final class ServicingEngine: ObservableObject {
             usbVidPid: "05ac:12a8 (Normal) / 05ac:1281 (Recovery) / 05ac:1227 (DFU)",
             protocolName: "lockdownd + irecovery + IPSW Manifest",
             supportedOperations: "A12+ Activation/ECID/DieID Audit, Supervision/MDM Check, DFU/Recovery & IPSW Verification"
+        ),
+        SupportedPlatformCatalogItem(
+            family: "Google Pixel (Tensor Silicon)",
+            modelsOrChips: "Pixel 9 / 8 / 7 / 6 Series (Tensor G4 Zuma Pro, G3 Zuma, G2 GS201, G1 GS101)",
+            usbVidPid: "18d1:4ee2 (ADB) / 18d1:4ee0 (Fastboot)",
+            protocolName: "Fastboot / Fastbootd + ADB + AVB 2.0",
+            supportedOperations: "Slot A/B Switching, AVB Root-of-Trust Audit, Fastboot Telemetry Extraction"
+        ),
+        SupportedPlatformCatalogItem(
+            family: "Qualcomm / Multi-OEM Snapdragon",
+            modelsOrChips: "Motorola, Xiaomi, OnePlus, Nothing, ASUS, Sony (Snapdragon 8 Gen 1-3, 7-Series, 6-Series)",
+            usbVidPid: "05c6:9008 (EDL) / 22b8:2e81 (Moto) / 2717:ff40 (Xiaomi) / 2a70:4ee7 (OnePlus)",
+            protocolName: "Qualcomm Sahara / Firehose + Fastboot + ADB",
+            supportedOperations: "EDL Handshake Detection, Fastboot Partition Variable Read, Hardware Fuses Inspection"
         )
     ]
 
@@ -2262,7 +2399,27 @@ final class ServicingEngine: ObservableObject {
         var rows: [ConnectionMatrixRow] = []
         var findings: [DiagnosticFinding] = []
 
-        for u in usbList where (u.platformHint ?? "").starts(with: "android") || u.vendorId == 0x04e8 || u.vendorId == 0x18d1 || u.vendorId == 0x22b8 || u.vendorId == 0x2717 || u.vendorId == 0x0e8d || u.vendorId == 0x05c6 || u.vendorId == 0x1782 {
+        let recognizedVids: Set<Int> = [
+            0x04e8, // Samsung
+            0x05ac, // Apple
+            0x18d1, // Google
+            0x22b8, // Motorola
+            0x2717, // Xiaomi
+            0x0e8d, // MediaTek
+            0x05c6, // Qualcomm
+            0x1782, // Unisoc
+            0x2a70, // OnePlus
+            0x22d9, // OPPO
+            0x2b4c, // Vivo
+            0x12d1, // Huawei
+            0x0489, // LG
+            0x0fce, // Sony
+            0x0b05, // ASUS
+            0x17ef, // Lenovo
+            0x2e04  // Nokia
+        ]
+
+        for u in usbList where (u.platformHint ?? "").starts(with: "android") || (u.platformHint ?? "").starts(with: "ios") || recognizedVids.contains(u.vendorId) {
             let serial = u.cleanSerial ?? samsungModemInfo?.serialNumber ?? "Not Disclosed"
             let matchedModem = cuPorts.first { port in
                 serial != "Not Disclosed" && port.uppercased().contains(serial.uppercased())
@@ -2274,6 +2431,15 @@ final class ServicingEngine: ObservableObject {
             let modelName: String
             if let modem = samsungModemInfo, (modem.serialNumber.uppercased() == serial.uppercased() || u.vendorId == 0x04e8) {
                 modelName = "\(modem.model) (\(modem.pdaVersion) · \(modem.activeCsc))"
+            } else if u.vendorId == 0x05ac {
+                let mode = u.productId == 0x1227 ? "DFU Mode" : (u.productId == 0x1281 ? "Recovery Mode" : "Normal Mode")
+                modelName = "\(u.productName ?? "Apple iDevice") [\(mode)]"
+            } else if u.vendorId == 0x05c6 && u.productId == 0x9008 {
+                modelName = "Qualcomm HS-USB QDLoader 9008 (EDL)"
+            } else if u.vendorId == 0x0e8d && (u.productId == 0x0003 || u.productId == 0x2000) {
+                modelName = "MediaTek DA / Preloader USB VCOM"
+            } else if u.vendorId == 0x1782 && u.productId == 0x4d00 {
+                modelName = "Unisoc / Spreadtrum Diag Port"
             } else {
                 modelName = u.productName ?? "Connected USB Target"
             }
@@ -2282,21 +2448,37 @@ final class ServicingEngine: ObservableObject {
             var ev = [u.evidenceSource ?? "rusb-descriptor"]
             if matchedModem != nil { ev.append("cu-modem-at") }
             if matchedAdb != nil { ev.append("adb-server") }
+            if matchedFastboot { ev.append("fastboot-protocol") }
+            if u.vendorId == 0x05ac { ev.append("apple-usbmuxd") }
+
+            let mfg: String
+            if let m = u.manufacturer, !m.isEmpty {
+                mfg = m
+            } else if u.vendorId == 0x04e8 { mfg = "Samsung" }
+            else if u.vendorId == 0x05ac { mfg = "Apple Inc." }
+            else if u.vendorId == 0x18d1 { mfg = "Google" }
+            else if u.vendorId == 0x22b8 { mfg = "Motorola" }
+            else if u.vendorId == 0x2717 { mfg = "Xiaomi" }
+            else if u.vendorId == 0x2a70 { mfg = "OnePlus" }
+            else if u.vendorId == 0x0e8d { mfg = "MediaTek" }
+            else if u.vendorId == 0x05c6 { mfg = "Qualcomm" }
+            else if u.vendorId == 0x1782 { mfg = "Unisoc" }
+            else { mfg = "OEM" }
 
             rows.append(ConnectionMatrixRow(
                 id: u.deviceUid,
                 label: modelName,
-                manufacturer: u.manufacturer ?? "OEM",
+                manufacturer: mfg,
                 model: samsungModemInfo?.model ?? u.productName ?? "Unknown",
                 serial: serial,
                 vidPid: u.vidPidHex,
                 usbConnected: true,
                 modemPort: matchedModem,
                 mtpActive: mtpActive,
-                adbState: matchedAdb?.state ?? "Unavailable (USB Debugging Off)",
+                adbState: matchedAdb?.state ?? (u.vendorId == 0x05ac ? "N/A (iOS Lockdownd)" : "Unavailable (USB Debugging Off)"),
                 fastbootActive: matchedFastboot,
                 odinActive: odinDetected && u.vendorId == 0x04e8,
-                platformClassification: u.platformHint ?? "android-usb",
+                platformClassification: u.vendorId == 0x05ac ? "apple-ios" : (u.platformHint ?? "android-usb"),
                 evidence: ev
             ))
         }
@@ -4838,20 +5020,52 @@ public struct DiagnosticQueryCommand: Identifiable {
 
 public final class HardwareDiagnosticManifest {
     public static func getQueries(for chipsetId: String) -> [DiagnosticQueryCommand] {
-        switch chipsetId {
-        case "QUALCOMM_SM6115":
+        if chipsetId.hasPrefix("QUALCOMM_") {
             return [
                 DiagnosticQueryCommand(transactionToken: "QCOM_PMIC_POLL", shellCommand: "getprop ro.boot.bootreason", alternativeAtCommand: "AT+GETPMICSTATUS?", logExplanation: "Querying physical Power Management IC boot initialization vectors."),
-                DiagnosticQueryCommand(transactionToken: "QCOM_STORAGE_HEALTH", shellCommand: "cat /sys/block/mmcblk0/device/life_time", alternativeAtCommand: "AT+EMMCSTATUS?", logExplanation: "Reading hardware sector degradation data from internal storage blocks.")
+                DiagnosticQueryCommand(transactionToken: "QCOM_STORAGE_HEALTH", shellCommand: "cat /sys/block/mmcblk0/device/life_time 2>/dev/null || cat /sys/block/bootdevice/subsystem/devices/*/health_descriptor/life_time_estimation_a 2>/dev/null", alternativeAtCommand: "AT+EMMCSTATUS?", logExplanation: "Reading hardware sector degradation and UFS/eMMC life-time health."),
+                DiagnosticQueryCommand(transactionToken: "QCOM_BASEBAND_VER", shellCommand: "getprop gsm.version.baseband", alternativeAtCommand: "AT+CGMR", logExplanation: "Querying Qualcomm cellular baseband modem firmware revisions."),
+                DiagnosticQueryCommand(transactionToken: "QCOM_SECURE_BOOT", shellCommand: "getprop ro.boot.flash.locked", alternativeAtCommand: "AT+DEVCONINFO", logExplanation: "Inspecting hardware fuse status and bootloader lock state.")
             ]
-        case "MEDIATEK_MT6765":
+        } else if chipsetId.hasPrefix("MEDIATEK_") {
             return [
-                DiagnosticQueryCommand(transactionToken: "MTK_PRELOAD_VERIFY", shellCommand: "getprop ro.mediatek.platform", alternativeAtCommand: "AT+MTKPLATFORM?", logExplanation: "Verifying high-speed MediaTek preloader silicon identification tags."),
-                DiagnosticQueryCommand(transactionToken: "MTK_THERMAL_ZONE", shellCommand: "cat /sys/class/thermal/thermal_zone0/temp", alternativeAtCommand: "AT+GETTSENSOR?", logExplanation: "Extracting raw millidegree core thermal readings from internal registers.")
+                DiagnosticQueryCommand(transactionToken: "MTK_PRELOAD_VERIFY", shellCommand: "getprop ro.mediatek.platform 2>/dev/null || getprop ro.hardware", alternativeAtCommand: "AT+MTKPLATFORM?", logExplanation: "Verifying high-speed MediaTek preloader silicon identification tags."),
+                DiagnosticQueryCommand(transactionToken: "MTK_THERMAL_ZONE", shellCommand: "cat /sys/class/thermal/thermal_zone0/temp", alternativeAtCommand: "AT+GETTSENSOR?", logExplanation: "Extracting raw millidegree core thermal readings from internal registers."),
+                DiagnosticQueryCommand(transactionToken: "MTK_WATCHDOG_STATE", shellCommand: "getprop vendor.mediatek.wdt 2>/dev/null || getprop ro.boot.hardware", alternativeAtCommand: "AT+DEVCONINFO", logExplanation: "Checking hardware watchdog timer and preloader handoff state."),
+                DiagnosticQueryCommand(transactionToken: "MTK_STORAGE_CID", shellCommand: "cat /sys/block/mmcblk0/device/cid 2>/dev/null || cat /sys/block/sda/device/model 2>/dev/null", alternativeAtCommand: "AT+VERSNAME=0,0,0", logExplanation: "Querying storage Card Identification (CID) and block device identity.")
             ]
-        default:
+        } else if chipsetId.hasPrefix("SAMSUNG_") || chipsetId.hasPrefix("EXYNOS_") {
             return [
-                DiagnosticQueryCommand(transactionToken: "GENERIC_PROP_SCAN", shellCommand: "getprop ro.product.model", alternativeAtCommand: "AT+CGMM", logExplanation: "Extracting basic baseline model configuration descriptions.")
+                DiagnosticQueryCommand(transactionToken: "EXYNOS_CHIP_ID", shellCommand: "getprop ro.hardware.chipname 2>/dev/null || getprop ro.chipname", alternativeAtCommand: "AT+DEVCONINFO", logExplanation: "Reading Exynos application processor hardware chip designation."),
+                DiagnosticQueryCommand(transactionToken: "EXYNOS_KNOX_BIT", shellCommand: "getprop ro.boot.warranty_bit", alternativeAtCommand: "AT+VERSNAME=1,0,0", logExplanation: "Checking Knox hardware warranty fuse bit state."),
+                DiagnosticQueryCommand(transactionToken: "EXYNOS_CSC_CARRIER", shellCommand: "getprop ril.official_cscver 2>/dev/null || getprop ro.csc.sales_code", alternativeAtCommand: "AT+VERSNAME=0,0,0", logExplanation: "Validating multi-CSC package container and sales code."),
+                DiagnosticQueryCommand(transactionToken: "EXYNOS_STORAGE_HEALTH", shellCommand: "cat /sys/block/sda/device/health_descriptor/life_time_estimation_a 2>/dev/null || cat /sys/block/mmcblk0/device/life_time 2>/dev/null", alternativeAtCommand: "AT+DEVCONINFO", logExplanation: "Reading UFS 3.1/4.0 health descriptors and storage write endurance.")
+            ]
+        } else if chipsetId.hasPrefix("APPLE_") {
+            return [
+                DiagnosticQueryCommand(transactionToken: "APPLE_PRODUCT_TYPE", shellCommand: "ideviceinfo -k ProductType 2>/dev/null || echo 'DFU/Recovery Mode'", alternativeAtCommand: "AT+CGMM", logExplanation: "Querying Apple hardware product model designation."),
+                DiagnosticQueryCommand(transactionToken: "APPLE_BUILD_VERSION", shellCommand: "ideviceinfo -k BuildVersion 2>/dev/null", alternativeAtCommand: "AT+VERSNAME=0,0,0", logExplanation: "Reading iOS / iPadOS firmware build number and signed window."),
+                DiagnosticQueryCommand(transactionToken: "APPLE_UNIQUE_ID", shellCommand: "ideviceinfo -k UniqueDeviceID 2>/dev/null", alternativeAtCommand: "AT+GSN", logExplanation: "Reading unique hardware ECID / UDID token."),
+                DiagnosticQueryCommand(transactionToken: "APPLE_ACTIVATION", shellCommand: "ideviceinfo -k ActivationState 2>/dev/null", alternativeAtCommand: "AT+DEVCONINFO", logExplanation: "Verifying factory lockdownd activation and pairing state.")
+            ]
+        } else if chipsetId.hasPrefix("GOOGLE_") || chipsetId.hasPrefix("TENSOR_") {
+            return [
+                DiagnosticQueryCommand(transactionToken: "TENSOR_SOC_MODEL", shellCommand: "getprop ro.soc.model 2>/dev/null || getprop ro.boot.hardware.platform", alternativeAtCommand: "AT+DEVCONINFO", logExplanation: "Reading Google Tensor SoC architecture identifier."),
+                DiagnosticQueryCommand(transactionToken: "TENSOR_BOOT_SLOT", shellCommand: "getprop ro.boot.slot_suffix", alternativeAtCommand: "AT+CGMM", logExplanation: "Checking active seamless update slot partition (Slot A/B)."),
+                DiagnosticQueryCommand(transactionToken: "TENSOR_AVB_STATE", shellCommand: "getprop ro.boot.verifiedbootstate", alternativeAtCommand: "AT+VERSNAME=0,0,0", logExplanation: "Inspecting Android Verified Boot (AVB 2.0) root of trust state."),
+                DiagnosticQueryCommand(transactionToken: "TENSOR_THERMAL_ZONE", shellCommand: "cat /sys/class/thermal/thermal_zone0/temp", alternativeAtCommand: "AT+GETTSENSOR?", logExplanation: "Polling Tensor TPU & CPU core thermal junction sensors.")
+            ]
+        } else if chipsetId.hasPrefix("UNISOC_") {
+            return [
+                DiagnosticQueryCommand(transactionToken: "UNISOC_PLATFORM", shellCommand: "getprop ro.board.platform 2>/dev/null || getprop ro.hardware", alternativeAtCommand: "AT+SPRDVERSION?", logExplanation: "Querying Spreadtrum/Unisoc baseband processor platform."),
+                DiagnosticQueryCommand(transactionToken: "UNISOC_CHIPSET", shellCommand: "getprop ro.boot.hardware.cpu 2>/dev/null", alternativeAtCommand: "AT+DEVCONINFO", logExplanation: "Inspecting Unisoc CPU microarchitecture revision."),
+                DiagnosticQueryCommand(transactionToken: "UNISOC_STORAGE", shellCommand: "cat /sys/block/mmcblk0/device/life_time 2>/dev/null", alternativeAtCommand: "AT+EMMCSTATUS?", logExplanation: "Reading eMMC 5.1 wear leveling and block endurance.")
+            ]
+        } else {
+            return [
+                DiagnosticQueryCommand(transactionToken: "GENERIC_PROP_SCAN", shellCommand: "getprop ro.product.model", alternativeAtCommand: "AT+CGMM", logExplanation: "Extracting basic baseline model configuration descriptions."),
+                DiagnosticQueryCommand(transactionToken: "GENERIC_BUILD_SCAN", shellCommand: "getprop ro.build.display.id", alternativeAtCommand: "AT+VERSNAME=0,0,0", logExplanation: "Extracting OS firmware display build identifier."),
+                DiagnosticQueryCommand(transactionToken: "GENERIC_CARRIER_SCAN", shellCommand: "getprop ro.carrier", alternativeAtCommand: "AT+DEVCONINFO", logExplanation: "Extracting carrier customization identity.")
             ]
         }
     }
@@ -5132,12 +5346,14 @@ public final class ChipsetSignatureRegistry: @unchecked Sendable {
         defer { lock.unlock() }
 
         let bundleUrl = Bundle.main.url(forResource: "chipset_signatures", withExtension: "json")
-        let localUrl = URL(fileURLWithPath: "Resources/chipset_signatures.json")
-        let projectUrl = URL(fileURLWithPath: "bobbys-workshop/Resources/chipset_signatures.json")
+        let localUrl = URL(fileURLWithPath: "resources/chipset_signatures.json")
+        let projectUrl = URL(fileURLWithPath: "bobbys-workshop/resources/chipset_signatures.json")
+        let altLocalUrl = URL(fileURLWithPath: "Resources/chipset_signatures.json")
+        let altProjectUrl = URL(fileURLWithPath: "bobbys-workshop/Resources/chipset_signatures.json")
         let appSupportUrl = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
             .appendingPathComponent("BobFWTools/chipset_signatures.json")
 
-        for url in [bundleUrl, localUrl, projectUrl, appSupportUrl].compactMap({ $0 }) {
+        for url in [bundleUrl, localUrl, projectUrl, altLocalUrl, altProjectUrl, appSupportUrl].compactMap({ $0 }) {
             if let data = try? Data(contentsOf: url),
                let decoded = try? JSONDecoder().decode([ChipsetSignatureDefinition].self, from: data),
                !decoded.isEmpty {
@@ -5147,46 +5363,39 @@ public final class ChipsetSignatureRegistry: @unchecked Sendable {
         }
 
         self.rawJsonEntries = [
-            ChipsetSignatureDefinition(
-                chipsetId: "QUALCOMM_SM6115",
-                marketingName: "Snapdragon 662 (SM6115)",
-                architecture: "ARM64-V8A",
-                vendorId: "0x05C6",
-                productId: "0x9008",
-                bitness: 64,
-                thermalLimitCelsius: 75.0,
-                hvidSignaturePattern: "HVID_QCOM_SM6115_SECURE"
-            ),
-            ChipsetSignatureDefinition(
-                chipsetId: "MEDIATEK_MT6765",
-                marketingName: "MediaTek Helio G35 (MT6765)",
-                architecture: "ARM64-V8A",
-                vendorId: "0x0E8D",
-                productId: "0x0003",
-                bitness: 64,
-                thermalLimitCelsius: 80.0,
-                hvidSignaturePattern: "HVID_MTK_MT6765_PRELOAD"
-            ),
-            ChipsetSignatureDefinition(
-                chipsetId: "APPLE_T8110",
-                marketingName: "Apple A15 Bionic (T8110)",
-                architecture: "ARM64E",
-                vendorId: "0x05AC",
-                productId: "1227",
-                bitness: 64,
-                thermalLimitCelsius: 72.5,
-                hvidSignaturePattern: "CPID:8110"
-            ),
-            ChipsetSignatureDefinition(
-                chipsetId: "UNISOC_UMS512",
-                marketingName: "Unisoc Tiger T610 (UMS512)",
-                architecture: "ARM64-V8A",
-                vendorId: "0x1782",
-                productId: "0x4D00",
-                bitness: 64,
-                thermalLimitCelsius: 82.0,
-                hvidSignaturePattern: "HVID_SPRD_UMS512"
-            )
+            ChipsetSignatureDefinition(chipsetId: "QUALCOMM_SM8650", marketingName: "Snapdragon 8 Gen 3 (SM8650)", architecture: "ARM64-V9.2A", vendorId: "0x05C6", productId: "0x9008", bitness: 64, thermalLimitCelsius: 85.0, hvidSignaturePattern: "SM8650"),
+            ChipsetSignatureDefinition(chipsetId: "QUALCOMM_SM8550", marketingName: "Snapdragon 8 Gen 2 (SM8550)", architecture: "ARM64-V9A", vendorId: "0x05C6", productId: "0x9008", bitness: 64, thermalLimitCelsius: 83.0, hvidSignaturePattern: "SM8550"),
+            ChipsetSignatureDefinition(chipsetId: "QUALCOMM_SM8475", marketingName: "Snapdragon 8+ Gen 1 (SM8475)", architecture: "ARM64-V9A", vendorId: "0x05C6", productId: "0x9008", bitness: 64, thermalLimitCelsius: 83.0, hvidSignaturePattern: "SM8475"),
+            ChipsetSignatureDefinition(chipsetId: "QUALCOMM_SM8450", marketingName: "Snapdragon 8 Gen 1 (SM8450)", architecture: "ARM64-V9A", vendorId: "0x05C6", productId: "0x9008", bitness: 64, thermalLimitCelsius: 85.0, hvidSignaturePattern: "SM8450"),
+            ChipsetSignatureDefinition(chipsetId: "QUALCOMM_SM8350", marketingName: "Snapdragon 888 5G (SM8350)", architecture: "ARM64-V8.4A", vendorId: "0x05C6", productId: "0x9008", bitness: 64, thermalLimitCelsius: 82.0, hvidSignaturePattern: "SM8350"),
+            ChipsetSignatureDefinition(chipsetId: "QUALCOMM_SM8250", marketingName: "Snapdragon 865 5G (SM8250)", architecture: "ARM64-V8A", vendorId: "0x05C6", productId: "0x9008", bitness: 64, thermalLimitCelsius: 78.0, hvidSignaturePattern: "SM8250"),
+            ChipsetSignatureDefinition(chipsetId: "QUALCOMM_SM7325", marketingName: "Snapdragon 778G 5G (SM7325)", architecture: "ARM64-V8A", vendorId: "0x05C6", productId: "0x9008", bitness: 64, thermalLimitCelsius: 78.0, hvidSignaturePattern: "SM7325"),
+            ChipsetSignatureDefinition(chipsetId: "QUALCOMM_SM6375", marketingName: "Snapdragon 695 5G (SM6375)", architecture: "ARM64-V8A", vendorId: "0x05C6", productId: "0x9008", bitness: 64, thermalLimitCelsius: 75.0, hvidSignaturePattern: "SM6375"),
+            ChipsetSignatureDefinition(chipsetId: "QUALCOMM_SM6225", marketingName: "Snapdragon 680 4G (SM6225)", architecture: "ARM64-V8A", vendorId: "0x05C6", productId: "0x9008", bitness: 64, thermalLimitCelsius: 75.0, hvidSignaturePattern: "SM6225"),
+            ChipsetSignatureDefinition(chipsetId: "QUALCOMM_SM6115", marketingName: "Snapdragon 662 (SM6115)", architecture: "ARM64-V8A", vendorId: "0x05C6", productId: "0x9008", bitness: 64, thermalLimitCelsius: 75.0, hvidSignaturePattern: "SM6115"),
+            ChipsetSignatureDefinition(chipsetId: "MEDIATEK_MT6989", marketingName: "MediaTek Dimensity 9300 (MT6989)", architecture: "ARM64-V9.2A", vendorId: "0x0E8D", productId: "0x0003", bitness: 64, thermalLimitCelsius: 85.0, hvidSignaturePattern: "MT6989"),
+            ChipsetSignatureDefinition(chipsetId: "MEDIATEK_MT6895", marketingName: "MediaTek Dimensity 8100 (MT6895)", architecture: "ARM64-V8A", vendorId: "0x0E8D", productId: "0x0003", bitness: 64, thermalLimitCelsius: 80.0, hvidSignaturePattern: "MT6895"),
+            ChipsetSignatureDefinition(chipsetId: "MEDIATEK_MT6877", marketingName: "MediaTek Dimensity 7050 / 900 (MT6877)", architecture: "ARM64-V8A", vendorId: "0x0E8D", productId: "0x0003", bitness: 64, thermalLimitCelsius: 78.0, hvidSignaturePattern: "MT6877"),
+            ChipsetSignatureDefinition(chipsetId: "MEDIATEK_MT6789", marketingName: "MediaTek Helio G99 (MT6789)", architecture: "ARM64-V8A", vendorId: "0x0E8D", productId: "0x0003", bitness: 64, thermalLimitCelsius: 78.0, hvidSignaturePattern: "MT6789"),
+            ChipsetSignatureDefinition(chipsetId: "MEDIATEK_MT6768", marketingName: "MediaTek Helio G85 / P65 (MT6768)", architecture: "ARM64-V8A", vendorId: "0x0E8D", productId: "0x0003", bitness: 64, thermalLimitCelsius: 78.0, hvidSignaturePattern: "MT6768"),
+            ChipsetSignatureDefinition(chipsetId: "MEDIATEK_MT6765", marketingName: "MediaTek Helio G35 / P35 (MT6765)", architecture: "ARM64-V8A", vendorId: "0x0E8D", productId: "0x0003", bitness: 64, thermalLimitCelsius: 80.0, hvidSignaturePattern: "MT6765"),
+            ChipsetSignatureDefinition(chipsetId: "SAMSUNG_EXYNOS2400", marketingName: "Exynos 2400 10-Core (S5E9945)", architecture: "ARM64-V9.2A", vendorId: "0x04E8", productId: "0x6860", bitness: 64, thermalLimitCelsius: 85.0, hvidSignaturePattern: "S5E9945"),
+            ChipsetSignatureDefinition(chipsetId: "SAMSUNG_EXYNOS2200", marketingName: "Exynos 2200 (S5E9925)", architecture: "ARM64-V9A", vendorId: "0x04E8", productId: "0x6860", bitness: 64, thermalLimitCelsius: 84.0, hvidSignaturePattern: "S5E9925"),
+            ChipsetSignatureDefinition(chipsetId: "SAMSUNG_EXYNOS2100", marketingName: "Exynos 2100 5G (S5E9840)", architecture: "ARM64-V8.2A", vendorId: "0x04E8", productId: "0x6860", bitness: 64, thermalLimitCelsius: 82.0, hvidSignaturePattern: "S5E9840"),
+            ChipsetSignatureDefinition(chipsetId: "SAMSUNG_EXYNOS1480", marketingName: "Exynos 1480 (S5E8845)", architecture: "ARM64-V8.2A", vendorId: "0x04E8", productId: "0x6860", bitness: 64, thermalLimitCelsius: 80.0, hvidSignaturePattern: "S5E8845"),
+            ChipsetSignatureDefinition(chipsetId: "SAMSUNG_EXYNOS1380", marketingName: "Exynos 1380 5G (S5E8835)", architecture: "ARM64-V8.2A", vendorId: "0x04E8", productId: "0x6860", bitness: 64, thermalLimitCelsius: 80.0, hvidSignaturePattern: "S5E8835"),
+            ChipsetSignatureDefinition(chipsetId: "SAMSUNG_EXYNOS9611", marketingName: "Exynos 9611 (S5E9611)", architecture: "ARM64-V8A", vendorId: "0x04E8", productId: "0x6860", bitness: 64, thermalLimitCelsius: 76.0, hvidSignaturePattern: "S5E9611"),
+            ChipsetSignatureDefinition(chipsetId: "APPLE_T8130", marketingName: "Apple A17 Pro (T8130)", architecture: "ARM64E", vendorId: "0x05AC", productId: "0x1227", bitness: 64, thermalLimitCelsius: 75.0, hvidSignaturePattern: "CPID:8130"),
+            ChipsetSignatureDefinition(chipsetId: "APPLE_T8120", marketingName: "Apple A16 Bionic (T8120)", architecture: "ARM64E", vendorId: "0x05AC", productId: "0x1227", bitness: 64, thermalLimitCelsius: 74.0, hvidSignaturePattern: "CPID:8120"),
+            ChipsetSignatureDefinition(chipsetId: "APPLE_T8110", marketingName: "Apple A15 Bionic (T8110)", architecture: "ARM64E", vendorId: "0x05AC", productId: "0x1227", bitness: 64, thermalLimitCelsius: 72.5, hvidSignaturePattern: "CPID:8110"),
+            ChipsetSignatureDefinition(chipsetId: "APPLE_T8101", marketingName: "Apple A14 Bionic (T8101)", architecture: "ARM64E", vendorId: "0x05AC", productId: "0x1227", bitness: 64, thermalLimitCelsius: 72.0, hvidSignaturePattern: "CPID:8101"),
+            ChipsetSignatureDefinition(chipsetId: "APPLE_T8030", marketingName: "Apple A13 Bionic (T8030)", architecture: "ARM64E", vendorId: "0x05AC", productId: "0x1227", bitness: 64, thermalLimitCelsius: 72.0, hvidSignaturePattern: "CPID:8030"),
+            ChipsetSignatureDefinition(chipsetId: "APPLE_T8103", marketingName: "Apple M1 (T8103)", architecture: "ARM64E", vendorId: "0x05AC", productId: "0x1227", bitness: 64, thermalLimitCelsius: 85.0, hvidSignaturePattern: "CPID:8103"),
+            ChipsetSignatureDefinition(chipsetId: "GOOGLE_TENSOR_G4", marketingName: "Google Tensor G4 (Zuma Pro)", architecture: "ARM64-V9.2A", vendorId: "0x18D1", productId: "0x4EE7", bitness: 64, thermalLimitCelsius: 82.0, hvidSignaturePattern: "ZUMA PRO"),
+            ChipsetSignatureDefinition(chipsetId: "GOOGLE_TENSOR_G3", marketingName: "Google Tensor G3 (Zuma)", architecture: "ARM64-V9A", vendorId: "0x18D1", productId: "0x4EE7", bitness: 64, thermalLimitCelsius: 82.0, hvidSignaturePattern: "ZUMA"),
+            ChipsetSignatureDefinition(chipsetId: "GOOGLE_TENSOR_G2", marketingName: "Google Tensor G2 (GS201)", architecture: "ARM64-V8.2A", vendorId: "0x18D1", productId: "0x4EE7", bitness: 64, thermalLimitCelsius: 80.0, hvidSignaturePattern: "GS201"),
+            ChipsetSignatureDefinition(chipsetId: "UNISOC_UMS9620", marketingName: "Unisoc Tanggula T820 5G (UMS9620)", architecture: "ARM64-V8.2A", vendorId: "0x1782", productId: "0x4D00", bitness: 64, thermalLimitCelsius: 82.0, hvidSignaturePattern: "UMS9620"),
+            ChipsetSignatureDefinition(chipsetId: "UNISOC_UMS512", marketingName: "Unisoc Tiger T610 / T612 / T616 (UMS512)", architecture: "ARM64-V8A", vendorId: "0x1782", productId: "0x4D00", bitness: 64, thermalLimitCelsius: 82.0, hvidSignaturePattern: "UMS512")
         ]
     }
 
@@ -5207,6 +5416,19 @@ public final class ChipsetSignatureRegistry: @unchecked Sendable {
                     return def
                 }
             }
+            for def in rawJsonEntries {
+                let idToken = def.chipsetId
+                    .replacingOccurrences(of: "QUALCOMM_", with: "")
+                    .replacingOccurrences(of: "MEDIATEK_", with: "")
+                    .replacingOccurrences(of: "SAMSUNG_", with: "")
+                    .replacingOccurrences(of: "APPLE_", with: "")
+                    .replacingOccurrences(of: "GOOGLE_", with: "")
+                    .replacingOccurrences(of: "UNISOC_", with: "")
+                    .uppercased()
+                if !idToken.isEmpty && searchCorpus.contains(idToken) {
+                    return def
+                }
+            }
         }
 
         if let vid = query.vendorId {
@@ -5214,14 +5436,12 @@ public final class ChipsetSignatureRegistry: @unchecked Sendable {
                 if def.parsedVendorId == vid {
                     if let pid = query.productId {
                         if def.parsedProductId == pid { return def }
-                    } else {
-                        return def
                     }
                 }
             }
         }
 
-        return rawJsonEntries.first
+        return nil
     }
 
     func resolve(hvid: String?, devconInfo: SamsungDevConInfo?, vid: Int, pid: Int) -> ChipsetMetadata? {

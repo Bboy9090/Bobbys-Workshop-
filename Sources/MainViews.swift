@@ -4252,7 +4252,10 @@ public struct UniversalSplitPaneDashboardView: View {
             )
         } else if engine.devices.contains(where: { $0.transport == .adb }) {
             let adbPath = engine.toolPaths["adb"] ?? "/usr/local/bin/adb"
-            let propRes = await engine.runProcess(executable: adbPath, arguments: engine.adbArgs(["shell", "getprop", "ro.board.platform"]))
+            let propRes = await engine.runProcess(
+                executable: adbPath,
+                arguments: engine.adbArgs(["shell", "getprop ro.board.platform; getprop ro.soc.model; getprop ro.mediatek.platform; getprop ro.hardware.chipname; getprop ro.hardware; getprop ro.boot.hardware"])
+            )
             let plat = propRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
             query = HardwareIdentityQuery(hvid: plat, basebandToken: plat, devconSummary: plat)
 
@@ -4265,15 +4268,26 @@ public struct UniversalSplitPaneDashboardView: View {
                     }
                 }
             }
-        } else if let usb = engine.usbDevices.first(where: { $0.vendorId != 0x05ac && $0.vendorId != 0x0000 }) {
-            query = HardwareIdentityQuery(vendorId: usb.vendorId, productId: usb.productId, devconSummary: usb.productName)
+            if thermal == 0.0 {
+                let thermRes = await engine.runProcess(executable: adbPath, arguments: engine.adbArgs(["shell", "cat", "/sys/class/thermal/thermal_zone0/temp"]))
+                if let rawMilli = Double(thermRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines)), rawMilli > 0 {
+                    thermal = rawMilli > 1000 ? (rawMilli / 1000.0) : rawMilli
+                }
+            }
         } else if let appleDev = engine.devices.first(where: { $0.transport == .ios }) {
             query = HardwareIdentityQuery(vendorId: 0x05ac, productId: 0x1227, devconSummary: appleDev.details)
+        } else if engine.devices.contains(where: { $0.transport == .fastboot }) {
+            let fbPath = engine.toolPaths["fastboot"] ?? "/usr/local/bin/fastboot"
+            let fbRes = await engine.runProcess(executable: fbPath, arguments: ["getvar", "product"])
+            let desc = (fbRes.stdout.isEmpty ? fbRes.stderr : fbRes.stdout).trimmingCharacters(in: .whitespacesAndNewlines)
+            query = HardwareIdentityQuery(hvid: desc, basebandToken: desc, devconSummary: desc)
+        } else if let usb = engine.usbDevices.first(where: { $0.vendorId != 0x0000 }) {
+            query = HardwareIdentityQuery(vendorId: usb.vendorId, productId: usb.productId, devconSummary: usb.productName)
         }
 
         if let q = query, let resolved = ChipsetSignatureRegistry.shared.resolve(query: q) {
             activeChip = resolved
-            liveThermalTemp = thermal > 0 ? thermal : 33.5
+            liveThermalTemp = thermal // Strictly genuine reading; 0.0 indicates Sensor Standby
             statusNote = "✔ Mapped silicon: \(resolved.marketingName)"
             engine.log(.success, "✔ Hardware Silicon Interrogation: Identified \(resolved.marketingName) (\(resolved.architecture)) [\(resolved.bitness)-Bit].")
         } else {
@@ -4291,6 +4305,9 @@ public struct UniversalSplitPaneDashboardView: View {
 
         let adbPath = engine.toolPaths["adb"] ?? "/usr/local/bin/adb"
         let hasAdb = engine.devices.contains { $0.transport == .adb }
+        let hasFastboot = engine.devices.contains { $0.transport == .fastboot }
+        let hasOdin = engine.devices.contains { $0.transport == .odin }
+        let isApple = chip.chipsetId.hasPrefix("APPLE_") || engine.devices.contains { $0.transport == .ios }
         let activeModem = engine.selectedSerialPort
 
         for q in queries {
@@ -4304,11 +4321,33 @@ public struct UniversalSplitPaneDashboardView: View {
                 } else if !res.stderr.isEmpty {
                     engine.log(.warning, "  └─ [ADB Output]: \(res.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
                 }
+            } else if isApple {
+                let res = await engine.runProcess(executable: "/bin/sh", arguments: ["-c", q.shellCommand])
+                let out = res.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !out.isEmpty {
+                    engine.log(.success, "  └─ [Apple Tool Result]: \(out)")
+                } else if !res.stderr.isEmpty {
+                    engine.log(.warning, "  └─ [Apple Tool Output]: \(res.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
+                } else {
+                    engine.log(.warning, "  └─ ideviceinfo / libimobiledevice returned no output. Verify pairing trust.")
+                }
+            } else if hasFastboot {
+                let fbPath = engine.toolPaths["fastboot"] ?? "/usr/local/bin/fastboot"
+                let res = await engine.runProcess(executable: fbPath, arguments: ["getvar", "all"])
+                let out = (res.stdout.isEmpty ? res.stderr : res.stdout).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !out.isEmpty {
+                    engine.log(.success, "  └─ [Fastboot Telemetry]: \(out.prefix(120))...")
+                }
+            } else if hasOdin {
+                let heimPath = engine.toolPaths["heimdall"] ?? "/usr/local/bin/heimdall"
+                let res = await engine.runProcess(executable: heimPath, arguments: ["detect"])
+                let out = (res.stdout.isEmpty ? res.stderr : res.stdout).trimmingCharacters(in: .whitespacesAndNewlines)
+                engine.log(.success, "  └─ [Odin Protocol Handshake]: \(out)")
             } else if !activeModem.isEmpty, let atCmd = q.alternativeAtCommand {
                 let (ok, raw) = await engine.querySerialAT(portPath: activeModem, command: atCmd, logOutput: false)
                 engine.log(ok ? .success : .warning, "  └─ [AT Modem Result]: \(raw.trimmingCharacters(in: .whitespacesAndNewlines))")
             } else {
-                engine.log(.warning, "  └─ Transport offline for query: requires authorized ADB or Modem AT port.")
+                engine.log(.warning, "  └─ Transport offline for query: requires authorized ADB, Apple usbmuxd, Fastboot, or Modem AT port.")
             }
         }
     }
