@@ -42,7 +42,12 @@ pub struct TransportDevice {
 
 fn mode_hint(vendor_id: u16, product_id: u16) -> &'static str {
     match (vendor_id, product_id) {
-        (0x04e8, 0x685d | 0x6601) => "samsung-download",
+        // 0x6601 is the Samsung Download/Odin transport we can classify from
+        // descriptor evidence alone. 0x685d is also used by normal Samsung
+        // composite USB presentations, so treating it as Download Mode creates
+        // false-positive write readiness.
+        (0x04e8, 0x6601) => "samsung-download",
+        (0x04e8, 0x685d) => "samsung-usb",
         (0x05c6, 0x9008) => "qualcomm-edl",
         (0x0e8d, 0x0003) => "mediatek-brom",
         (0x0e8d, 0x2000 | 0x2001) => "mediatek-preloader",
@@ -160,4 +165,20 @@ pub fn scan_transports() -> Result<Vec<TransportDevice>, TransportError> {
         });
     }
     Ok(out)
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::mode_hint;
+
+    #[test]
+    fn samsung_685d_is_not_download_mode() {
+        assert_eq!(mode_hint(0x04e8, 0x685d), "samsung-usb");
+    }
+
+    #[test]
+    fn samsung_6601_remains_download_mode() {
+        assert_eq!(mode_hint(0x04e8, 0x6601), "samsung-download");
+    }
 }

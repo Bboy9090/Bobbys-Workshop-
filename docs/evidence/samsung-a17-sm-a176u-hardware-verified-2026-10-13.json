@@ -1,0 +1,21 @@
+{
+  "observed_date": "2026-10-13",
+  "source": "authorized adb shell getprop; ADB_LIBUSB=1",
+  "model": "SM-A176U",
+  "device": "a17x",
+  "cpu_abi": "arm64-v8a",
+  "board_platform": "erd8535",
+  "hardware": "s5e8535",
+  "android_version": "16",
+  "android_security_patch": "2026-08-05",
+  "firmware_incremental": "A176USQS7BZH9",
+  "bootloader_build": "A176USQS7BZH9",
+  "boot_flash_locked": "1",
+  "verified_boot_state": "green",
+  "vbmeta_device_state": "locked",
+  "adb_connection": "authorized",
+  "frp_state": "not assessed",
+  "firmware_write_authorization": "not established",
+  "serial_number": "not collected",
+  "actions": "read-only observation only"
+}

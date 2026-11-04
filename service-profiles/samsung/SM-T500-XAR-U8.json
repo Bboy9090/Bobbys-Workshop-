@@ -1,0 +1,44 @@
+{
+  "schema": "com.bobbyblanco.bobfwtools.samsung-service-profile.v1",
+  "vendor": "samsung",
+  "model": "SM-T500",
+  "sku": "SM-T500NZAAXAR",
+  "board": "bengal",
+  "chipsetFamily": "SM6150",
+  "region": "XAR",
+  "buildVersion": "T500XXS8CXG1",
+  "bootloaderRevision": "8",
+  "pitFilename": "GTA4LWIFI_EUR_OPEN.pit",
+  "transport": {
+    "protocol": "odin/loke",
+    "backend": "nusb",
+    "tool": "samloader-macos-nusb",
+    "toolSha256": "5e86fccc6c5bc5994fd10f5bb41e01c3d471903aa45ad85d73d92de5891f54a1",
+    "endpointResetBeforeHandshake": false
+  },
+  "policy": {
+    "purpose": "stock-recovery-and-diagnostics",
+    "stockOnly": true,
+    "exactModelRequired": true,
+    "bootloaderRollbackBlocked": true,
+    "pitIdentityRequired": true,
+    "cleanCscRequired": true,
+    "physicalDeviceConfirmationRequired": true,
+    "accountLockBypassSupported": false,
+    "executionAuthorized": false
+  },
+  "artifacts": [
+    {"role": "ap", "sha256": "f27b202c33fabff61303a39502574f5363e577d8fb1372180b308bb1f141f2aa"},
+    {"role": "bl", "sha256": "d767455901c8fba6624587f4413a6921b312b0a163077bafce591b2bdfa2775f"},
+    {"role": "csc", "sha256": "9aaf7b7ab06a5d3759b54578685f932af283b870bc059bc8d41267981ad00a7f"},
+    {"role": "pit", "sha256": "609741e2c7b00db6b3dd5240ebf80380a56c628670d83289597a9b7e03b7ca45"}
+  ],
+  "qualificationEvidence": {
+    "deviceUsbProduct": "SM6150",
+    "downloadModeVidPid": "04E8:685D",
+    "pitFlashSuccessful": true,
+    "stockPartitionTransferObserved": true,
+    "sessionClosedCleanly": true,
+    "normalModeReenumerationObserved": true
+  }
+}

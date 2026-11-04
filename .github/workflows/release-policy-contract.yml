@@ -1,0 +1,19 @@
+name: Release policy contract
+on:
+  pull_request:
+    paths:
+      - 'scripts/release/evaluate-release-policy.mjs'
+      - 'tests/release-policy.test.mjs'
+      - '.github/workflows/release-policy-contract.yml'
+permissions:
+  contents: read
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          package-manager-cache: false
+      - run: node tests/release-policy.test.mjs

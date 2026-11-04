@@ -1,0 +1,179 @@
+name: BobFWTools Firmware Contract
+
+on:
+  push:
+    branches:
+      - ipad/firmware-inventory-contract-20261010
+  pull_request:
+    paths:
+      - 'src/lib/firmware-inventory-contract.ts'
+      - 'src/lib/firmware-preflight.ts'
+      - 'src/lib/oem-source-discovery.ts'
+      - 'src/lib/oem-catalog-probe.ts'
+      - 'src/lib/pixel-release-intake.ts'
+      - 'src/lib/pixel-download-candidate.ts'
+      - 'src/lib/pixel-release-audit.ts'
+      - 'tests/firmware-inventory-contract.test.ts'
+      - 'tests/firmware-preflight.test.ts'
+      - 'tests/oem-source-discovery.test.ts'
+      - 'tests/oem-catalog-probe.test.ts'
+      - 'tests/pixel-release-intake.test.ts'
+      - 'tests/pixel-download-candidate.test.ts'
+      - 'tests/pixel-release-audit.test.ts'
+      - '.github/workflows/firmware-contract.yml'
+      - 'scripts/firmware-sources.mjs'
+      - 'scripts/verify-firmware-file.mjs'
+      - 'scripts/lib/verify-firmware-file.mjs'
+      - 'tests/firmware-file-verification.test.ts'
+      - 'tests/firmware-download.test.ts'
+      - 'scripts/lib/download-verified-firmware.mjs'
+      - 'scripts/download-verified-firmware.mjs'
+      - 'scripts/probe-official-catalogs.mjs'
+      - 'scripts/audit-pixel-release.mjs'
+      - 'scripts/lib/inspect-firmware-archive.mjs'
+      - 'scripts/inspect-firmware-archive.mjs'
+      - 'tests/firmware-archive-inspection.test.ts'
+      - 'scripts/lib/inspect-zip-directory.mjs'
+      - 'tests/firmware-zip-directory.test.ts'
+      - 'scripts/lib/inspect-zip-entries.mjs'
+      - 'tests/firmware-zip-entries.test.ts'
+      - 'scripts/lib/firmware-readiness-gates.mjs'
+      - 'tests/firmware-readiness-gates.test.ts'
+      - 'scripts/lib/samsung-pit-evidence.mjs'
+      - 'tests/samsung-pit-evidence.test.ts'
+      - 'scripts/samsung-readonly-detect.mjs'
+      - 'tests/samsung-readonly-detect.test.ts'
+      - 'src/components/SamsungDownloadStatus.tsx'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Execute real firmware-contract unit tests
+        run: npx --no-install vitest run tests/firmware-inventory-contract.test.ts tests/firmware-preflight.test.ts tests/oem-source-discovery.test.ts tests/oem-catalog-probe.test.ts tests/firmware-file-verification.test.ts tests/firmware-download.test.ts tests/pixel-release-intake.test.ts tests/pixel-download-candidate.test.ts tests/pixel-release-audit.test.ts tests/firmware-archive-inspection.test.ts tests/firmware-zip-directory.test.ts tests/firmware-zip-entries.test.ts tests/firmware-readiness-gates.test.ts tests/samsung-pit-evidence.test.ts tests/samsung-readonly-detect.test.ts
+      - name: Type check firmware modules
+        run: npx --no-install tsc --noEmit --skipLibCheck --strict --target es2020 --module esnext --moduleResolution bundler --allowImportingTsExtensions src/lib/firmware-inventory-contract.ts src/lib/firmware-preflight.ts src/lib/oem-source-discovery.ts src/lib/oem-catalog-probe.ts src/lib/pixel-release-intake.ts src/lib/pixel-download-candidate.ts src/lib/pixel-release-audit.ts
+      - name: Exercise actual firmware source lookup CLI
+        run: |
+          node scripts/firmware-sources.mjs --manufacturer Google --model "Pixel 8" --json > /tmp/pixel-sources.json
+          node -e 'const f=require("/tmp/pixel-sources.json"); if(f.sources.length !== 2 || f.executable || f.firmwarePackagesVerified !== 0) process.exit(1)'
+          node scripts/firmware-sources.mjs --manufacturer Samsung --model SM-S911U --json > /tmp/unsupported.json
+          node -e 'const f=require("/tmp/unsupported.json"); if(f.sources.length !== 0) process.exit(1)'
+      - name: Verify downloader requires explicit consent
+        run: |
+          if node scripts/download-verified-firmware.mjs --url https://dl.google.com/test.zip --file /tmp/should-not-exist --sha256 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; then
+            echo "Downloader unexpectedly accepted missing explicit opt-in"
+            exit 1
+          fi
+          test ! -e /tmp/should-not-exist
+      - name: Check live Google source reachability (informational, not a package proof)
+        id: oem_probe
+        continue-on-error: true
+        run: |
+          set +e
+          node scripts/probe-official-catalogs.mjs --manufacturer Google --model "Pixel 8" --json > "$RUNNER_TEMP/oem-catalog-reachability.json"
+          probe_status=$?
+          set -e
+          cat "$RUNNER_TEMP/oem-catalog-reachability.json"
+          echo "Live OEM probe exit status: $probe_status"
+          exit "$probe_status"
+      - name: Publish actual catalog reachability evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oem-catalog-reachability
+          path: ${{ runner.temp }}/oem-catalog-reachability.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Exercise Pixel release audit CLI without firmware execution
+        run: |
+          cat > "$RUNNER_TEMP/pixel-synthetic.json" <<'JSON'
+          {"deviceCodename":"shiba","buildId":"AP1A.240505.004","releaseDate":"2024-05-05","filename":"shiba-ota.zip","downloadUrl":"https://dl.google.com/android/shiba-ota.zip","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","provenanceUrl":"https://developers.google.com/android/ota"}
+          JSON
+          set +e
+          node scripts/audit-pixel-release.mjs --record "$RUNNER_TEMP/pixel-synthetic.json" --codename shiba > "$RUNNER_TEMP/pixel-audit.json"
+          audit_status=$?
+          set -e
+          test "$audit_status" -eq 3
+          node -e 'const a=require(process.argv[1]); if(a.outcome!=="blocked" || a.downloadAuthorized || a.flashAuthorized || a.evidence.sourceReference!=="unverified") process.exit(1)' "$RUNNER_TEMP/pixel-audit.json"
+      - name: Exercise real file-hash CLI success and mismatch refusal
+        run: |
+          printf 'bobfwtools reproducible firmware fixture\n' > "$RUNNER_TEMP/firmware-fixture.bin"
+          expected="$(sha256sum "$RUNNER_TEMP/firmware-fixture.bin" | awk '{print $1}')"
+          node scripts/verify-firmware-file.mjs --file "$RUNNER_TEMP/firmware-fixture.bin" --sha256 "$expected" > "$RUNNER_TEMP/firmware-fixture-receipt.json"
+          node -e 'const r=require(process.argv[1]); if(!r.checksumMatched || r.flashAuthorized || r.oemSignatureVerified) process.exit(1)' "$RUNNER_TEMP/firmware-fixture-receipt.json"
+          if node scripts/verify-firmware-file.mjs --file "$RUNNER_TEMP/firmware-fixture.bin" --sha256 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; then
+            echo "Mismatched hash was incorrectly accepted"
+            exit 1
+          fi
+      - name: Refuse malformed firmware audit evidence
+        run: |
+          printf '{"deviceCodename":"shiba","sha256":"not-a-hash"}\n' > "$RUNNER_TEMP/malformed-firmware.json"
+          set +e
+          node scripts/audit-pixel-release.mjs --record "$RUNNER_TEMP/malformed-firmware.json" --codename shiba > "$RUNNER_TEMP/malformed-out.json" 2> "$RUNNER_TEMP/malformed-err.txt"
+          audit_status=$?
+          set -e
+          test "$audit_status" -eq 2
+          test ! -s "$RUNNER_TEMP/malformed-out.json"
+          grep -q "Release audit refused" "$RUNNER_TEMP/malformed-err.txt"
+      - name: Save synthetic inspection and hashing evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-readonly-evidence
+          path: |
+            ${{ runner.temp }}/pixel-audit.json
+            ${{ runner.temp }}/firmware-fixture-receipt.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Refuse oversized audit metadata before reading it
+        run: |
+          node -e 'require("fs").writeFileSync(process.argv[1],Buffer.alloc(1048577,65))' "$RUNNER_TEMP/oversized-release.json"
+          set +e
+          node scripts/audit-pixel-release.mjs --record "$RUNNER_TEMP/oversized-release.json" --codename shiba > "$RUNNER_TEMP/oversized-audit.json" 2> "$RUNNER_TEMP/oversized-error.txt"
+          audit_status=$?
+          set -e
+          test "$audit_status" -eq 2
+          test ! -s "$RUNNER_TEMP/oversized-audit.json"
+          grep -q "at most one MiB" "$RUNNER_TEMP/oversized-error.txt"
+      - name: Refuse symlinked firmware audit metadata
+        run: |
+          ln -s "$RUNNER_TEMP/pixel-synthetic.json" "$RUNNER_TEMP/release-link.json"
+          set +e
+          node scripts/audit-pixel-release.mjs --record "$RUNNER_TEMP/release-link.json" --codename shiba > "$RUNNER_TEMP/symlink-audit.json" 2> "$RUNNER_TEMP/symlink-error.txt"
+          audit_status=$?
+          set -e
+          test "$audit_status" -eq 2
+          test ! -s "$RUNNER_TEMP/symlink-audit.json"
+          grep -q "non-symlink regular file" "$RUNNER_TEMP/symlink-error.txt"
+      - name: Exercise read-only archive CLI with actual fixture bytes
+        run: |
+          node -e 'require("fs").writeFileSync(process.argv[1],Buffer.from([0x50,0x4b,0x03,0x04,0,0,0,0]))' "$RUNNER_TEMP/zip-marker.bin"
+          set +e
+          node scripts/inspect-firmware-archive.mjs --file "$RUNNER_TEMP/zip-marker.bin" > "$RUNNER_TEMP/archive-inspection.json"
+          marker_status=$?
+          set -e
+          test "$marker_status" -eq 3
+          node -e 'const r=require(process.argv[1]); if(r.format!=="zip-local-header" || r.centralDirectory.accepted || r.flashAuthorized) process.exit(1)' "$RUNNER_TEMP/archive-inspection.json"
+          python3 -c 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); z.writestr("payload.bin",b"fixture"); z.close()' "$RUNNER_TEMP/complete-fixture.zip"
+          node scripts/inspect-firmware-archive.mjs --file "$RUNNER_TEMP/complete-fixture.zip" > "$RUNNER_TEMP/complete-zip-inspection.json"
+          node -e 'const r=require(process.argv[1]); if(!r.centralDirectory.accepted || r.flashAuthorized || r.centralDirectory.entryPayloadVerified) process.exit(1)' "$RUNNER_TEMP/complete-zip-inspection.json"
+          printf 'not-a-zip' > "$RUNNER_TEMP/unknown-marker.bin"
+          set +e
+          node scripts/inspect-firmware-archive.mjs --file "$RUNNER_TEMP/unknown-marker.bin" > "$RUNNER_TEMP/unknown-inspection.json"
+          result=$?
+          set -e
+          test "$result" -eq 3

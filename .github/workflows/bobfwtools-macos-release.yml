@@ -23,26 +23,27 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 60
     env:
-      MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
-      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-      MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      BOBFW_DEVELOPER_ID_P12_BASE64: ${{ secrets.BOBFW_DEVELOPER_ID_P12_BASE64 }}
+      BOBFW_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.BOBFW_DEVELOPER_ID_P12_PASSWORD }}
+      BOBFW_DEVELOPER_IDENTITY: ${{ secrets.BOBFW_DEVELOPER_IDENTITY }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      BOBFW_EXPECTED_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
     steps:
       - uses: actions/checkout@v7
 
-      - name: Validate release label
+      - name: Sanitize release label
+        id: release_label
         shell: bash
         env:
-          RELEASE_LABEL: ${{ inputs.release_label }}
+          RAW_RELEASE_LABEL: ${{ steps.release_label.outputs.safe }}
         run: |
           set -euo pipefail
-          if [[ ! "$RELEASE_LABEL" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; then
-            echo "Release label must be 1-64 characters using only letters, numbers, dot, underscore, or hyphen."
-            exit 1
-          fi
+          SAFE_LABEL="$(printf '%s' "$RAW_RELEASE_LABEL" | tr -cs 'A-Za-z0-9._-' '-' | sed 's/^-*//; s/-*$//' | cut -c1-64)"
+          test -n "$SAFE_LABEL" || { echo "Release label becomes empty after sanitization"; exit 1; }
+          echo "safe=$SAFE_LABEL" >> "$GITHUB_OUTPUT"
 
       - name: Use Node.js
         uses: actions/setup-node@v7
@@ -55,7 +56,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=()
-          for name in             MACOS_CERTIFICATE_P12_BASE64             MACOS_CERTIFICATE_PASSWORD             MACOS_SIGNING_IDENTITY             APPLE_ID             APPLE_APP_SPECIFIC_PASSWORD             APPLE_TEAM_ID
+          for name in             BOBFW_DEVELOPER_ID_P12_BASE64             BOBFW_DEVELOPER_ID_P12_PASSWORD             BOBFW_DEVELOPER_IDENTITY             APPLE_ID             APPLE_APP_SPECIFIC_PASSWORD             APPLE_TEAM_ID
           do
             if [[ -z "${!name:-}" ]]; then
               missing+=("$name")
@@ -93,16 +94,16 @@ jobs:
           CERT_P12="$RUNNER_TEMP/bobfwtools-signing.p12"
           KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
 
-          printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | openssl base64 -d -A > "$CERT_P12"
+          printf '%s' "$BOBFW_DEVELOPER_ID_P12_BASE64" | openssl base64 -d -A > "$CERT_P12"
 
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security import "$CERT_P12"             -k "$KEYCHAIN"             -P "$MACOS_CERTIFICATE_PASSWORD"             -T /usr/bin/codesign             -T /usr/bin/security
+          security import "$CERT_P12"             -k "$KEYCHAIN"             -P "$BOBFW_DEVELOPER_ID_P12_PASSWORD"             -T /usr/bin/codesign             -T /usr/bin/security
           security set-key-partition-list             -S apple-tool:,apple:,codesign:             -s             -k "$KEYCHAIN_PASSWORD"             "$KEYCHAIN"
           security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
 
-          if ! security find-identity -v -p codesigning "$KEYCHAIN" | grep -F "$MACOS_SIGNING_IDENTITY"; then
+          if ! security find-identity -v -p codesigning "$KEYCHAIN" | grep -F "$BOBFW_DEVELOPER_IDENTITY"; then
             echo "Configured signing identity is not present in the imported certificate."
             exit 1
           fi
@@ -119,7 +120,7 @@ jobs:
           set -euo pipefail
           APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app"
 
-          codesign             --force             --deep             --options runtime             --timestamp             --entitlements src-tauri/entitlements.mac.plist             --sign "$MACOS_SIGNING_IDENTITY"             "$APP"
+          codesign             --force             --deep             --options runtime             --timestamp             --entitlements src-tauri/entitlements.mac.plist             --sign "$BOBFW_DEVELOPER_IDENTITY"             "$APP"
 
           codesign --verify --deep --strict --verbose=2 "$APP"
           DETAILS="$(codesign -dv --verbose=4 "$APP" 2>&1)"
@@ -168,7 +169,7 @@ jobs:
           set -euo pipefail
           APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app"
           OUT="$RUNNER_TEMP/release"
-          DMG="$OUT/BobFWTools-${{ inputs.release_label }}-universal-macOS.dmg"
+          DMG="$OUT/BobFWTools-${{ steps.release_label.outputs.safe }}-universal-macOS.dmg"
           mkdir -p "$OUT"
 
           hdiutil create             -volname "BobFWTools"             -srcfolder "$APP"             -ov             -format UDZO             "$DMG"
@@ -196,7 +197,7 @@ jobs:
           xcrun stapler validate "$DMG"
           spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG"
 
-          ditto -c -k --keepParent "$APP" "$OUT/BobFWTools-${{ inputs.release_label }}-universal-macOS.app.zip"
+          ditto -c -k --keepParent "$APP" "$OUT/BobFWTools-${{ steps.release_label.outputs.safe }}-universal-macOS.app.zip"
 
       - name: Write release receipt
         shell: bash
@@ -216,7 +217,7 @@ jobs:
 
           {
             echo "BobFWTools macOS release receipt"
-            echo "label=${{ inputs.release_label }}"
+            echo "label=${{ steps.release_label.outputs.safe }}"
             echo "source_sha=$GITHUB_SHA"
             echo "qualified_destructive_feature=false"
             echo "architectures=$(lipo -archs "$BIN")"
@@ -232,26 +233,27 @@ jobs:
 
           cat "$RECEIPT"
 
-      - name: Write JSON release provenance receipt
+      - name: Create release provenance receipt
         shell: bash
         env:
-          BOBFWTOOLS_RELEASE_LABEL: ${{ inputs.release_label }}
+          BOBFWTOOLS_RELEASE_LABEL: ${{ steps.release_label.outputs.safe }}
         run: |
           set -euo pipefail
           OUT="$RUNNER_TEMP/release"
           APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app"
-          DMG="$OUT/BobFWTools-${{ inputs.release_label }}-universal-macOS.dmg"
+          DMG="$OUT/BobFWTools-${{ steps.release_label.outputs.safe }}-universal-macOS.dmg"
           bash scripts/create-bobfwtools-release-receipt.sh \
             "$APP" \
             "$DMG" \
             "$OUT/APP-NOTARIZATION.json" \
             "$OUT/DMG-NOTARIZATION.json" \
             "$OUT/RELEASE-RECEIPT.json"
+          cp "$OUT/RELEASE-RECEIPT.json" "$OUT/bobfwtools-release-receipt.json"
 
       - name: Upload signed notarized macOS release
         uses: actions/upload-artifact@v7
         with:
-          name: BobFWTools-${{ inputs.release_label }}-signed-notarized-macOS
+          name: BobFWTools-${{ steps.release_label.outputs.safe }}-signed-notarized-macOS
           path: |
             ${{ runner.temp }}/release/*.dmg
             ${{ runner.temp }}/release/*.zip
@@ -259,9 +261,10 @@ jobs:
             ${{ runner.temp }}/release/DMG-NOTARIZATION.json
             ${{ runner.temp }}/release/RELEASE-RECEIPT.txt
             ${{ runner.temp }}/release/RELEASE-RECEIPT.json
+            ${{ runner.temp }}/release/bobfwtools-release-receipt.json
           if-no-files-found: error
 
-      - name: Remove temporary signing material
+      - name: Cleanup temporary signing material
         if: always()
         shell: bash
         run: |

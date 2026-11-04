@@ -1,0 +1,868 @@
+import { useEffect, useMemo, useState } from 'react';
+import {
+  chooseAndInspectQualifiedFlashImage,
+  exportQualificationAuditBundle,
+  reviewQualificationAuditBundle,
+  reviewQualificationAuditBundlePath,
+  exportQualificationBenchEvidence,
+  exportQualificationDecision,
+  getQualificationBuildIdentity,
+  getQualifiedFastbootDevices,
+  issueQualificationTrialGrant,
+  issueQualifiedFlashGrant,
+  reviewQualificationDossier,
+  reviewHardwareQualificationPacket,
+  startQualifiedFastbootFlash,
+  type QualificationBuildIdentity,
+  type QualificationDossierReview,
+  type QualificationAuditBundleReview,
+  type HardwareQualificationPacketReview,
+  type QualifiedFlashGrant,
+  type QualifiedFlashPartition,
+  type QualifiedFlashPhysicalChecks,
+} from '../lib/desktop';
+
+const CHECK_LABELS: Array<[keyof QualifiedFlashPhysicalChecks, string]> = [
+  ['repeatedEnumerationStable', 'Repeated enumeration is stable'],
+  ['expectedModeConfirmed', 'Expected recovery / fastboot mode confirmed'],
+  ['endpointStabilityConfirmed', 'Transport endpoint stability confirmed'],
+  ['programmerHashVerified', 'Programmer / service artifact hash verified'],
+  ['preflightMatched', 'Firmware, model, rollback and layout preflight matched'],
+  ['partitionBoundsVerified', 'Partition bounds / target mapping verified'],
+  ['backupEvidencePresent', 'Required backup / rollback evidence is present'],
+  ['destructiveBenchWritePassed', 'Designated-device destructive bench write passed'],
+  ['postWriteVerificationPassed', 'Post-write verification passed on designated device'],
+];
+
+const EVIDENCE_DERIVED_CHECKS = new Set<keyof QualifiedFlashPhysicalChecks>([
+  'repeatedEnumerationStable',
+  'expectedModeConfirmed',
+  'endpointStabilityConfirmed',
+  'programmerHashVerified',
+]);
+
+const EMPTY_CHECKS: QualifiedFlashPhysicalChecks = {
+  repeatedEnumerationStable: false,
+  expectedModeConfirmed: false,
+  endpointStabilityConfirmed: false,
+  programmerHashVerified: false,
+  preflightMatched: false,
+  partitionBoundsVerified: false,
+  backupEvidencePresent: false,
+  destructiveBenchWritePassed: false,
+  postWriteVerificationPassed: false,
+};
+
+const PARTITIONS = [
+  'boot', 'system', 'vendor', 'userdata', 'cache', 'recovery',
+  'bootloader', 'radio', 'aboot', 'vbmeta', 'dtbo', 'persist',
+];
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+}
+
+type Props = {
+  recoveryJobFingerprint?: string | null;
+  readinessCertificatePath?: string | null;
+};
+
+export default function QualifiedFlashConsole({ recoveryJobFingerprint, readinessCertificatePath }: Props) {
+  const [build, setBuild] = useState<QualificationBuildIdentity | null>(null);
+  const [fastbootDevices, setFastbootDevices] = useState<string[]>([]);
+  const [deviceSerial, setDeviceSerial] = useState('');
+  const [review, setReview] = useState<QualificationDossierReview | null>(null);
+  const [partitionName, setPartitionName] = useState('boot');
+  const [partitions, setPartitions] = useState<QualifiedFlashPartition[]>([]);
+  const [checks, setChecks] = useState<QualifiedFlashPhysicalChecks>(EMPTY_CHECKS);
+  const [reviewer, setReviewer] = useState('');
+  const [reviewerNotes, setReviewerNotes] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [expiresInMinutes, setExpiresInMinutes] = useState(10);
+  const [allowWipe, setAllowWipe] = useState(false);
+  const [allowReboot, setAllowReboot] = useState(false);
+  const [grant, setGrant] = useState<QualifiedFlashGrant | null>(null);
+  const [qualificationPacketReview, setQualificationPacketReview] = useState<HardwareQualificationPacketReview | null>(null);
+  const [benchEvidencePath, setBenchEvidencePath] = useState<string | null>(null);
+  const [decisionPath, setDecisionPath] = useState<string | null>(null);
+  const [auditBundlePath, setAuditBundlePath] = useState<string | null>(null);
+  const [auditBundleReview, setAuditBundleReview] = useState<QualificationAuditBundleReview | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const preChecksPass = useMemo(
+    () => (
+      checks.repeatedEnumerationStable &&
+      checks.expectedModeConfirmed &&
+      checks.endpointStabilityConfirmed &&
+      checks.programmerHashVerified &&
+      checks.preflightMatched &&
+      checks.partitionBoundsVerified &&
+      checks.backupEvidencePresent
+    ),
+    [checks],
+  );
+  const allChecksPass = useMemo(
+    () => preChecksPass && checks.destructiveBenchWritePassed && checks.postWriteVerificationPassed,
+    [checks, preChecksPass],
+  );
+  const grantExpired = grant ? grant.expiresAtUnixSeconds * 1000 <= Date.now() : false;
+  const trialGrantActive = Boolean(
+    grant &&
+    !grantExpired &&
+    grant.qualificationStatus === 'qualification-trial' &&
+    !grant.executorQualified,
+  );
+  const productionGrantActive = Boolean(
+    grant &&
+    !grantExpired &&
+    grant.qualificationStatus === 'approved' &&
+    grant.executorQualified &&
+    grant.auditBundleFingerprint &&
+    /^[a-f0-9]{64}$/i.test(grant.auditBundleFingerprint),
+  );
+  const readyToTrial = Boolean(
+    build?.qualifiedFlashCompiled &&
+    review?.safeToReview &&
+    recoveryJobFingerprint &&
+    deviceSerial &&
+    partitions.length === 1 &&
+    reviewer.trim() &&
+    confirmation === `BENCH QUALIFY ${deviceSerial}` &&
+    preChecksPass,
+  );
+  const readyToIssue = Boolean(
+    build?.qualifiedFlashCompiled &&
+    review?.safeToReview &&
+    recoveryJobFingerprint &&
+    deviceSerial &&
+    partitions.length &&
+    reviewer.trim() &&
+    benchEvidencePath &&
+    decisionPath &&
+    auditBundleReview?.safeToReview &&
+    confirmation === `QUALIFY ${deviceSerial}` &&
+    allChecksPass,
+  );
+
+  const qualificationStage = useMemo(() => {
+    if (!build?.qualifiedFlashCompiled) return 0;
+    if (!review?.safeToReview || !deviceSerial || partitions.length !== 1 || !preChecksPass) return 1;
+    if (!benchEvidencePath) return 2;
+    if (!decisionPath) return 3;
+    if (!auditBundleReview?.safeToReview) return 4;
+    if (!productionGrantActive) return 5;
+    return 6;
+  }, [
+    auditBundleReview?.safeToReview,
+    benchEvidencePath,
+    build?.qualifiedFlashCompiled,
+    decisionPath,
+    deviceSerial,
+    partitions.length,
+    preChecksPass,
+    productionGrantActive,
+    review?.safeToReview,
+  ]);
+
+  const stageItems = [
+    ['1', 'Preflight', 'Exact target, dossier, image hashes, and physical pre-checks'],
+    ['2', 'Bench trial', 'One-shot non-critical write under trial authority'],
+    ['3', 'Bench evidence', 'Freeze post-write verification into a hash-bound receipt'],
+    ['4', 'Human decision', 'Independent reviewer accepts or rejects the evidence'],
+    ['5', 'Audit bundle', 'Re-verify the complete evidence chain and fingerprints'],
+    ['6', 'Production authority', 'Issue a short-lived grant only after every gate passes'],
+  ] as const;
+
+  const refreshTargets = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const identity = await getQualificationBuildIdentity();
+      setBuild(identity);
+      if (identity?.qualifiedFlashCompiled) {
+        const serials = await getQualifiedFastbootDevices();
+        setFastbootDevices(serials);
+        if (!deviceSerial && serials.length === 1) setDeviceSerial(serials[0]);
+        if (deviceSerial && !serials.includes(deviceSerial)) setDeviceSerial('');
+      } else {
+        setFastbootDevices([]);
+        setDeviceSerial('');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshTargets();
+    // The destructive command surface is only queried after build identity proves it exists.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    setReview(null);
+    setQualificationPacketReview(null);
+    setGrant(null);
+    setBenchEvidencePath(null);
+    setDecisionPath(null);
+    setAuditBundlePath(null);
+    setAuditBundleReview(null);
+  }, [recoveryJobFingerprint]);
+
+  useEffect(() => {
+    setAuditBundlePath(null);
+    setAuditBundleReview(null);
+  }, [
+    benchEvidencePath,
+    decisionPath,
+    deviceSerial,
+    reviewer,
+    review?.path,
+    review?.dossierFingerprint,
+    readinessCertificatePath,
+  ]);
+
+  const reviewSavedDossier = async () => {
+    setBusy(true);
+    setError(null);
+    setGrant(null);
+    try {
+      const result = await reviewQualificationDossier(recoveryJobFingerprint);
+      if (result) {
+        setReview(result);
+        setChecks((current) => ({
+          ...current,
+          repeatedEnumerationStable: result.bindingSemanticsValid && result.transportObservationReady,
+          expectedModeConfirmed: result.bindingSemanticsValid && result.liveDeviceIdentityMatch,
+          endpointStabilityConfirmed: result.bindingSemanticsValid && result.transportObservationReady,
+          programmerHashVerified: result.bindingSemanticsValid && result.programmerEvidenceReady,
+        }));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reviewQualificationPacket = async () => {
+    setBusy(true);
+    setError(null);
+    setGrant(null);
+    setBenchEvidencePath(null);
+    setDecisionPath(null);
+    try {
+      const result = await reviewHardwareQualificationPacket();
+      if (result) setQualificationPacketReview(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addImage = async () => {
+    setBusy(true);
+    setError(null);
+    setGrant(null);
+    try {
+      const inspected = await chooseAndInspectQualifiedFlashImage(partitionName);
+      if (!inspected) return;
+      setPartitions((current) => [
+        ...current.filter((item) => item.name !== inspected.name),
+        inspected,
+      ]);
+      setBenchEvidencePath(null);
+      setDecisionPath(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const issueTrialGrant = async () => {
+    if (!review || !recoveryJobFingerprint || !readyToTrial) return;
+    setBusy(true);
+    setError(null);
+    setGrant(null);
+    setJobId(null);
+    try {
+      const issued = await issueQualificationTrialGrant({
+        dossierPath: review.path,
+        benchEvidencePath: null,
+        reviewDecisionPath: null,
+        expectedRecoveryJobFingerprint: recoveryJobFingerprint,
+        deviceSerial,
+        partitions,
+        wipeUserDataAllowed: false,
+        autoRebootAllowed: false,
+        reviewer: reviewer.trim(),
+        reviewerNotes: reviewerNotes.trim(),
+        confirmation,
+        expiresInMinutes: Math.min(expiresInMinutes, 10),
+        physicalChecks: checks,
+      });
+      setGrant(issued);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const exportBenchEvidence = async () => {
+    if (!review || !qualificationPacketReview?.safeToReview || !qualificationPacketReview.path || !recoveryJobFingerprint || !deviceSerial || !reviewer.trim() || !allChecksPass || !partitions.length) return;
+    setBusy(true);
+    setError(null);
+    setGrant(null);
+    setDecisionPath(null);
+    try {
+      const path = await exportQualificationBenchEvidence({
+        dossierPath: review.path,
+        qualificationPacketPath: qualificationPacketReview.path,
+        expectedRecoveryJobFingerprint: recoveryJobFingerprint,
+        deviceSerial,
+        reviewer: reviewer.trim(),
+        reviewerNotes: reviewerNotes.trim(),
+        partitions,
+        physicalChecks: checks,
+      });
+      if (path) setBenchEvidencePath(path);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const exportDecision = async (decision: 'accept-evidence' | 'reject-evidence') => {
+    if (!review || !recoveryJobFingerprint || !deviceSerial || !reviewer.trim()) return;
+    setBusy(true);
+    setError(null);
+    setGrant(null);
+    try {
+      const path = await exportQualificationDecision({
+        dossierPath: review.path,
+        benchEvidencePath: decision === 'accept-evidence' ? benchEvidencePath : null,
+        expectedRecoveryJobFingerprint: recoveryJobFingerprint,
+        deviceSerial,
+        reviewer: reviewer.trim(),
+        reviewerNotes: reviewerNotes.trim(),
+        decision,
+        physicalChecks: checks,
+      });
+      if (path) setDecisionPath(path);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const exportAuditBundle = async () => {
+    if (!review || !recoveryJobFingerprint || !deviceSerial || !reviewer.trim() || !benchEvidencePath || !decisionPath) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const path = await exportQualificationAuditBundle({
+        dossierPath: review.path,
+        benchEvidencePath,
+        decisionPath,
+        readinessCertificatePath: readinessCertificatePath?.trim() || null,
+        expectedRecoveryJobFingerprint: recoveryJobFingerprint,
+        deviceSerial,
+        reviewer: reviewer.trim(),
+      });
+      if (path) {
+        setAuditBundlePath(path);
+        const verified = await reviewQualificationAuditBundlePath(path, recoveryJobFingerprint);
+        if (verified) setAuditBundleReview(verified);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reviewAuditBundle = async () => {
+    if (!recoveryJobFingerprint) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await reviewQualificationAuditBundle(recoveryJobFingerprint);
+      if (result) setAuditBundleReview(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const issueGrant = async () => {
+    if (!review || !recoveryJobFingerprint || !readyToIssue) return;
+    setBusy(true);
+    setError(null);
+    setGrant(null);
+    setJobId(null);
+    try {
+      const issued = await issueQualifiedFlashGrant({
+        dossierPath: review.path,
+        benchEvidencePath,
+        reviewDecisionPath: decisionPath,
+        auditBundlePath: auditBundleReview?.safeToReview ? auditBundleReview.path : null,
+        expectedRecoveryJobFingerprint: recoveryJobFingerprint,
+        deviceSerial,
+        partitions,
+        wipeUserDataAllowed: allowWipe,
+        autoRebootAllowed: allowReboot,
+        reviewer: reviewer.trim(),
+        reviewerNotes: reviewerNotes.trim(),
+        confirmation,
+        expiresInMinutes,
+        physicalChecks: checks,
+      });
+      setGrant(issued);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startFlash = async () => {
+    if (!grant || grantExpired || (!trialGrantActive && !productionGrantActive)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await startQualifiedFastbootFlash(
+        deviceSerial,
+        partitions,
+        grant,
+        grant.qualificationStatus === 'qualification-trial'
+          ? { wipeUserData: false, autoReboot: false }
+          : { wipeUserData: allowWipe, autoReboot: allowReboot },
+      );
+      setJobId(response.jobId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="mb-4 rounded-xl border border-rose-950/80 bg-rose-950/10 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-rose-400">
+            Qualified Destructive Writer
+          </div>
+          <h2 className="mt-1 text-sm font-semibold text-white">Physical qualification authority</h2>
+          <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-400">
+            This panel cannot self-qualify. It only becomes usable in a qualified-flash build, after a verified dossier,
+            exact live fastboot target, approved image hashes, and every physical bench check are explicitly recorded.
+          </p>
+        </div>
+        <span className={build?.qualifiedFlashCompiled
+          ? 'rounded border border-amber-800 bg-amber-950/40 px-2 py-1 text-xs font-semibold text-amber-300'
+          : 'rounded border border-slate-800 bg-slate-950 px-2 py-1 text-xs font-semibold text-slate-500'}>
+          {build?.qualifiedFlashCompiled ? 'QUALIFIED BUILD — AUTHORITY LOCKED' : 'NOT COMPILED IN THIS BUILD'}
+        </span>
+      </div>
+
+      <div className="mt-4 rounded border border-rose-900/50 bg-black/20 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-400">Qualification wizard</div>
+            <div className="mt-1 text-xs text-slate-400">
+              Follow the stages in order. A later stage never substitutes for a failed earlier gate.
+            </div>
+          </div>
+          <div className="text-xs font-semibold text-rose-200">
+            {qualificationStage === 0 ? 'Ordinary build — writer unavailable' : `Stage ${Math.min(qualificationStage, 6)} of 6`}
+          </div>
+        </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {stageItems.map(([number, title, detail], index) => {
+            const stageNumber = index + 1;
+            const complete = qualificationStage > stageNumber;
+            const current = qualificationStage === stageNumber;
+            return (
+              <div key={number} className={
+                complete
+                  ? 'rounded border border-emerald-900/60 bg-emerald-950/20 p-3'
+                  : current
+                    ? 'rounded border border-amber-800 bg-amber-950/20 p-3'
+                    : 'rounded border border-slate-800 bg-slate-950/50 p-3'
+              }>
+                <div className="flex items-center justify-between gap-2">
+                  <div className={complete ? 'text-[10px] font-semibold text-emerald-300' : current ? 'text-[10px] font-semibold text-amber-300' : 'text-[10px] font-semibold text-slate-500'}>
+                    {number}. {title}
+                  </div>
+                  <span className={complete ? 'text-[9px] text-emerald-400' : current ? 'text-[9px] text-amber-300' : 'text-[9px] text-slate-600'}>
+                    {complete ? 'COMPLETE' : current ? 'YOU ARE HERE' : 'LOCKED'}
+                  </span>
+                </div>
+                <div className="mt-1 text-[10px] leading-4 text-slate-500">{detail}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {!build?.qualifiedFlashCompiled ? (
+        <div className="mt-4 rounded border border-slate-800 bg-black/20 p-4 text-xs text-slate-500">
+          The ordinary BobFWTools build intentionally has no destructive command surface. Hosted CI still compiles and tests
+          the qualified writer separately so this lane cannot silently rot.
+        </div>
+      ) : (
+        <>
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            <div className="rounded border border-slate-800 bg-slate-950/60 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[10px] uppercase tracking-wide text-slate-600">Exact fastboot target</div>
+                <button type="button" onClick={() => void refreshTargets()} disabled={busy} className="text-xs text-cyan-300 disabled:opacity-40">
+                  Refresh
+                </button>
+              </div>
+              <select value={deviceSerial} onChange={(e) => { setDeviceSerial(e.target.value); setGrant(null); setConfirmation(''); setBenchEvidencePath(null); setDecisionPath(null); }} className="mt-2 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white">
+                <option value="">Select exact fastboot serial</option>
+                {fastbootDevices.map((serial) => <option key={serial} value={serial}>{serial}</option>)}
+              </select>
+              {!fastbootDevices.length && (
+                <div className="mt-2 rounded border border-amber-900/50 bg-amber-950/20 p-2 text-xs text-amber-300">
+                  <div>No fastboot target is currently connected.</div>
+                  <div className="mt-1 text-[11px] leading-5 text-amber-200/80">
+                    Next step: connect the exact designated bench device in the expected fastboot mode, then press Refresh. Do not select a different phone just to advance the wizard.
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="rounded border border-slate-800 bg-slate-950/60 p-4">
+              <div className="text-[10px] uppercase tracking-wide text-slate-600">Qualification dossier</div>
+              <button type="button" onClick={() => void reviewSavedDossier()} disabled={busy || !recoveryJobFingerprint} className="mt-2 rounded border border-cyan-800 px-3 py-2 text-xs text-cyan-300 disabled:opacity-40">
+                Review bound dossier
+              </button>
+              {review && <div className={review.safeToReview ? 'mt-2 text-xs font-semibold text-emerald-300' : 'mt-2 text-xs font-semibold text-rose-300'}>
+                {review.safeToReview ? 'VERIFIED FOR PHYSICAL REVIEW' : 'BLOCKED'}
+              </div>}
+              {!!review?.blockers.length && (
+                <div className="mt-2 rounded border border-rose-900/50 bg-rose-950/20 p-2 text-[11px] text-rose-300">
+                  <div className="font-semibold">Dossier blockers</div>
+                  <div className="mt-1 space-y-1">{review.blockers.map((b) => <div key={b}>{b}</div>)}</div>
+                  <div className="mt-2 leading-5 text-rose-200/80">
+                    Fix and re-export the upstream dossier. Do not continue with a blocked or edited evidence file.
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-3 rounded border border-slate-800 bg-slate-950/60 p-4">
+            <div className="text-[10px] uppercase tracking-wide text-slate-600">Qualified partition images</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <select value={partitionName} onChange={(e) => setPartitionName(e.target.value)} className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white">
+                {PARTITIONS.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
+              <button type="button" onClick={() => void addImage()} disabled={busy} className="rounded border border-slate-700 px-3 py-2 text-xs text-slate-300 disabled:opacity-40">
+                Choose + SHA-256 image
+              </button>
+            </div>
+            <div className="mt-3 space-y-2">
+              {partitions.map((item) => (
+                <div key={item.name} className="rounded border border-slate-800 bg-black/20 p-2 text-[10px]">
+                  <div className="flex items-center justify-between gap-2"><span className="font-semibold text-white">{item.name}</span><span className="text-slate-500">{formatBytes(item.size)}</span></div>
+                  <div className="mt-1 break-all font-mono text-cyan-400">{item.expectedSha256}</div>
+                  <div className="mt-1 truncate text-slate-600" title={item.imagePath}>{item.imagePath}</div>
+                  <button type="button" onClick={() => { setPartitions((current) => current.filter((p) => p.name !== item.name)); setGrant(null); setBenchEvidencePath(null); setDecisionPath(null); }} className="mt-1 text-rose-300">Remove</button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-3 rounded border border-slate-800 bg-slate-950/60 p-4">
+            <div className="text-[10px] uppercase tracking-wide text-slate-600">Qualification evidence — automated where provable</div>
+            <div className="mt-1 text-[10px] leading-4 text-slate-500">
+              AUTO checks come only from a verified, hash-bound dossier review and cannot be clicked manually. Firmware/layout/backup and destructive bench outcomes remain explicit evidence steps.
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {CHECK_LABELS.map(([key, label]) => {
+                const automated = EVIDENCE_DERIVED_CHECKS.has(key);
+                return (
+                  <label key={key} className="flex items-start justify-between gap-2 rounded border border-slate-800 p-2 text-xs text-slate-300">
+                    <span className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={checks[key]}
+                        disabled={automated}
+                        onChange={(e) => {
+                          if (automated) return;
+                          setChecks((current) => ({ ...current, [key]: e.target.checked }));
+                          setGrant(null);
+                          setBenchEvidencePath(null);
+                          setDecisionPath(null);
+                        }}
+                      />
+                      <span>{label}</span>
+                    </span>
+                    <span className={automated ? 'text-[9px] font-semibold text-cyan-300' : 'text-[9px] font-semibold text-amber-300'}>
+                      {automated ? 'AUTO' : 'MANUAL'}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            <div className="rounded border border-slate-800 bg-slate-950/60 p-4">
+              <label className="block text-xs text-slate-500">Reviewer identity<input value={reviewer} onChange={(e) => { setReviewer(e.target.value); setGrant(null); setBenchEvidencePath(null); setDecisionPath(null); }} className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white" /></label>
+              <label className="mt-2 block text-xs text-slate-500">Reviewer notes<textarea value={reviewerNotes} onChange={(e) => { setReviewerNotes(e.target.value); setGrant(null); setBenchEvidencePath(null); setDecisionPath(null); }} className="mt-1 min-h-20 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white" /></label>
+            </div>
+            <div className="rounded border border-slate-800 bg-slate-950/60 p-4">
+              <label className="block text-xs text-slate-500">Grant lifetime (minutes)<input type="number" min={1} max={30} value={expiresInMinutes} onChange={(e) => { setExpiresInMinutes(Math.max(1, Math.min(30, Number(e.target.value) || 1))); setGrant(null); }} className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white" /></label>
+              <label className="mt-2 flex gap-2 text-xs text-slate-300"><input type="checkbox" checked={allowWipe} onChange={(e) => { setAllowWipe(e.target.checked); setGrant(null); }} />Grant may wipe userdata</label>
+              <label className="mt-2 flex gap-2 text-xs text-slate-300"><input type="checkbox" checked={allowReboot} onChange={(e) => { setAllowReboot(e.target.checked); setGrant(null); }} />Grant may reboot automatically</label>
+              <label className="mt-3 block text-xs text-rose-300">
+                Bench trial: {deviceSerial ? `BENCH QUALIFY ${deviceSerial}` : 'select a device first'}<br />
+                Production: {deviceSerial ? `QUALIFY ${deviceSerial}` : 'select a device first'}
+                <input value={confirmation} onChange={(e) => { setConfirmation(e.target.value); setGrant(null); }} className="mt-1 w-full rounded border border-rose-900 bg-slate-950 px-3 py-2 font-mono text-white" />
+              </label>
+            </div>
+          </div>
+
+          <div className="mt-3 rounded border border-amber-900/60 bg-amber-950/20 p-4">
+            <div className="text-[10px] uppercase tracking-wide text-amber-500">Qualification packet binding</div>
+            <p className="mt-2 text-xs text-slate-400">
+              Select the workflow-specific qualification packet exported from Hardware Readiness. The packet must pass integrity review before bench evidence can be recorded.
+            </p>
+            <button
+              type="button"
+              onClick={() => void reviewQualificationPacket()}
+              disabled={busy}
+              className="mt-3 rounded border border-amber-800 px-3 py-2 text-xs font-semibold text-amber-300 disabled:opacity-40"
+            >
+              Select + verify qualification packet
+            </button>
+            {qualificationPacketReview && (
+              <div className={qualificationPacketReview.safeToReview
+                ? 'mt-2 rounded border border-emerald-900/60 bg-emerald-950/20 p-3 text-xs text-emerald-300'
+                : 'mt-2 rounded border border-rose-900/60 bg-rose-950/20 p-3 text-xs text-rose-300'}>
+                <div className="font-semibold">
+                  {qualificationPacketReview.safeToReview ? 'PACKET VERIFIED' : 'PACKET BLOCKED'}
+                </div>
+                <div className="mt-1 break-all font-mono text-[10px]">
+                  {qualificationPacketReview.workflowId || 'unknown workflow'} · {qualificationPacketReview.packetFingerprint || 'no fingerprint'}
+                </div>
+                {qualificationPacketReview.blockers.map((blocker) => (
+                  <div key={blocker} className="mt-1 text-[10px]">{blocker}</div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-3 rounded border border-cyan-900/60 bg-cyan-950/20 p-4">
+            <div className="text-[10px] uppercase tracking-wide text-cyan-600">Stage 2 bench-evidence receipt</div>
+            <p className="mt-2 text-xs text-slate-400">
+              After the one-shot bench write and independent post-write verification, freeze the exact device, build, dossier,
+              recovery job, inspected image hashes, and passed physical checks into an authority-free receipt.
+            </p>
+            <button
+              type="button"
+              onClick={() => void exportBenchEvidence()}
+              disabled={busy || !review?.safeToReview || !qualificationPacketReview?.safeToReview || !allChecksPass || !reviewer.trim() || !deviceSerial || !partitions.length}
+              className="mt-3 rounded border border-cyan-800 px-3 py-2 text-xs font-semibold text-cyan-300 disabled:opacity-40"
+            >
+              Export hash-bound bench evidence
+            </button>
+            {benchEvidencePath && (
+              <div className="mt-2 break-all font-mono text-[10px] text-cyan-400">
+                bench evidence: {benchEvidencePath}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-3 rounded border border-slate-800 bg-slate-950/60 p-4">
+            <div className="text-[10px] uppercase tracking-wide text-slate-600">Stage 2 human decision receipt</div>
+            <p className="mt-2 text-xs text-slate-400">
+              After the one-shot bench write and independent post-write verification, record the evidence decision.
+              This receipt is hash-bound and grants no authority by itself.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void exportDecision('accept-evidence')}
+                disabled={busy || !review?.safeToReview || !allChecksPass || !reviewer.trim() || !deviceSerial || !benchEvidencePath}
+                className="rounded border border-emerald-800 px-3 py-2 text-xs font-semibold text-emerald-300 disabled:opacity-40"
+              >
+                Accept evidence + export decision receipt
+              </button>
+              <button
+                type="button"
+                onClick={() => void exportDecision('reject-evidence')}
+                disabled={busy || !reviewer.trim() || !deviceSerial || !review}
+                className="rounded border border-rose-900 px-3 py-2 text-xs text-rose-300 disabled:opacity-40"
+              >
+                Reject evidence + export decision receipt
+              </button>
+            </div>
+            {decisionPath && (
+              <div className="mt-2 break-all font-mono text-[10px] text-cyan-400">
+                decision receipt: {decisionPath}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => void exportAuditBundle()}
+              disabled={busy || !benchEvidencePath || !decisionPath || !review?.safeToReview}
+              className="mt-3 rounded border border-violet-800 px-3 py-2 text-xs font-semibold text-violet-300 disabled:opacity-40"
+            >
+              Export qualification audit bundle
+            </button>
+            {auditBundlePath && (
+              <div className="mt-2 break-all font-mono text-[10px] text-violet-400">
+                audit bundle: {auditBundlePath}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => void reviewAuditBundle()}
+              disabled={busy || !recoveryJobFingerprint}
+              className="mt-2 rounded border border-slate-700 px-3 py-2 text-xs text-slate-300 disabled:opacity-40"
+            >
+              Review qualification audit bundle
+            </button>
+            {auditBundleReview && (
+              <div className={auditBundleReview.safeToReview
+                ? 'mt-2 rounded border border-emerald-900/60 bg-emerald-950/20 p-3 text-xs text-emerald-300'
+                : 'mt-2 rounded border border-rose-900/60 bg-rose-950/20 p-3 text-xs text-rose-300'}>
+                <div className="font-semibold">
+                  {auditBundleReview.safeToReview ? 'AUDIT BUNDLE VERIFIED' : 'AUDIT BUNDLE BLOCKED'}
+                </div>
+                <div className="mt-1 text-[11px] text-slate-400">
+                  fingerprint {auditBundleReview.bundleFingerprintValid ? 'verified' : 'failed'} ·
+                  source files {auditBundleReview.sourceFilesMatch ? 'match' : 'changed'} ·
+                  semantics {auditBundleReview.sourceSemanticsValid ? 'verified' : 'failed'} ·
+                  nested chain {auditBundleReview.nestedEvidenceChainValid ? 'verified' : 'blocked'} ·
+                  job {auditBundleReview.recoveryJobMatchesExpected ? 'matched' : 'mismatch'} ·
+                  build {auditBundleReview.executorBuildMatchesCurrent ? 'matched' : 'mismatch'}
+                </div>
+                {!!auditBundleReview.blockers.length && (
+                  <div className="mt-2 space-y-1 text-[11px]">
+                    {auditBundleReview.blockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-3 rounded border border-amber-900/60 bg-amber-950/20 p-3 text-[11px] leading-5 text-amber-200">
+            <div className="font-semibold">What the wizard expects next</div>
+            <div className="mt-1">
+              Stage 1 requires a verified dossier, exact target, exactly one non-critical partition, the first seven physical checks,
+              reviewer identity, and the exact BENCH QUALIFY confirmation. After the one-shot bench write, record independent post-write verification,
+              export bench evidence, record the human decision, build and review the audit bundle, then issue production authority.
+            </div>
+            <div className="mt-2 text-amber-200/80">
+              A green stage means evidence for that stage exists; it does not mean later destructive authority has been granted.
+            </div>
+          </div>
+
+          <div className="mt-3 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => void issueTrialGrant()} disabled={busy || !readyToTrial} className="rounded border border-amber-800 bg-amber-950/30 px-3 py-2 text-xs font-semibold text-amber-200 disabled:opacity-40">
+                Issue one-shot bench trial grant
+              </button>
+              <button type="button" onClick={() => void issueGrant()} disabled={busy || !readyToIssue} className="rounded bg-amber-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
+                Issue production-qualified grant
+              </button>
+              <button
+                type="button"
+                onClick={() => void startFlash()}
+                disabled={busy || (!trialGrantActive && !productionGrantActive)}
+                className="rounded bg-rose-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
+              >
+                {trialGrantActive ? 'START ONE-SHOT BENCH WRITE' : 'START QUALIFIED DESTRUCTIVE FLASH'}
+              </button>
+            </div>
+
+            <div className="grid gap-2 lg:grid-cols-3">
+              <div className="rounded border border-slate-800 bg-black/20 p-2 text-[10px] leading-4 text-slate-500">
+                <span className="font-semibold text-slate-300">Bench grant:</span>{' '}
+                {readyToTrial
+                  ? 'all prerequisites satisfied'
+                  : [
+                      !build?.qualifiedFlashCompiled ? 'qualified writer build required' : '',
+                      !review?.safeToReview ? 'verified dossier required' : '',
+                      !deviceSerial ? 'exact fastboot target required' : '',
+                      partitions.length !== 1 ? 'exactly one trial partition required' : '',
+                      !preChecksPass ? 'first seven physical checks required' : '',
+                      !reviewer.trim() ? 'reviewer identity required' : '',
+                      confirmation !== `BENCH QUALIFY ${deviceSerial}` ? 'exact BENCH QUALIFY confirmation required' : '',
+                    ].filter(Boolean).join(' · ')}
+              </div>
+
+              <div className="rounded border border-slate-800 bg-black/20 p-2 text-[10px] leading-4 text-slate-500">
+                <span className="font-semibold text-slate-300">Production grant:</span>{' '}
+                {readyToIssue
+                  ? 'all prerequisites satisfied'
+                  : [
+                      !benchEvidencePath ? 'bench evidence required' : '',
+                      !decisionPath ? 'accepted human decision required' : '',
+                      !auditBundleReview?.safeToReview ? 'verified audit bundle required' : '',
+                      !allChecksPass ? 'all physical checks including bench/post-write verification required' : '',
+                      confirmation !== `QUALIFY ${deviceSerial}` ? 'exact QUALIFY confirmation required' : '',
+                    ].filter(Boolean).join(' · ')}
+              </div>
+
+              {grant?.auditBundleFingerprint && (
+                <div className="rounded border border-slate-800 bg-black/20 p-2 text-[10px] leading-4 text-slate-500">
+                  <span className="font-semibold text-slate-300">Audit bundle binding:</span>{' '}
+                  <span className="break-all font-mono">{grant.auditBundleFingerprint}</span>
+                </div>
+              )}
+
+              <div className="rounded border border-slate-800 bg-black/20 p-2 text-[10px] leading-4 text-slate-500">
+                <span className="font-semibold text-slate-300">Write authority:</span>{' '}
+                {trialGrantActive
+                  ? 'trial-only — exactly one approved partition; no wipe or automatic reboot'
+                  : productionGrantActive
+                    ? 'production-qualified — short-lived approved authority'
+                    : grantExpired
+                      ? 'grant expired'
+                      : 'no active write authority'}
+              </div>
+            </div>
+          </div>
+
+          {jobId && <div className="mt-3 rounded border border-emerald-900 bg-emerald-950/20 p-3 text-xs text-emerald-300">Flash job started: <span className="font-mono">{jobId}</span></div>}
+        </>
+      )}
+
+      {error && (
+        <div className="mt-3 rounded border border-red-900 bg-red-950/20 p-3 text-xs text-red-300">
+          <div className="font-semibold">Current wizard stage blocked</div>
+          <div className="mt-1">{error}</div>
+          <div className="mt-2 text-[11px] leading-5 text-red-200/80">
+            Resolve the failed prerequisite and repeat this stage. Do not skip ahead, reuse stale evidence, or change targets to make the workflow pass.
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}

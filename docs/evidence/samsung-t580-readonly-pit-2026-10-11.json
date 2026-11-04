@@ -1,0 +1,17 @@
+{
+  "schema": "bobfwtools.samsung.pit-observation.v1",
+  "source": "heimdall read-only print-pit",
+  "testDeviceLabel": "Samsung tablet, user-described SM-T580",
+  "protocolInitialized": true,
+  "sessionEstablished": true,
+  "pitDownloaded": true,
+  "partitionCount": 27,
+  "chipsetTag": "LSI7870",
+  "result": "observed",
+  "modelIdentityVerified": false,
+  "firmwareVerified": false,
+  "frpStateChanged": false,
+  "flashAuthorized": false,
+  "hardwareQualificationComplete": false,
+  "provenanceNote": "Observed on connected MacBook during 2026-10-11 hardware test. Raw PIT log stays on owner's computer; no serial numbers or partition geometry included."
+}

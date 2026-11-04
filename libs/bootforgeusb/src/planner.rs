@@ -67,6 +67,10 @@ pub fn build_samsung_plan(reports: &[FirmwareArchiveReport]) -> FlashPlan {
     if !roles.iter().any(|r| r == "AP") {
         warnings.push("No AP package supplied.".to_string());
     }
+    warnings.push(
+        "Firmware archive inspection verifies package structure/integrity only; it does not certify exact device-model compatibility."
+            .to_string(),
+    );
 
     FlashPlan {
         protocol: "samsung-odin".to_string(),
@@ -80,6 +84,7 @@ pub fn build_samsung_plan(reports: &[FirmwareArchiveReport]) -> FlashPlan {
         planned_payloads,
         safety_checks: vec![
             "Re-enumerate and re-identify USB device immediately before execution".to_string(),
+            "Independently verify the exact connected device model matches the firmware target before any write session".to_string(),
             "Verify every .tar.md5 package before opening a write session".to_string(),
             "Reject bootloader rollback/downgrade when device revision is known".to_string(),
             "Map payloads against active/package PIT before writes".to_string(),
@@ -133,5 +138,19 @@ mod tests {
         ]);
         assert!(!plan.destructive);
         assert!(plan.preserves_userdata_by_design);
+    }
+
+    #[test]
+    fn plan_requires_independent_exact_model_verification() {
+        let plan = build_samsung_plan(&[report("BL", false), report("AP", false)]);
+        assert!(!plan.execution_enabled);
+        assert!(plan
+            .safety_checks
+            .iter()
+            .any(|check| check.contains("exact connected device model")));
+        assert!(plan
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("does not certify exact device-model compatibility")));
     }
 }

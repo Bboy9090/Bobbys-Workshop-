@@ -1,0 +1,19 @@
+name: Qualification receipt contract
+on:
+  pull_request:
+    paths:
+      - 'infra/cloud/receipt_api.tf'
+      - 'infra/cloud/lambda/qualification_receipt.py'
+      - 'tests/cloud/test_qualification_receipt.py'
+      - '.github/workflows/qualification-receipt-contract.yml'
+permissions:
+  contents: read
+jobs:
+  receipt-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: python -m unittest tests/cloud/test_qualification_receipt.py -v

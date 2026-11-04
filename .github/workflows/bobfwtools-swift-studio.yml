@@ -1,0 +1,40 @@
+name: BobFWTools Native Swift Studio
+
+on:
+  pull_request:
+    branches: [ "main-tool-kit", "feat/bobfwtools-macos-foundation" ]
+  push:
+    branches: [ "feat/bobfwtools-macos-foundation", "feat/bobfwtools-universal-firmware-matcher" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build-swift-studio:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build BobFWTools Studio Universal 2 App & Packages
+        run: |
+          chmod +x build_app.sh
+          ./build_app.sh
+
+      - name: Verify Universal 2 Binary Slices
+        run: |
+          lipo -info dist/Owner-Private-Only/BobFWTools.app/Contents/MacOS/BobFWTools
+          codesign -dv --verbose=4 dist/Owner-Private-Only/BobFWTools.app
+
+      - name: Upload Owner Private macOS Archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: BobFWTools-Owner-Private-macOS
+          path: dist/Owner-Private-Only/BobFWTools-Owner-Private-macOS.zip
+          if-no-files-found: error
+
+      - name: Upload Store Submission macOS Archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: BobFWTools-Store-Submission-macOS
+          path: dist/Store-Submission/BobFWTools-Store-Submission-macOS.zip
+          if-no-files-found: error

@@ -1,9 +1,23 @@
+pub mod calibration;
+pub mod calibration_backup;
+pub mod edl;
+pub mod firehose_plan;
 pub mod firmware;
+pub mod firmware_catalog;
+pub mod firmware_manifest;
+pub mod hardware_service;
 pub mod model;
 pub mod planner;
+pub mod preflight;
 pub mod recovery;
 pub mod recovery_job;
+pub mod retry_policy;
+pub mod telemetry;
 pub mod transport;
+pub mod transfer_preflight;
+pub mod stream_schedule;
+pub mod read_benchmark;
+pub mod workflow_catalog;
 
 use model::DeviceRecord;
 use rusb::{Context, UsbContext};
@@ -22,6 +36,7 @@ pub type Result<T> = std::result::Result<T, BootForgeUsbError>;
 fn platform_hint(vendor_id: u16) -> &'static str {
     match vendor_id {
         0x04e8 => "android-samsung",
+        0x05c6 => "android-qualcomm",
         0x0e8d => "android-mediatek",
         0x18d1 => "android-google",
         0x22b8 => "android-motorola",
@@ -39,12 +54,23 @@ fn mode_hint(
     subclass: u8,
     protocol: u8,
 ) -> &'static str {
-    if vendor_id == 0x04e8 && matches!(product_id, 0x6601 | 0x685d) {
+    if vendor_id == 0x04e8 && product_id == 0x6601 {
         return "samsung-download";
     }
-    if vendor_id == 0x0e8d && matches!(product_id, 0x0003 | 0x2000 | 0x2001) {
+    if vendor_id == 0x04e8 && product_id == 0x685d {
+        return "samsung-usb";
+    }
+    if vendor_id == 0x05c6 && product_id == 0x9008 {
+        return "qualcomm-edl";
+    }
+    if vendor_id == 0x0e8d && product_id == 0x0003 {
+        return "mediatek-brom";
+    }
+    if vendor_id == 0x0e8d && matches!(product_id, 0x2000 | 0x2001) {
         return "mediatek-preloader";
     }
+    // Apple DFU is intentionally reserved for the future B.U.Tools product.
+    // BobFWTools does not expose an Apple DFU execution workflow.
     if class == 0x06 && subclass == 0x01 && protocol == 0x01 {
         return "ptp";
     }
@@ -136,6 +162,21 @@ pub fn scan() -> Result<Vec<DeviceRecord>> {
         });
     }
     Ok(records)
+}
+
+#[cfg(test)]
+mod mode_tests {
+    use super::mode_hint;
+
+    #[test]
+    fn samsung_685d_descriptor_is_not_download_mode() {
+        assert_eq!(mode_hint(0x04e8, 0x685d, 0x02, 0x02, 0x00), "samsung-usb");
+    }
+
+    #[test]
+    fn samsung_6601_descriptor_is_download_mode() {
+        assert_eq!(mode_hint(0x04e8, 0x6601, 0x00, 0x00, 0x00), "samsung-download");
+    }
 }
 
 #[cfg(feature = "python")]

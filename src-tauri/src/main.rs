@@ -10,15 +10,19 @@
 use std::process::{Command, Stdio};
 #[cfg(feature = "legacy-backends")]
 use std::process::Child;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use tauri::{Manager, AppHandle, Emitter};
 #[cfg(any(feature = "legacy-backends", feature = "qualified-flash"))]
 use std::path::PathBuf;
 use std::env;
 use std::collections::HashMap;
 #[cfg(feature = "qualified-flash")]
+use std::collections::HashSet;
+#[cfg(feature = "qualified-flash")]
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[cfg(feature = "qualified-flash")]
+mod flash_recovery;
 #[cfg(feature = "legacy-backends")]
 mod python_backend;
 #[cfg(feature = "legacy-backends")]
@@ -26,10 +30,28 @@ mod py_client;
 #[cfg(feature = "legacy-backends")]
 mod fastapi_backend;
 mod mtp_backend;
+mod adb_command;
 mod adb_workflows;
+mod observation_scheduler;
+mod audit;
 mod workflow_capabilities;
 mod diagnostics;
+mod detection_state;
+#[cfg(test)]
+mod read_only_extractor;
+#[cfg(test)]
+#[path = "../tests/fault_injection.rs"]
+mod fault_injection;
 mod workflow_jobs;
+mod workstation;
+mod calibration_backup_exec;
+mod edl_programmer_vault;
+mod firmware_library;
+mod firmware_manifest_commands;
+mod mode_control;
+mod samsung_probe;
+mod samsung_service_bundle;
+mod driver_binding;
 #[cfg(feature = "legacy-backends")]
 use python_backend::{launch_python_backend, shutdown_python_backend};
 #[cfg(feature = "legacy-backends")]
@@ -37,10 +59,20 @@ use py_client::PyWorkerClient;
 #[cfg(feature = "legacy-backends")]
 use fastapi_backend::{launch_fastapi_backend, shutdown_fastapi_backend};
 use mtp_backend::{mtp_status, mtp_list_root, mtp_download_file, mtp_upload_file, mtp_list_directory, mtp_download_path, mtp_upload_path};
-use adb_workflows::{adb_scan, adb_device_info, adb_logcat_snapshot, adb_screenshot, adb_prepare, adb_battery_info, adb_reboot_mode, adb_open_network_settings, adb_open_factory_reset_settings, adb_install_apk, adb_list_user_packages, adb_package_action};
+use audit::{audit_recent, audit_log_path};
+use adb_workflows::{adb_scan, adb_device_info, samsung_adb_identity_receipt, adb_logcat_snapshot, adb_screenshot, adb_prepare, adb_battery_info, adb_mode_capabilities, adb_reboot_mode, adb_open_network_settings, adb_open_factory_reset_settings, adb_install_apk, adb_list_user_packages, adb_package_action, open_advanced_actions_window, launch_target_device_action};
 use workflow_capabilities::workflow_capabilities;
 use diagnostics::{diagnose_phone, usb_cable_doctor};
 use workflow_jobs::{workflow_job_start, workflow_job_list, workflow_job_get, workflow_job_retry};
+use workstation::{workstation_readiness, workstation_initialize};
+use calibration_backup_exec::{backup_calibration_partition, inspect_calibration_backup};
+use edl_programmer_vault::{edl_inspect_programmer, edl_enroll_programmer, edl_list_programmers};
+use firmware_library::{firmware_bundle_planning_artifacts, firmware_chipset_catalog, firmware_chipset_lookup, firmware_library_scan, firmware_provenance_write, samsung_firmware_compatibility};
+use firmware_manifest_commands::{firmware_manifest_inspect, firmware_manifest_compare};
+use mode_control::{fastboot_mode_devices, fastboot_reboot_mode, mode_transition_verify};
+use samsung_probe::{execute_pit_dry_run, samsung_download_probe};
+use samsung_service_bundle::samsung_service_bundle_create;
+use driver_binding::{driver_binding_scan, driver_binding_release_and_rescan, driver_binding_candidates, driver_binding_conflict_plan, driver_binding_cleanup_report, driver_binding_snapshot, driver_binding_rollback_plan, driver_binding_stability_test, driver_binding_elevation_status, driver_binding_inspect_inf, driver_binding_stage_and_relatch};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -48,11 +80,40 @@ use std::os::windows::process::CommandExt;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "qualified-flash")]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct FlashPartition {
     name: String,
     imagePath: String,
     size: u64,
+    expectedSha256: String,
+}
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct QualifiedFlashPartitionGrant {
+    name: String,
+    imageSha256: String,
+}
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct QualifiedFlashGrant {
+    schema: String,
+    qualificationStatus: String,
+    executorQualified: bool,
+    deviceSerial: String,
+    executorBuildFingerprint: String,
+    recoveryJobFingerprint: String,
+    approvedPartitions: Vec<QualifiedFlashPartitionGrant>,
+    wipeUserDataAllowed: bool,
+    autoRebootAllowed: bool,
+    issuedAtUnixSeconds: u64,
+    expiresAtUnixSeconds: u64,
+    dossierFingerprint: String,
+    auditBundleFingerprint: Option<String>,
+    qualificationPacketFileSha256: Option<String>,
+    qualificationPacketFingerprint: Option<String>,
+    grantMac: String,
 }
 
 #[cfg(feature = "qualified-flash")]
@@ -65,6 +126,7 @@ struct FlashJobConfig {
     verifyAfterFlash: bool,
     autoReboot: bool,
     wipeUserData: bool,
+    qualificationGrant: QualifiedFlashGrant,
 }
 
 #[cfg(feature = "qualified-flash")]
@@ -399,6 +461,10 @@ struct AppState {
     flash_history: Mutex<Vec<FlashHistoryEntry>>,
     #[cfg(feature = "qualified-flash")]
     job_counter: AtomicU64,
+    #[cfg(feature = "qualified-flash")]
+    qualification_grant_secret: String,
+    #[cfg(feature = "qualified-flash")]
+    consumed_qualification_grants: Mutex<HashSet<String>>,
     device_monitor_started: Mutex<bool>,
     #[cfg(feature = "legacy-backends")]
     py_client: Mutex<Option<PyWorkerClient>>,
@@ -461,15 +527,217 @@ fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
-#[tauri::command]
-fn bootforgeusb_scan() -> Result<Vec<bootforgeusb::model::DeviceRecord>, String> {
-    bootforgeusb::scan().map_err(|e| format!("USB scan failed: {e}"))
+const USB_OBSERVATION_CACHE_TTL: std::time::Duration = std::time::Duration::from_millis(600);
+
+#[derive(Clone)]
+struct UsbDeviceScanCacheEntry {
+    observed_at: std::time::Instant,
+    devices: Vec<bootforgeusb::model::DeviceRecord>,
+}
+
+#[derive(Clone)]
+struct UsbTransportScanCacheEntry {
+    observed_at: std::time::Instant,
+    devices: Vec<bootforgeusb::transport::TransportDevice>,
+}
+
+static USB_DEVICE_SCAN_CACHE: OnceLock<Mutex<Option<UsbDeviceScanCacheEntry>>> = OnceLock::new();
+static USB_TRANSPORT_SCAN_CACHE: OnceLock<Mutex<Option<UsbTransportScanCacheEntry>>> = OnceLock::new();
+static USB_DEVICE_SCAN_FLIGHT: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+static USB_TRANSPORT_SCAN_FLIGHT: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+
+fn usb_cache_is_fresh(observed_at: std::time::Instant, now: std::time::Instant) -> bool {
+    now.saturating_duration_since(observed_at) <= USB_OBSERVATION_CACHE_TTL
+}
+
+fn cached_usb_device_scan() -> Option<Vec<bootforgeusb::model::DeviceRecord>> {
+    let now = std::time::Instant::now();
+    USB_DEVICE_SCAN_CACHE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .ok()
+        .and_then(|cache| cache.as_ref().cloned())
+        .filter(|entry| usb_cache_is_fresh(entry.observed_at, now))
+        .map(|entry| entry.devices)
+}
+
+fn cached_usb_transport_scan() -> Option<Vec<bootforgeusb::transport::TransportDevice>> {
+    let now = std::time::Instant::now();
+    USB_TRANSPORT_SCAN_CACHE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .ok()
+        .and_then(|cache| cache.as_ref().cloned())
+        .filter(|entry| usb_cache_is_fresh(entry.observed_at, now))
+        .map(|entry| entry.devices)
+}
+
+async fn observed_usb_device_scan() -> Result<Vec<bootforgeusb::model::DeviceRecord>, String> {
+    if let Some(devices) = cached_usb_device_scan() {
+        return Ok(devices);
+    }
+
+    let _flight = USB_DEVICE_SCAN_FLIGHT
+        .get_or_init(|| tokio::sync::Mutex::new(()))
+        .lock()
+        .await;
+
+    if let Some(devices) = cached_usb_device_scan() {
+        return Ok(devices);
+    }
+
+    let permit = crate::observation_scheduler::acquire_observation_permit().await?;
+    let devices = tauri::async_runtime::spawn_blocking(|| {
+        bootforgeusb::scan().map_err(|e| format!("USB scan failed: {e}"))
+    })
+    .await
+    .map_err(|e| format!("USB observation worker failed: {e}"))??;
+    drop(permit);
+
+    if let Ok(mut cache) = USB_DEVICE_SCAN_CACHE.get_or_init(|| Mutex::new(None)).lock() {
+        *cache = Some(UsbDeviceScanCacheEntry {
+            observed_at: std::time::Instant::now(),
+            devices: devices.clone(),
+        });
+    }
+
+    Ok(devices)
+}
+
+async fn observed_usb_transport_scan() -> Result<Vec<bootforgeusb::transport::TransportDevice>, String> {
+    if let Some(devices) = cached_usb_transport_scan() {
+        return Ok(devices);
+    }
+
+    let _flight = USB_TRANSPORT_SCAN_FLIGHT
+        .get_or_init(|| tokio::sync::Mutex::new(()))
+        .lock()
+        .await;
+
+    if let Some(devices) = cached_usb_transport_scan() {
+        return Ok(devices);
+    }
+
+    let permit = crate::observation_scheduler::acquire_observation_permit().await?;
+    let devices = tauri::async_runtime::spawn_blocking(|| {
+        bootforgeusb::transport::scan_transports()
+            .map_err(|e| format!("USB transport scan failed: {e}"))
+    })
+    .await
+    .map_err(|e| format!("USB transport observation worker failed: {e}"))??;
+    drop(permit);
+
+    if let Ok(mut cache) = USB_TRANSPORT_SCAN_CACHE.get_or_init(|| Mutex::new(None)).lock() {
+        *cache = Some(UsbTransportScanCacheEntry {
+            observed_at: std::time::Instant::now(),
+            devices: devices.clone(),
+        });
+    }
+
+    Ok(devices)
 }
 
 #[tauri::command]
-fn bootforgeusb_transport_scan() -> Result<Vec<bootforgeusb::transport::TransportDevice>, String> {
-    bootforgeusb::transport::scan_transports()
-        .map_err(|e| format!("USB transport scan failed: {e}"))
+async fn bootforgeusb_scan() -> Result<Vec<bootforgeusb::model::DeviceRecord>, String> {
+    observed_usb_device_scan().await
+}
+
+#[tauri::command]
+fn workflow_policy_catalog() -> Vec<bootforgeusb::workflow_catalog::WorkflowPolicy> {
+    bootforgeusb::workflow_catalog::workflow_catalog()
+}
+
+#[tauri::command]
+fn calibration_partition_allowlist() -> Vec<String> {
+    bootforgeusb::calibration::CALIBRATION_ALLOWLIST
+        .iter()
+        .map(|value| value.to_string())
+        .collect()
+}
+
+#[tauri::command]
+async fn edl_9008_devices() -> Result<Vec<bootforgeusb::model::DeviceRecord>, String> {
+    let devices = observed_usb_device_scan().await?;
+    Ok(devices
+        .into_iter()
+        .filter(|device| bootforgeusb::edl::is_edl_9008(device.vendor_id, device.product_id))
+        .collect())
+}
+
+#[tauri::command]
+fn firmware_target_preflight(
+    device: bootforgeusb::preflight::DeviceFirmwareIdentity,
+    firmware: bootforgeusb::preflight::FirmwareTargetIdentity,
+    destructive: bool,
+) -> bootforgeusb::preflight::PreflightResult {
+    bootforgeusb::preflight::validate_target_match(&device, &firmware, destructive)
+}
+
+#[tauri::command]
+fn calibration_backup_plan(
+    device_uid: String,
+    authorized: bool,
+    root_or_service_access_verified: bool,
+    dry_run: bool,
+    partitions: Vec<bootforgeusb::calibration::CalibrationPartition>,
+) -> bootforgeusb::calibration_backup::CalibrationBackupPlan {
+    bootforgeusb::calibration_backup::build_backup_plan(
+        device_uid,
+        authorized,
+        root_or_service_access_verified,
+        dry_run,
+        partitions,
+    )
+}
+
+#[tauri::command]
+fn edl_programmer_qualification(
+    qualification: bootforgeusb::edl::EdlProgrammerQualification,
+) -> Result<(), String> {
+    bootforgeusb::edl::programmer_upload_permitted(&qualification)
+}
+
+#[tauri::command]
+fn firehose_write_plan(
+    request: bootforgeusb::firehose_plan::FirehoseWriteRequest,
+) -> bootforgeusb::firehose_plan::FirehoseWritePlan {
+    bootforgeusb::firehose_plan::build_write_plan(&request)
+}
+
+#[tauri::command]
+fn transport_retry_decision(
+    context: bootforgeusb::retry_policy::RetryContext,
+) -> bootforgeusb::retry_policy::RetryDecision {
+    bootforgeusb::retry_policy::decide_retry(&context)
+}
+
+#[tauri::command]
+fn calibration_restore_preflight(
+    manifest: bootforgeusb::calibration::CalibrationBackupManifest,
+    current_device_uid: String,
+    partition: String,
+    actual_bytes: u64,
+    actual_sha256: String,
+) -> Result<(), String> {
+    bootforgeusb::calibration::validate_restore_binding(
+        &manifest,
+        &current_device_uid,
+        &partition,
+        actual_bytes,
+        &actual_sha256,
+    )
+}
+
+#[tauri::command]
+fn hardware_service_profile_validate(
+    profile: bootforgeusb::hardware_service::HardwareServiceProfile,
+) -> bootforgeusb::hardware_service::HardwareServiceValidation {
+    bootforgeusb::hardware_service::validate_profile(&profile)
+}
+
+#[tauri::command]
+async fn bootforgeusb_transport_scan() -> Result<Vec<bootforgeusb::transport::TransportDevice>, String> {
+    observed_usb_transport_scan().await
 }
 
 #[tauri::command]
@@ -492,9 +760,8 @@ fn bootforge_samsung_plan(paths: Vec<String>) -> Result<bootforgeusb::planner::F
 }
 
 #[tauri::command]
-fn bootforge_recovery_scan() -> Result<Vec<bootforgeusb::recovery::RecoveryCandidate>, String> {
-    let devices = bootforgeusb::transport::scan_transports()
-        .map_err(|e| format!("USB transport scan failed: {e}"))?;
+async fn bootforge_recovery_scan() -> Result<Vec<bootforgeusb::recovery::RecoveryCandidate>, String> {
+    let devices = observed_usb_transport_scan().await?;
     Ok(bootforgeusb::recovery::scan_recovery_candidates(&devices))
 }
 
@@ -527,38 +794,4001 @@ fn bootforge_recovery_plan(kind: String, paths: Vec<String>) -> Result<bootforge
 fn bootforge_recovery_prepare(
     candidate: bootforgeusb::recovery::RecoveryCandidate,
     paths: Vec<String>,
+    package_fingerprint: Option<String>,
 ) -> Result<bootforgeusb::recovery_job::RecoveryJob, String> {
     if paths.is_empty() {
         return Err("At least one recovery artifact path is required".to_string());
     }
+    let device_uid = candidate.device_uid.clone();
+    let workflow = format!("{:?}", candidate.workflow);
     let plan = bootforgeusb::recovery::build_recovery_plan(
         candidate.workflow,
         paths.into_iter().map(std::path::PathBuf::from).collect(),
     ).map_err(|e| format!("Recovery planning failed: {e}"))?;
-    bootforgeusb::recovery_job::build_job(&candidate, &plan)
-        .map_err(|e| format!("Recovery job preparation failed: {e}"))
+    let mut job = bootforgeusb::recovery_job::build_job(&candidate, &plan)
+        .map_err(|e| format!("Recovery job preparation failed: {e}"))?;
+    bootforgeusb::recovery_job::bind_package_fingerprint(&mut job, package_fingerprint)
+        .map_err(|e| format!("Recovery package binding failed: {e}"))?;
+
+    let evidence = job.artifact_digests.iter()
+        .map(|artifact| format!("{}:{}:{}", artifact.role, artifact.size, artifact.sha256))
+        .chain(std::iter::once(format!("payload-digests:{}", job.payload_digests.len())))
+        .chain(std::iter::once(format!("integrity-checks-passed:{}", job.integrity_checks_passed)))
+        .chain(std::iter::once(format!("high-risk-partitions:{}", job.high_risk_partitions.join(","))))
+        .chain(std::iter::once(format!("normalized-operations:{}", job.operations.len())))
+        .chain(std::iter::once(format!("prerequisites-met:{}", job.prerequisites_met)))
+        .chain(std::iter::once(format!(
+            "package-fingerprint:{}",
+            job.package_fingerprint.clone().unwrap_or_else(|| "<manual-unbound>".to_string())
+        )))
+        .collect::<Vec<_>>();
+    let _ = crate::audit::record(
+        "Recovery",
+        "prepare-audited-job",
+        if job.destructive { "destructive" } else { "elevated" },
+        "prepared-blocked",
+        Some(device_uid),
+        format!("{} recovery job prepared; executorQualified={} executionReady={}", workflow, job.executor_qualified, job.execution_ready),
+        evidence,
+    );
+    Ok(job)
 }
 
 #[tauri::command]
 fn bootforge_recovery_revalidate(
     mut job: bootforgeusb::recovery_job::RecoveryJob,
 ) -> Result<bootforgeusb::recovery_job::RecoveryJob, String> {
+    if !bootforgeusb::recovery_job::verify_job_fingerprint(&job) {
+        return Err("Recovery job fingerprint no longer matches its prepared artifacts/package identity; rebuild the job from verified inputs.".to_string());
+    }
+    let device_uid = job.identity.device_uid.clone();
+    let risk = if job.destructive { "destructive" } else { "elevated" };
     let devices = bootforgeusb::transport::scan_transports()
         .map_err(|e| format!("USB transport scan failed: {e}"))?;
-    let current = devices
-        .iter()
-        .find(|device| {
-            device.device_uid == job.identity.device_uid
-                && device.vendor_id == job.identity.vendor_id
-                && device.product_id == job.identity.product_id
-                && device.mode == job.identity.mode
-                && device.serial_number == job.identity.serial_number
-        })
-        .ok_or_else(|| "Recovery device identity is no longer present exactly as prepared".to_string())?;
+    let current = devices.iter().find(|device| {
+        device.device_uid == job.identity.device_uid
+            && device.vendor_id == job.identity.vendor_id
+            && device.product_id == job.identity.product_id
+            && device.mode == job.identity.mode
+            && device.serial_number == job.identity.serial_number
+    });
+
+    let Some(current) = current else {
+        let _ = crate::audit::record(
+            "Recovery",
+            "revalidate-device-identity",
+            risk,
+            "blocked",
+            Some(device_uid),
+            "Prepared recovery device identity is no longer present exactly as prepared.",
+            vec![
+                format!("expected-mode:{}", job.identity.mode),
+                format!("expected-vidpid:{:04X}:{:04X}", job.identity.vendor_id, job.identity.product_id),
+            ],
+        );
+        return Err("Recovery device identity is no longer present exactly as prepared".to_string());
+    };
 
     bootforgeusb::recovery_job::revalidate_job_identity(&mut job, current)
         .map_err(|e| format!("Recovery identity revalidation failed: {e}"))?;
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "revalidate-device-identity",
+        risk,
+        "passed",
+        Some(job.identity.device_uid.clone()),
+        "Prepared recovery job matched the currently enumerated USB device identity.",
+        vec![
+            format!("mode:{}", job.identity.mode),
+            format!("vidpid:{:04X}:{:04X}", job.identity.vendor_id, job.identity.product_id),
+            format!("serial:{}", job.identity.serial_number.clone().unwrap_or_else(|| "<none>".to_string())),
+            format!("execution-ready:{}", job.execution_ready),
+        ],
+    );
     Ok(job)
+}
+
+#[tauri::command]
+fn bootforge_recovery_export_receipt(
+    job: bootforgeusb::recovery_job::RecoveryJob,
+    plan: Option<bootforgeusb::recovery::RecoveryPlan>,
+    destination_path: String,
+) -> Result<String, String> {
+    let destination = std::path::PathBuf::from(&destination_path);
+    if destination.as_os_str().is_empty() {
+        return Err("Evidence receipt destination is required".to_string());
+    }
+
+    let generated_unix_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+
+    let gates = serde_json::json!({
+        "artifactsHashed": !job.artifact_digests.is_empty(),
+        "payloadsHashed": !job.payload_digests.is_empty(),
+        "payloadIntegrityPassed": job.integrity_checks_passed,
+        "partitionMapNormalized": !job.operations.is_empty(),
+        "prerequisitesMet": job.prerequisites_met,
+        "hardwareIdentityRevalidated": job.identity_revalidated,
+        "executorPhysicallyQualified": job.executor_qualified,
+        "executionReady": job.execution_ready,
+    });
+
+    let receipt = serde_json::json!({
+        "schema": "com.bobbyblanco.bobfwtools.recovery-evidence.v1",
+        "generatedUnixSeconds": generated_unix_seconds,
+        "executionPerformed": false,
+        "job": job,
+        "plan": plan,
+        "qualificationGates": gates,
+        "policy": {
+            "rawWriteExecutorEnabled": false,
+            "requiresPhysicalExecutorQualification": true,
+            "securityBypassExecutionSupported": false
+        }
+    });
+
+    let bytes = serde_json::to_vec_pretty(&receipt)
+        .map_err(|e| format!("Could not serialize evidence receipt: {e}"))?;
+    std::fs::write(&destination, bytes)
+        .map_err(|e| format!("Could not write evidence receipt {}: {e}", destination.display()))?;
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "export-evidence-receipt",
+        if job.destructive { "destructive" } else { "elevated" },
+        "completed-no-execution",
+        Some(job.identity.device_uid.clone()),
+        "Recovery evidence receipt exported; no write/flash execution was performed.",
+        vec![
+            format!("destination:{}", destination.display()),
+            format!("identity-revalidated:{}", job.identity_revalidated),
+            format!("executor-qualified:{}", job.executor_qualified),
+            format!("execution-ready:{}", job.execution_ready),
+        ],
+    );
+
+    Ok(destination.display().to_string())
+}
+
+
+
+
+#[tauri::command]
+fn bootforge_recovery_export_readiness_certificate(
+    job: bootforgeusb::recovery_job::RecoveryJob,
+    plan: Option<bootforgeusb::recovery::RecoveryPlan>,
+    destination_path: String,
+) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+
+    let destination = std::path::PathBuf::from(&destination_path);
+    if destination.as_os_str().is_empty() {
+        return Err("Readiness certificate destination is required".to_string());
+    }
+
+    let artifacts_hashed = !job.artifact_digests.is_empty();
+    let payloads_hashed = !job.payload_digests.is_empty();
+    let partition_map_normalized = !job.operations.is_empty();
+    let gates = serde_json::json!({
+        "artifactsHashed": artifacts_hashed,
+        "payloadsHashed": payloads_hashed,
+        "payloadIntegrityPassed": job.integrity_checks_passed,
+        "partitionMapNormalized": partition_map_normalized,
+        "prerequisitesMet": job.prerequisites_met,
+        "hardwareIdentityRevalidated": job.identity_revalidated,
+        "executorPhysicallyQualified": job.executor_qualified,
+        "executionReady": job.execution_ready,
+    });
+
+    let review_ready = artifacts_hashed
+        && payloads_hashed
+        && job.integrity_checks_passed
+        && partition_map_normalized
+        && job.prerequisites_met
+        && job.identity_revalidated;
+
+    let readiness_status = if job.execution_ready {
+        "execution-ready"
+    } else if review_ready {
+        "review-ready"
+    } else {
+        "blocked"
+    };
+
+    let mut blockers = job.blockers.clone();
+    if !artifacts_hashed {
+        blockers.push("No hashed recovery layout/service artifacts are present".to_string());
+    }
+    if !payloads_hashed {
+        blockers.push("No hashed recovery payloads are present".to_string());
+    }
+    if !job.integrity_checks_passed {
+        blockers.push("Payload integrity checks have not passed".to_string());
+    }
+    if !partition_map_normalized {
+        blockers.push("Partition map is not normalized".to_string());
+    }
+    if !job.prerequisites_met {
+        blockers.push("Recovery prerequisites are not satisfied".to_string());
+    }
+    if !job.identity_revalidated {
+        blockers.push("Live hardware identity has not been revalidated".to_string());
+    }
+    if !job.executor_qualified {
+        blockers.push("Executor has not completed designated-device physical qualification".to_string());
+    }
+    blockers.sort();
+    blockers.dedup();
+
+    let plan_warnings = plan
+        .as_ref()
+        .map(|value| value.warnings.clone())
+        .unwrap_or_default();
+
+    let certificate_material = serde_json::json!({
+        "schema": "com.bobbyblanco.bobfwtools.recovery-readiness-certificate.v1",
+        "readinessStatus": readiness_status,
+        "grantsExecutionAuthority": false,
+        "executionPerformed": false,
+        "jobFingerprint": job.job_fingerprint.clone(),
+        "packageFingerprint": job.package_fingerprint.clone(),
+        "deviceIdentity": job.identity.clone(),
+        "qualificationGates": gates,
+        "blockers": blockers,
+        "integrityFindings": job.integrity_findings.clone(),
+        "highRiskPartitions": job.high_risk_partitions.clone(),
+        "planWarnings": plan_warnings,
+        "policy": {
+            "requiresExplicitApproval": job.requires_explicit_approval,
+            "requiresPhysicalExecutorQualification": true,
+            "securityBypassExecutionSupported": false
+        }
+    });
+    let material_bytes = serde_json::to_vec(&certificate_material)
+        .map_err(|e| format!("Could not serialize readiness certificate material: {e}"))?;
+    let certificate_fingerprint = format!("{:x}", Sha256::digest(&material_bytes));
+
+    let generated_unix_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+
+    let certificate = serde_json::json!({
+        "generatedUnixSeconds": generated_unix_seconds,
+        "certificateFingerprint": certificate_fingerprint,
+        "certificateMaterial": certificate_material,
+    });
+    let bytes = serde_json::to_vec_pretty(&certificate)
+        .map_err(|e| format!("Could not serialize readiness certificate: {e}"))?;
+    std::fs::write(&destination, bytes)
+        .map_err(|e| format!("Could not write readiness certificate {}: {e}", destination.display()))?;
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "export-readiness-certificate",
+        if job.destructive { "destructive" } else { "elevated" },
+        readiness_status,
+        Some(job.identity.device_uid.clone()),
+        "Recovery readiness certificate exported; certificate grants no execution authority.",
+        vec![
+            format!("destination:{}", destination.display()),
+            format!("certificate-fingerprint:{}", certificate_fingerprint),
+            format!("job-fingerprint:{}", job.job_fingerprint),
+            format!("readiness-status:{}", readiness_status),
+            format!("execution-ready:{}", job.execution_ready),
+        ],
+    );
+
+    Ok(destination.display().to_string())
+}
+
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecoveryReadinessCertificateReview {
+    path: String,
+    schema_valid: bool,
+    fingerprint_valid: bool,
+    job_fingerprint_valid: bool,
+    job_matches_expected: bool,
+    readiness_status_valid: bool,
+    semantic_consistency_valid: bool,
+    grants_execution_authority_claimed: bool,
+    execution_performed_claimed: bool,
+    safe_to_review: bool,
+    blockers: Vec<String>,
+    certificate_fingerprint: Option<String>,
+    job_fingerprint: Option<String>,
+    readiness_status: Option<String>,
+}
+
+#[tauri::command]
+fn bootforge_recovery_review_readiness_certificate(
+    path: String,
+    expected_job_fingerprint: Option<String>,
+) -> Result<RecoveryReadinessCertificateReview, String> {
+    use sha2::{Digest, Sha256};
+
+    let path_buf = std::path::PathBuf::from(&path);
+    if !path_buf.is_file() {
+        return Err(format!(
+            "Readiness certificate not found: {}",
+            path_buf.display()
+        ));
+    }
+    let bytes = std::fs::read(&path_buf)
+        .map_err(|e| format!("Could not read readiness certificate {}: {e}", path_buf.display()))?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Readiness certificate is not valid JSON: {e}"))?;
+
+    let material = value
+        .get("certificateMaterial")
+        .cloned()
+        .ok_or_else(|| "Readiness certificate is missing certificateMaterial".to_string())?;
+    let material_bytes = serde_json::to_vec(&material)
+        .map_err(|e| format!("Could not canonicalize readiness certificate material: {e}"))?;
+    let recomputed = format!("{:x}", Sha256::digest(&material_bytes));
+    let certificate_fingerprint = value
+        .get("certificateFingerprint")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let fingerprint_valid = certificate_fingerprint
+        .as_deref()
+        .map(|claimed| claimed.eq_ignore_ascii_case(&recomputed))
+        .unwrap_or(false);
+
+    let schema_valid = material
+        .get("schema")
+        .and_then(|v| v.as_str())
+        == Some("com.bobbyblanco.bobfwtools.recovery-readiness-certificate.v1");
+    let job_fingerprint = material
+        .get("jobFingerprint")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let job_fingerprint_valid = job_fingerprint
+        .as_deref()
+        .map(valid_sha256_hex)
+        .unwrap_or(false);
+    let expected = expected_job_fingerprint
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let job_matches_expected = match (expected, job_fingerprint.as_deref()) {
+        (Some(expected), Some(actual)) => expected.eq_ignore_ascii_case(actual),
+        (Some(_), None) => false,
+        (None, _) => true,
+    };
+    let readiness_status = material
+        .get("readinessStatus")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let readiness_status_valid = matches!(
+        readiness_status.as_deref(),
+        Some("blocked" | "review-ready" | "execution-ready")
+    );
+
+    let gates = material.get("qualificationGates");
+    let gate = |key: &str| -> Option<bool> {
+        gates
+            .and_then(|value| value.get(key))
+            .and_then(|value| value.as_bool())
+    };
+    let gate_values = (
+        gate("artifactsHashed"),
+        gate("payloadsHashed"),
+        gate("payloadIntegrityPassed"),
+        gate("partitionMapNormalized"),
+        gate("prerequisitesMet"),
+        gate("hardwareIdentityRevalidated"),
+        gate("executorPhysicallyQualified"),
+        gate("executionReady"),
+    );
+    let semantic_consistency_valid = match gate_values {
+        (
+            Some(artifacts_hashed),
+            Some(payloads_hashed),
+            Some(payload_integrity_passed),
+            Some(partition_map_normalized),
+            Some(prerequisites_met),
+            Some(hardware_identity_revalidated),
+            Some(executor_physically_qualified),
+            Some(execution_ready),
+        ) => {
+            let review_ready = artifacts_hashed
+                && payloads_hashed
+                && payload_integrity_passed
+                && partition_map_normalized
+                && prerequisites_met
+                && hardware_identity_revalidated;
+            let expected_status = if execution_ready {
+                "execution-ready"
+            } else if review_ready {
+                "review-ready"
+            } else {
+                "blocked"
+            };
+            let execution_gate_consistent =
+                !execution_ready || (review_ready && executor_physically_qualified);
+            readiness_status.as_deref() == Some(expected_status) && execution_gate_consistent
+        }
+        _ => false,
+    };
+
+    let grants_execution_authority_claimed = material
+        .get("grantsExecutionAuthority")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let execution_performed_claimed = material
+        .get("executionPerformed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    let mut blockers = Vec::new();
+    if !schema_valid {
+        blockers.push("Readiness certificate schema is not recognized".to_string());
+    }
+    if !fingerprint_valid {
+        blockers.push("Readiness certificate fingerprint verification failed".to_string());
+    }
+    if !job_fingerprint_valid {
+        blockers.push("Readiness certificate job fingerprint is invalid".to_string());
+    }
+    if !job_matches_expected {
+        blockers.push("Readiness certificate is bound to a different recovery job".to_string());
+    }
+    if !readiness_status_valid {
+        blockers.push("Readiness certificate status is not recognized".to_string());
+    }
+    if !semantic_consistency_valid {
+        blockers.push(
+            "Readiness certificate gate matrix is internally inconsistent with its claimed status"
+                .to_string(),
+        );
+    }
+    if grants_execution_authority_claimed {
+        blockers.push("Readiness certificate improperly claims execution authority".to_string());
+    }
+    if execution_performed_claimed {
+        blockers.push("Readiness certificate improperly claims execution was performed".to_string());
+    }
+
+    let safe_to_review = blockers.is_empty();
+    let _ = crate::audit::record(
+        "Recovery",
+        "review-readiness-certificate",
+        "elevated",
+        if safe_to_review { "verified" } else { "blocked" },
+        None,
+        "Recovery readiness certificate reviewed; review does not grant execution authority.",
+        vec![
+            format!("path:{}", path_buf.display()),
+            format!("fingerprint-valid:{}", fingerprint_valid),
+            format!("job-matches-expected:{}", job_matches_expected),
+            format!("safe-to-review:{}", safe_to_review),
+        ],
+    );
+
+    Ok(RecoveryReadinessCertificateReview {
+        path,
+        schema_valid,
+        fingerprint_valid,
+        job_fingerprint_valid,
+        job_matches_expected,
+        readiness_status_valid,
+        semantic_consistency_valid,
+        grants_execution_authority_claimed,
+        execution_performed_claimed,
+        safe_to_review,
+        blockers,
+        certificate_fingerprint,
+        job_fingerprint,
+        readiness_status,
+    })
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationToolSnapshot {
+    id: String,
+    present: bool,
+    required_for_core_android_service: bool,
+    detail: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationDriverSnapshot {
+    id: String,
+    applicable: bool,
+    evidence_available: bool,
+    detected: bool,
+    detail: String,
+    admin_required_for_install: bool,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationWorkspacePathSnapshot {
+    id: String,
+    path: String,
+    exists: bool,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationWorkstationSnapshot {
+    os: String,
+    architecture: String,
+    workspace_root: String,
+    #[serde(default)]
+    workspace_paths: Vec<QualificationWorkspacePathSnapshot>,
+    #[serde(default)]
+    tools: Vec<QualificationToolSnapshot>,
+    #[serde(default)]
+    drivers: Vec<QualificationDriverSnapshot>,
+    #[serde(default)]
+    driver_store_probe_available: bool,
+    ready_for_diagnostics: bool,
+    ready_for_android_service: bool,
+    blockers: Vec<String>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationTransportObservationSample {
+    observed_unix_ms: u64,
+    device: bootforgeusb::transport::TransportDevice,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationTransportObservation {
+    expected_device_uid: String,
+    attempted_samples: u32,
+    samples: Vec<QualificationTransportObservationSample>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationProgrammerSnapshot {
+    path: String,
+    sha256: String,
+    bytes: u64,
+    device_family: Option<String>,
+    authorized: bool,
+    authorization_source: Option<String>,
+    enrolled_at_unix_ms: Option<u64>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationRecoveryIdentitySnapshot {
+    device_uid: String,
+    vendor_id: u16,
+    product_id: u16,
+    mode: String,
+    serial_number: Option<String>,
+}
+
+
+fn valid_sha256_hex(value: &str) -> bool {
+    let trimmed = value.trim();
+    trimmed.len() == 64 && trimmed.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+fn qualification_device_identity_matches(
+    prepared: Option<&QualificationRecoveryIdentitySnapshot>,
+    live: &bootforgeusb::transport::TransportDevice,
+) -> bool {
+    prepared
+        .map(|prepared| {
+            prepared.device_uid == live.device_uid
+                && prepared.vendor_id == live.vendor_id
+                && prepared.product_id == live.product_id
+                && prepared.mode == live.mode
+                && prepared.serial_number == live.serial_number
+        })
+        .unwrap_or(false)
+}
+
+fn qualification_source_revision_available(value: &str) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty() && trimmed != "unavailable"
+}
+
+fn qualification_workstation_evidence_ready(
+    workstation: &QualificationWorkstationSnapshot,
+) -> bool {
+    if workstation.tools.is_empty() {
+        return false;
+    }
+    if workstation.os.eq_ignore_ascii_case("windows") {
+        workstation.driver_store_probe_available
+            && !workstation.drivers.is_empty()
+            && workstation
+                .drivers
+                .iter()
+                .all(|driver| !driver.applicable || driver.evidence_available)
+    } else {
+        true
+    }
+}
+
+
+
+fn qualification_programmer_evidence_ready(
+    device: &bootforgeusb::transport::TransportDevice,
+    programmers: &[QualificationProgrammerSnapshot],
+) -> bool {
+    if device.mode != "qualcomm-edl" {
+        return true;
+    }
+
+    programmers.iter().any(|programmer| {
+        programmer.authorized
+            && programmer.bytes > 0
+            && valid_sha256_hex(&programmer.sha256)
+            && programmer
+                .device_family
+                .as_deref()
+                .map(str::trim)
+                .map(|value| !value.is_empty())
+                .unwrap_or(false)
+            && programmer
+                .authorization_source
+                .as_deref()
+                .map(str::trim)
+                .map(|value| !value.is_empty())
+                .unwrap_or(false)
+    })
+}
+
+fn qualification_transport_observation_findings(
+    observation: Option<&QualificationTransportObservation>,
+    live: &bootforgeusb::transport::TransportDevice,
+) -> Vec<String> {
+    let mut findings = Vec::new();
+    let Some(observation) = observation else {
+        findings.push("Repeated transport observation is missing".to_string());
+        return findings;
+    };
+
+    if observation.expected_device_uid != live.device_uid {
+        findings.push("Transport observation is bound to a different device UID".to_string());
+    }
+    if observation.attempted_samples < 3 {
+        findings.push("At least three transport observation attempts are required".to_string());
+    }
+    if observation.samples.len() < 3 {
+        findings.push("At least three successful transport samples are required".to_string());
+    }
+
+    let mut baseline_bulk_in: Option<Vec<u8>> = None;
+    let mut baseline_bulk_out: Option<Vec<u8>> = None;
+    for (index, sample) in observation.samples.iter().enumerate() {
+        let device = &sample.device;
+        let identity_match = device.device_uid == live.device_uid
+            && device.vendor_id == live.vendor_id
+            && device.product_id == live.product_id
+            && device.mode == live.mode
+            && device.serial_number == live.serial_number;
+        if !identity_match {
+            findings.push(format!(
+                "Transport sample {} does not exactly match the selected device identity",
+                index + 1
+            ));
+        }
+
+        let mut bulk_in = device.bulk_in.clone();
+        let mut bulk_out = device.bulk_out.clone();
+        bulk_in.sort_unstable();
+        bulk_out.sort_unstable();
+
+        match (&baseline_bulk_in, &baseline_bulk_out) {
+            (None, None) => {
+                if bulk_in.is_empty() || bulk_out.is_empty() {
+                    findings.push(
+                        "Transport observation did not capture both bulk IN and bulk OUT endpoints"
+                            .to_string(),
+                    );
+                }
+                baseline_bulk_in = Some(bulk_in);
+                baseline_bulk_out = Some(bulk_out);
+            }
+            (Some(expected_in), Some(expected_out)) => {
+                if &bulk_in != expected_in || &bulk_out != expected_out {
+                    findings.push(format!(
+                        "Transport sample {} has different bulk endpoints from the baseline",
+                        index + 1
+                    ));
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    findings.sort();
+    findings.dedup();
+    findings
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationBuildIdentity {
+    package_version: String,
+    source_revision: String,
+    source_revision_available: bool,
+    build_profile: String,
+    qualified_flash_compiled: bool,
+    executor_build_fingerprint: String,
+}
+
+fn qualification_build_identity_snapshot() -> QualificationBuildIdentity {
+    use sha2::{Digest, Sha256};
+
+    let source_revision = option_env!("BOBFWTOOLS_SOURCE_REVISION")
+        .or(option_env!("GITHUB_SHA"))
+        .unwrap_or("unavailable")
+        .trim()
+        .to_string();
+    let source_revision_available = qualification_source_revision_available(&source_revision);
+    let build_profile = if cfg!(debug_assertions) { "debug" } else { "release" }.to_string();
+    let qualified_flash_compiled = cfg!(feature = "qualified-flash");
+    let package_version = env!("CARGO_PKG_VERSION").to_string();
+    let executor_descriptor = format!(
+        "bobfwtools|{}|{}|{}|qualified-flash:{}",
+        package_version,
+        source_revision,
+        build_profile,
+        qualified_flash_compiled
+    );
+    let executor_build_fingerprint = format!("{:x}", Sha256::digest(executor_descriptor.as_bytes()));
+
+    QualificationBuildIdentity {
+        package_version,
+        source_revision,
+        source_revision_available,
+        build_profile,
+        qualified_flash_compiled,
+        executor_build_fingerprint,
+    }
+}
+
+#[tauri::command]
+fn bootforge_qualification_build_identity() -> QualificationBuildIdentity {
+    qualification_build_identity_snapshot()
+}
+
+#[tauri::command]
+fn hardware_qualification_packet_export(
+    packet: serde_json::Value,
+    destination_path: String,
+) -> Result<String, String> {
+    let destination = std::path::PathBuf::from(&destination_path);
+    if destination.as_os_str().is_empty() {
+        return Err("Qualification packet destination is required".to_string());
+    }
+    let generated_unix_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+
+    let workflow_id = packet
+        .get("workflowId")
+        .and_then(|value| value.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let packet_bytes = serde_json::to_vec(&packet)
+        .map_err(|e| format!("Could not canonicalize qualification packet: {e}"))?;
+    use sha2::Digest;
+    let packet_fingerprint = format!("{:x}", sha2::Sha256::digest(&packet_bytes));
+
+    let receipt = serde_json::json!({
+        "schema": "com.bobbyblanco.bobfwtools.hardware-qualification-packet.v1",
+        "generatedUnixSeconds": generated_unix_seconds,
+        "executionPerformed": false,
+        "qualificationStatus": "bench-pending",
+        "packetFingerprint": packet_fingerprint,
+        "packet": packet,
+        "policy": {
+            "packetDoesNotGrantWriteAuthority": true,
+            "physicalBenchEvidenceRequired": true,
+            "humanQualificationDecisionRequired": true
+        }
+    });
+
+    let bytes = serde_json::to_vec_pretty(&receipt)
+        .map_err(|e| format!("Could not serialize qualification packet: {e}"))?;
+    std::fs::write(&destination, bytes)
+        .map_err(|e| format!("Could not write qualification packet {}: {e}", destination.display()))?;
+
+    let _ = crate::audit::record(
+        "Qualification",
+        "export-hardware-qualification-packet",
+        "elevated",
+        "exported",
+        None,
+        format!("Exported bench-pending qualification packet for {}", workflow_id),
+        vec![
+            format!("workflow-id:{}", workflow_id),
+            format!("path:{}", destination.display()),
+            format!("packet-fingerprint:{}", packet_fingerprint),
+            "write-authority-granted:false".to_string(),
+        ],
+    );
+
+    Ok(destination.display().to_string())
+}
+
+
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HardwareQualificationPacketReview {
+    path: String,
+    schema_valid: bool,
+    packet_fingerprint_valid: bool,
+    qualification_status_bench_pending: bool,
+    execution_performed_claimed: bool,
+    write_authority_claimed: bool,
+    safe_to_review: bool,
+    blockers: Vec<String>,
+    workflow_id: Option<String>,
+    packet_fingerprint: Option<String>,
+}
+
+#[tauri::command]
+fn hardware_qualification_packet_review(path: String) -> Result<HardwareQualificationPacketReview, String> {
+    let path_buf = std::path::PathBuf::from(&path);
+    if !path_buf.is_file() {
+        return Err(format!("Qualification packet not found: {}", path_buf.display()));
+    }
+
+    let bytes = std::fs::read(&path_buf)
+        .map_err(|e| format!("Could not read qualification packet {}: {e}", path_buf.display()))?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Qualification packet is not valid JSON: {e}"))?;
+
+    let schema_valid = value
+        .get("schema")
+        .and_then(|v| v.as_str())
+        == Some("com.bobbyblanco.bobfwtools.hardware-qualification-packet.v1");
+
+    let packet = value
+        .get("packet")
+        .cloned()
+        .ok_or_else(|| "Qualification packet is missing packet payload".to_string())?;
+    let packet_bytes = serde_json::to_vec(&packet)
+        .map_err(|e| format!("Could not canonicalize qualification packet payload: {e}"))?;
+    use sha2::Digest;
+    let recomputed_fingerprint = format!("{:x}", sha2::Sha256::digest(&packet_bytes));
+    let packet_fingerprint = value
+        .get("packetFingerprint")
+        .and_then(|v| v.as_str())
+        .map(str::to_ascii_lowercase);
+    let packet_fingerprint_valid = packet_fingerprint
+        .as_deref()
+        .map(|actual| actual == recomputed_fingerprint)
+        .unwrap_or(false);
+
+    let qualification_status_bench_pending = value
+        .get("qualificationStatus")
+        .and_then(|v| v.as_str())
+        == Some("bench-pending");
+    let execution_performed_claimed = value
+        .get("executionPerformed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let write_authority_claimed = value
+        .get("policy")
+        .and_then(|v| v.get("packetDoesNotGrantWriteAuthority"))
+        .and_then(|v| v.as_bool())
+        .map(|does_not_grant| !does_not_grant)
+        .unwrap_or(true);
+    let workflow_id = packet
+        .get("workflowId")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    let mut blockers = Vec::new();
+    if !schema_valid {
+        blockers.push("Qualification packet schema is not recognized".to_string());
+    }
+    if !packet_fingerprint_valid {
+        blockers.push("Qualification packet fingerprint does not match its payload".to_string());
+    }
+    if !qualification_status_bench_pending {
+        blockers.push("Qualification packet status is not bench-pending".to_string());
+    }
+    if execution_performed_claimed {
+        blockers.push("Qualification packet improperly claims execution was performed".to_string());
+    }
+    if write_authority_claimed {
+        blockers.push("Qualification packet improperly claims write authority".to_string());
+    }
+
+    let safe_to_review = blockers.is_empty();
+
+    let _ = crate::audit::record(
+        "Qualification",
+        "review-hardware-qualification-packet",
+        "elevated",
+        if safe_to_review { "reviewable" } else { "blocked" },
+        None,
+        "Hardware qualification packet integrity reviewed; review never grants write authority.",
+        vec![
+            format!("path:{}", path_buf.display()),
+            format!("schema-valid:{}", schema_valid),
+            format!("packet-fingerprint-valid:{}", packet_fingerprint_valid),
+            format!("safe-to-review:{}", safe_to_review),
+        ],
+    );
+
+    Ok(HardwareQualificationPacketReview {
+        path: path_buf.display().to_string(),
+        schema_valid,
+        packet_fingerprint_valid,
+        qualification_status_bench_pending,
+        execution_performed_claimed,
+        write_authority_claimed,
+        safe_to_review,
+        blockers,
+        workflow_id,
+        packet_fingerprint,
+    })
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationDossierReview {
+    path: String,
+    schema_valid: bool,
+    dossier_fingerprint_valid: bool,
+    recovery_job_fingerprint_valid: bool,
+    recovery_job_matches_expected: bool,
+    executor_build_matches_current: bool,
+    binding_ready_claimed: bool,
+    live_device_identity_match: bool,
+    workstation_evidence_ready: bool,
+    transport_observation_ready: bool,
+    programmer_evidence_ready: bool,
+    binding_semantics_valid: bool,
+    qualification_status_pending: bool,
+    executor_qualified_claimed: bool,
+    execution_enabled_claimed: bool,
+    safe_to_review: bool,
+    blockers: Vec<String>,
+    dossier_fingerprint: Option<String>,
+    recovery_job_fingerprint: Option<String>,
+    executor_build_fingerprint: Option<String>,
+}
+
+#[tauri::command]
+fn bootforge_qualification_review(
+    path: String,
+    expected_recovery_job_fingerprint: Option<String>,
+) -> Result<QualificationDossierReview, String> {
+    let path_buf = std::path::PathBuf::from(&path);
+    if !path_buf.is_file() {
+        return Err(format!("Qualification dossier not found: {}", path_buf.display()));
+    }
+    let bytes = std::fs::read(&path_buf)
+        .map_err(|e| format!("Could not read qualification dossier {}: {e}", path_buf.display()))?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Qualification dossier is not valid JSON: {e}"))?;
+
+    let schema_valid = value
+        .get("schema")
+        .and_then(|v| v.as_str())
+        == Some("com.bobbyblanco.bobfwtools.designated-device-qualification.v1");
+    let binding_material = value
+        .get("bindingMaterial")
+        .cloned()
+        .ok_or_else(|| "Qualification dossier is missing bindingMaterial".to_string())?;
+    let binding_bytes = serde_json::to_vec(&binding_material)
+        .map_err(|e| format!("Could not canonicalize qualification binding material: {e}"))?;
+    use sha2::Digest;
+    let recomputed_dossier_fingerprint =
+        format!("{:x}", sha2::Sha256::digest(&binding_bytes));
+    let dossier_fingerprint = value
+        .get("dossierFingerprint")
+        .and_then(|v| v.as_str())
+        .map(str::to_ascii_lowercase);
+    let dossier_fingerprint_valid = dossier_fingerprint
+        .as_deref()
+        .map(|v| v == recomputed_dossier_fingerprint)
+        .unwrap_or(false);
+
+    let recovery_job_fingerprint = value
+        .get("recoveryJobFingerprint")
+        .and_then(|v| v.as_str())
+        .map(str::to_ascii_lowercase);
+    let recovery_job_fingerprint_valid = recovery_job_fingerprint
+        .as_deref()
+        .map(valid_sha256_hex)
+        .unwrap_or(false);
+
+    let expected = expected_recovery_job_fingerprint
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    let recovery_job_matches_expected = !expected.is_empty()
+        && recovery_job_fingerprint
+            .as_deref()
+            .map(|actual| actual == expected)
+            .unwrap_or(false);
+
+    let executor_build_fingerprint = value
+        .get("executorBuild")
+        .and_then(|v| v.get("executorBuildFingerprint"))
+        .and_then(|v| v.as_str())
+        .map(str::to_ascii_lowercase);
+    let current_build = qualification_build_identity_snapshot();
+    let executor_build_matches_current = executor_build_fingerprint
+        .as_deref()
+        .map(|actual| actual == current_build.executor_build_fingerprint)
+        .unwrap_or(false);
+
+    let binding_ready_claimed = value
+        .get("qualificationBindingReady")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let live_device_identity_match = binding_material
+        .get("liveDeviceIdentityMatch")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let workstation_evidence_ready = binding_material
+        .get("workstationEvidenceReady")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let transport_observation_ready = binding_material
+        .get("transportObservationReady")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let programmer_evidence_ready = binding_material
+        .get("programmerEvidenceReady")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let binding_semantics_valid = binding_ready_claimed
+        == (recovery_job_fingerprint_valid
+            && executor_build_matches_current
+            && live_device_identity_match
+            && workstation_evidence_ready
+            && transport_observation_ready
+            && programmer_evidence_ready);
+    let qualification_status_pending = value
+        .get("qualificationStatus")
+        .and_then(|v| v.as_str())
+        == Some("pending-physical-review");
+    let executor_qualified_claimed = value
+        .get("executorQualified")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let execution_enabled_claimed = value
+        .get("executionEnabledByThisDossier")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let mut blockers = Vec::new();
+    if !schema_valid {
+        blockers.push("Qualification dossier schema is not recognized".to_string());
+    }
+    if !dossier_fingerprint_valid {
+        blockers.push("Dossier fingerprint does not match binding material".to_string());
+    }
+    if !recovery_job_fingerprint_valid {
+        blockers.push("Recovery-job fingerprint is missing or malformed".to_string());
+    }
+    if !recovery_job_matches_expected {
+        blockers.push("Dossier does not match the currently prepared recovery job".to_string());
+    }
+    if !executor_build_matches_current {
+        blockers.push("Dossier was produced by a different executor build".to_string());
+    }
+    if !binding_ready_claimed {
+        blockers.push("Dossier did not claim qualification-binding readiness".to_string());
+    }
+    if !binding_semantics_valid {
+        blockers.push(
+            "Dossier qualification-binding claim is inconsistent with its hash-bound identity/workstation/transport/programmer evidence"
+                .to_string(),
+        );
+    }
+    if !qualification_status_pending {
+        blockers.push("Qualification status is not pending-physical-review".to_string());
+    }
+    if executor_qualified_claimed {
+        blockers.push("Imported dossier improperly claims executor qualification".to_string());
+    }
+    if execution_enabled_claimed {
+        blockers.push("Imported dossier improperly claims execution enablement".to_string());
+    }
+
+    let safe_to_review = blockers.is_empty();
+    let _ = crate::audit::record(
+        "Recovery",
+        "review-qualification-dossier",
+        "elevated",
+        if safe_to_review { "reviewable" } else { "blocked" },
+        None,
+        "Qualification dossier reviewed; review never enables an executor.",
+        vec![
+            format!("path:{}", path_buf.display()),
+            format!("safe-to-review:{}", safe_to_review),
+            format!("dossier-fingerprint-valid:{}", dossier_fingerprint_valid),
+            format!("job-match:{}", recovery_job_matches_expected),
+            format!("executor-build-match:{}", executor_build_matches_current),
+            format!("binding-semantics-valid:{}", binding_semantics_valid),
+            format!("live-device-identity-match:{}", live_device_identity_match),
+            format!("transport-observation-ready:{}", transport_observation_ready),
+            format!("programmer-evidence-ready:{}", programmer_evidence_ready),
+        ],
+    );
+
+    Ok(QualificationDossierReview {
+        path: path_buf.display().to_string(),
+        schema_valid,
+        dossier_fingerprint_valid,
+        recovery_job_fingerprint_valid,
+        recovery_job_matches_expected,
+        executor_build_matches_current,
+        binding_ready_claimed,
+        live_device_identity_match,
+        workstation_evidence_ready,
+        transport_observation_ready,
+        programmer_evidence_ready,
+        binding_semantics_valid,
+        qualification_status_pending,
+        executor_qualified_claimed,
+        execution_enabled_claimed,
+        safe_to_review,
+        blockers,
+        dossier_fingerprint,
+        recovery_job_fingerprint,
+        executor_build_fingerprint,
+    })
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationDossierInput {
+    device: bootforgeusb::transport::TransportDevice,
+    workstation: QualificationWorkstationSnapshot,
+    authorized_programmers: Vec<QualificationProgrammerSnapshot>,
+    recovery_job_fingerprint: String,
+    prepared_recovery_identity: Option<QualificationRecoveryIdentitySnapshot>,
+    transport_observation: Option<QualificationTransportObservation>,
+    operator_notes: String,
+}
+
+
+#[cfg(test)]
+mod observation_scheduler_contract_tests {
+    use super::*;
+
+    #[test]
+    fn usb_observation_cache_is_short_lived() {
+        let now = std::time::Instant::now();
+        assert!(usb_cache_is_fresh(now, now));
+        assert!(!usb_cache_is_fresh(
+            now - std::time::Duration::from_millis(USB_OBSERVATION_CACHE_TTL.as_millis() as u64 + 1),
+            now,
+        ));
+    }
+
+    #[test]
+    fn usb_observation_paths_are_coalesced_but_revalidation_stays_fresh() {
+        let source = include_str!("main.rs");
+        assert!(source.contains("async fn bootforgeusb_scan()"));
+        assert!(source.contains("observed_usb_device_scan().await"));
+        assert!(source.contains("async fn bootforgeusb_transport_scan()"));
+        assert!(source.contains("observed_usb_transport_scan().await"));
+        assert!(source.contains("async fn bootforge_recovery_scan()"));
+
+        let revalidate = source
+            .split("fn bootforge_recovery_revalidate(")
+            .nth(1)
+            .and_then(|rest| rest.split("#[tauri::command]").next())
+            .unwrap_or_default();
+        assert!(revalidate.contains("bootforgeusb::transport::scan_transports()"));
+        assert!(!revalidate.contains("observed_usb_transport_scan().await"));
+    }
+
+    #[test]
+    fn usb_and_adb_share_the_same_global_observation_budget() {
+        assert_eq!(crate::observation_scheduler::MAX_OBSERVATION_WORKERS, 2);
+    }
+}
+
+#[cfg(test)]
+mod qualification_binding_tests {
+    use super::*;
+
+    fn transport(uid: &str, serial: Option<&str>) -> bootforgeusb::transport::TransportDevice {
+        bootforgeusb::transport::TransportDevice {
+            device_uid: uid.to_string(),
+            vendor_id: 0x05c6,
+            product_id: 0x9008,
+            bus_number: 1,
+            device_address: 2,
+            manufacturer: Some("Qualcomm".into()),
+            product_name: Some("QDLoader 9008".into()),
+            serial_number: serial.map(str::to_string),
+            mode: "qualcomm-edl".into(),
+            endpoints: vec![],
+            bulk_in: vec![0x81],
+            bulk_out: vec![0x01],
+        }
+    }
+
+    #[test]
+    fn sha256_binding_requires_exact_hex_length() {
+        assert!(valid_sha256_hex(&"a".repeat(64)));
+        assert!(valid_sha256_hex(&"A1".repeat(32)));
+        assert!(!valid_sha256_hex(&"a".repeat(63)));
+        assert!(!valid_sha256_hex(&"g".repeat(64)));
+        assert!(!valid_sha256_hex(""));
+    }
+
+    #[test]
+    fn source_revision_fails_closed_when_unavailable() {
+        assert!(qualification_source_revision_available("abc1234"));
+        assert!(!qualification_source_revision_available(""));
+        assert!(!qualification_source_revision_available("  "));
+        assert!(!qualification_source_revision_available("unavailable"));
+    }
+
+    #[test]
+    fn qualcomm_edl_requires_authorized_programmer_evidence() {
+        let live = transport("usb:05c6:9008:SERIAL", Some("SERIAL"));
+        assert!(!qualification_programmer_evidence_ready(&live, &[]));
+
+        let valid = QualificationProgrammerSnapshot {
+            path: "/authorized/prog_firehose.elf".into(),
+            sha256: "a".repeat(64),
+            bytes: 4096,
+            device_family: Some("SM8550".into()),
+            authorized: true,
+            authorization_source: Some("OEM service package".into()),
+            enrolled_at_unix_ms: Some(1),
+        };
+        assert!(qualification_programmer_evidence_ready(&live, &[valid]));
+
+        let missing_family = QualificationProgrammerSnapshot {
+            path: "/authorized/prog_firehose.elf".into(),
+            sha256: "b".repeat(64),
+            bytes: 4096,
+            device_family: None,
+            authorized: true,
+            authorization_source: Some("OEM service package".into()),
+            enrolled_at_unix_ms: Some(1),
+        };
+        assert!(!qualification_programmer_evidence_ready(&live, &[missing_family]));
+
+        let mut mediatek = live;
+        mediatek.mode = "mediatek-preloader".into();
+        assert!(qualification_programmer_evidence_ready(&mediatek, &[]));
+    }
+
+    #[test]
+    fn repeated_transport_observation_requires_stable_identity_and_bulk_endpoints() {
+        let live = transport("usb:05c6:9008:SERIAL", Some("SERIAL"));
+        let stable = QualificationTransportObservation {
+            expected_device_uid: live.device_uid.clone(),
+            attempted_samples: 3,
+            samples: (0..3)
+                .map(|index| QualificationTransportObservationSample {
+                    observed_unix_ms: 1_000 + index,
+                    device: live.clone(),
+                })
+                .collect(),
+        };
+        assert!(qualification_transport_observation_findings(Some(&stable), &live).is_empty());
+
+        let mut drifted = stable;
+        drifted.samples[2].device.bulk_out = vec![0x02];
+        let findings =
+            qualification_transport_observation_findings(Some(&drifted), &live);
+        assert!(findings
+            .iter()
+            .any(|finding| finding.contains("different bulk endpoints")));
+
+        let missing = qualification_transport_observation_findings(None, &live);
+        assert!(missing
+            .iter()
+            .any(|finding| finding.contains("Repeated transport observation is missing")));
+    }
+
+    #[test]
+    fn qualification_requires_exact_frozen_device_identity() {
+        let prepared = QualificationRecoveryIdentitySnapshot {
+            device_uid: "usb:05c6:9008:SERIAL".into(),
+            vendor_id: 0x05c6,
+            product_id: 0x9008,
+            mode: "qualcomm-edl".into(),
+            serial_number: Some("SERIAL".into()),
+        };
+        let live = transport("usb:05c6:9008:SERIAL", Some("SERIAL"));
+        assert!(qualification_device_identity_matches(Some(&prepared), &live));
+
+        let swapped = transport("usb:05c6:9008:OTHER", Some("OTHER"));
+        assert!(!qualification_device_identity_matches(Some(&prepared), &swapped));
+        assert!(!qualification_device_identity_matches(None, &live));
+    }
+}
+
+#[tauri::command]
+fn bootforge_qualification_export(
+    input: QualificationDossierInput,
+    destination_path: String,
+) -> Result<String, String> {
+    let destination = std::path::PathBuf::from(&destination_path);
+    if destination.as_os_str().is_empty() {
+        return Err("Qualification dossier destination is required".to_string());
+    }
+    let generated_unix_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+
+    let recovery_job_fingerprint = input.recovery_job_fingerprint.trim().to_ascii_lowercase();
+    let fingerprint_valid = valid_sha256_hex(&recovery_job_fingerprint);
+
+    let build_identity = qualification_build_identity_snapshot();
+    let source_revision = build_identity.source_revision.clone();
+    let source_revision_available = build_identity.source_revision_available;
+    let executor_build_fingerprint = build_identity.executor_build_fingerprint.clone();
+
+    let device_identity_match = qualification_device_identity_matches(
+        input.prepared_recovery_identity.as_ref(),
+        &input.device,
+    );
+
+    let workstation_evidence_ready =
+        qualification_workstation_evidence_ready(&input.workstation);
+    let transport_findings = qualification_transport_observation_findings(
+        input.transport_observation.as_ref(),
+        &input.device,
+    );
+    let transport_observation_ready = transport_findings.is_empty();
+    let programmer_evidence_ready =
+        qualification_programmer_evidence_ready(&input.device, &input.authorized_programmers);
+    let qualification_binding_ready = fingerprint_valid
+        && source_revision_available
+        && device_identity_match
+        && workstation_evidence_ready
+        && transport_observation_ready
+        && programmer_evidence_ready;
+    let mut binding_blockers = Vec::new();
+    if !fingerprint_valid {
+        binding_blockers.push(
+            "A valid 64-character recovery-job SHA-256 fingerprint is required".to_string(),
+        );
+    }
+    if !source_revision_available {
+        binding_blockers.push(
+            "Executor source revision is unavailable; build is not qualification-binding ready"
+                .to_string(),
+        );
+    }
+    if !device_identity_match {
+        binding_blockers.push(
+            "Live recovery-mode device does not exactly match the frozen recovery-job identity"
+                .to_string(),
+        );
+    }
+    if input.workstation.tools.is_empty() {
+        binding_blockers.push(
+            "Workstation tool evidence is missing from the qualification dossier".to_string(),
+        );
+    }
+    if input.workstation.os.eq_ignore_ascii_case("windows")
+        && !input.workstation.driver_store_probe_available
+    {
+        binding_blockers.push(
+            "Windows driver-store probe evidence is unavailable; OEM driver readiness cannot be proven"
+                .to_string(),
+        );
+    }
+    if input.workstation.os.eq_ignore_ascii_case("windows")
+        && input.workstation.drivers.is_empty()
+    {
+        binding_blockers.push(
+            "Windows OEM driver evidence matrix is missing from the qualification dossier"
+                .to_string(),
+        );
+    }
+    if input.workstation.os.eq_ignore_ascii_case("windows")
+        && input
+            .workstation
+            .drivers
+            .iter()
+            .any(|driver| driver.applicable && !driver.evidence_available)
+    {
+        binding_blockers.push(
+            "One or more applicable Windows driver checks lack verifiable evidence".to_string(),
+        );
+    }
+    binding_blockers.extend(transport_findings.iter().cloned());
+    if !programmer_evidence_ready {
+        binding_blockers.push(
+            "Qualcomm EDL qualification requires an authorized programmer record with valid SHA-256, nonzero size, declared device family, and authorization source"
+                .to_string(),
+        );
+    }
+
+    let required_physical_checks = vec![
+        "Repeat USB enumeration without identity drift",
+        "Confirm expected recovery mode after reconnect",
+        "Confirm bulk endpoint stability across repeated scans",
+        "Confirm OEM/service programmer hash remains enrolled and unchanged",
+        "Confirm firmware/device/layout preflight matches target",
+        "Confirm dry-run partition plan stays within verified bounds",
+        "Confirm backup/rollback evidence exists where required",
+        "Record designated-device bench outcome separately before any executor qualification",
+        "Require an exact recovery-job fingerprint match before qualification review",
+        "Require the live recovery-mode device to exactly match the frozen recovery-job identity",
+        "Require an executor source revision and build fingerprint before qualification review",
+        "Require a preserved workstation tool matrix and verifiable Windows driver-store evidence before qualification review",
+    ];
+
+    let binding_material = serde_json::json!({
+        "schema": "com.bobbyblanco.bobfwtools.designated-device-qualification.binding.v1",
+        "recoveryJobFingerprint": recovery_job_fingerprint,
+        "preparedRecoveryIdentity": input.prepared_recovery_identity,
+        "liveDeviceIdentityMatch": device_identity_match,
+        "workstationEvidenceReady": workstation_evidence_ready,
+        "transportObservationReady": transport_observation_ready,
+        "programmerEvidenceReady": programmer_evidence_ready,
+        "transportObservation": input.transport_observation,
+        "transportFindings": transport_findings,
+        "executorBuildFingerprint": executor_build_fingerprint,
+        "sourceRevision": source_revision,
+        "device": input.device,
+        "workstation": input.workstation,
+        "authorizedProgrammers": input.authorized_programmers,
+        "operatorNotes": input.operator_notes,
+        "requiredPhysicalChecks": required_physical_checks,
+        "bindingBlockers": binding_blockers,
+    });
+    let binding_bytes = serde_json::to_vec(&binding_material)
+        .map_err(|e| format!("Could not serialize qualification binding material: {e}"))?;
+    use sha2::Digest;
+    let dossier_fingerprint = format!("{:x}", sha2::Sha256::digest(&binding_bytes));
+
+    let receipt = serde_json::json!({
+        "schema": "com.bobbyblanco.bobfwtools.designated-device-qualification.v1",
+        "generatedUnixSeconds": generated_unix_seconds,
+        "qualificationStatus": "pending-physical-review",
+        "executorQualified": false,
+        "executionEnabledByThisDossier": false,
+        "qualificationBindingReady": qualification_binding_ready,
+        "dossierFingerprint": dossier_fingerprint,
+        "bindingMaterial": binding_material,
+        "recoveryJobFingerprint": recovery_job_fingerprint,
+        "recoveryJobFingerprintValid": fingerprint_valid,
+        "preparedRecoveryIdentity": input.prepared_recovery_identity,
+        "liveDeviceIdentityMatch": device_identity_match,
+        "workstationEvidenceReady": workstation_evidence_ready,
+        "transportObservationReady": transport_observation_ready,
+        "programmerEvidenceReady": programmer_evidence_ready,
+        "executorBuild": build_identity,
+        "device": input.device,
+        "workstation": input.workstation,
+        "authorizedProgrammers": input.authorized_programmers,
+        "operatorNotes": input.operator_notes,
+        "requiredPhysicalChecks": required_physical_checks,
+        "bindingBlockers": binding_blockers
+    });
+    let bytes = serde_json::to_vec_pretty(&receipt)
+        .map_err(|e| format!("Could not serialize qualification dossier: {e}"))?;
+    std::fs::write(&destination, bytes)
+        .map_err(|e| format!("Could not write qualification dossier {}: {e}", destination.display()))?;
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "export-qualification-dossier",
+        "elevated",
+        "completed-no-execution",
+        Some(input.device.device_uid.clone()),
+        "Designated-device qualification dossier exported; executor qualification remains false.",
+        vec![
+            format!("destination:{}", destination.display()),
+            format!("dossier-fingerprint:{}", dossier_fingerprint),
+            format!("recovery-job-fingerprint:{}", recovery_job_fingerprint),
+            format!("live-device-identity-match:{}", device_identity_match),
+            format!("workstation-evidence-ready:{}", workstation_evidence_ready),
+            format!("transport-observation-ready:{}", transport_observation_ready),
+            format!("programmer-evidence-ready:{}", programmer_evidence_ready),
+            format!("qualification-binding-ready:{}", qualification_binding_ready),
+            format!("executor-build-fingerprint:{}", executor_build_fingerprint),
+        ],
+    );
+
+    Ok(destination.display().to_string())
+}
+
+
+#[cfg(feature = "qualified-flash")]
+fn sha256_file(path: &std::path::Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+
+    let mut file = std::fs::File::open(path)
+        .map_err(|e| format!("Could not open image {}: {e}", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 1024 * 1024];
+    loop {
+        let n = file
+            .read(&mut buf)
+            .map_err(|e| format!("Could not read image {}: {e}", path.display()))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+#[cfg(feature = "qualified-flash")]
+fn exact_fastboot_device_present(serial: &str) -> Result<bool, String> {
+    let output = Command::new("fastboot")
+        .arg("devices")
+        .output()
+        .map_err(|e| format!("Could not enumerate fastboot devices: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "fastboot devices failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout.lines().any(|line| {
+        line.split_whitespace().next() == Some(serial)
+    }))
+}
+
+
+#[cfg(feature = "qualified-flash")]
+fn verify_fastboot_target_after_write(serial: &str) -> Result<(), String> {
+    verify_fastboot_target_after_write_with(serial, exact_fastboot_device_present, || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    })
+}
+
+// Injected enumeration and wait functions allow disconnection tests without USB access.
+#[cfg(feature = "qualified-flash")]
+fn verify_fastboot_target_after_write_with<F, S>(
+    serial: &str, mut enumerate: F, mut sleep: S,
+) -> Result<(), String>
+where
+    F: FnMut(&str) -> Result<bool, String>,
+    S: FnMut(),
+{
+    for attempt in 1..=5 {
+        match enumerate(serial) {
+            Ok(true) => return Ok(()),
+            Ok(false) if attempt < 5 => sleep(),
+            Ok(false) => return Err("Exact fastboot target did not re-enumerate after destructive write".into()),
+            Err(_) if attempt < 5 => sleep(),
+            Err(err) => return Err(format!("Could not verify fastboot target after destructive write: {err}")),
+        }
+    }
+    Err("Post-write fastboot target verification failed".into())
+}
+
+#[cfg(feature = "qualified-flash")]
+#[tauri::command]
+fn bootforge_qualified_fastboot_devices() -> Result<Vec<String>, String> {
+    let output = Command::new("fastboot")
+        .arg("devices")
+        .output()
+        .map_err(|e| format!("Could not enumerate fastboot devices: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "fastboot devices failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+        .filter(|serial| !serial.trim().is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+#[cfg(feature = "qualified-flash")]
+#[tauri::command]
+fn bootforge_qualified_flash_inspect_image(
+    name: String,
+    path: String,
+) -> Result<FlashPartition, String> {
+    let partition_name = name.trim().to_ascii_lowercase();
+    let allowed_partitions = [
+        "boot", "system", "vendor", "userdata", "cache", "recovery",
+        "bootloader", "radio", "aboot", "vbmeta", "dtbo", "persist",
+    ];
+    if !allowed_partitions.contains(&partition_name.as_str()) {
+        return Err(format!(
+            "Partition '{}' is not approved by the destructive writer allowlist",
+            partition_name
+        ));
+    }
+    let path_buf = std::path::PathBuf::from(&path);
+    if !path_buf.is_file() {
+        return Err(format!("Image file not found: {}", path_buf.display()));
+    }
+    let size = std::fs::metadata(&path_buf)
+        .map_err(|e| format!("Could not read image metadata {}: {e}", path_buf.display()))?
+        .len();
+    if size == 0 {
+        return Err("Qualified flash image is empty".to_string());
+    }
+    let expected_sha256 = sha256_file(&path_buf)?;
+    Ok(FlashPartition {
+        name: partition_name,
+        imagePath: path_buf.display().to_string(),
+        size,
+        expectedSha256: expected_sha256,
+    })
+}
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, Deserialize)]
+struct QualifiedFlashPhysicalChecks {
+    repeatedEnumerationStable: bool,
+    expectedModeConfirmed: bool,
+    endpointStabilityConfirmed: bool,
+    programmerHashVerified: bool,
+    preflightMatched: bool,
+    partitionBoundsVerified: bool,
+    backupEvidencePresent: bool,
+    destructiveBenchWritePassed: bool,
+    postWriteVerificationPassed: bool,
+}
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, Deserialize)]
+struct QualifiedFlashApprovalInput {
+    dossierPath: String,
+    benchEvidencePath: Option<String>,
+    reviewDecisionPath: Option<String>,
+    auditBundlePath: Option<String>,
+    expectedRecoveryJobFingerprint: String,
+    deviceSerial: String,
+    partitions: Vec<FlashPartition>,
+    wipeUserDataAllowed: bool,
+    autoRebootAllowed: bool,
+    reviewer: String,
+    reviewerNotes: String,
+    confirmation: String,
+    expiresInMinutes: u64,
+    physicalChecks: QualifiedFlashPhysicalChecks,
+}
+
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, Deserialize)]
+struct QualificationBenchEvidenceInput {
+    dossierPath: String,
+    qualificationPacketPath: String,
+    expectedRecoveryJobFingerprint: String,
+    deviceSerial: String,
+    reviewer: String,
+    reviewerNotes: String,
+    partitions: Vec<FlashPartition>,
+    physicalChecks: QualifiedFlashPhysicalChecks,
+}
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationBenchEvidenceReceipt {
+    schema: String,
+    grants_authority: bool,
+    executor_qualified: bool,
+    execution_enabled: bool,
+    reviewer: String,
+    reviewer_notes: String,
+    device_serial: String,
+    dossier_fingerprint: String,
+    recovery_job_fingerprint: String,
+    executor_build_fingerprint: String,
+    qualification_packet_path: String,
+    qualification_packet_file_sha256: String,
+    qualification_packet_fingerprint: String,
+    partitions: Vec<FlashPartition>,
+    physical_checks: QualifiedFlashPhysicalChecks,
+    generated_unix_seconds: u64,
+    receipt_fingerprint: String,
+}
+
+#[cfg(feature = "qualified-flash")]
+fn qualification_bench_evidence_material(
+    receipt: &QualificationBenchEvidenceReceipt,
+) -> Result<Vec<u8>, String> {
+    let value = serde_json::json!({
+        "schema": receipt.schema,
+        "grantsAuthority": receipt.grants_authority,
+        "executorQualified": receipt.executor_qualified,
+        "executionEnabled": receipt.execution_enabled,
+        "reviewer": receipt.reviewer,
+        "reviewerNotes": receipt.reviewer_notes,
+        "deviceSerial": receipt.device_serial,
+        "dossierFingerprint": receipt.dossier_fingerprint,
+        "recoveryJobFingerprint": receipt.recovery_job_fingerprint,
+        "executorBuildFingerprint": receipt.executor_build_fingerprint,
+        "qualificationPacketPath": receipt.qualification_packet_path,
+        "qualificationPacketFileSha256": receipt.qualification_packet_file_sha256,
+        "qualificationPacketFingerprint": receipt.qualification_packet_fingerprint,
+        "partitions": receipt.partitions,
+        "physicalChecks": receipt.physical_checks,
+        "generatedUnixSeconds": receipt.generated_unix_seconds,
+    });
+    serde_json::to_vec(&value)
+        .map_err(|e| format!("Could not serialize qualification bench evidence material: {e}"))
+}
+
+#[cfg(feature = "qualified-flash")]
+fn qualification_bench_evidence_fingerprint(
+    receipt: &QualificationBenchEvidenceReceipt,
+) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    Ok(format!(
+        "{:x}",
+        Sha256::digest(qualification_bench_evidence_material(receipt)?)
+    ))
+}
+
+#[cfg(feature = "qualified-flash")]
+fn load_and_verify_qualification_bench_evidence(
+    path: &str,
+    reviewer: &str,
+    device_serial: &str,
+    dossier_fingerprint: &str,
+    recovery_job_fingerprint: &str,
+    executor_build_fingerprint: &str,
+) -> Result<QualificationBenchEvidenceReceipt, String> {
+    let path_buf = std::path::PathBuf::from(path);
+    if !path_buf.is_file() {
+        return Err(format!(
+            "Qualification bench evidence receipt not found: {}",
+            path_buf.display()
+        ));
+    }
+    let bytes = std::fs::read(&path_buf)
+        .map_err(|e| format!("Could not read qualification bench evidence receipt: {e}"))?;
+    let receipt: QualificationBenchEvidenceReceipt = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Qualification bench evidence receipt is invalid JSON: {e}"))?;
+
+    if receipt.schema != "com.bobbyblanco.bobfwtools.qualification-bench-evidence.v1" {
+        return Err("Qualification bench evidence schema is not recognized".to_string());
+    }
+    if receipt.grants_authority || receipt.executor_qualified || receipt.execution_enabled {
+        return Err(
+            "Qualification bench evidence must not grant authority, qualify an executor, or enable execution"
+                .to_string(),
+        );
+    }
+    if receipt.reviewer.trim() != reviewer.trim() {
+        return Err("Qualification bench evidence reviewer does not match".to_string());
+    }
+    if receipt.device_serial != device_serial {
+        return Err("Qualification bench evidence device serial does not match target".to_string());
+    }
+    if receipt.dossier_fingerprint != dossier_fingerprint {
+        return Err("Qualification bench evidence dossier fingerprint does not match".to_string());
+    }
+    if receipt.recovery_job_fingerprint != recovery_job_fingerprint {
+        return Err(
+            "Qualification bench evidence recovery-job fingerprint does not match".to_string(),
+        );
+    }
+    if receipt.executor_build_fingerprint != executor_build_fingerprint {
+        return Err(
+            "Qualification bench evidence executor-build fingerprint does not match".to_string(),
+        );
+    }
+    if receipt.qualification_packet_path.trim().is_empty() {
+        return Err("Qualification bench evidence qualification-packet path is missing".to_string());
+    }
+    if !valid_sha256_hex(&receipt.qualification_packet_file_sha256) {
+        return Err(
+            "Qualification bench evidence qualification-packet file SHA-256 is missing or malformed"
+                .to_string(),
+        );
+    }
+    if !valid_sha256_hex(&receipt.qualification_packet_fingerprint) {
+        return Err(
+            "Qualification bench evidence qualification-packet fingerprint is missing or malformed"
+                .to_string(),
+        );
+    }
+    let actual_packet_file_sha256 =
+        sha256_file(std::path::Path::new(&receipt.qualification_packet_path))?;
+    if !actual_packet_file_sha256.eq_ignore_ascii_case(&receipt.qualification_packet_file_sha256) {
+        return Err(
+            "Qualification bench evidence qualification-packet file hash changed".to_string(),
+        );
+    }
+    if receipt.partitions.is_empty() {
+        return Err("Qualification bench evidence has no inspected partition images".to_string());
+    }
+    for partition in &receipt.partitions {
+        if partition.name.trim().is_empty() {
+            return Err("Qualification bench evidence contains an unnamed partition".to_string());
+        }
+        if partition.size == 0 {
+            return Err(format!(
+                "Qualification bench evidence partition {} has an invalid size",
+                partition.name
+            ));
+        }
+        if !valid_sha256_hex(&partition.expectedSha256) {
+            return Err(format!(
+                "Qualification bench evidence partition {} has an invalid SHA-256",
+                partition.name
+            ));
+        }
+    }
+    if !all_physical_flash_checks_passed(&receipt.physical_checks) {
+        return Err(
+            "Qualification bench evidence does not contain a complete passed physical-check record"
+                .to_string(),
+        );
+    }
+    if !valid_sha256_hex(&receipt.receipt_fingerprint) {
+        return Err("Qualification bench evidence receipt fingerprint is malformed".to_string());
+    }
+    let expected = qualification_bench_evidence_fingerprint(&receipt)?;
+    if !expected.eq_ignore_ascii_case(&receipt.receipt_fingerprint) {
+        return Err(
+            "Qualification bench evidence receipt fingerprint verification failed".to_string(),
+        );
+    }
+
+    Ok(receipt)
+}
+
+#[cfg(feature = "qualified-flash")]
+#[tauri::command]
+fn bootforge_qualification_bench_evidence_export(
+    input: QualificationBenchEvidenceInput,
+    destination_path: String,
+) -> Result<String, String> {
+    let destination = std::path::PathBuf::from(&destination_path);
+    if destination.as_os_str().is_empty() {
+        return Err("Qualification bench evidence destination is required".to_string());
+    }
+    let reviewer = input.reviewer.trim();
+    if reviewer.is_empty() {
+        return Err("Reviewer identity is required".to_string());
+    }
+    if input.deviceSerial.trim().is_empty() {
+        return Err("Device serial is required".to_string());
+    }
+    if input.partitions.is_empty() {
+        return Err("At least one inspected partition image is required".to_string());
+    }
+    if !all_physical_flash_checks_passed(&input.physicalChecks) {
+        return Err(
+            "Bench evidence export requires every physical check, destructive bench write, and post-write verification to pass"
+                .to_string(),
+        );
+    }
+
+    let packet_review = hardware_qualification_packet_review(input.qualificationPacketPath.clone())?;
+    if !packet_review.safe_to_review {
+        return Err(format!(
+            "Cannot record bench evidence for a blocked hardware qualification packet: {}",
+            packet_review.blockers.join("; ")
+        ));
+    }
+    let qualification_packet_fingerprint = packet_review
+        .packet_fingerprint
+        .ok_or_else(|| "Verified hardware qualification packet fingerprint is unavailable".to_string())?;
+    let qualification_packet_path = std::path::PathBuf::from(&input.qualificationPacketPath);
+    let qualification_packet_file_sha256 = sha256_file(&qualification_packet_path)?;
+
+    let review = bootforge_qualification_review(
+        input.dossierPath.clone(),
+        Some(input.expectedRecoveryJobFingerprint.clone()),
+    )?;
+    if !review.safe_to_review {
+        return Err(format!(
+            "Cannot record bench evidence for a blocked qualification dossier: {}",
+            review.blockers.join("; ")
+        ));
+    }
+
+    let dossier_fingerprint = review
+        .dossier_fingerprint
+        .ok_or_else(|| "Verified dossier fingerprint is unavailable".to_string())?;
+    let recovery_job_fingerprint = review
+        .recovery_job_fingerprint
+        .ok_or_else(|| "Verified recovery-job fingerprint is unavailable".to_string())?;
+    let build = qualification_build_identity_snapshot();
+    if !build.qualified_flash_compiled {
+        return Err(
+            "Qualification bench evidence must be recorded by the qualified bench build".to_string(),
+        );
+    }
+
+    for partition in &input.partitions {
+        if !valid_sha256_hex(&partition.expectedSha256) {
+            return Err(format!(
+                "Partition {} does not have a valid expected SHA-256",
+                partition.name
+            ));
+        }
+        let actual = sha256_file(std::path::Path::new(&partition.imagePath))?;
+        if !actual.eq_ignore_ascii_case(&partition.expectedSha256) {
+            return Err(format!(
+                "Partition {} image hash changed since inspection",
+                partition.name
+            ));
+        }
+    }
+
+    let generated_unix_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+
+    let mut receipt = QualificationBenchEvidenceReceipt {
+        schema: "com.bobbyblanco.bobfwtools.qualification-bench-evidence.v1".into(),
+        grants_authority: false,
+        executor_qualified: false,
+        execution_enabled: false,
+        reviewer: reviewer.to_string(),
+        reviewer_notes: input.reviewerNotes.trim().to_string(),
+        device_serial: input.deviceSerial.trim().to_string(),
+        dossier_fingerprint,
+        recovery_job_fingerprint,
+        executor_build_fingerprint: build.executor_build_fingerprint,
+        qualification_packet_path: qualification_packet_path.display().to_string(),
+        qualification_packet_file_sha256,
+        qualification_packet_fingerprint,
+        partitions: input.partitions,
+        physical_checks: input.physicalChecks,
+        generated_unix_seconds,
+        receipt_fingerprint: String::new(),
+    };
+    receipt.receipt_fingerprint = qualification_bench_evidence_fingerprint(&receipt)?;
+
+    std::fs::write(
+        &destination,
+        serde_json::to_vec_pretty(&receipt)
+            .map_err(|e| format!("Could not serialize qualification bench evidence: {e}"))?,
+    )
+    .map_err(|e| format!("Could not write qualification bench evidence receipt: {e}"))?;
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "export-qualification-bench-evidence",
+        "destructive",
+        "recorded-no-authority",
+        Some(receipt.device_serial.clone()),
+        "Physical bench evidence recorded and hash-bound; receipt grants no execution authority.",
+        vec![
+            format!("reviewer:{}", receipt.reviewer),
+            format!("receipt-fingerprint:{}", receipt.receipt_fingerprint),
+            format!("dossier-fingerprint:{}", receipt.dossier_fingerprint),
+            format!(
+                "recovery-job-fingerprint:{}",
+                receipt.recovery_job_fingerprint
+            ),
+            format!(
+                "executor-build-fingerprint:{}",
+                receipt.executor_build_fingerprint
+            ),
+            format!("qualification-packet-path:{}", receipt.qualification_packet_path),
+            format!(
+                "qualification-packet-file-sha256:{}",
+                receipt.qualification_packet_file_sha256
+            ),
+            format!(
+                "qualification-packet-fingerprint:{}",
+                receipt.qualification_packet_fingerprint
+            ),
+            format!("partition-count:{}", receipt.partitions.len()),
+        ],
+    );
+
+    Ok(destination.display().to_string())
+}
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, Deserialize)]
+struct QualificationDecisionInput {
+    dossierPath: String,
+    benchEvidencePath: Option<String>,
+    expectedRecoveryJobFingerprint: String,
+    deviceSerial: String,
+    reviewer: String,
+    reviewerNotes: String,
+    decision: String,
+    physicalChecks: QualifiedFlashPhysicalChecks,
+}
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationDecisionReceipt {
+    schema: String,
+    decision: String,
+    grants_authority: bool,
+    executor_qualified: bool,
+    reviewer: String,
+    reviewer_notes: String,
+    device_serial: String,
+    dossier_fingerprint: String,
+    recovery_job_fingerprint: String,
+    executor_build_fingerprint: String,
+    bench_evidence_fingerprint: Option<String>,
+    qualification_packet_path: Option<String>,
+    qualification_packet_file_sha256: Option<String>,
+    qualification_packet_fingerprint: Option<String>,
+    physical_checks: QualifiedFlashPhysicalChecks,
+    generated_unix_seconds: u64,
+    receipt_fingerprint: String,
+}
+
+#[cfg(feature = "qualified-flash")]
+fn qualification_decision_material(
+    receipt: &QualificationDecisionReceipt,
+) -> Result<Vec<u8>, String> {
+    let value = serde_json::json!({
+        "schema": receipt.schema,
+        "decision": receipt.decision,
+        "grantsAuthority": receipt.grants_authority,
+        "executorQualified": receipt.executor_qualified,
+        "reviewer": receipt.reviewer,
+        "reviewerNotes": receipt.reviewer_notes,
+        "deviceSerial": receipt.device_serial,
+        "dossierFingerprint": receipt.dossier_fingerprint,
+        "recoveryJobFingerprint": receipt.recovery_job_fingerprint,
+        "executorBuildFingerprint": receipt.executor_build_fingerprint,
+        "benchEvidenceFingerprint": receipt.bench_evidence_fingerprint,
+        "qualificationPacketPath": receipt.qualification_packet_path,
+        "qualificationPacketFileSha256": receipt.qualification_packet_file_sha256,
+        "qualificationPacketFingerprint": receipt.qualification_packet_fingerprint,
+        "physicalChecks": receipt.physical_checks,
+        "generatedUnixSeconds": receipt.generated_unix_seconds,
+    });
+    serde_json::to_vec(&value)
+        .map_err(|e| format!("Could not serialize qualification decision material: {e}"))
+}
+
+#[cfg(feature = "qualified-flash")]
+fn qualification_decision_fingerprint(
+    receipt: &QualificationDecisionReceipt,
+) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    let material = qualification_decision_material(receipt)?;
+    Ok(format!("{:x}", Sha256::digest(&material)))
+}
+
+#[cfg(feature = "qualified-flash")]
+fn load_and_verify_qualification_decision(
+    path: &str,
+    reviewer: &str,
+    device_serial: &str,
+    dossier_fingerprint: &str,
+    recovery_job_fingerprint: &str,
+    executor_build_fingerprint: &str,
+) -> Result<QualificationDecisionReceipt, String> {
+    let path_buf = std::path::PathBuf::from(path);
+    if !path_buf.is_file() {
+        return Err(format!(
+            "Qualification decision receipt not found: {}",
+            path_buf.display()
+        ));
+    }
+    let bytes = std::fs::read(&path_buf)
+        .map_err(|e| format!("Could not read qualification decision receipt: {e}"))?;
+    let receipt: QualificationDecisionReceipt = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Qualification decision receipt is invalid JSON: {e}"))?;
+
+    if receipt.schema != "com.bobbyblanco.bobfwtools.qualification-decision.v1" {
+        return Err("Qualification decision schema is not recognized".to_string());
+    }
+    if receipt.decision != "accept-evidence" {
+        return Err("Qualification decision does not accept the bench evidence".to_string());
+    }
+    if receipt.grants_authority || receipt.executor_qualified {
+        return Err(
+            "Qualification decision receipt must not grant authority or qualify an executor"
+                .to_string(),
+        );
+    }
+    if receipt.reviewer.trim() != reviewer.trim() {
+        return Err("Qualification decision reviewer does not match grant reviewer".to_string());
+    }
+    if receipt.device_serial != device_serial {
+        return Err("Qualification decision device serial does not match target".to_string());
+    }
+    if receipt.dossier_fingerprint != dossier_fingerprint {
+        return Err("Qualification decision dossier fingerprint does not match".to_string());
+    }
+    if receipt.recovery_job_fingerprint != recovery_job_fingerprint {
+        return Err("Qualification decision recovery-job fingerprint does not match".to_string());
+    }
+    if receipt.executor_build_fingerprint != executor_build_fingerprint {
+        return Err("Qualification decision executor-build fingerprint does not match".to_string());
+    }
+    if receipt.decision == "accept-evidence"
+        && !receipt
+            .bench_evidence_fingerprint
+            .as_deref()
+            .map(valid_sha256_hex)
+            .unwrap_or(false)
+    {
+        return Err(
+            "Accepted qualification decision is missing a valid bench-evidence fingerprint"
+                .to_string(),
+        );
+    }
+    if receipt.decision == "accept-evidence"
+        && !receipt
+            .qualification_packet_path
+            .as_deref()
+            .map(str::trim)
+            .map(|value| !value.is_empty())
+            .unwrap_or(false)
+    {
+        return Err(
+            "Accepted qualification decision is missing the qualification-packet path".to_string(),
+        );
+    }
+    if receipt.decision == "accept-evidence"
+        && !receipt
+            .qualification_packet_file_sha256
+            .as_deref()
+            .map(valid_sha256_hex)
+            .unwrap_or(false)
+    {
+        return Err(
+            "Accepted qualification decision is missing a valid qualification-packet file SHA-256"
+                .to_string(),
+        );
+    }
+    if receipt.decision == "accept-evidence"
+        && !receipt
+            .qualification_packet_fingerprint
+            .as_deref()
+            .map(valid_sha256_hex)
+            .unwrap_or(false)
+    {
+        return Err(
+            "Accepted qualification decision is missing a valid qualification-packet fingerprint"
+                .to_string(),
+        );
+    }
+    if receipt.decision == "accept-evidence" {
+        let packet_path = receipt
+            .qualification_packet_path
+            .as_deref()
+            .ok_or_else(|| "Accepted qualification decision packet path is unavailable".to_string())?;
+        let expected_packet_file_sha256 = receipt
+            .qualification_packet_file_sha256
+            .as_deref()
+            .ok_or_else(|| "Accepted qualification decision packet file SHA-256 is unavailable".to_string())?;
+        let actual_packet_file_sha256 = sha256_file(std::path::Path::new(packet_path))?;
+        if !actual_packet_file_sha256.eq_ignore_ascii_case(expected_packet_file_sha256) {
+            return Err(
+                "Accepted qualification decision qualification-packet file hash changed".to_string(),
+            );
+        }
+    }
+    if !all_physical_flash_checks_passed(&receipt.physical_checks) {
+        return Err(
+            "Qualification decision does not contain a complete passed physical-check record"
+                .to_string(),
+        );
+    }
+    if !valid_sha256_hex(&receipt.receipt_fingerprint) {
+        return Err("Qualification decision receipt fingerprint is malformed".to_string());
+    }
+    let expected = qualification_decision_fingerprint(&receipt)?;
+    if !expected.eq_ignore_ascii_case(&receipt.receipt_fingerprint) {
+        return Err("Qualification decision receipt fingerprint verification failed".to_string());
+    }
+
+    Ok(receipt)
+}
+
+#[cfg(feature = "qualified-flash")]
+#[tauri::command]
+fn bootforge_qualification_decision_export(
+    input: QualificationDecisionInput,
+    destination_path: String,
+) -> Result<String, String> {
+    let destination = std::path::PathBuf::from(&destination_path);
+    if destination.as_os_str().is_empty() {
+        return Err("Qualification decision destination is required".to_string());
+    }
+    let reviewer = input.reviewer.trim();
+    if reviewer.is_empty() {
+        return Err("Reviewer identity is required".to_string());
+    }
+    if input.deviceSerial.trim().is_empty() {
+        return Err("Device serial is required".to_string());
+    }
+    if input.decision != "accept-evidence" && input.decision != "reject-evidence" {
+        return Err("Decision must be accept-evidence or reject-evidence".to_string());
+    }
+
+    let review = bootforge_qualification_review(
+        input.dossierPath.clone(),
+        Some(input.expectedRecoveryJobFingerprint.clone()),
+    )?;
+    if !review.safe_to_review && input.decision == "accept-evidence" {
+        return Err(format!(
+            "Cannot accept a blocked qualification dossier: {}",
+            review.blockers.join("; ")
+        ));
+    }
+    if input.decision == "accept-evidence"
+        && !all_physical_flash_checks_passed(&input.physicalChecks)
+    {
+        return Err(
+            "Accepting bench evidence requires every physical check, destructive trial, and post-write verification to pass"
+                .to_string(),
+        );
+    }
+
+    let dossier_fingerprint = review
+        .dossier_fingerprint
+        .ok_or_else(|| "Verified dossier fingerprint is unavailable".to_string())?;
+    let recovery_job_fingerprint = review
+        .recovery_job_fingerprint
+        .ok_or_else(|| "Verified recovery-job fingerprint is unavailable".to_string())?;
+    let build = qualification_build_identity_snapshot();
+    if !build.qualified_flash_compiled {
+        return Err("Qualification decision must be recorded by the qualified bench build".to_string());
+    }
+
+    let mut qualification_packet_path: Option<String> = None;
+    let mut qualification_packet_file_sha256: Option<String> = None;
+    let mut qualification_packet_fingerprint: Option<String> = None;
+    let bench_evidence_fingerprint = if input.decision == "accept-evidence" {
+        let path = input
+            .benchEvidencePath
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "Accepted qualification evidence requires a bench-evidence receipt".to_string())?;
+        let bench = load_and_verify_qualification_bench_evidence(
+            path,
+            reviewer,
+            input.deviceSerial.trim(),
+            &dossier_fingerprint,
+            &recovery_job_fingerprint,
+            &build.executor_build_fingerprint,
+        )?;
+        if bench.physical_checks != input.physicalChecks {
+            return Err("Qualification decision checks do not exactly match the bench-evidence receipt".to_string());
+        }
+        qualification_packet_path = Some(bench.qualification_packet_path.clone());
+        qualification_packet_file_sha256 =
+            Some(bench.qualification_packet_file_sha256.clone());
+        qualification_packet_fingerprint = Some(bench.qualification_packet_fingerprint.clone());
+        Some(bench.receipt_fingerprint)
+    } else {
+        None
+    };
+
+    let generated_unix_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+
+    let mut receipt = QualificationDecisionReceipt {
+        schema: "com.bobbyblanco.bobfwtools.qualification-decision.v1".into(),
+        decision: input.decision,
+        grants_authority: false,
+        executor_qualified: false,
+        reviewer: reviewer.to_string(),
+        reviewer_notes: input.reviewerNotes.trim().to_string(),
+        device_serial: input.deviceSerial.trim().to_string(),
+        dossier_fingerprint,
+        recovery_job_fingerprint,
+        executor_build_fingerprint: build.executor_build_fingerprint,
+        bench_evidence_fingerprint,
+        qualification_packet_path,
+        qualification_packet_file_sha256,
+        qualification_packet_fingerprint,
+        physical_checks: input.physicalChecks,
+        generated_unix_seconds,
+        receipt_fingerprint: String::new(),
+    };
+    receipt.receipt_fingerprint = qualification_decision_fingerprint(&receipt)?;
+
+    let bytes = serde_json::to_vec_pretty(&receipt)
+        .map_err(|e| format!("Could not serialize qualification decision receipt: {e}"))?;
+    std::fs::write(&destination, bytes)
+        .map_err(|e| format!("Could not write qualification decision receipt: {e}"))?;
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "export-qualification-decision",
+        "destructive",
+        &receipt.decision,
+        Some(receipt.device_serial.clone()),
+        "Human bench-evidence decision recorded; receipt grants no executor authority.",
+        vec![
+            format!("reviewer:{}", receipt.reviewer),
+            format!("receipt-fingerprint:{}", receipt.receipt_fingerprint),
+            format!("dossier-fingerprint:{}", receipt.dossier_fingerprint),
+            format!("recovery-job-fingerprint:{}", receipt.recovery_job_fingerprint),
+            format!(
+                "executor-build-fingerprint:{}",
+                receipt.executor_build_fingerprint
+            ),
+            format!(
+                "qualification-packet-path:{}",
+                receipt
+                    .qualification_packet_path
+                    .clone()
+                    .unwrap_or_else(|| "<none>".to_string())
+            ),
+            format!(
+                "qualification-packet-file-sha256:{}",
+                receipt
+                    .qualification_packet_file_sha256
+                    .clone()
+                    .unwrap_or_else(|| "<none>".to_string())
+            ),
+            format!(
+                "qualification-packet-fingerprint:{}",
+                receipt
+                    .qualification_packet_fingerprint
+                    .clone()
+                    .unwrap_or_else(|| "<none>".to_string())
+            ),
+        ],
+    );
+
+    Ok(destination.display().to_string())
+}
+
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, Deserialize)]
+struct QualificationAuditBundleInput {
+    dossierPath: String,
+    benchEvidencePath: String,
+    decisionPath: String,
+    readinessCertificatePath: Option<String>,
+    expectedRecoveryJobFingerprint: String,
+    deviceSerial: String,
+    reviewer: String,
+}
+
+#[cfg(feature = "qualified-flash")]
+#[tauri::command]
+fn bootforge_qualification_audit_bundle_export(
+    input: QualificationAuditBundleInput,
+    destination_path: String,
+) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+
+    let destination = std::path::PathBuf::from(&destination_path);
+    if destination.as_os_str().is_empty() {
+        return Err("Qualification audit bundle destination is required".to_string());
+    }
+    let reviewer = input.reviewer.trim();
+    let serial = input.deviceSerial.trim();
+    if reviewer.is_empty() || serial.is_empty() {
+        return Err("Reviewer identity and device serial are required".to_string());
+    }
+
+    let dossier_review = bootforge_qualification_review(
+        input.dossierPath.clone(),
+        Some(input.expectedRecoveryJobFingerprint.clone()),
+    )?;
+    if !dossier_review.safe_to_review {
+        return Err(format!(
+            "Qualification dossier is not safe to bundle: {}",
+            dossier_review.blockers.join("; ")
+        ));
+    }
+    let dossier_fingerprint = dossier_review
+        .dossier_fingerprint
+        .clone()
+        .ok_or_else(|| "Verified dossier fingerprint is unavailable".to_string())?;
+    let recovery_job_fingerprint = dossier_review
+        .recovery_job_fingerprint
+        .clone()
+        .ok_or_else(|| "Verified recovery-job fingerprint is unavailable".to_string())?;
+    let build = qualification_build_identity_snapshot();
+    if !build.qualified_flash_compiled {
+        return Err("Qualification audit bundle must be exported by the qualified bench build".to_string());
+    }
+
+    let bench = load_and_verify_qualification_bench_evidence(
+        &input.benchEvidencePath,
+        reviewer,
+        serial,
+        &dossier_fingerprint,
+        &recovery_job_fingerprint,
+        &build.executor_build_fingerprint,
+    )?;
+    let decision = load_and_verify_qualification_decision(
+        &input.decisionPath,
+        reviewer,
+        serial,
+        &dossier_fingerprint,
+        &recovery_job_fingerprint,
+        &build.executor_build_fingerprint,
+    )?;
+    let decision_bench_fingerprint = decision
+        .bench_evidence_fingerprint
+        .as_deref()
+        .ok_or_else(|| "Accepted decision is missing bench-evidence fingerprint".to_string())?;
+    if !decision_bench_fingerprint.eq_ignore_ascii_case(&bench.receipt_fingerprint) {
+        return Err("Decision and bench-evidence fingerprints do not match".to_string());
+    }
+    let decision_packet_fingerprint = decision
+        .qualification_packet_fingerprint
+        .as_deref()
+        .ok_or_else(|| "Accepted decision is missing qualification-packet fingerprint".to_string())?;
+    if !decision_packet_fingerprint.eq_ignore_ascii_case(&bench.qualification_packet_fingerprint) {
+        return Err("Decision and bench evidence are bound to different qualification packets".to_string());
+    }
+    let decision_packet_path = decision
+        .qualification_packet_path
+        .as_deref()
+        .ok_or_else(|| "Accepted decision is missing qualification-packet path".to_string())?;
+    if decision_packet_path != bench.qualification_packet_path {
+        return Err("Decision and bench evidence reference different qualification-packet paths".to_string());
+    }
+    let decision_packet_file_sha256 = decision
+        .qualification_packet_file_sha256
+        .as_deref()
+        .ok_or_else(|| "Accepted decision is missing qualification-packet file SHA-256".to_string())?;
+    if !decision_packet_file_sha256
+        .eq_ignore_ascii_case(&bench.qualification_packet_file_sha256)
+    {
+        return Err("Decision and bench evidence reference different qualification-packet files".to_string());
+    }
+
+    let readiness = if let Some(path) = input
+        .readinessCertificatePath
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let review = bootforge_recovery_review_readiness_certificate(
+            path.to_string(),
+            Some(recovery_job_fingerprint.clone()),
+        )?;
+        if !review.safe_to_review {
+            return Err(format!(
+                "Readiness certificate is not safe to bundle: {}",
+                review.blockers.join("; ")
+            ));
+        }
+        Some(serde_json::json!({
+            "path": path,
+            "fileSha256": sha256_file(std::path::Path::new(path))?,
+            "certificateFingerprint": review.certificate_fingerprint,
+            "readinessStatus": review.readiness_status,
+        }))
+    } else {
+        None
+    };
+
+    let source_files = serde_json::json!({
+        "qualificationPacket": {
+            "path": bench.qualification_packet_path,
+            "fileSha256": bench.qualification_packet_file_sha256,
+            "packetFingerprint": bench.qualification_packet_fingerprint,
+        },
+        "qualificationDossier": {
+            "path": input.dossierPath,
+            "fileSha256": sha256_file(std::path::Path::new(&input.dossierPath))?,
+            "dossierFingerprint": dossier_fingerprint,
+        },
+        "benchEvidence": {
+            "path": input.benchEvidencePath,
+            "fileSha256": sha256_file(std::path::Path::new(&input.benchEvidencePath))?,
+            "receiptFingerprint": bench.receipt_fingerprint,
+            "qualificationPacketFingerprint": bench.qualification_packet_fingerprint,
+        },
+        "humanDecision": {
+            "path": input.decisionPath,
+            "fileSha256": sha256_file(std::path::Path::new(&input.decisionPath))?,
+            "receiptFingerprint": decision.receipt_fingerprint,
+            "qualificationPacketFingerprint": decision.qualification_packet_fingerprint,
+            "decision": decision.decision,
+        },
+        "readinessCertificate": readiness,
+    });
+
+    let generated_unix_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+
+    let material = serde_json::json!({
+        "schema": "com.bobbyblanco.bobfwtools.qualification-audit-bundle.v1",
+        "grantsExecutionAuthority": false,
+        "executionPerformed": false,
+        "reviewer": reviewer,
+        "deviceSerial": serial,
+        "recoveryJobFingerprint": recovery_job_fingerprint,
+        "executorBuildFingerprint": build.executor_build_fingerprint,
+        "qualificationPacketFingerprint": bench.qualification_packet_fingerprint,
+        "sourceFiles": source_files,
+        "generatedUnixSeconds": generated_unix_seconds,
+    });
+    let material_bytes = serde_json::to_vec(&material)
+        .map_err(|e| format!("Could not serialize qualification audit bundle material: {e}"))?;
+    let bundle_fingerprint = format!("{:x}", Sha256::digest(&material_bytes));
+    let bundle = serde_json::json!({
+        "bundleFingerprint": bundle_fingerprint,
+        "bundleMaterial": material,
+    });
+
+    std::fs::write(
+        &destination,
+        serde_json::to_vec_pretty(&bundle)
+            .map_err(|e| format!("Could not serialize qualification audit bundle: {e}"))?,
+    )
+    .map_err(|e| format!("Could not write qualification audit bundle: {e}"))?;
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "export-qualification-audit-bundle",
+        "elevated",
+        "verified-no-authority",
+        Some(serial.to_string()),
+        "Qualification audit bundle exported; bundle grants no execution authority.",
+        vec![
+            format!("reviewer:{}", reviewer),
+            format!("bundle-fingerprint:{}", bundle_fingerprint),
+            format!("recovery-job-fingerprint:{}", recovery_job_fingerprint),
+            format!("qualification-packet-fingerprint:{}", bench.qualification_packet_fingerprint),
+            format!("executor-build-fingerprint:{}", build.executor_build_fingerprint),
+        ],
+    );
+
+    Ok(destination.display().to_string())
+}
+
+
+#[cfg(feature = "qualified-flash")]
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QualificationAuditBundleReview {
+    path: String,
+    schema_valid: bool,
+    bundle_fingerprint_valid: bool,
+    recovery_job_matches_expected: bool,
+    executor_build_matches_current: bool,
+    source_files_match: bool,
+    source_semantics_valid: bool,
+    nested_evidence_chain_valid: bool,
+    grants_execution_authority_claimed: bool,
+    execution_performed_claimed: bool,
+    safe_to_review: bool,
+    blockers: Vec<String>,
+    bundle_fingerprint: Option<String>,
+    recovery_job_fingerprint: Option<String>,
+    executor_build_fingerprint: Option<String>,
+    qualification_packet_fingerprint: Option<String>,
+}
+
+#[cfg(feature = "qualified-flash")]
+#[tauri::command]
+fn bootforge_qualification_audit_bundle_review(
+    path: String,
+    expected_recovery_job_fingerprint: Option<String>,
+) -> Result<QualificationAuditBundleReview, String> {
+    use sha2::{Digest, Sha256};
+
+    let path_buf = std::path::PathBuf::from(&path);
+    if !path_buf.is_file() {
+        return Err(format!(
+            "Qualification audit bundle not found: {}",
+            path_buf.display()
+        ));
+    }
+    let bytes = std::fs::read(&path_buf)
+        .map_err(|e| format!("Could not read qualification audit bundle: {e}"))?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Qualification audit bundle is invalid JSON: {e}"))?;
+
+    let material = value
+        .get("bundleMaterial")
+        .cloned()
+        .ok_or_else(|| "Qualification audit bundle is missing bundleMaterial".to_string())?;
+    let material_bytes = serde_json::to_vec(&material)
+        .map_err(|e| format!("Could not canonicalize qualification audit bundle: {e}"))?;
+    let recomputed = format!("{:x}", Sha256::digest(&material_bytes));
+    let bundle_fingerprint = value
+        .get("bundleFingerprint")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let bundle_fingerprint_valid = bundle_fingerprint
+        .as_deref()
+        .map(|claimed| claimed.eq_ignore_ascii_case(&recomputed))
+        .unwrap_or(false);
+
+    let schema_valid = material
+        .get("schema")
+        .and_then(|v| v.as_str())
+        == Some("com.bobbyblanco.bobfwtools.qualification-audit-bundle.v1");
+    let grants_execution_authority_claimed = material
+        .get("grantsExecutionAuthority")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let execution_performed_claimed = material
+        .get("executionPerformed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    let recovery_job_fingerprint = material
+        .get("recoveryJobFingerprint")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let expected = expected_recovery_job_fingerprint
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let recovery_job_matches_expected = match (expected, recovery_job_fingerprint.as_deref()) {
+        (Some(expected), Some(actual)) => expected.eq_ignore_ascii_case(actual),
+        (Some(_), None) => false,
+        (None, _) => true,
+    };
+
+    let executor_build_fingerprint = material
+        .get("executorBuildFingerprint")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let qualification_packet_fingerprint = material
+        .get("qualificationPacketFingerprint")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let current_build = qualification_build_identity_snapshot();
+    let executor_build_matches_current = executor_build_fingerprint
+        .as_deref()
+        .map(|actual| actual == current_build.executor_build_fingerprint)
+        .unwrap_or(false);
+
+    let source_files = material
+        .get("sourceFiles")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| "Qualification audit bundle is missing sourceFiles".to_string())?;
+
+    let mut source_files_match = true;
+    let mut source_blockers = Vec::new();
+    for key in ["qualificationPacket", "qualificationDossier", "benchEvidence", "humanDecision"] {
+        let Some(entry) = source_files.get(key) else {
+            source_files_match = false;
+            source_blockers.push(format!("Audit bundle is missing source file entry: {key}"));
+            continue;
+        };
+        let Some(path) = entry.get("path").and_then(|v| v.as_str()) else {
+            source_files_match = false;
+            source_blockers.push(format!("Audit bundle source {key} is missing path"));
+            continue;
+        };
+        let Some(expected_hash) = entry.get("fileSha256").and_then(|v| v.as_str()) else {
+            source_files_match = false;
+            source_blockers.push(format!("Audit bundle source {key} is missing SHA-256"));
+            continue;
+        };
+        match sha256_file(std::path::Path::new(path)) {
+            Ok(actual) if actual.eq_ignore_ascii_case(expected_hash) => {}
+            Ok(_) => {
+                source_files_match = false;
+                source_blockers.push(format!("Audit bundle source file hash changed: {key}"));
+            }
+            Err(err) => {
+                source_files_match = false;
+                source_blockers.push(format!("Audit bundle source {key} cannot be verified: {err}"));
+            }
+        }
+    }
+
+    if let Some(readiness) = source_files.get("readinessCertificate") {
+        if !readiness.is_null() {
+            let path = readiness
+                .get("path")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "Audit bundle readiness certificate is missing path".to_string())?;
+            let expected_hash = readiness
+                .get("fileSha256")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "Audit bundle readiness certificate is missing SHA-256".to_string())?;
+            match sha256_file(std::path::Path::new(path)) {
+                Ok(actual) if actual.eq_ignore_ascii_case(expected_hash) => {}
+                Ok(_) => {
+                    source_files_match = false;
+                    source_blockers.push(
+                        "Audit bundle readiness certificate file hash changed".to_string(),
+                    );
+                }
+                Err(err) => {
+                    source_files_match = false;
+                    source_blockers.push(format!(
+                        "Audit bundle readiness certificate cannot be verified: {err}"
+                    ));
+                }
+            }
+        }
+    }
+
+    let mut source_semantics_valid = true;
+    let reviewer = material
+        .get("reviewer")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let device_serial = material
+        .get("deviceSerial")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    if reviewer.is_empty() {
+        source_semantics_valid = false;
+        source_blockers.push("Qualification audit bundle reviewer is missing".to_string());
+    }
+    if device_serial.is_empty() {
+        source_semantics_valid = false;
+        source_blockers.push("Qualification audit bundle device serial is missing".to_string());
+    }
+
+    if let (Some(job_fp), Some(dossier_entry), Some(bench_entry), Some(decision_entry)) = (
+        recovery_job_fingerprint.as_deref(),
+        source_files.get("qualificationDossier"),
+        source_files.get("benchEvidence"),
+        source_files.get("humanDecision"),
+    ) {
+        let dossier_path = dossier_entry.get("path").and_then(|v| v.as_str());
+        let bench_path = bench_entry.get("path").and_then(|v| v.as_str());
+        let decision_path = decision_entry.get("path").and_then(|v| v.as_str());
+
+        if let (Some(dossier_path), Some(bench_path), Some(decision_path)) =
+            (dossier_path, bench_path, decision_path)
+        {
+            match bootforge_qualification_review(
+                dossier_path.to_string(),
+                Some(job_fp.to_string()),
+            ) {
+                Ok(review) if review.safe_to_review => {
+                    let live_dossier_fp = review.dossier_fingerprint.unwrap_or_default();
+                    let bundled_dossier_fp = dossier_entry
+                        .get("dossierFingerprint")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    if !live_dossier_fp.eq_ignore_ascii_case(bundled_dossier_fp) {
+                        source_semantics_valid = false;
+                        source_blockers.push(
+                            "Audit bundle dossier fingerprint does not match live dossier verification"
+                                .to_string(),
+                        );
+                    }
+
+                    match load_and_verify_qualification_bench_evidence(
+                        bench_path,
+                        &reviewer,
+                        &device_serial,
+                        &live_dossier_fp,
+                        job_fp,
+                        &current_build.executor_build_fingerprint,
+                    ) {
+                        Ok(bench) => {
+                            let bundled_bench_fp = bench_entry
+                                .get("receiptFingerprint")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default();
+                            if !bench
+                                .receipt_fingerprint
+                                .eq_ignore_ascii_case(bundled_bench_fp)
+                            {
+                                source_semantics_valid = false;
+                                source_blockers.push(
+                                    "Audit bundle bench-evidence fingerprint does not match live verification"
+                                        .to_string(),
+                                );
+                            }
+                            let bundled_bench_packet_fp = bench_entry
+                                .get("qualificationPacketFingerprint")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default();
+                            if !bench
+                                .qualification_packet_fingerprint
+                                .eq_ignore_ascii_case(bundled_bench_packet_fp)
+                                || qualification_packet_fingerprint
+                                    .as_deref()
+                                    .map(|fp| fp.eq_ignore_ascii_case(&bench.qualification_packet_fingerprint))
+                                    != Some(true)
+                            {
+                                source_semantics_valid = false;
+                                source_blockers.push(
+                                    "Audit bundle bench evidence is bound to a different qualification packet"
+                                        .to_string(),
+                                );
+                            }
+
+                            match load_and_verify_qualification_decision(
+                                decision_path,
+                                &reviewer,
+                                &device_serial,
+                                &live_dossier_fp,
+                                job_fp,
+                                &current_build.executor_build_fingerprint,
+                            ) {
+                                Ok(decision) => {
+                                    let bundled_decision_fp = decision_entry
+                                        .get("receiptFingerprint")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or_default();
+                                    if !decision
+                                        .receipt_fingerprint
+                                        .eq_ignore_ascii_case(bundled_decision_fp)
+                                    {
+                                        source_semantics_valid = false;
+                                        source_blockers.push(
+                                            "Audit bundle decision fingerprint does not match live verification"
+                                                .to_string(),
+                                        );
+                                    }
+                                    if decision
+                                        .bench_evidence_fingerprint
+                                        .as_deref()
+                                        .map(|fp| {
+                                            fp.eq_ignore_ascii_case(
+                                                &bench.receipt_fingerprint,
+                                            )
+                                        })
+                                        != Some(true)
+                                    {
+                                        source_semantics_valid = false;
+                                        source_blockers.push(
+                                            "Audit bundle decision is not bound to the verified bench evidence"
+                                                .to_string(),
+                                        );
+                                    }
+                                    let bundled_decision_packet_fp = decision_entry
+                                        .get("qualificationPacketFingerprint")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or_default();
+                                    if decision
+                                        .qualification_packet_fingerprint
+                                        .as_deref()
+                                        .map(|fp| fp.eq_ignore_ascii_case(&bench.qualification_packet_fingerprint))
+                                        != Some(true)
+                                        || !bundled_decision_packet_fp
+                                            .eq_ignore_ascii_case(&bench.qualification_packet_fingerprint)
+                                    {
+                                        source_semantics_valid = false;
+                                        source_blockers.push(
+                                            "Audit bundle human decision is bound to a different qualification packet"
+                                                .to_string(),
+                                        );
+                                    }
+                                }
+                                Err(err) => {
+                                    source_semantics_valid = false;
+                                    source_blockers.push(format!(
+                                        "Audit bundle decision semantics failed verification: {err}"
+                                    ));
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            source_semantics_valid = false;
+                            source_blockers.push(format!(
+                                "Audit bundle bench-evidence semantics failed verification: {err}"
+                            ));
+                        }
+                    }
+                }
+                Ok(review) => {
+                    source_semantics_valid = false;
+                    source_blockers.push(format!(
+                        "Audit bundle dossier semantics are blocked: {}",
+                        review.blockers.join("; ")
+                    ));
+                }
+                Err(err) => {
+                    source_semantics_valid = false;
+                    source_blockers.push(format!(
+                        "Audit bundle dossier semantics failed verification: {err}"
+                    ));
+                }
+            }
+
+            if let Some(readiness) = source_files.get("readinessCertificate") {
+                if !readiness.is_null() {
+                    if let Some(readiness_path) =
+                        readiness.get("path").and_then(|v| v.as_str())
+                    {
+                        match bootforge_recovery_review_readiness_certificate(
+                            readiness_path.to_string(),
+                            Some(job_fp.to_string()),
+                        ) {
+                            Ok(review) if review.safe_to_review => {
+                                let bundled_fp = readiness
+                                    .get("certificateFingerprint")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or_default();
+                                if review
+                                    .certificate_fingerprint
+                                    .as_deref()
+                                    .map(|fp| fp.eq_ignore_ascii_case(bundled_fp))
+                                    != Some(true)
+                                {
+                                    source_semantics_valid = false;
+                                    source_blockers.push(
+                                        "Audit bundle readiness fingerprint does not match live verification"
+                                            .to_string(),
+                                    );
+                                }
+                            }
+                            Ok(review) => {
+                                source_semantics_valid = false;
+                                source_blockers.push(format!(
+                                    "Audit bundle readiness semantics are blocked: {}",
+                                    review.blockers.join("; ")
+                                ));
+                            }
+                            Err(err) => {
+                                source_semantics_valid = false;
+                                source_blockers.push(format!(
+                                    "Audit bundle readiness semantics failed verification: {err}"
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            source_semantics_valid = false;
+            source_blockers.push(
+                "Qualification audit bundle source paths are incomplete".to_string(),
+            );
+        }
+    } else {
+        source_semantics_valid = false;
+        source_blockers.push(
+            "Qualification audit bundle source chain is incomplete".to_string(),
+        );
+    }
+
+    let nested_result = (|| -> Result<(), String> {
+        if reviewer.trim().is_empty() || device_serial.trim().is_empty() {
+            return Err("Audit bundle reviewer or device serial is missing".to_string());
+        }
+        let expected_job = recovery_job_fingerprint
+            .as_deref()
+            .ok_or_else(|| "Audit bundle recovery-job fingerprint is missing".to_string())?;
+
+        let dossier_path = source_files
+            .get("qualificationDossier")
+            .and_then(|entry| entry.get("path"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "Audit bundle dossier path is missing".to_string())?;
+        let dossier_review = bootforge_qualification_review(
+            dossier_path.to_string(),
+            Some(expected_job.to_string()),
+        )?;
+        if !dossier_review.safe_to_review {
+            return Err(format!(
+                "Nested qualification dossier is blocked: {}",
+                dossier_review.blockers.join("; ")
+            ));
+        }
+        let dossier_fingerprint = dossier_review
+            .dossier_fingerprint
+            .ok_or_else(|| "Nested dossier fingerprint is unavailable".to_string())?;
+
+        let bench_path = source_files
+            .get("benchEvidence")
+            .and_then(|entry| entry.get("path"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "Audit bundle bench-evidence path is missing".to_string())?;
+        let bench = load_and_verify_qualification_bench_evidence(
+            bench_path,
+            &reviewer,
+            &device_serial,
+            &dossier_fingerprint,
+            expected_job,
+            &current_build.executor_build_fingerprint,
+        )?;
+
+        let decision_path = source_files
+            .get("humanDecision")
+            .and_then(|entry| entry.get("path"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "Audit bundle decision path is missing".to_string())?;
+        let decision = load_and_verify_qualification_decision(
+            decision_path,
+            &reviewer,
+            &device_serial,
+            &dossier_fingerprint,
+            expected_job,
+            &current_build.executor_build_fingerprint,
+        )?;
+        let decision_bench_fingerprint = decision
+            .bench_evidence_fingerprint
+            .as_deref()
+            .ok_or_else(|| "Nested decision is missing bench-evidence fingerprint".to_string())?;
+        if !decision_bench_fingerprint.eq_ignore_ascii_case(&bench.receipt_fingerprint) {
+            return Err(
+                "Nested decision does not reference the bundled bench-evidence receipt".to_string(),
+            );
+        }
+        let nested_decision_packet_fingerprint = decision
+            .qualification_packet_fingerprint
+            .as_deref()
+            .ok_or_else(|| "Nested decision is missing qualification-packet fingerprint".to_string())?;
+        if !nested_decision_packet_fingerprint
+            .eq_ignore_ascii_case(&bench.qualification_packet_fingerprint)
+        {
+            return Err(
+                "Nested decision and bench evidence reference different qualification packets"
+                    .to_string(),
+            );
+        }
+        let expected_packet_fingerprint = qualification_packet_fingerprint
+            .as_deref()
+            .ok_or_else(|| "Audit bundle is missing qualification-packet fingerprint".to_string())?;
+        if !expected_packet_fingerprint
+            .eq_ignore_ascii_case(&bench.qualification_packet_fingerprint)
+        {
+            return Err(
+                "Nested bench evidence does not match the audit bundle qualification packet"
+                    .to_string(),
+            );
+        }
+
+        if let Some(readiness) = source_files.get("readinessCertificate") {
+            if !readiness.is_null() {
+                let readiness_path = readiness
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "Nested readiness certificate path is missing".to_string())?;
+                let readiness_review = bootforge_recovery_review_readiness_certificate(
+                    readiness_path.to_string(),
+                    Some(expected_job.to_string()),
+                )?;
+                if !readiness_review.safe_to_review {
+                    return Err(format!(
+                        "Nested readiness certificate is blocked: {}",
+                        readiness_review.blockers.join("; ")
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    })();
+
+    let nested_evidence_chain_valid = nested_result.is_ok();
+    if let Err(err) = nested_result {
+        source_blockers.push(format!("Nested evidence chain verification failed: {err}"));
+    }
+
+    let mut blockers = source_blockers;
+    if !schema_valid {
+        blockers.push("Qualification audit bundle schema is not recognized".to_string());
+    }
+    if !bundle_fingerprint_valid {
+        blockers.push("Qualification audit bundle fingerprint verification failed".to_string());
+    }
+    if !recovery_job_matches_expected {
+        blockers.push("Qualification audit bundle is bound to a different recovery job".to_string());
+    }
+    if !executor_build_matches_current {
+        blockers.push("Qualification audit bundle was produced by a different executor build".to_string());
+    }
+    if !qualification_packet_fingerprint
+        .as_deref()
+        .map(valid_sha256_hex)
+        .unwrap_or(false)
+    {
+        blockers.push("Qualification audit bundle is missing a valid qualification-packet fingerprint".to_string());
+    }
+
+    if !source_semantics_valid {
+        blockers.push(
+            "Qualification audit bundle source semantics did not revalidate".to_string(),
+        );
+    }
+    if grants_execution_authority_claimed {
+        blockers.push("Qualification audit bundle improperly claims execution authority".to_string());
+    }
+    if execution_performed_claimed {
+        blockers.push("Qualification audit bundle improperly claims execution was performed".to_string());
+    }
+
+    let safe_to_review = blockers.is_empty();
+    let _ = crate::audit::record(
+        "Recovery",
+        "review-qualification-audit-bundle",
+        "elevated",
+        if safe_to_review { "verified" } else { "blocked" },
+        None,
+        "Qualification audit bundle reviewed; review grants no execution authority.",
+        vec![
+            format!("path:{}", path_buf.display()),
+            format!("bundle-fingerprint-valid:{}", bundle_fingerprint_valid),
+            format!("source-files-match:{}", source_files_match),
+            format!("source-semantics-valid:{}", source_semantics_valid),
+            format!("nested-evidence-chain-valid:{}", nested_evidence_chain_valid),
+            format!("job-match:{}", recovery_job_matches_expected),
+            format!("executor-build-match:{}", executor_build_matches_current),
+        ],
+    );
+
+    Ok(QualificationAuditBundleReview {
+        path,
+        schema_valid,
+        bundle_fingerprint_valid,
+        recovery_job_matches_expected,
+        executor_build_matches_current,
+        source_files_match,
+        source_semantics_valid,
+        nested_evidence_chain_valid,
+        grants_execution_authority_claimed,
+        execution_performed_claimed,
+        safe_to_review,
+        blockers,
+        bundle_fingerprint,
+        recovery_job_fingerprint,
+        executor_build_fingerprint,
+        qualification_packet_fingerprint,
+    })
+}
+
+#[cfg(all(test, feature = "qualified-flash"))]
+mod qualification_decision_tests {
+    use super::*;
+
+    fn passed_checks() -> QualifiedFlashPhysicalChecks {
+        QualifiedFlashPhysicalChecks {
+            repeatedEnumerationStable: true,
+            expectedModeConfirmed: true,
+            endpointStabilityConfirmed: true,
+            programmerHashVerified: true,
+            preflightMatched: true,
+            partitionBoundsVerified: true,
+            backupEvidencePresent: true,
+            destructiveBenchWritePassed: true,
+            postWriteVerificationPassed: true,
+        }
+    }
+
+    fn accepted_receipt() -> QualificationDecisionReceipt {
+        let mut receipt = QualificationDecisionReceipt {
+            schema: "com.bobbyblanco.bobfwtools.qualification-decision.v1".into(),
+            decision: "accept-evidence".into(),
+            grants_authority: false,
+            executor_qualified: false,
+            reviewer: "bench-reviewer".into(),
+            reviewer_notes: "verified".into(),
+            device_serial: "SERIAL123".into(),
+            dossier_fingerprint: "a".repeat(64),
+            recovery_job_fingerprint: "b".repeat(64),
+            executor_build_fingerprint: "c".repeat(64),
+            bench_evidence_fingerprint: Some("d".repeat(64)),
+            qualification_packet_path: {
+                let path = std::env::temp_dir().join(format!(
+                    "bobfwtools-packet-{}.json",
+                    uuid::Uuid::new_v4()
+                ));
+                std::fs::write(&path, b"{\"packet\":\"fixture\"}").expect("write packet fixture");
+                Some(path.display().to_string())
+            },
+            qualification_packet_file_sha256: None,
+            qualification_packet_fingerprint: Some("e".repeat(64)),
+            physical_checks: passed_checks(),
+            generated_unix_seconds: 1_700_000_000,
+            receipt_fingerprint: String::new(),
+        };
+        receipt.qualification_packet_file_sha256 = Some(
+            sha256_file(std::path::Path::new(
+                receipt
+                    .qualification_packet_path
+                    .as_deref()
+                    .expect("packet fixture path"),
+            ))
+            .expect("packet fixture hash"),
+        );
+        receipt.receipt_fingerprint =
+            qualification_decision_fingerprint(&receipt).expect("fingerprint");
+        receipt
+    }
+
+    fn write_receipt(receipt: &QualificationDecisionReceipt) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "bobfwtools-decision-{}.json",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::write(
+            &path,
+            serde_json::to_vec_pretty(receipt).expect("serialize receipt"),
+        )
+        .expect("write receipt");
+        path
+    }
+
+    #[test]
+    fn accepted_decision_verifies_when_every_binding_matches() {
+        let receipt = accepted_receipt();
+        let path = write_receipt(&receipt);
+        let verified = load_and_verify_qualification_decision(
+            path.to_str().expect("path"),
+            "bench-reviewer",
+            "SERIAL123",
+            &"a".repeat(64),
+            &"b".repeat(64),
+            &"c".repeat(64),
+        )
+        .expect("accepted receipt should verify");
+        assert_eq!(verified.receipt_fingerprint, receipt.receipt_fingerprint);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn decision_receipt_rejects_tampering_and_authority_claims() {
+        let mut tampered = accepted_receipt();
+        tampered.reviewer_notes = "changed after fingerprint".into();
+        let tampered_path = write_receipt(&tampered);
+        assert!(load_and_verify_qualification_decision(
+            tampered_path.to_str().expect("path"),
+            "bench-reviewer",
+            "SERIAL123",
+            &"a".repeat(64),
+            &"b".repeat(64),
+            &"c".repeat(64),
+        )
+        .is_err());
+        let _ = std::fs::remove_file(tampered_path);
+
+        let mut authority = accepted_receipt();
+        authority.grants_authority = true;
+        authority.receipt_fingerprint =
+            qualification_decision_fingerprint(&authority).expect("fingerprint");
+        let authority_path = write_receipt(&authority);
+        assert!(load_and_verify_qualification_decision(
+            authority_path.to_str().expect("path"),
+            "bench-reviewer",
+            "SERIAL123",
+            &"a".repeat(64),
+            &"b".repeat(64),
+            &"c".repeat(64),
+        )
+        .is_err());
+        let _ = std::fs::remove_file(authority_path);
+    }
+
+    #[test]
+    fn rejected_decision_cannot_unlock_production_authority() {
+        let mut receipt = accepted_receipt();
+        receipt.decision = "reject-evidence".into();
+        receipt.receipt_fingerprint =
+            qualification_decision_fingerprint(&receipt).expect("fingerprint");
+        let path = write_receipt(&receipt);
+        assert!(load_and_verify_qualification_decision(
+            path.to_str().expect("path"),
+            "bench-reviewer",
+            "SERIAL123",
+            &"a".repeat(64),
+            &"b".repeat(64),
+            &"c".repeat(64),
+        )
+        .is_err());
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+#[cfg(feature = "qualified-flash")]
+fn qualified_flash_grant_material(grant: &QualifiedFlashGrant) -> Result<Vec<u8>, String> {
+    let value = serde_json::json!({
+        "schema": grant.schema,
+        "qualificationStatus": grant.qualificationStatus,
+        "executorQualified": grant.executorQualified,
+        "deviceSerial": grant.deviceSerial,
+        "executorBuildFingerprint": grant.executorBuildFingerprint,
+        "recoveryJobFingerprint": grant.recoveryJobFingerprint,
+        "approvedPartitions": grant.approvedPartitions,
+        "wipeUserDataAllowed": grant.wipeUserDataAllowed,
+        "autoRebootAllowed": grant.autoRebootAllowed,
+        "issuedAtUnixSeconds": grant.issuedAtUnixSeconds,
+        "expiresAtUnixSeconds": grant.expiresAtUnixSeconds,
+        "dossierFingerprint": grant.dossierFingerprint,
+        "auditBundleFingerprint": grant.auditBundleFingerprint,
+        "qualificationPacketFileSha256": grant.qualificationPacketFileSha256,
+        "qualificationPacketFingerprint": grant.qualificationPacketFingerprint,
+    });
+    serde_json::to_vec(&value)
+        .map_err(|e| format!("Could not serialize qualified flash grant material: {e}"))
+}
+
+#[cfg(feature = "qualified-flash")]
+fn qualified_flash_grant_mac(secret: &str, grant: &QualifiedFlashGrant) -> Result<String, String> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    type HmacSha256 = Hmac<Sha256>;
+    let material = qualified_flash_grant_material(grant)?;
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|e| format!("Could not initialize flash grant MAC: {e}"))?;
+    mac.update(&material);
+    Ok(format!("{:x}", mac.finalize().into_bytes()))
+}
+
+#[cfg(feature = "qualified-flash")]
+fn pre_destructive_flash_checks_passed(checks: &QualifiedFlashPhysicalChecks) -> bool {
+    checks.repeatedEnumerationStable
+        && checks.expectedModeConfirmed
+        && checks.endpointStabilityConfirmed
+        && checks.programmerHashVerified
+        && checks.preflightMatched
+        && checks.partitionBoundsVerified
+        && checks.backupEvidencePresent
+}
+
+#[cfg(feature = "qualified-flash")]
+fn all_physical_flash_checks_passed(checks: &QualifiedFlashPhysicalChecks) -> bool {
+    checks.repeatedEnumerationStable
+        && checks.expectedModeConfirmed
+        && checks.endpointStabilityConfirmed
+        && checks.programmerHashVerified
+        && checks.preflightMatched
+        && checks.partitionBoundsVerified
+        && checks.backupEvidencePresent
+        && checks.destructiveBenchWritePassed
+        && checks.postWriteVerificationPassed
+}
+
+#[cfg(feature = "qualified-flash")]
+#[tauri::command]
+fn bootforge_issue_qualification_trial_grant(
+    state: tauri::State<'_, AppState>,
+    input: QualifiedFlashApprovalInput,
+) -> Result<QualifiedFlashGrant, String> {
+    let serial = input.deviceSerial.trim();
+    if serial.is_empty() {
+        return Err("Qualified device serial is required".to_string());
+    }
+    let expected_confirmation = format!("BENCH QUALIFY {}", serial);
+    if input.confirmation.trim() != expected_confirmation {
+        return Err(format!(
+            "Explicit bench qualification confirmation required: {}",
+            expected_confirmation
+        ));
+    }
+    if input.reviewer.trim().is_empty() {
+        return Err("Physical qualification reviewer identity is required".to_string());
+    }
+    if !pre_destructive_flash_checks_passed(&input.physicalChecks) {
+        return Err(
+            "Every non-destructive qualification check must pass before a bench trial"
+                .to_string(),
+        );
+    }
+    if input.expiresInMinutes == 0 || input.expiresInMinutes > 10 {
+        return Err("Bench trial grants must expire within 1-10 minutes".to_string());
+    }
+    if input.partitions.len() != 1 {
+        return Err("Bench qualification trial must target exactly one partition".to_string());
+    }
+    if input.wipeUserDataAllowed || input.autoRebootAllowed {
+        return Err("Bench qualification trial cannot authorize wipe or automatic reboot".to_string());
+    }
+    if !exact_fastboot_device_present(serial)? {
+        return Err("Exact bench fastboot device is not currently connected".to_string());
+    }
+
+    let review = bootforge_qualification_review(
+        input.dossierPath.clone(),
+        Some(input.expectedRecoveryJobFingerprint.clone()),
+    )?;
+    if !review.safe_to_review {
+        return Err(format!(
+            "Qualification dossier is not safe for a bench trial: {}",
+            review.blockers.join("; ")
+        ));
+    }
+    let dossier_fingerprint = review
+        .dossier_fingerprint
+        .ok_or_else(|| "Verified dossier fingerprint is unavailable".to_string())?;
+    let recovery_job_fingerprint = review
+        .recovery_job_fingerprint
+        .ok_or_else(|| "Verified recovery-job fingerprint is unavailable".to_string())?;
+    let build = qualification_build_identity_snapshot();
+    if !build.qualified_flash_compiled {
+        return Err("This build does not contain the qualified destructive writer".to_string());
+    }
+
+    let partition = &input.partitions[0];
+    let name = partition.name.trim();
+    let trial_allowed = [
+        "boot", "system", "vendor", "userdata", "cache", "recovery", "vbmeta", "dtbo",
+    ];
+    if !trial_allowed.contains(&name) {
+        return Err(format!(
+            "Partition '{}' is too sensitive for first-stage bench qualification",
+            name
+        ));
+    }
+    if !valid_sha256_hex(&partition.expectedSha256) {
+        return Err(format!("Expected SHA-256 is invalid for partition {}", name));
+    }
+    let actual = sha256_file(std::path::Path::new(&partition.imagePath))?;
+    if !actual.eq_ignore_ascii_case(&partition.expectedSha256) {
+        return Err(format!(
+            "On-disk image hash does not match bench qualification input for {}",
+            name
+        ));
+    }
+
+    let issued_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+    let expires_at = issued_at
+        .checked_add(input.expiresInMinutes * 60)
+        .ok_or_else(|| "Bench trial grant expiry overflow".to_string())?;
+
+    let mut grant = QualifiedFlashGrant {
+        schema: "com.bobbyblanco.bobfwtools.qualified-flash-grant.v1".into(),
+        qualificationStatus: "qualification-trial".into(),
+        executorQualified: false,
+        deviceSerial: serial.to_string(),
+        executorBuildFingerprint: build.executor_build_fingerprint,
+        recoveryJobFingerprint: recovery_job_fingerprint,
+        approvedPartitions: vec![QualifiedFlashPartitionGrant {
+            name: name.to_string(),
+            imageSha256: actual,
+        }],
+        wipeUserDataAllowed: false,
+        autoRebootAllowed: false,
+        issuedAtUnixSeconds: issued_at,
+        expiresAtUnixSeconds: expires_at,
+        dossierFingerprint: dossier_fingerprint,
+        auditBundleFingerprint: None,
+        qualificationPacketFileSha256: None,
+        qualificationPacketFingerprint: None,
+        grantMac: String::new(),
+    };
+    grant.grantMac = qualified_flash_grant_mac(&state.qualification_grant_secret, &grant)?;
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "issue-qualification-trial-grant",
+        "destructive",
+        "bench-trial-short-lived",
+        Some(serial.to_string()),
+        "One-shot bench qualification capability issued; executor remains unqualified.",
+        vec![
+            format!("reviewer:{}", input.reviewer.trim()),
+            format!("reviewer-notes:{}", input.reviewerNotes.trim()),
+            format!("partition:{}", name),
+            format!("image-sha256:{}", grant.approvedPartitions[0].imageSha256),
+            format!("recovery-job-fingerprint:{}", grant.recoveryJobFingerprint),
+            format!("dossier-fingerprint:{}", grant.dossierFingerprint),
+            format!("executor-build-fingerprint:{}", grant.executorBuildFingerprint),
+            format!("expires-at:{}", grant.expiresAtUnixSeconds),
+        ],
+    );
+
+    Ok(grant)
+}
+
+#[cfg(feature = "qualified-flash")]
+#[tauri::command]
+fn bootforge_issue_qualified_flash_grant(
+    state: tauri::State<'_, AppState>,
+    input: QualifiedFlashApprovalInput,
+) -> Result<QualifiedFlashGrant, String> {
+    let serial = input.deviceSerial.trim();
+    if serial.is_empty() {
+        return Err("Qualified device serial is required".to_string());
+    }
+    let expected_confirmation = format!("QUALIFY {}", serial);
+    if input.confirmation.trim() != expected_confirmation {
+        return Err(format!(
+            "Explicit qualification confirmation required: {}",
+            expected_confirmation
+        ));
+    }
+    if input.reviewer.trim().is_empty() {
+        return Err("Physical qualification reviewer identity is required".to_string());
+    }
+    if !all_physical_flash_checks_passed(&input.physicalChecks) {
+        return Err(
+            "Every physical qualification check, including destructive bench write and post-write verification, must pass"
+                .to_string(),
+        );
+    }
+    if input.expiresInMinutes == 0 || input.expiresInMinutes > 30 {
+        return Err("Qualified flash grants must expire within 1-30 minutes".to_string());
+    }
+    if !exact_fastboot_device_present(serial)? {
+        return Err("Exact qualified fastboot device is not currently connected".to_string());
+    }
+
+    let review = bootforge_qualification_review(
+        input.dossierPath.clone(),
+        Some(input.expectedRecoveryJobFingerprint.clone()),
+    )?;
+    if !review.safe_to_review {
+        return Err(format!(
+            "Qualification dossier is not safe to approve: {}",
+            review.blockers.join("; ")
+        ));
+    }
+    let dossier_fingerprint = review
+        .dossier_fingerprint
+        .ok_or_else(|| "Verified dossier fingerprint is unavailable".to_string())?;
+    let recovery_job_fingerprint = review
+        .recovery_job_fingerprint
+        .ok_or_else(|| "Verified recovery-job fingerprint is unavailable".to_string())?;
+    let build = qualification_build_identity_snapshot();
+    if !build.qualified_flash_compiled {
+        return Err("This build does not contain the qualified destructive writer".to_string());
+    }
+
+    let audit_bundle_path = input
+        .auditBundlePath
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            "Production-qualified grant requires a verified qualification audit bundle"
+                .to_string()
+        })?;
+    let audit_bundle_review = bootforge_qualification_audit_bundle_review(
+        audit_bundle_path.to_string(),
+        Some(recovery_job_fingerprint.clone()),
+    )?;
+    if !audit_bundle_review.safe_to_review {
+        return Err(format!(
+            "Qualification audit bundle is not safe to approve: {}",
+            audit_bundle_review.blockers.join("; ")
+        ));
+    }
+
+    let audit_bundle_fingerprint = audit_bundle_review
+        .bundle_fingerprint
+        .clone()
+        .filter(|value| valid_sha256_hex(value))
+        .ok_or_else(|| {
+            "Verified qualification audit bundle is missing a valid fingerprint".to_string()
+        })?;
+    let audit_bundle_packet_fingerprint = audit_bundle_review
+        .qualification_packet_fingerprint
+        .clone()
+        .filter(|value| valid_sha256_hex(value))
+        .ok_or_else(|| {
+            "Verified qualification audit bundle is missing qualification-packet fingerprint".to_string()
+        })?;
+
+    let decision_path = input
+        .reviewDecisionPath
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            "Production-qualified grant requires an accepted qualification decision receipt"
+                .to_string()
+        })?;
+    let decision_receipt = load_and_verify_qualification_decision(
+        decision_path,
+        input.reviewer.trim(),
+        serial,
+        &dossier_fingerprint,
+        &recovery_job_fingerprint,
+        &build.executor_build_fingerprint,
+    )?;
+
+    let bench_path = input
+        .benchEvidencePath
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            "Production-qualified grant requires the verified bench-evidence receipt"
+                .to_string()
+        })?;
+    let bench_receipt = load_and_verify_qualification_bench_evidence(
+        bench_path,
+        input.reviewer.trim(),
+        serial,
+        &dossier_fingerprint,
+        &recovery_job_fingerprint,
+        &build.executor_build_fingerprint,
+    )?;
+    let decision_bench_fingerprint = decision_receipt
+        .bench_evidence_fingerprint
+        .as_deref()
+        .ok_or_else(|| {
+            "Accepted qualification decision is missing its bench-evidence fingerprint"
+                .to_string()
+        })?;
+    if !decision_bench_fingerprint.eq_ignore_ascii_case(&bench_receipt.receipt_fingerprint) {
+        return Err(
+            "Qualification decision is bound to a different bench-evidence receipt".to_string(),
+        );
+    }
+    if bench_receipt.physical_checks != input.physicalChecks {
+        return Err(
+            "Production grant checks do not exactly match the verified bench-evidence receipt"
+                .to_string(),
+        );
+    }
+    if !bench_receipt
+        .qualification_packet_fingerprint
+        .eq_ignore_ascii_case(&audit_bundle_packet_fingerprint)
+    {
+        return Err("Production grant audit bundle is bound to a different qualification packet".to_string());
+    }
+    let decision_packet_fingerprint = decision_receipt
+        .qualification_packet_fingerprint
+        .as_deref()
+        .ok_or_else(|| "Accepted qualification decision is missing qualification-packet fingerprint".to_string())?;
+    if !decision_packet_fingerprint
+        .eq_ignore_ascii_case(&bench_receipt.qualification_packet_fingerprint)
+    {
+        return Err("Production grant decision is bound to a different qualification packet".to_string());
+    }
+
+    let mut expected_bench_partitions = bench_receipt.partitions.clone();
+    expected_bench_partitions.sort_by(|a, b| a.name.cmp(&b.name));
+    let mut requested_partitions = input.partitions.clone();
+    requested_partitions.sort_by(|a, b| a.name.cmp(&b.name));
+    if expected_bench_partitions != requested_partitions {
+        return Err(
+            "Production grant partition inputs do not exactly match the verified bench-evidence receipt"
+                .to_string(),
+        );
+    }
+
+    let allowed_partitions = [
+        "boot", "system", "vendor", "userdata", "cache", "recovery",
+        "bootloader", "radio", "aboot", "vbmeta", "dtbo", "persist",
+    ];
+    let mut approved_partitions = Vec::new();
+    for partition in &input.partitions {
+        let name = partition.name.trim();
+        if !allowed_partitions.contains(&name) {
+            return Err(format!(
+                "Partition '{}' is not approved by the destructive writer allowlist",
+                name
+            ));
+        }
+        if !valid_sha256_hex(&partition.expectedSha256) {
+            return Err(format!("Expected SHA-256 is invalid for partition {}", name));
+        }
+        let actual = sha256_file(std::path::Path::new(&partition.imagePath))?;
+        if !actual.eq_ignore_ascii_case(&partition.expectedSha256) {
+            return Err(format!(
+                "On-disk image hash does not match qualification input for {}",
+                name
+            ));
+        }
+        approved_partitions.push(QualifiedFlashPartitionGrant {
+            name: name.to_string(),
+            imageSha256: actual,
+        });
+    }
+    if approved_partitions.is_empty() {
+        return Err("At least one qualified partition image is required".to_string());
+    }
+
+    let issued_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+    let expires_at = issued_at
+        .checked_add(input.expiresInMinutes * 60)
+        .ok_or_else(|| "Qualification grant expiry overflow".to_string())?;
+
+    let mut grant = QualifiedFlashGrant {
+        schema: "com.bobbyblanco.bobfwtools.qualified-flash-grant.v1".into(),
+        qualificationStatus: "approved".into(),
+        executorQualified: true,
+        deviceSerial: serial.to_string(),
+        executorBuildFingerprint: build.executor_build_fingerprint,
+        recoveryJobFingerprint: recovery_job_fingerprint,
+        approvedPartitions: approved_partitions,
+        wipeUserDataAllowed: input.wipeUserDataAllowed,
+        autoRebootAllowed: input.autoRebootAllowed,
+        issuedAtUnixSeconds: issued_at,
+        expiresAtUnixSeconds: expires_at,
+        dossierFingerprint: dossier_fingerprint,
+        auditBundleFingerprint: Some(audit_bundle_fingerprint.clone()),
+        qualificationPacketFileSha256: Some(
+            bench_receipt.qualification_packet_file_sha256.clone(),
+        ),
+        qualificationPacketFingerprint: Some(bench_receipt.qualification_packet_fingerprint.clone()),
+        grantMac: String::new(),
+    };
+    grant.grantMac = qualified_flash_grant_mac(&state.qualification_grant_secret, &grant)?;
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "issue-qualified-flash-grant",
+        "destructive",
+        "approved-short-lived",
+        Some(serial.to_string()),
+        "Short-lived qualified flash grant issued after explicit physical qualification review.",
+        vec![
+            format!("reviewer:{}", input.reviewer.trim()),
+            format!("reviewer-notes:{}", input.reviewerNotes.trim()),
+            format!("recovery-job-fingerprint:{}", grant.recoveryJobFingerprint),
+            format!("dossier-fingerprint:{}", grant.dossierFingerprint),
+            format!(
+                "qualification-decision-fingerprint:{}",
+                decision_receipt.receipt_fingerprint
+            ),
+            format!(
+                "qualification-packet-file-sha256:{}",
+                bench_receipt.qualification_packet_file_sha256
+            ),
+            format!(
+                "qualification-packet-fingerprint:{}",
+                bench_receipt.qualification_packet_fingerprint
+            ),
+            format!("executor-build-fingerprint:{}", grant.executorBuildFingerprint),
+            format!("expires-at:{}", grant.expiresAtUnixSeconds),
+            format!(
+                "approved-partitions:{}",
+                grant
+                    .approvedPartitions
+                    .iter()
+                    .map(|p| p.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+        ],
+    );
+
+    Ok(grant)
+}
+
+// Single construction seam for the qualified executor; tests inspect argv without execution.
+#[cfg(feature = "qualified-flash")]
+fn qualified_fastboot_flash_command(serial: &str, partition: &str, image: &str) -> Command {
+    let mut cmd = Command::new("fastboot");
+    cmd.arg("-s").arg(serial).arg("flash").arg(partition).arg(image);
+    cmd
+}
+
+// Pure fastboot result classification. A successful process exit with a protocol FAIL is still failure.
+#[cfg(feature = "qualified-flash")]
+fn qualified_fastboot_write_result(exit_success: bool, stdout: &str, stderr: &str) -> Result<(), String> {
+    if !exit_success {
+        return Err("Fastboot write exited unsuccessfully".into());
+    }
+    if stdout.lines().chain(stderr.lines()).any(|line| {
+        let normalized = line.trim().to_ascii_uppercase();
+        normalized.starts_with("FAILED (") || normalized.starts_with("FAILED:") || normalized.starts_with("FAIL (")
+    }) {
+        return Err("Fastboot reported a write failure".into());
+    }
+    Ok(())
+}
+
+#[cfg(feature = "qualified-flash")]
+fn execute_qualified_fastboot_write<F>(command: Command, execute: F) -> Result<std::process::Output, String>
+where F: FnOnce(Command) -> std::io::Result<std::process::Output> {
+    let output = execute(command).map_err(|error| format!("Fastboot command execution failed: {error}"))?;
+    qualified_fastboot_write_result(output.status.success(),
+        &String::from_utf8_lossy(&output.stdout), &String::from_utf8_lossy(&output.stderr))?;
+    Ok(output)
+}
+
+#[cfg(feature = "qualified-flash")]
+fn validate_qualified_flash_config(config: &FlashJobConfig, grant_secret: &str) -> Result<(), String> {
+    let grant = &config.qualificationGrant;
+    if grant.schema != "com.bobbyblanco.bobfwtools.qualified-flash-grant.v1" {
+        return Err("Qualified flash grant schema is not recognized".to_string());
+    }
+    if !valid_sha256_hex(&grant.grantMac) {
+        return Err("Qualified flash grant MAC is malformed".to_string());
+    }
+    let expected_mac = qualified_flash_grant_mac(grant_secret, grant)?;
+    if !expected_mac.eq_ignore_ascii_case(&grant.grantMac) {
+        return Err("Qualified flash grant authentication failed".to_string());
+    }
+    let is_approved = grant.qualificationStatus == "approved" && grant.executorQualified;
+    let is_trial = grant.qualificationStatus == "qualification-trial" && !grant.executorQualified;
+    if !is_approved && !is_trial {
+        return Err("Destructive executor authority is not valid for this operation".to_string());
+    }
+    if !valid_sha256_hex(&grant.dossierFingerprint) {
+        return Err("Qualified flash grant dossier fingerprint is invalid".to_string());
+    }
+    if is_approved {
+        let audit_fingerprint = grant
+            .auditBundleFingerprint
+            .as_deref()
+            .ok_or_else(|| "Production-qualified grant is missing its audit-bundle fingerprint".to_string())?;
+        if !valid_sha256_hex(audit_fingerprint) {
+            return Err("Production-qualified grant audit-bundle fingerprint is invalid".to_string());
+        }
+        let packet_file_sha256 = grant
+            .qualificationPacketFileSha256
+            .as_deref()
+            .ok_or_else(|| "Production-qualified grant is missing its qualification-packet file SHA-256".to_string())?;
+        if !valid_sha256_hex(packet_file_sha256) {
+            return Err("Production-qualified grant qualification-packet file SHA-256 is invalid".to_string());
+        }
+        let packet_fingerprint = grant
+            .qualificationPacketFingerprint
+            .as_deref()
+            .ok_or_else(|| "Production-qualified grant is missing its qualification-packet fingerprint".to_string())?;
+        if !valid_sha256_hex(packet_fingerprint) {
+            return Err("Production-qualified grant qualification-packet fingerprint is invalid".to_string());
+        }
+    } else if grant.auditBundleFingerprint.is_some()
+        || grant.qualificationPacketFileSha256.is_some()
+        || grant.qualificationPacketFingerprint.is_some()
+    {
+        return Err("Bench qualification trial must not carry production audit-bundle or qualification-packet authority".to_string());
+    }
+    if is_trial {
+        if config.partitions.len() != 1 || grant.approvedPartitions.len() != 1 {
+            return Err("Bench qualification trial is restricted to exactly one partition".to_string());
+        }
+        if config.wipeUserData || config.autoReboot {
+            return Err("Bench qualification trial cannot wipe userdata or reboot automatically".to_string());
+        }
+        let name = config.partitions[0].name.trim();
+        let trial_allowed = [
+            "boot", "system", "vendor", "userdata", "cache", "recovery", "vbmeta", "dtbo",
+        ];
+        if !trial_allowed.contains(&name) {
+            return Err(format!(
+                "Partition '{}' is too sensitive for a bench qualification trial",
+                name
+            ));
+        }
+    }
+    if grant.deviceSerial != config.deviceSerial {
+        return Err("Qualified flash grant is bound to a different device serial".to_string());
+    }
+    if !valid_sha256_hex(&grant.recoveryJobFingerprint) {
+        return Err("Qualified flash grant recovery-job fingerprint is invalid".to_string());
+    }
+    let build = qualification_build_identity_snapshot();
+    if grant.executorBuildFingerprint != build.executor_build_fingerprint {
+        return Err("Qualified flash grant is bound to a different executor build".to_string());
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System clock error: {e}"))?
+        .as_secs();
+    if grant.expiresAtUnixSeconds <= now {
+        return Err("Qualified flash grant has expired".to_string());
+    }
+    if config.wipeUserData && !grant.wipeUserDataAllowed {
+        return Err("Qualified flash grant does not authorize userdata wipe".to_string());
+    }
+    if config.autoReboot && !grant.autoRebootAllowed {
+        return Err("Qualified flash grant does not authorize automatic reboot".to_string());
+    }
+    if !config.verifyAfterFlash {
+        return Err(
+            "Qualified destructive writes require post-write target verification".to_string(),
+        );
+    }
+
+    let allowed_partitions = [
+        "boot", "system", "vendor", "userdata", "cache", "recovery",
+        "bootloader", "radio", "aboot", "vbmeta", "dtbo", "persist",
+    ];
+
+    for partition in &config.partitions {
+        let name = partition.name.trim();
+        if !allowed_partitions.contains(&name) {
+            return Err(format!("Partition '{}' is not approved by the destructive writer allowlist", name));
+        }
+        if !valid_sha256_hex(&partition.expectedSha256) {
+            return Err(format!("Expected SHA-256 is invalid for partition {}", name));
+        }
+        let approved = grant
+            .approvedPartitions
+            .iter()
+            .find(|approved| approved.name == name)
+            .ok_or_else(|| format!("Partition '{}' is not present in the qualification grant", name))?;
+        if !approved.imageSha256.eq_ignore_ascii_case(&partition.expectedSha256) {
+            return Err(format!("Qualification grant hash does not match the requested image for {}", name));
+        }
+        let path = std::path::Path::new(&partition.imagePath);
+        let actual = sha256_file(path)?;
+        if !actual.eq_ignore_ascii_case(&partition.expectedSha256) {
+            return Err(format!("On-disk image hash does not match the qualified hash for {}", name));
+        }
+        let actual_size = std::fs::metadata(path)
+            .map_err(|e| format!("Could not read image metadata for {}: {e}", path.display()))?
+            .len();
+        if partition.size != 0 && partition.size != actual_size {
+            return Err(format!(
+                "Image size mismatch for {}: configured={} actual={}",
+                name, partition.size, actual_size
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "qualified-flash")]
+fn consume_qualification_grant(
+    consumed: &mut HashSet<String>,
+    grant_mac: &str,
+) -> Result<(), String> {
+    let key = grant_mac.trim().to_ascii_lowercase();
+    if !valid_sha256_hex(&key) {
+        return Err("Qualified flash grant MAC is malformed".to_string());
+    }
+    if !consumed.insert(key) {
+        return Err("Qualified flash grant has already been consumed".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(feature = "qualified-flash")]
+fn audit_qualified_flash_event(
+    config: &FlashJobConfig,
+    job_id: &str,
+    action: &str,
+    outcome: &str,
+    message: impl Into<String>,
+    mut evidence: Vec<String>,
+) {
+    evidence.push(format!("job-id:{job_id}"));
+    evidence.push(format!(
+        "qualification-status:{}",
+        config.qualificationGrant.qualificationStatus
+    ));
+    evidence.push(format!(
+        "dossier-fingerprint:{}",
+        config.qualificationGrant.dossierFingerprint
+    ));
+    evidence.push(format!(
+        "recovery-job-fingerprint:{}",
+        config.qualificationGrant.recoveryJobFingerprint
+    ));
+    evidence.push(format!(
+        "executor-build-fingerprint:{}",
+        config.qualificationGrant.executorBuildFingerprint
+    ));
+    evidence.push(format!(
+        "qualification-packet-fingerprint:{}",
+        config
+            .qualificationGrant
+            .qualificationPacketFingerprint
+            .clone()
+            .unwrap_or_else(|| "<trial-none>".to_string())
+    ));
+    let _ = crate::audit::record(
+        "Recovery",
+        action,
+        "destructive",
+        outcome,
+        Some(config.deviceSerial.clone()),
+        message.into(),
+        evidence,
+    );
 }
 
 #[cfg(feature = "qualified-flash")]
@@ -580,12 +4810,12 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
         return Err("At least one partition is required".to_string());
     }
 
-    // Partition name allowlist (standard Android partitions only)
-    let allowed_partitions = [
-        "boot", "system", "vendor", "userdata", "cache", "recovery",
-        "bootloader", "radio", "aboot", "vbmeta", "dtbo", "persist"
-    ];
-    
+    validate_qualified_flash_config(&config, &state.qualification_grant_secret)?;
+
+    if !exact_fastboot_device_present(&config.deviceSerial)? {
+        return Err("Qualified target is not the currently connected fastboot device".to_string());
+    }
+
     for p in &config.partitions {
         let partition_name = p.name.trim();
         if partition_name.is_empty() {
@@ -595,10 +4825,6 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
         if !partition_name.chars().all(|c| c.is_alphanumeric() || c == '.' || c == '-' || c == '_') {
             return Err(format!("Invalid partition name format: {}", partition_name));
         }
-        // Additional check: warn if partition is not in allowlist (but allow it anyway for flexibility)
-        if !allowed_partitions.contains(&partition_name) {
-            eprintln!("WARNING: Partition '{}' is not in the standard allowlist", partition_name);
-        }
         if p.imagePath.trim().is_empty() {
             return Err(format!("imagePath missing for partition {}", p.name));
         }
@@ -607,6 +4833,30 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
             return Err(format!("Image file not found: {}", p.imagePath));
         }
     }
+
+    {
+        let mut consumed = state
+            .consumed_qualification_grants
+            .lock()
+            .map_err(|_| "consumed qualification grants mutex poisoned".to_string())?;
+        consume_qualification_grant(&mut consumed, &config.qualificationGrant.grantMac)?;
+    }
+
+    let _ = crate::audit::record(
+        "Recovery",
+        "consume-qualified-flash-grant",
+        "destructive",
+        "single-use-authority-consumed",
+        Some(config.deviceSerial.clone()),
+        "Qualified destructive capability consumed atomically before job creation.",
+        vec![
+            format!("grant-mac:{}", config.qualificationGrant.grantMac),
+            format!("qualification-status:{}", config.qualificationGrant.qualificationStatus),
+            format!("dossier-fingerprint:{}", config.qualificationGrant.dossierFingerprint),
+            format!("recovery-job-fingerprint:{}", config.qualificationGrant.recoveryJobFingerprint),
+            format!("executor-build-fingerprint:{}", config.qualificationGrant.executorBuildFingerprint),
+        ],
+    );
 
     let id = {
         let next = state.job_counter.fetch_add(1, Ordering::SeqCst) + 1;
@@ -637,6 +4887,28 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
         let mut jobs = state.flash_jobs.lock().map_err(|_| "flash_jobs mutex poisoned".to_string())?;
         jobs.insert(id.clone(), runtime);
     }
+
+    audit_qualified_flash_event(
+        &config,
+        &id,
+        "qualified-flash-job-accepted",
+        "accepted",
+        "Qualified destructive job accepted after all authority, identity, image, and replay checks.",
+        vec![
+            format!(
+                "partitions:{}",
+                config
+                    .partitions
+                    .iter()
+                    .map(|p| format!("{}:{}", p.name, p.expectedSha256))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+            format!("wipe-userdata:{}", config.wipeUserData),
+            format!("auto-reboot:{}", config.autoReboot),
+            format!("post-write-verification:{}", config.verifyAfterFlash),
+        ],
+    );
 
     emit_flash_update(
         &app_handle,
@@ -671,6 +4943,16 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                 "status",
                 serde_json::json!({ "status": status, "message": step }),
             );
+            if matches!(status, "completed" | "failed" | "cancelled") {
+                audit_qualified_flash_event(
+                    &config,
+                    &id_for_thread,
+                    "qualified-flash-job-terminal",
+                    status,
+                    format!("Qualified destructive job reached terminal state: {step}"),
+                    vec![format!("terminal-step:{step}")],
+                );
+            }
         };
 
         let push_log = |line: &str| {
@@ -721,12 +5003,23 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
 
         set_job_status("running", "Preparing");
         push_log("[tauri-fastboot] Starting fastboot flash job");
-        if config.verifyAfterFlash {
-            push_log("[tauri-fastboot] NOTE: verifyAfterFlash is not implemented for fastboot backend");
-        }
-
         let mut completed_steps: u64 = 0;
         let total_steps_local = total_steps;
+
+        // Reject incomplete verification configuration before any destructive phase,
+        // including an optional userdata wipe.
+        if !config.partitions.is_empty() && !config.verifyAfterFlash {
+            set_job_status("failed", "Post-write target verification required before destructive operations");
+            return;
+        }
+
+        // Qualified userdata wipe is destructive and is not yet covered by
+        // the per-partition recovery journal. Block it until a separately
+        // qualified wipe transaction recorder is integrated.
+        if config.wipeUserData {
+            set_job_status("failed", "Qualified userdata wipe requires dedicated recovery evidence");
+            return;
+        }
 
         // Optional wipe
         if config.wipeUserData {
@@ -735,6 +5028,18 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                 return;
             }
 
+            match exact_fastboot_device_present(&config.deviceSerial) {
+                Ok(true) => {}
+                Ok(false) => {
+                    set_job_status("failed", "Device identity changed before wipe");
+                    return;
+                }
+                Err(err) => {
+                    push_log(&format!("[tauri-fastboot] identity revalidation error: {err}"));
+                    set_job_status("failed", "Could not revalidate device before wipe");
+                    return;
+                }
+            }
             set_job_status("running", "Wiping userdata (-w)");
             push_log("[tauri-fastboot] fastboot -w");
             let mut cmd = Command::new("fastboot");
@@ -762,6 +5067,14 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                         );
                         return;
                     }
+                    audit_qualified_flash_event(
+                        &config,
+                        &id_for_thread,
+                        "qualified-flash-userdata-wiped",
+                        "success",
+                        "Authorized userdata wipe completed successfully.",
+                        vec![],
+                    );
                 }
                 Err(e) => {
                     set_job_status("failed", "Wipe failed");
@@ -785,46 +5098,145 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
                 return;
             }
 
+            match exact_fastboot_device_present(&config.deviceSerial) {
+                Ok(true) => {}
+                Ok(false) => {
+                    set_job_status("failed", &format!("Device identity changed before flashing {}", p.name));
+                    return;
+                }
+                Err(err) => {
+                    push_log(&format!("[tauri-fastboot] identity revalidation error: {err}"));
+                    set_job_status("failed", &format!("Could not revalidate device before flashing {}", p.name));
+                    return;
+                }
+            }
+            // Never begin a destructive qualified partition write if its
+            // mandatory post-write target check has been disabled.
+            if !config.verifyAfterFlash {
+                set_job_status("failed", "Post-write target verification required before flashing");
+                return;
+            }
+            let current_hash = match sha256_file(std::path::Path::new(&p.imagePath)) {
+                Ok(hash) => hash,
+                Err(err) => {
+                    push_log(&format!("[tauri-fastboot] image revalidation error: {err}"));
+                    set_job_status("failed", &format!("Could not re-hash {}", p.name));
+                    return;
+                }
+            };
+            if !current_hash.eq_ignore_ascii_case(&p.expectedSha256) {
+                set_job_status("failed", &format!("Image changed before flashing {}", p.name));
+                return;
+            }
             set_job_status("running", &format!("Flashing {}", p.name));
             push_log(&format!("[tauri-fastboot] fastboot flash {} {}", p.name, p.imagePath));
 
-            let mut cmd = Command::new("fastboot");
-            cmd.arg("-s").arg(&config.deviceSerial);
-            cmd.arg("flash").arg(&p.name).arg(&p.imagePath);
+            let mut cmd = qualified_fastboot_flash_command(&config.deviceSerial, &p.name, &p.imagePath);
             #[cfg(target_os = "windows")]
             {
                 cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
             }
 
-            match cmd.output() {
+            // Record intent durably before invoking a destructive command.
+            // Each partition gets a distinct journal; no previous transaction is overwritten.
+            let journal_root = match dirs::data_local_dir() {
+                Some(root) => root.join("bobfwtools").join("qualified-flash-recovery"),
+                None => { set_job_status("failed", "Recovery evidence location unavailable"); return; }
+            };
+            if let Err(e) = std::fs::create_dir_all(&journal_root) {
+                push_log(&format!("[tauri-fastboot] evidence directory unavailable: {e}"));
+                set_job_status("failed", "Could not create recovery evidence directory");
+                return;
+            }
+            let transaction_key = format!("{}:{}:{}:{}", id_for_thread, config.deviceSerial, p.name, p.expectedSha256);
+            let transaction_digest = format!("{:x}", sha2::Sha256::digest(transaction_key.as_bytes()));
+            let journal_path = journal_root.join(format!("{}.journal", transaction_digest));
+            if journal_path.exists() {
+                set_job_status("failed", "Existing transaction evidence requires review; refusing replay");
+                return;
+            }
+            use flash_recovery::{RecoveryState, append_transition};
+            use sha2::Digest;
+            if let Err(e) = append_transition(&journal_path, RecoveryState::Preflight, RecoveryState::WriteInProgress) {
+                push_log(&format!("[tauri-fastboot] recovery evidence failed: {e}"));
+                set_job_status("failed", "Recovery journal unavailable; write blocked");
+                return;
+            }
+
+            match execute_qualified_fastboot_write(cmd, |mut command| command.output()) {
                 Ok(out) => {
-                    let combined = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
-                    for line in combined.lines() {
-                        let line = line.trim();
-                        if !line.is_empty() {
-                            push_log(line);
-                        }
+                    if let Err(e) = append_transition(&journal_path, RecoveryState::WriteInProgress, RecoveryState::AwaitingReenumeration) {
+                        push_log(&format!("[tauri-fastboot] write may have completed but evidence failed: {e}"));
+                        set_job_status("failed", "Write evidence incomplete; manual recovery required");
+                        return;
                     }
-                    if !out.status.success() {
-                        set_job_status("failed", &format!("Flash failed: {}", p.name));
-                        emit_flash_update(
-                            &app_for_thread,
+                    let combined = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+                    for line in combined.lines().map(str::trim).filter(|line| !line.is_empty()) { push_log(line); }
+                }
+                Err(error) => {
+                    if let Err(e) = append_transition(&journal_path, RecoveryState::WriteInProgress, RecoveryState::WriteInterruptedUnknownState) {
+                        push_log(&format!("[tauri-fastboot] could not persist ambiguous write state: {e}"));
+                    }
+                    push_log(&format!("[tauri-fastboot] write rejected: {error}"));
+                    set_job_status("failed", &format!("Flash failed: {}", p.name));
+                    emit_flash_update(&app_for_thread, &id_for_thread, "error",
+                        serde_json::json!({ "message": format!("fastboot flash {} failed: {error}", p.name) }));
+                    return;
+                }
+            }
+
+            audit_qualified_flash_event(
+                &config,
+                &id_for_thread,
+                "qualified-flash-write-acknowledged",
+                "pending-verification",
+                format!("Fastboot accepted the write for {}; device re-enumeration and partition integrity remain unproven.", p.name),
+                vec![
+                    format!("partition:{}", p.name),
+                    format!("image-sha256:{}", p.expectedSha256),
+                    format!("image-size:{}", p.size),
+                ],
+            );
+
+            if config.verifyAfterFlash {
+                set_job_status("running", &format!("Verifying target after {}", p.name));
+                match verify_fastboot_target_after_write(&config.deviceSerial) {
+                    Ok(()) => {
+                        if let Err(e) = append_transition(&journal_path, RecoveryState::AwaitingReenumeration, RecoveryState::PostWriteVerified) {
+                            push_log(&format!("[tauri-fastboot] post-write evidence failed: {e}"));
+                            set_job_status("failed", "Post-write recovery evidence incomplete");
+                            return;
+                        }
+                        push_log(&format!(
+                            "[tauri-fastboot] post-write target verification passed for {}",
+                            p.name
+                        ));
+                        audit_qualified_flash_event(
+                            &config,
                             &id_for_thread,
-                            "error",
-                            serde_json::json!({ "message": format!("fastboot flash {} failed", p.name) }),
+                            "qualified-flash-post-write-target-verified",
+                            "success",
+                            format!(
+                                "Exact fastboot target remained responsive after writing {}.",
+                                p.name
+                            ),
+                            vec![format!("partition:{}", p.name)],
+                        );
+                    }
+                    Err(err) => {
+                        if let Err(e) = append_transition(&journal_path, RecoveryState::AwaitingReenumeration, RecoveryState::BlockedRequiresReview) {
+                            push_log(&format!("[tauri-fastboot] could not persist verification failure: {e}"));
+                        }
+                        push_log(&format!(
+                            "[tauri-fastboot] post-write target verification failed for {}: {}",
+                            p.name, err
+                        ));
+                        set_job_status(
+                            "failed",
+                            &format!("Post-write target verification failed: {}", p.name),
                         );
                         return;
                     }
-                }
-                Err(e) => {
-                    set_job_status("failed", &format!("Flash failed: {}", p.name));
-                    emit_flash_update(
-                        &app_for_thread,
-                        &id_for_thread,
-                        "error",
-                        serde_json::json!({ "message": format!("Failed to run fastboot flash {}: {e}", p.name) }),
-                    );
-                    return;
                 }
             }
 
@@ -847,15 +5259,38 @@ fn flash_start(app_handle: AppHandle, state: tauri::State<'_, AppState>, config:
             {
                 cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
             }
-            let _ = cmd.output().map(|out| {
-                let combined = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
-                for line in combined.lines() {
-                    let line = line.trim();
-                    if !line.is_empty() {
-                        push_log(line);
+            match cmd.output() {
+                Ok(out) => {
+                    let combined = format!(
+                        "{}{}",
+                        String::from_utf8_lossy(&out.stdout),
+                        String::from_utf8_lossy(&out.stderr)
+                    );
+                    for line in combined.lines() {
+                        let line = line.trim();
+                        if !line.is_empty() {
+                            push_log(line);
+                        }
                     }
+                    if !out.status.success() {
+                        set_job_status("failed", "Authorized reboot command failed");
+                        return;
+                    }
+                    audit_qualified_flash_event(
+                        &config,
+                        &id_for_thread,
+                        "qualified-flash-reboot-issued",
+                        "success",
+                        "Authorized fastboot reboot completed successfully.",
+                        vec![],
+                    );
                 }
-            });
+                Err(err) => {
+                    push_log(&format!("[tauri-fastboot] reboot error: {err}"));
+                    set_job_status("failed", "Authorized reboot command failed");
+                    return;
+                }
+            }
             completed_steps += 1;
             complete_step(completed_steps, total_steps_local);
         }
@@ -1030,6 +5465,7 @@ fn start_device_monitor_once(app_handle: &AppHandle, state: tauri::State<'_, App
     let app = app_handle.clone();
     std::thread::spawn(move || {
         let mut seen: HashMap<String, bootforgeusb::model::DeviceRecord> = HashMap::new();
+        let mut observation_registry = detection_state::ObservationRegistry::default();
 
         loop {
             let mut current: HashMap<String, bootforgeusb::model::DeviceRecord> = HashMap::new();
@@ -1042,11 +5478,22 @@ fn start_device_monitor_once(app_handle: &AppHandle, state: tauri::State<'_, App
 
             for (uid, device) in current.iter() {
                 if !seen.contains_key(uid) {
+                    observation_registry.observe_usb(uid, true);
                     let display_name = device
                         .product_name
                         .clone()
                         .or_else(|| device.manufacturer.clone())
                         .unwrap_or_else(|| format!("USB {:04X}:{:04X}", device.vendor_id, device.product_id));
+
+                    let _ = crate::audit::record(
+                        "Diagnostics",
+                        "usb-connected",
+                        "read-only",
+                        "observed",
+                        Some(uid.clone()),
+                        format!("{} connected in mode {}", display_name, device.mode),
+                        vec![format!("{:04X}:{:04X}", device.vendor_id, device.product_id), device.evidence_source.clone()],
+                    );
 
                     emit_device_event(
                         &app,
@@ -1067,11 +5514,22 @@ fn start_device_monitor_once(app_handle: &AppHandle, state: tauri::State<'_, App
 
             for (uid, device) in seen.iter() {
                 if !current.contains_key(uid) {
+                    observation_registry.observe_usb(uid, false);
                     let display_name = device
                         .product_name
                         .clone()
                         .or_else(|| device.manufacturer.clone())
                         .unwrap_or_else(|| format!("USB {:04X}:{:04X}", device.vendor_id, device.product_id));
+
+                    let _ = crate::audit::record(
+                        "Diagnostics",
+                        "usb-disconnected",
+                        "read-only",
+                        "observed",
+                        Some(uid.clone()),
+                        format!("{} disconnected from mode {}", display_name, device.mode),
+                        vec![format!("{:04X}:{:04X}", device.vendor_id, device.product_id), device.evidence_source.clone()],
+                    );
 
                     emit_device_event(
                         &app,
@@ -1401,6 +5859,497 @@ fn stop_backend_server(app_handle: &AppHandle) {
     }
 }
 
+
+#[cfg(all(test, feature = "qualified-flash"))]
+mod qualified_flash_grant_tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+
+    fn test_image(name: &str, bytes: &[u8]) -> (std::path::PathBuf, String) {
+        let path = std::env::temp_dir().join(format!(
+            "bobfwtools-qualified-flash-{}-{}-{}.img",
+            name,
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::write(&path, bytes).unwrap();
+        let hash = format!("{:x}", Sha256::digest(bytes));
+        (path, hash)
+    }
+
+    fn valid_config() -> FlashJobConfig {
+        let (path, hash) = test_image("boot", b"qualified-image");
+        let build = qualification_build_identity_snapshot();
+        let mut config = FlashJobConfig {
+            deviceSerial: "QUALIFIED-DEVICE".into(),
+            deviceBrand: "Test".into(),
+            flashMethod: "fastboot".into(),
+            partitions: vec![FlashPartition {
+                name: "boot".into(),
+                imagePath: path.display().to_string(),
+                size: std::fs::metadata(&path).unwrap().len(),
+                expectedSha256: hash.clone(),
+            }],
+            verifyAfterFlash: true,
+            autoReboot: false,
+            wipeUserData: false,
+            qualificationGrant: QualifiedFlashGrant {
+                schema: "com.bobbyblanco.bobfwtools.qualified-flash-grant.v1".into(),
+                qualificationStatus: "approved".into(),
+                executorQualified: true,
+                deviceSerial: "QUALIFIED-DEVICE".into(),
+                executorBuildFingerprint: build.executor_build_fingerprint,
+                recoveryJobFingerprint: "a".repeat(64),
+                approvedPartitions: vec![QualifiedFlashPartitionGrant {
+                    name: "boot".into(),
+                    imageSha256: hash,
+                }],
+                wipeUserDataAllowed: false,
+                autoRebootAllowed: false,
+                issuedAtUnixSeconds: 1,
+                expiresAtUnixSeconds: u64::MAX,
+                dossierFingerprint: "c".repeat(64),
+                auditBundleFingerprint: Some("d".repeat(64)),
+                qualificationPacketFileSha256: Some("f".repeat(64)),
+                qualificationPacketFingerprint: Some("e".repeat(64)),
+                grantMac: String::new(),
+            },
+        };
+        config.qualificationGrant.grantMac =
+            qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
+        config
+    }
+
+    #[test]
+    fn valid_grant_accepts_matching_hash_and_build() {
+        let config = valid_config();
+        assert!(validate_qualified_flash_config(&config, "test-secret").is_ok());
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn qualified_grant_requires_post_write_target_verification() {
+        let mut config = valid_config();
+        config.verifyAfterFlash = false;
+        assert!(validate_qualified_flash_config(&config, "test-secret")
+            .unwrap_err()
+            .contains("post-write target verification"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn signed_trial_grant_allows_one_noncritical_partition_only() {
+        let mut config = valid_config();
+        config.qualificationGrant.qualificationStatus = "qualification-trial".into();
+        config.qualificationGrant.executorQualified = false;
+        config.qualificationGrant.auditBundleFingerprint = None;
+        config.qualificationGrant.qualificationPacketFileSha256 = None;
+        config.qualificationGrant.qualificationPacketFingerprint = None;
+        config.qualificationGrant.grantMac =
+            qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
+        assert!(validate_qualified_flash_config(&config, "test-secret").is_ok());
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn trial_grant_rejects_sensitive_partition() {
+        let mut config = valid_config();
+        config.partitions[0].name = "bootloader".into();
+        config.qualificationGrant.qualificationStatus = "qualification-trial".into();
+        config.qualificationGrant.executorQualified = false;
+        config.qualificationGrant.auditBundleFingerprint = None;
+        config.qualificationGrant.qualificationPacketFileSha256 = None;
+        config.qualificationGrant.qualificationPacketFingerprint = None;
+        config.qualificationGrant.approvedPartitions[0].name = "bootloader".into();
+        config.qualificationGrant.grantMac =
+            qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
+        assert!(validate_qualified_flash_config(&config, "test-secret")
+            .unwrap_err()
+            .contains("too sensitive"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn grant_rejects_forged_mac() {
+        let mut config = valid_config();
+        config.qualificationGrant.grantMac = "d".repeat(64);
+        assert!(validate_qualified_flash_config(&config, "test-secret")
+            .unwrap_err()
+            .contains("authentication failed"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn grant_mac_binds_qualification_packet_evidence() {
+        let mut config = valid_config();
+        config.qualificationGrant.qualificationPacketFingerprint = Some("1".repeat(64));
+        assert!(validate_qualified_flash_config(&config, "test-secret")
+            .unwrap_err()
+            .contains("authentication failed"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn grant_rejects_wrong_device() {
+        let mut config = valid_config();
+        config.qualificationGrant.deviceSerial = "OTHER".into();
+        config.qualificationGrant.grantMac = qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
+        assert!(validate_qualified_flash_config(&config, "test-secret")
+            .unwrap_err()
+            .contains("different device serial"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn grant_rejects_expired_authority() {
+        let mut config = valid_config();
+        config.qualificationGrant.expiresAtUnixSeconds = 1;
+        config.qualificationGrant.grantMac = qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
+        assert!(validate_qualified_flash_config(&config, "test-secret")
+            .unwrap_err()
+            .contains("expired"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn grant_rejects_unapproved_partition() {
+        let mut config = valid_config();
+        config.partitions[0].name = "super_secret".into();
+        config.qualificationGrant.approvedPartitions[0].name = "super_secret".into();
+        config.qualificationGrant.grantMac = qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
+        assert!(validate_qualified_flash_config(&config, "test-secret")
+            .unwrap_err()
+            .contains("not approved by the destructive writer allowlist"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn grant_rejects_image_hash_drift() {
+        let config = valid_config();
+        std::fs::write(&config.partitions[0].imagePath, b"tampered").unwrap();
+        assert!(validate_qualified_flash_config(&config, "test-secret")
+            .unwrap_err()
+            .contains("On-disk image hash does not match"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn grant_rejects_unapproved_wipe() {
+        let mut config = valid_config();
+        config.wipeUserData = true;
+        config.qualificationGrant.grantMac = qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
+        assert!(validate_qualified_flash_config(&config, "test-secret")
+            .unwrap_err()
+            .contains("does not authorize userdata wipe"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn grant_rejects_unapproved_reboot() {
+        let mut config = valid_config();
+        config.autoReboot = true;
+        config.qualificationGrant.grantMac = qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
+        assert!(validate_qualified_flash_config(&config, "test-secret")
+            .unwrap_err()
+            .contains("does not authorize automatic reboot"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+
+    #[test]
+    fn qualification_grant_is_single_use() {
+        let mut consumed = HashSet::new();
+        let grant_mac = "a".repeat(64);
+        assert!(consume_qualification_grant(&mut consumed, &grant_mac).is_ok());
+        assert!(consume_qualification_grant(&mut consumed, &grant_mac)
+            .unwrap_err()
+            .contains("already been consumed"));
+    }
+
+    // Virtual-partition rehearsal only. No fastboot, USB, or physical device is accessed.
+    #[test]
+    fn simulated_partition_write_verifies_hash_and_detects_corruption() {
+        let config = valid_config();
+        let source = std::path::Path::new(&config.partitions[0].imagePath);
+        let virtual_partition = std::env::temp_dir().join(format!(
+            "bobfwtools-virtual-partition-{}.img", uuid::Uuid::new_v4()
+        ));
+        assert!(validate_qualified_flash_config(&config, "test-secret").is_ok());
+        std::fs::copy(source, &virtual_partition).unwrap();
+        assert_eq!(
+            sha256_file(&virtual_partition).unwrap(),
+            config.partitions[0].expectedSha256,
+            "virtual partition must match approved firmware hash after simulated write"
+        );
+        std::fs::write(&virtual_partition, b"corrupted-virtual-partition").unwrap();
+        assert_ne!(
+            sha256_file(&virtual_partition).unwrap(),
+            config.partitions[0].expectedSha256,
+            "simulated post-write verification must reject corruption"
+        );
+        let _ = std::fs::remove_file(source);
+        let _ = std::fs::remove_file(virtual_partition);
+    }
+
+    // Isolated state-machine rehearsal: no OS commands, fastboot, USB or phone access.
+    #[test]
+    fn simulated_write_state_machine_reports_failure_and_cancellation() {
+        #[derive(Debug, PartialEq, Eq)]
+        enum Phase { Preflight, Writing, Verifying, Complete, Failed, Cancelled }
+        fn simulate(cancel_at: Option<usize>, fail_at: Option<usize>) -> (Phase, Vec<Phase>) {
+            let mut timeline = vec![Phase::Preflight];
+            for (i, phase) in [Phase::Writing, Phase::Verifying, Phase::Complete]
+                .into_iter().enumerate() {
+                if cancel_at == Some(i) { timeline.push(Phase::Cancelled); return (Phase::Cancelled, timeline); }
+                if fail_at == Some(i) { timeline.push(Phase::Failed); return (Phase::Failed, timeline); }
+                timeline.push(phase);
+            }
+            (Phase::Complete, timeline)
+        }
+        assert_eq!(simulate(None, None).0, Phase::Complete);
+        assert_eq!(simulate(Some(1), None).1, vec![Phase::Preflight, Phase::Writing, Phase::Cancelled]);
+        assert_eq!(simulate(None, Some(1)).1, vec![Phase::Preflight, Phase::Writing, Phase::Failed]);
+        assert_eq!(simulate(Some(0), None).1, vec![Phase::Preflight, Phase::Cancelled]);
+    }
+
+    #[test]
+    fn qualified_flash_command_has_exact_serial_partition_and_image_args() {
+        let cmd = qualified_fastboot_flash_command("BENCH-DEVICE", "boot", "/tmp/mock.img");
+        let args: Vec<_> = cmd.get_args().map(|arg| arg.to_string_lossy().into_owned()).collect();
+        assert_eq!(cmd.get_program().to_string_lossy(), "fastboot");
+        assert_eq!(args, ["-s", "BENCH-DEVICE", "flash", "boot", "/tmp/mock.img"]);
+        // Command construction only; no executable or device is invoked.
+    }
+
+    #[test]
+    fn qualified_fastboot_write_result_handles_mocked_transport_responses() {
+        assert!(qualified_fastboot_write_result(true, "Sending 'boot' OKAY\nWriting 'boot' OKAY", "").is_ok());
+        assert!(qualified_fastboot_write_result(false, "", "connection lost").is_err());
+        assert!(qualified_fastboot_write_result(true, "", "FAILED (remote: partition write rejected)").is_err());
+        assert!(qualified_fastboot_write_result(true, "FAILED: device disconnected", "").is_err());
+        assert!(qualified_fastboot_write_result(true, "", "FAIL (timeout)").is_err());
+    }
+
+    #[test]
+    fn post_write_verification_handles_virtual_disconnection_and_recovery() {
+        let mut seen = 0;
+        let mut waited = 0;
+        assert!(verify_fastboot_target_after_write_with("BENCH", |serial| {
+            assert_eq!(serial, "BENCH");
+            seen += 1;
+            Ok(seen == 3)
+        }, || waited += 1).is_ok());
+        assert_eq!((seen, waited), (3, 2));
+
+        let mut attempts = 0;
+        let error = verify_fastboot_target_after_write_with("BENCH", |_| {
+            attempts += 1;
+            Ok(false)
+        }, || {}).unwrap_err();
+        assert_eq!(attempts, 5);
+        assert!(error.contains("did not re-enumerate"));
+
+        let mut attempts = 0;
+        let error = verify_fastboot_target_after_write_with("BENCH", |_| {
+            attempts += 1;
+            Err("transport unavailable".into())
+        }, || {}).unwrap_err();
+        assert_eq!(attempts, 5);
+        assert!(error.contains("transport unavailable"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn injected_write_executor_rejects_failed_commands_without_running_fastboot() {
+        use std::os::unix::process::ExitStatusExt;
+        let cases = [
+            (0, b"Writing 'boot' OKAY".as_slice(), b"".as_slice(), true),
+            (0, b"".as_slice(), b"FAILED (remote: denied)".as_slice(), false),
+            (1, b"".as_slice(), b"device disconnected".as_slice(), false),
+        ];
+        for (status, stdout, stderr, expected_success) in cases {
+            let cmd = qualified_fastboot_flash_command("BENCH", "boot", "/tmp/test.img");
+            let result = execute_qualified_fastboot_write(cmd, |_| Ok(std::process::Output {
+                status: std::process::ExitStatus::from_raw(status << 8),
+                stdout: stdout.to_vec(), stderr: stderr.to_vec(),
+            }));
+            assert_eq!(result.is_ok(), expected_success);
+        }
+        let cmd = qualified_fastboot_flash_command("BENCH", "boot", "/tmp/test.img");
+        assert!(execute_qualified_fastboot_write(cmd, |_| Err(std::io::Error::other("USB disconnected"))).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn integrated_virtual_transaction_requires_successful_write_and_target_return() {
+        use std::os::unix::process::ExitStatusExt;
+        // Exercise the actual qualified write-result and post-write re-enumeration helpers.
+        // All transport and time calls are injected; never execute Fastboot or access USB.
+        for (write_ok, target_returns, transaction_ok) in [
+            (true, true, true), (true, false, false), (false, true, false),
+        ] {
+            let command = qualified_fastboot_flash_command("LAB", "boot", "/tmp/lab.img");
+            let write = execute_qualified_fastboot_write(command, |_| Ok(std::process::Output {
+                status: std::process::ExitStatus::from_raw(0),
+                stdout: if write_ok { b"Writing 'boot' OKAY".to_vec() } else { b"FAILED: refused".to_vec() },
+                stderr: Vec::new(),
+            }));
+            let mut verification_calls = 0;
+            let outcome = write.and_then(|_| verify_fastboot_target_after_write_with("LAB", |_| {
+                verification_calls += 1;
+                Ok(target_returns)
+            }, || {}));
+            assert_eq!(outcome.is_ok(), transaction_ok);
+            assert_eq!(verification_calls, if write_ok { if target_returns { 1 } else { 5 } } else { 0 });
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn interrupted_virtual_write_never_starts_post_write_verification() {
+        let mut verify_calls = 0;
+        let command = qualified_fastboot_flash_command("LAB", "boot", "/tmp/lab.img");
+        let outcome = execute_qualified_fastboot_write(command, |_| {
+            Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "simulated transport interruption"))
+        }).and_then(|_| verify_fastboot_target_after_write_with("LAB", |_| {
+            verify_calls += 1;
+            Ok(true)
+        }, || {}));
+        assert!(outcome.unwrap_err().contains("simulated transport interruption"));
+        assert_eq!(verify_calls, 0, "a failed write must not start target verification");
+    }
+
+    #[test]
+    fn grant_rejects_different_executor_build() {
+        let mut config = valid_config();
+        config.qualificationGrant.executorBuildFingerprint = "b".repeat(64);
+        config.qualificationGrant.grantMac = qualified_flash_grant_mac("test-secret", &config.qualificationGrant).unwrap();
+        assert!(validate_qualified_flash_config(&config, "test-secret")
+            .unwrap_err()
+            .contains("different executor build"));
+        let _ = std::fs::remove_file(&config.partitions[0].imagePath);
+    }
+}
+
+#[tauri::command]
+fn tauri_get_registered_commands() -> Vec<&'static str> {
+    #[allow(unused_mut)]
+    let mut commands = vec![
+        "frontend_backend_handshake",
+        "get_backend_status",
+        "get_app_version",
+        "bootforgeusb_scan",
+        "workflow_policy_catalog",
+        "calibration_partition_allowlist",
+        "edl_9008_devices",
+        "firmware_target_preflight",
+        "calibration_backup_plan",
+        "edl_programmer_qualification",
+        "firehose_write_plan",
+        "transport_retry_decision",
+        "backup_calibration_partition",
+        "inspect_calibration_backup",
+        "calibration_restore_preflight",
+        "edl_inspect_programmer",
+        "edl_enroll_programmer",
+        "edl_list_programmers",
+        "firmware_chipset_catalog",
+        "firmware_chipset_lookup",
+        "firmware_library_scan",
+        "firmware_manifest_inspect",
+        "firmware_manifest_compare",
+        "firmware_bundle_planning_artifacts",
+        "samsung_firmware_compatibility",
+        "samsung_service_bundle_create",
+        "fastboot_mode_devices",
+        "fastboot_reboot_mode",
+        "mode_transition_verify",
+        "samsung_download_probe",
+        "execute_pit_dry_run",
+        "open_advanced_actions_window",
+        "launch_target_device_action",
+        "driver_binding_scan",
+        "driver_binding_release_and_rescan",
+        "driver_binding_candidates",
+        "driver_binding_conflict_plan",
+        "driver_binding_cleanup_report",
+        "driver_binding_snapshot",
+        "driver_binding_rollback_plan",
+        "driver_binding_stability_test",
+        "driver_binding_elevation_status",
+        "driver_binding_inspect_inf",
+        "driver_binding_stage_and_relatch",
+        "firmware_provenance_write",
+        "hardware_service_profile_validate",
+        "bootforgeusb_transport_scan",
+        "bootforge_firmware_inspect",
+        "bootforge_samsung_plan",
+        "bootforge_recovery_scan",
+        "bootforge_recovery_autodiscover",
+        "bootforge_recovery_plan",
+        "bootforge_recovery_prepare",
+        "bootforge_recovery_revalidate",
+        "bootforge_recovery_export_receipt",
+        "bootforge_recovery_export_readiness_certificate",
+        "bootforge_recovery_review_readiness_certificate",
+        "bootforge_qualification_export",
+        "bootforge_qualification_build_identity",
+        "hardware_qualification_packet_export",
+        "hardware_qualification_packet_review",
+        "bootforge_qualification_review",
+        "mtp_status",
+        "mtp_list_root",
+        "mtp_download_file",
+        "mtp_upload_file",
+        "mtp_list_directory",
+        "mtp_download_path",
+        "mtp_upload_path",
+        "adb_scan",
+        "adb_device_info",
+        "samsung_adb_identity_receipt",
+        "adb_logcat_snapshot",
+        "adb_screenshot",
+        "adb_prepare",
+        "adb_battery_info",
+        "adb_mode_capabilities",
+        "adb_reboot_mode",
+        "adb_open_network_settings",
+        "adb_open_factory_reset_settings",
+        "adb_install_apk",
+        "adb_list_user_packages",
+        "adb_package_action",
+        "workflow_capabilities",
+        "diagnose_phone",
+        "usb_cable_doctor",
+        "workflow_job_start",
+        "workflow_job_list",
+        "workflow_job_get",
+        "workflow_job_retry",
+        "workstation_readiness",
+        "workstation_initialize",
+        "audit_recent",
+        "audit_log_path",
+        "tauri_get_registered_commands",
+    ];
+    #[cfg(feature = "qualified-flash")]
+    commands.extend_from_slice(&[
+        "bootforge_qualified_fastboot_devices",
+        "bootforge_qualified_flash_inspect_image",
+        "bootforge_qualification_bench_evidence_export",
+        "bootforge_qualification_decision_export",
+        "bootforge_qualification_audit_bundle_export",
+        "bootforge_qualification_audit_bundle_review",
+        "bootforge_issue_qualification_trial_grant",
+        "bootforge_issue_qualified_flash_grant",
+        "flash_start",
+        "flash_cancel",
+        "flash_status",
+        "flash_history",
+        "flash_active",
+        "bootforge_flash_history",
+        "bootforge_flash_active",
+    ]);
+    commands
+}
 fn main() {
     // Initialize app state
     let app_state = AppState {
@@ -1412,6 +6361,14 @@ fn main() {
         flash_history: Mutex::new(vec![]),
         #[cfg(feature = "qualified-flash")]
         job_counter: AtomicU64::new(0),
+        #[cfg(feature = "qualified-flash")]
+        qualification_grant_secret: format!(
+            "{}{}",
+            uuid::Uuid::new_v4().simple(),
+            uuid::Uuid::new_v4().simple()
+        ),
+        #[cfg(feature = "qualified-flash")]
+        consumed_qualification_grants: Mutex::new(HashSet::new()),
         device_monitor_started: Mutex::new(false),
         #[cfg(feature = "legacy-backends")]
         py_client: Mutex::new(None),
@@ -1505,7 +6462,49 @@ fn main() {
             get_backend_status,
             get_app_version,
             bootforgeusb_scan,
-            bootforgeusb_transport_scan,
+            workflow_policy_catalog,
+            calibration_partition_allowlist,
+            edl_9008_devices,
+            firmware_target_preflight,
+            calibration_backup_plan,
+            edl_programmer_qualification,
+            firehose_write_plan,
+            transport_retry_decision,
+            backup_calibration_partition,
+            inspect_calibration_backup,
+            calibration_restore_preflight,
+            edl_inspect_programmer,
+            edl_enroll_programmer,
+            edl_list_programmers,
+            firmware_chipset_catalog,
+            firmware_chipset_lookup,
+            firmware_library_scan,
+            firmware_manifest_inspect,
+            firmware_manifest_compare,
+            firmware_bundle_planning_artifacts,
+            samsung_firmware_compatibility,
+            samsung_service_bundle_create,
+            fastboot_mode_devices,
+            fastboot_reboot_mode,
+            mode_transition_verify,
+            samsung_download_probe,
+            execute_pit_dry_run,
+            open_advanced_actions_window,
+            launch_target_device_action,
+            driver_binding_scan,
+            driver_binding_release_and_rescan,
+            driver_binding_candidates,
+            driver_binding_conflict_plan,
+            driver_binding_cleanup_report,
+            driver_binding_snapshot,
+            driver_binding_rollback_plan,
+            driver_binding_stability_test,
+            driver_binding_elevation_status,
+            driver_binding_inspect_inf,
+            driver_binding_stage_and_relatch,
+            firmware_provenance_write,
+            hardware_service_profile_validate,
+bootforgeusb_transport_scan,
             bootforge_firmware_inspect,
             bootforge_samsung_plan,
             bootforge_recovery_scan,
@@ -1513,6 +6512,44 @@ fn main() {
             bootforge_recovery_plan,
             bootforge_recovery_prepare,
             bootforge_recovery_revalidate,
+            bootforge_recovery_export_receipt,
+            bootforge_recovery_export_readiness_certificate,
+            bootforge_recovery_review_readiness_certificate,
+            bootforge_qualification_export,
+            bootforge_qualification_build_identity,
+            hardware_qualification_packet_export,
+            hardware_qualification_packet_review,
+            bootforge_qualification_review,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_qualified_fastboot_devices,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_qualified_flash_inspect_image,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_qualification_bench_evidence_export,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_qualification_decision_export,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_qualification_audit_bundle_export,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_qualification_audit_bundle_review,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_issue_qualification_trial_grant,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_issue_qualified_flash_grant,
+            #[cfg(feature = "qualified-flash")]
+            flash_start,
+            #[cfg(feature = "qualified-flash")]
+            flash_cancel,
+            #[cfg(feature = "qualified-flash")]
+            flash_status,
+            #[cfg(feature = "qualified-flash")]
+            flash_history,
+            #[cfg(feature = "qualified-flash")]
+            flash_active,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_flash_history,
+            #[cfg(feature = "qualified-flash")]
+            bootforge_flash_active,
             mtp_status,
             mtp_list_root,
             mtp_download_file,
@@ -1522,10 +6559,12 @@ fn main() {
             mtp_upload_path,
             adb_scan,
             adb_device_info,
+            samsung_adb_identity_receipt,
             adb_logcat_snapshot,
             adb_screenshot,
             adb_prepare,
             adb_battery_info,
+            adb_mode_capabilities,
             adb_reboot_mode,
             adb_open_network_settings,
             adb_open_factory_reset_settings,
@@ -1539,6 +6578,11 @@ fn main() {
             workflow_job_list,
             workflow_job_get,
             workflow_job_retry,
+            workstation_readiness,
+            workstation_initialize,
+            audit_recent,
+            audit_log_path,
+            tauri_get_registered_commands,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

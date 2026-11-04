@@ -1,6 +1,5 @@
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
-use std::process::Command;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,6 +21,7 @@ pub struct DiagnosticFinding {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsbConnectionSummary {
+    pub device_uid: String,
     pub vendor_id: u16,
     pub product_id: u16,
     pub manufacturer: Option<String>,
@@ -86,23 +86,6 @@ pub struct PhoneDiagnosticReport {
     pub evidence: Vec<DiagnosticEvidence>,
 }
 
-fn fastboot_devices() -> Vec<String> {
-    Command::new("fastboot")
-        .arg("devices")
-        .output()
-        .ok()
-        .filter(|out| out.status.success())
-        .map(|out| {
-            String::from_utf8_lossy(&out.stdout)
-                .lines()
-                .filter_map(|line| line.split_whitespace().next())
-                .filter(|serial| !serial.is_empty())
-                .map(|serial| serial.to_string())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 fn summarize_battery(text: &str) -> Option<String> {
     let mut values = BTreeMap::new();
     for line in text.lines() {
@@ -138,9 +121,9 @@ fn summarize_battery(text: &str) -> Option<String> {
 #[tauri::command]
 pub async fn diagnose_phone() -> Result<PhoneDiagnosticReport, String> {
     let usb = bootforgeusb::scan().map_err(|e| format!("USB scan failed: {e}"))?;
-    let adb = crate::adb_workflows::adb_scan().unwrap_or_default();
+    let adb = crate::adb_workflows::adb_scan_observed_sync().unwrap_or_default();
     let mtp = crate::mtp_backend::mtp_status().await.ok();
-    let fastboot = fastboot_devices();
+    let fastboot = crate::mode_control::fastboot_devices_observed().await.unwrap_or_default();
 
     let authorized: Vec<_> = adb.iter().filter(|d| d.authorized).collect();
     let selected = authorized.first().map(|d| d.serial.clone());
@@ -151,6 +134,7 @@ pub async fn diagnose_phone() -> Result<PhoneDiagnosticReport, String> {
     let usb_connections = android_usb
         .iter()
         .map(|d| UsbConnectionSummary {
+            device_uid: d.device_uid.clone(),
             vendor_id: d.vendor_id,
             product_id: d.product_id,
             manufacturer: d.manufacturer.clone(),
@@ -303,6 +287,14 @@ pub async fn diagnose_phone() -> Result<PhoneDiagnosticReport, String> {
             detail: "The USB descriptor matches BobFWTools' Samsung Download Mode evidence rule.".to_string(),
             recommendation: Some("Use only Samsung recovery/firmware workflows qualified for this exact model and firmware package.".to_string()),
         });
+    } else if android_usb.iter().any(|d| d.mode == "samsung-usb") {
+        findings.push(DiagnosticFinding {
+            id: "samsung-usb-attached".to_string(),
+            severity: "warning",
+            title: "Samsung USB attached; Download Mode not qualified".to_string(),
+            detail: "A Samsung USB transport is physically present, but this descriptor is also used by normal composite USB operation and is not sufficient evidence of Odin/Download Mode.".to_string(),
+            recommendation: Some("Enter Samsung Download Mode without changing bootloader-lock state, then re-run detection before any firmware planning.".to_string()),
+        });
     }
 
     if android_usb.iter().any(|d| d.mode == "mediatek-preloader") {
@@ -420,8 +412,13 @@ pub async fn diagnose_phone() -> Result<PhoneDiagnosticReport, String> {
 
 
 #[tauri::command]
-pub async fn usb_cable_doctor() -> Result<CableDoctorReport, String> {
+pub async fn usb_cable_doctor(target_device_uid: Option<String>) -> Result<CableDoctorReport, String> {
     const SAMPLE_COUNT: usize = 4;
+    let target_device_uid = target_device_uid
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
     let mut sample_sets: Vec<BTreeSet<String>> = Vec::with_capacity(SAMPLE_COUNT);
     let mut observed_speeds = BTreeSet::new();
     let mut observed_modes = BTreeSet::new();
@@ -433,6 +430,12 @@ pub async fn usb_cable_doctor() -> Result<CableDoctorReport, String> {
         let android: Vec<_> = scan
             .iter()
             .filter(|d| d.platform_hint.starts_with("android-"))
+            .filter(|d| {
+                target_device_uid
+                    .as_deref()
+                    .map(|target| d.device_uid == target)
+                    .unwrap_or(true)
+            })
             .collect();
 
         if !android.is_empty() {
@@ -474,7 +477,7 @@ pub async fn usb_cable_doctor() -> Result<CableDoctorReport, String> {
         }
     }
 
-    let adb = crate::adb_workflows::adb_scan().unwrap_or_default();
+    let adb = crate::adb_workflows::adb_scan_observed_sync().unwrap_or_default();
     let adb_state = if adb.iter().any(|d| d.authorized) {
         "authorized".to_string()
     } else if adb.iter().any(|d| d.state == "unauthorized") {
@@ -487,7 +490,7 @@ pub async fn usb_cable_doctor() -> Result<CableDoctorReport, String> {
         adb[0].state.clone()
     };
     let mtp_connected = crate::mtp_backend::mtp_status().await.is_ok();
-    let fastboot_present = !fastboot_devices().is_empty();
+    let fastboot_present = crate::mode_control::fastboot_devices_observed().await.map(|devices| !devices.is_empty()).unwrap_or(false);
 
     evidence.push(DiagnosticEvidence {
         source: "transport-cross-check".to_string(),

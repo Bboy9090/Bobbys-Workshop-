@@ -643,18 +643,23 @@ export class AuthorizationTriggers {
     
     const detectCmd = `heimdall detect`;
     const detectResult = await executeCommand(detectCmd);
+    const usbCandidateDetected = detectResult.success && detectResult.stdout.includes('Device detected');
     
-    if (!detectResult.success || !detectResult.stdout.includes('Device detected')) {
+    if (!usbCandidateDetected) {
       const result = {
         success: false,
-        message: 'No Samsung device detected in Download Mode',
+        message: 'No Samsung-compatible USB target detected',
         triggered: false,
         requiresUserAction: true,
         authorizationType: authType,
-        error: 'Device not in Download Mode',
+        detected: false,
+        protocolSessionVerified: false,
+        pitDownloaded: false,
+        flashAuthorized: false,
+        error: 'Samsung USB candidate not detected',
         commandOutput: detectResult.stdout,
         stderr: detectResult.stderr,
-        note: 'User must manually enter Download Mode: Power off, then hold Vol Down + Power'
+        note: 'Connect the Samsung target and enter Download Mode without changing bootloader-lock state, then retry.'
       };
       logAuthorizationTrigger({ action: 'trigger_samsung_download_mode', serial: sanitizedSerial, ...result });
       return result;
@@ -662,22 +667,37 @@ export class AuthorizationTriggers {
     
     const pitCmd = `heimdall print-pit --no-reboot --verbose`;
     const pitResult = await executeCommand(pitCmd);
+    const pitOutput = `${pitResult.stdout || ''}\n${pitResult.stderr || ''}`;
+    const pitLooksStructured = /PIT|Partition|Binary Type|Device Type|Identifier/i.test(pitOutput);
+    const protocolSessionVerified = Boolean(pitResult.success && pitLooksStructured);
     
     const result = {
-      success: pitResult.success,
-      message: 'Samsung device detected in Download Mode',
-      triggered: true,
-      requiresUserAction: false,
+      success: protocolSessionVerified,
+      message: protocolSessionVerified
+        ? 'Samsung Download Mode protocol session verified read-only'
+        : 'Samsung USB detected, but Download Mode protocol was not verified',
+      triggered: protocolSessionVerified,
+      requiresUserAction: !protocolSessionVerified,
       authorizationType: authType,
+      detected: true,
+      protocolSessionVerified,
+      pitDownloaded: protocolSessionVerified,
+      flashAuthorized: false,
+      frpStateChanged: false,
+      oemLockStateChanged: false,
+      kgStateChanged: false,
       deviceInfo: {
         detected: true,
-        mode: 'Download Mode (Odin)',
-        commandOutput: pitResult.stdout.substring(0, 500)
+        mode: protocolSessionVerified ? 'Download Mode (Odin) - read-only verified' : 'Samsung USB candidate',
+        commandOutput: (pitResult.stdout || '').substring(0, 500)
       },
       commandOutput: pitResult.stdout,
       stderr: pitResult.stderr,
       exitCode: pitResult.exitCode,
-      deviceSerial: sanitizedSerial
+      deviceSerial: sanitizedSerial,
+      note: protocolSessionVerified
+        ? 'Read-only PIT exchange verified the protocol session. This does not authorize flashing.'
+        : 'Descriptor/USB detection alone is insufficient; re-enter Download Mode and retry the read-only PIT verification.'
     };
     
     logAuthorizationTrigger({ action: 'trigger_samsung_download_mode', serial: sanitizedSerial, ...result });

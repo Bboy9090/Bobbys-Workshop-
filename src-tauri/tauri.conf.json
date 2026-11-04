@@ -17,7 +17,26 @@
         "resizable": true,
         "fullscreen": false,
         "decorations": true,
-        "transparent": false
+        "transparent": false,
+        "label": "main"
+      },
+      {
+        "label": "advanced-device-actions",
+        "title": "BobFWTools — Advanced Device Actions",
+        "url": "index.html?view=advanced-device-actions",
+        "width": 420,
+        "height": 500,
+        "minWidth": 380,
+        "minHeight": 440,
+        "resizable": false,
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": false,
+        "alwaysOnTop": true,
+        "visible": false,
+        "closable": false,
+        "minimizable": false,
+        "maximizable": false
       }
     ],
     "security": {

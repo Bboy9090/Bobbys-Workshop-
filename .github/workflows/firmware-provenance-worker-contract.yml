@@ -1,0 +1,19 @@
+name: Firmware provenance worker contract
+on:
+  pull_request:
+    paths:
+      - 'infra/cloud/firmware_provenance.tf'
+      - 'infra/cloud/lambda/firmware_provenance.py'
+      - 'tests/cloud/test_firmware_provenance.py'
+      - '.github/workflows/firmware-provenance-worker-contract.yml'
+permissions:
+  contents: read
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: python -m unittest tests/cloud/test_firmware_provenance.py -v

@@ -1,0 +1,82 @@
+[
+  {
+    "chipsetId": "QUALCOMM_SM6115",
+    "marketingName": "Snapdragon 662 (SM6115)",
+    "architecture": "ARM64-V8A",
+    "vendorId": "0x05C6",
+    "productId": "0x9008",
+    "bitness": 64,
+    "thermalLimitCelsius": 75.0,
+    "hvidSignaturePattern": "HVID_QCOM_SM6115_SECURE"
+  },
+  {
+    "chipsetId": "QUALCOMM_SM8250",
+    "marketingName": "Snapdragon 865 5G (SM8250)",
+    "architecture": "ARM64-V8A",
+    "vendorId": "0x05C6",
+    "productId": "0x9008",
+    "bitness": 64,
+    "thermalLimitCelsius": 78.0,
+    "hvidSignaturePattern": "HVID_QCOM_SM8250_KONA"
+  },
+  {
+    "chipsetId": "SAMSUNG_EXYNOS9611",
+    "marketingName": "Exynos 9611 (S5E9611)",
+    "architecture": "ARM64-V8A",
+    "vendorId": "0x04E8",
+    "productId": "0x6860",
+    "bitness": 64,
+    "thermalLimitCelsius": 76.0,
+    "hvidSignaturePattern": "HVID_SEC_EXYNOS9611"
+  },
+  {
+    "chipsetId": "SAMSUNG_EXYNOS2100",
+    "marketingName": "Exynos 2100 5G (S5E9840)",
+    "architecture": "ARM64-V8.2A",
+    "vendorId": "0x04E8",
+    "productId": "0x6860",
+    "bitness": 64,
+    "thermalLimitCelsius": 82.0,
+    "hvidSignaturePattern": "HVID_SEC_EXYNOS2100"
+  },
+  {
+    "chipsetId": "MEDIATEK_MT6765",
+    "marketingName": "MediaTek Helio G35 (MT6765)",
+    "architecture": "ARM64-V8A",
+    "vendorId": "0x0E8D",
+    "productId": "0x0003",
+    "bitness": 64,
+    "thermalLimitCelsius": 80.0,
+    "hvidSignaturePattern": "HVID_MTK_MT6765_PRELOAD"
+  },
+  {
+    "chipsetId": "APPLE_T8110",
+    "marketingName": "Apple A15 Bionic (T8110)",
+    "architecture": "ARM64E",
+    "vendorId": "0x05AC",
+    "productId": "1227",
+    "bitness": 64,
+    "thermalLimitCelsius": 72.5,
+    "hvidSignaturePattern": "CPID:8110"
+  },
+  {
+    "chipsetId": "APPLE_T8103",
+    "marketingName": "Apple M1 (T8103)",
+    "architecture": "ARM64E",
+    "vendorId": "0x05AC",
+    "productId": "1227",
+    "bitness": 64,
+    "thermalLimitCelsius": 85.0,
+    "hvidSignaturePattern": "CPID:8103"
+  },
+  {
+    "chipsetId": "UNISOC_UMS512",
+    "marketingName": "Unisoc Tiger T610 (UMS512)",
+    "architecture": "ARM64-V8A",
+    "vendorId": "0x1782",
+    "productId": "0x4D00",
+    "bitness": 64,
+    "thermalLimitCelsius": 82.0,
+    "hvidSignaturePattern": "HVID_SPRD_UMS512"
+  }
+]
