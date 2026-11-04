@@ -11,5 +11,7 @@ assert.match(linux, /cosign-release: 'v3\.1\.4'/);
 assert.match(linux, /id-token: write/);
 assert.match(linux, /cosign sign-blob --yes --bundle/);
 assert.match(linux, /cosign verify-blob/);
-assert.match(linux, /refs\/heads\/feat\/bobfwtools-macos-foundation/);
+assert.match(linux, /GITHUB_REPOSITORY/);
+assert.match(linux, /GITHUB_REF/);
+assert.doesNotMatch(linux, /refs\/heads\/feat\/bobfwtools-macos-foundation/);
 console.log('platform signing contract passed');
