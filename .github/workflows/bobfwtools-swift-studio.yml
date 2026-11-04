@@ -17,7 +17,7 @@ jobs:
 
       - name: Install native servicing toolchain
         run: |
-          brew install libusb heimdall
+          brew install libusb
           brew install --cask android-platform-tools
 
       - name: Build BobFWTools Studio Universal 2 App & Packages
@@ -36,8 +36,6 @@ jobs:
           test "$(lipo -archs "$APP/Contents/MacOS/fastboot")" = "x86_64 arm64"
           test -s "$APP/Contents/Resources/chipset_signatures.json"
           codesign --verify --deep --strict --verbose=2 "$APP"
-          echo "Heimdall architecture (Rosetta may be required on Apple Silicon until native helper is qualified):"
-          lipo -info "$APP/Contents/MacOS/heimdall"
 
       - name: Upload Owner Private macOS Archive
         uses: actions/upload-artifact@v4
