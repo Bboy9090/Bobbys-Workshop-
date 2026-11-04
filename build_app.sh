@@ -228,7 +228,7 @@ if [ -f "${FRAMEWORKS_DIR}/libusb-1.0.0.dylib" ] && [ -f "${MACOS_DIR}/bootforge
     install_name_tool -change "/usr/local/opt/libusb/lib/libusb-1.0.0.dylib" "@executable_path/../Frameworks/libusb-1.0.0.dylib" "${MACOS_DIR}/bootforgeusb" 2>/dev/null || true
 fi
 
-for TOOL in adb fastboot heimdall; do
+for TOOL in adb fastboot; do
     if [ -f "${PROJECT_DIR}/tools/${TOOL}" ]; then
         cp "${PROJECT_DIR}/tools/${TOOL}" "${MACOS_DIR}/${TOOL}"
         chmod +x "${MACOS_DIR}/${TOOL}"
@@ -274,7 +274,7 @@ xattr -d com.apple.fileprovider.fpfs#P "${APP_BUNDLE}" 2>/dev/null || true
 if [ -f "${FRAMEWORKS_DIR}/libusb-1.0.0.dylib" ]; then
     codesign --force --sign - --options runtime "${FRAMEWORKS_DIR}/libusb-1.0.0.dylib"
 fi
-for TOOL in bootforgeusb adb fastboot heimdall; do
+for TOOL in bootforgeusb adb fastboot; do
     if [ -f "${MACOS_DIR}/${TOOL}" ]; then
         codesign --force --sign - --options runtime "${MACOS_DIR}/${TOOL}"
     fi
@@ -348,7 +348,7 @@ xattr -c "${STORE_BUNDLE}" 2>/dev/null || true
 xattr -cr "${STORE_BUNDLE}" 2>/dev/null || true
 xattr -d com.apple.FinderInfo "${STORE_BUNDLE}" 2>/dev/null || true
 xattr -d com.apple.fileprovider.fpfs#P "${STORE_BUNDLE}" 2>/dev/null || true
-for TOOL in bootforgeusb adb fastboot heimdall; do
+for TOOL in bootforgeusb adb fastboot; do
     if [ -f "${STORE_BUNDLE}/Contents/MacOS/${TOOL}" ]; then
         codesign --force --sign - --options runtime --entitlements "${ENTITLEMENTS_HELPER_PLIST}" "${STORE_BUNDLE}/Contents/MacOS/${TOOL}"
     fi
