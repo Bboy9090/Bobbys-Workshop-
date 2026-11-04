@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "sourceRevision": "a212f397b0ea6b963c72e24c8bc84d115142e50d",
+  "repository": "Bboy9090/Bobbys-Workshop-",
+  "pullRequest": 239,
+  "date": "2026-10-25",
+  "changes": [
+    "Bind repository API base and branch throughout receipt preparation/publication.",
+    "Copy claim identity before asynchronous work.",
+    "Reject scope drift and caller identity mutation."
+  ],
+  "validation": {
+    "linux": {
+      "tests": 21,
+      "result": "pass",
+      "lint": "pass",
+      "frontendBuild": "pass"
+    },
+    "macOS": {
+      "tests": 21,
+      "result": "pass",
+      "executor": "darwin/v26.7.0",
+      "liveProbe": {
+        "version": 1,
+        "repository": "Bboy9090/Bobbys-Workshop-",
+        "branch": "agent-lease-qualification-20261020-a",
+        "revision": "a212f397b0ea6b963c72e24c8bc84d115142e50d",
+        "executor": "darwin/v26.7.0",
+        "task": "qualification_531cd69fe1b44d689ed927362b68e5cd",
+        "results": {
+          "acquire": true,
+          "competingOwnerRejected": true,
+          "renew": true,
+          "staleProviderWriteRejected": true,
+          "expiredRenewRejected": true,
+          "takeover": true,
+          "currentReceiptPublished": true,
+          "staleReceiptRejected": true,
+          "newOwnerReceiptPreserved": true,
+          "receiptCommit": "2c7a6d1f17892942ec77f47b4102f4271371fc7a",
+          "staleOwnerRejected": true,
+          "release": true
+        },
+        "result": "pass",
+        "exitCode": 0,
+        "durationSeconds": 43.71
+      }
+    },
+    "windows": {
+      "tests": 21,
+      "result": "pass",
+      "executor": "win32/Node v24.18.1",
+      "git": "2.55.0.windows.3"
+    },
+    "hosted": {
+      "leaseContracts": {
+        "result": "pass",
+        "url": "https://github.com/Bboy9090/Bobbys-Workshop-/actions/runs/40195154155"
+      },
+      "nodeCI": "queued at inspection",
+      "macOSCore": "queued at inspection"
+    }
+  },
+  "readback": {
+    "resultBlobSha": "3ae57a5e3940cad5fc196a4a3d5dd85f4dd851bc",
+    "leaseBlobSha": "14fd7c0458ba7cafe1874f07a505646c7d14e85a",
+    "generation": 2,
+    "sequence": 4,
+    "released": true,
+    "artifactSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "limits": [
+    "Receipt-only publication fencing; strict expiry-at-write is not enforced by GitHub.",
+    "Automatic dispatch, external effects, hardware operations and releases remain disconnected.",
+    "Draft and unmerged; broad CI pending."
+  ]
+}

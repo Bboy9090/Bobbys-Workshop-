@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "repository": "Bboy9090/Bobbys-Workshop-",
+  "branch": "agent-lease-qualification-20261020-a",
+  "revision": "21ddbbaf3de277258fbd9c13247648862b50c095",
+  "executor": "darwin/v26.7.0",
+  "task": "qualification_37b7cde0efa94193a731d887091eb516",
+  "results": {
+    "acquire": true,
+    "competingOwnerRejected": true,
+    "renew": true,
+    "staleProviderWriteRejected": true,
+    "expiredRenewRejected": true,
+    "takeover": true,
+    "currentReceiptPublished": true,
+    "staleReceiptRejected": true,
+    "newOwnerReceiptPreserved": true,
+    "receiptCommit": "b5e352c548e5b79c36de2e5caa08c8068a1c8fe2",
+    "staleOwnerRejected": true,
+    "release": true
+  },
+  "result": "pass",
+  "exitCode": 0,
+  "durationSeconds": 45.72,
+  "independentReadback": {
+    "receiptBlobSha": "5622895bd88c4d155dfdbb9df69e1f442a8086e3",
+    "artifactSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "generation": 2,
+    "leaseBlobSha": "dca48070b4d7b920170cce9e12ae86e335c6d0d6",
+    "released": true
+  },
+  "limits": [
+    "Fences GitHub receipt publication against intervening branch/ownership changes only.",
+    "No strict provider-side wall-clock expiry check exists at ref-update time.",
+    "External effects, releases, hardware operations and automatic dispatch remain disconnected."
+  ]
+}
