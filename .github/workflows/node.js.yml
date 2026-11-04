@@ -24,24 +24,12 @@ jobs:
     - name: Generate dependency remediation candidate
       if: github.head_ref == 'replay/bobfwtools-swift-studio-20261103'
       run: |
-        node - <<'NODE'
-        const fs = require('fs');
-        const path = 'package.json';
-        const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
-        pkg.overrides = { ...(pkg.overrides || {}), minimatch: '11.0.4' };
-        fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
-        NODE
+        node -e "const fs=require('fs');const p='package.json';const pkg=JSON.parse(fs.readFileSync(p,'utf8'));pkg.overrides={...(pkg.overrides||{}),minimatch:'11.0.4'};fs.writeFileSync(p,JSON.stringify(pkg,null,2)+'\\n')"
         npm install --package-lock-only --ignore-scripts --no-audit --no-fund
         for dir in src-tauri/resources/server src-tauri/bundle/resources/server; do
           (
             cd "$dir"
-            node - <<'NODE'
-            const fs = require('fs');
-            const path = 'package.json';
-            const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
-            pkg.overrides = { ...(pkg.overrides || {}), qs: '6.17.1' };
-            fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
-            NODE
+            node -e "const fs=require('fs');const p='package.json';const pkg=JSON.parse(fs.readFileSync(p,'utf8'));pkg.overrides={...(pkg.overrides||{}),qs:'6.17.1'};fs.writeFileSync(p,JSON.stringify(pkg,null,2)+'\\n')"
             npm install --package-lock-only --ignore-scripts --no-audit --no-fund
           )
         done
