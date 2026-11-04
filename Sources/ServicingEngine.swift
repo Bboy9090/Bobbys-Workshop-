@@ -1369,20 +1369,7 @@ final class ServicingEngine: ObservableObject {
            let decoded = try? JSONDecoder().decode([FirmwareInventoryRecord].self, from: data) {
             firmwareInventory = decoded
         } else {
-            // Seed with connected SM-T500 reference entry if empty
-            firmwareInventory = [
-                FirmwareInventoryRecord(
-                    brand: "Samsung",
-                    model: "SM-T500",
-                    region: "EUX",
-                    carrier: "OPEN",
-                    build: "T500XXS8CXG1",
-                    version: "T500XXS8CXG1/T500OXM8CXG1",
-                    sha256: "",
-                    filename: "SM-T500_EUX_T500XXS8CXG1_FAC.zip",
-                    state: "discovered"
-                )
-            ]
+            firmwareInventory = []
         }
 
         let notesURL = appSupportDir.appendingPathComponent("repair-notes.txt")
@@ -1434,16 +1421,6 @@ final class ServicingEngine: ObservableObject {
 
         // Load Per-Customer JSON-Lines Servicing History Ledger (records/cust_*.db)
         fetchCustomerHistory(customerId: "ALL")
-        if servicingHistoryLedger.isEmpty {
-            let initialSnapshot = DecodedTelemetryPayload(
-                model: "SM-T500",
-                binary_version: "8",
-                serial_number: "R9WN929QFKJ",
-                carrier_csc: "EUX",
-                status: "CLEARED FOR SERVICE"
-            )
-            saveIntakeLog(customerId: "WALK_IN_DEFAULT", telemetry: initialSnapshot)
-        }
     }
 
     // MARK: - Per-Customer JSON-Lines Database Storage (records/cust_<customer_id>.db)
@@ -1698,7 +1675,8 @@ final class ServicingEngine: ObservableObject {
         if cmdName == "adb" && !hasAdbTarget && !activeModemPort.isEmpty {
             let joinedArgs = arguments.joined(separator: " ").lowercased()
             let info = samsungModemInfo
-            let bit = info != nil ? DiagnosticParser.extractSecurityBit(from: info!.pdaVersion) : 8
+            let rawBit = info != nil ? DiagnosticParser.extractSecurityBit(from: info!.pdaVersion) : 0
+            let bitStr = rawBit > 0 ? "Binary \(rawBit)" : "Unverified Bit"
 
             // 1A. Reboot to Download Mode (Odin / Loke protocol)
             if joinedArgs.contains("reboot download") || joinedArgs.contains("download") {
@@ -1769,7 +1747,7 @@ final class ServicingEngine: ObservableObject {
                 let unVal = info?.uniqueNumber.isEmpty == false ? info!.uniqueNumber : "Unknown"
                 let rep = """
                 [Samsung Dialer *#06# Identity Telemetry — Live Hardware Data]
-                • Target Model  : \(info?.model ?? "SM-T500")
+                • Target Model  : \(info?.model ?? "Unknown Model")
                 • Serial Number : \(snVal)
                 • Unique Number : \(unVal)
                 • IMEI          : \(imeiVal)
@@ -1784,16 +1762,16 @@ final class ServicingEngine: ObservableObject {
             if joinedArgs.contains("1234") {
                 let rep = """
                 [Samsung Dialer *#1234# Version Telemetry — Live Firmware Data]
-                • Target Model  : \(info?.model ?? "SM-T500")
-                • AP / PDA      : \(info?.pdaVersion ?? "T500XXS8CXG1") (Binary \(bit))
-                • CP / Baseband : \(info?.basebandVersion ?? "T500XXS8CXG1")
-                • CSC Container : \(info?.cscPackageVersion ?? "T500OXM8CXG1")
-                • Active CSC    : \(info?.activeCsc ?? "EUX") (\(info?.countryCode ?? "AT"))
-                • Bootloader    : \(info?.bootloaderVersion ?? "T500XXS8CXG1")
+                • Target Model  : \(info?.model ?? "Unknown Model")
+                • AP / PDA      : \(info?.pdaVersion ?? "Unknown") (\(bitStr))
+                • CP / Baseband : \(info?.basebandVersion ?? "Unknown")
+                • CSC Container : \(info?.cscPackageVersion ?? "Unknown")
+                • Active CSC    : \(info?.activeCsc ?? "Unknown") (\(info?.countryCode ?? "N/A"))
+                • Bootloader    : \(info?.bootloaderVersion ?? "Unknown")
                 """
                 log(.success, rep)
                 log(.success, "✔ \(title) [OK via Firmware Telemetry]")
-                recordJob(workflowId: workflowId, title: title, serial: info?.serialNumber, verified: true, summary: "PDA: \(info?.pdaVersion ?? "") · CSC: \(info?.activeCsc ?? "")", evidence: ["devconinfo"])
+                recordJob(workflowId: workflowId, title: title, serial: info?.serialNumber, verified: true, summary: "PDA: \(info?.pdaVersion ?? "N/A") · CSC: \(info?.activeCsc ?? "N/A")", evidence: ["devconinfo"])
                 return rep
             }
 
@@ -1806,7 +1784,7 @@ final class ServicingEngine: ObservableObject {
                     [Samsung Hardware Test Menu Activated]
                     • Diagnostic Interface Activated over Modem AT (\(activeModemPort))
                     • Status: AT+SWATD=0 (\(swatdRes.0 ? "ACK" : "NAK")) · AT+ACTIVATE=0,0,0 (\(actRes.0 ? "ACK" : "NAK"))
-                    • Partition HVIDs: \(info?.hvidSummary ?? "Data:196609,Cache:262145,System:327681")
+                    • Partition HVIDs: \(info?.hvidSummary ?? "N/A")
                     • Tip: On phones, open Phone / Emergency Call and tap *#0*#. On Wi-Fi tablets, hardware diagnostics are available in Settings → Battery & Device Care → Diagnostics.
                     """
                     log(.success, rep)
@@ -1824,14 +1802,12 @@ final class ServicingEngine: ObservableObject {
             if joinedArgs.contains("0228") || joinedArgs.contains("battery") {
                 let rep = """
                 [Samsung Battery Diagnostic Telemetry]
-                • Target Device  : \(info?.model ?? "SM-T500") (SN: \(info?.serialNumber ?? "R9WN929QFKJ"))
-                • Power Link     : USB High-Speed CDC Connection (5V Charging Active)
-                • Battery Status : Safe Operating Range (SDP: \(info?.sdpState ?? "RUNTIME"))
-                • Tip: Turn ON 'USB debugging' in Developer options on the tablet to display live mA capacity and millivolt telemetry.
+                • Target Device  : \(info?.model ?? "Samsung Device") (SN: \(info?.serialNumber ?? "Unverified"))
+                • Power Link     : USB CDC Connection (5V Power Active)
+                • Battery Status : Unqueried (Requires active USB debugging / ADB dumpsys battery, or on-device dialer *#0228#)
                 """
-                log(.success, rep)
-                log(.success, "✔ \(title) [OK via Power Interface Telemetry]")
-                recordJob(workflowId: workflowId, title: title, serial: info?.serialNumber, verified: true, summary: "Battery interface verified healthy", evidence: ["sdp-runtime"])
+                log(.info, rep)
+                recordJob(workflowId: workflowId, title: title, serial: info?.serialNumber, verified: false, state: "awaiting_adb", summary: "Battery stats require ADB dumpsys battery or on-device screen access", evidence: ["link:usb_cdc"])
                 return rep
             }
 
@@ -1840,7 +1816,7 @@ final class ServicingEngine: ObservableObject {
                 if passed {
                     let rep = """
                     [Samsung SysDump Diagnostic Mode]
-                    • Target Device  : \(info?.model ?? "SM-T500") (SN: \(info?.serialNumber ?? "R9WN929QFKJ"))
+                    • Target Device  : \(info?.model ?? "Samsung Device") (SN: \(info?.serialNumber ?? "Unverified"))
                     • SysDump Status : Diagnostic daemon port (\(activeModemPort)) switched to DDEXE
                     """
                     log(.success, rep)
@@ -1899,48 +1875,44 @@ final class ServicingEngine: ObservableObject {
             return "Error: Device is in Runtime AT mode. Fastboot requires Bootloader/Odin mode."
         }
 
-        // 3. If Heimdall is called while the Samsung device is in Runtime (SDP(RUNTIME)) rather than Odin Download Mode (04e8:685d), inspect local matched PIT & Runtime HVIDs!
+        // 3. If Heimdall is called while the Samsung device is in Runtime (SDP(RUNTIME)) rather than Odin Download Mode (04e8:685d), inform user honestly:
         if cmdName == "heimdall" && !hasOdinTarget && !activeModemPort.isEmpty {
-            let (ok, raw) = await querySerialAT(portPath: activeModemPort, command: "AT+DEVCONINFO", logOutput: false)
-            let pitFile = autoMatchedBundle?.pitPath ?? "GTA4LWIFI_EUR_OPEN.pit"
-            let parts = autoMatchedBundle?.matchedPartitionImages.keys.sorted().joined(separator: ", ") ?? "ABL, APNHLOS, BOOT, CACHE, DEVCFG, DTBO, HYP, METADATA, MODEM, OMR, OPTICS, PRISM, RECOVERY, RPM, SUPER, TZ, USERDATA, VBMETA, VBMETA_SAMSUNG, XBL, XBL_CONFIG"
             let info = samsungModemInfo
             let msg = """
-            [Heimdall / Odin Runtime Inspection — \(info?.model ?? "SM-T500") is in SDP(RUNTIME) mode]
-            • Matched PIT Table : \((pitFile as NSString).lastPathComponent)
-            • Hardware HVIDs    : \(info?.hvidSummary ?? "Data:196609,Cache:262145,System:327681")
-            • Mapped Partitions : \(parts)
-            • Tip: Click 'ADB Reboot Download Mode' (sends AT+FUS?) to switch target into Odin Download Mode (04e8:685d) for raw partition flashing.
+            [Heimdall / Odin Mode Required — \(info?.model ?? "Target Device") is in Runtime Mode]
+            • Connection State : Runtime AT Mode (\(activeModemPort))
+            • Required State   : Samsung Odin / Download Mode (04e8:685d)
+            • Action Required  : Send AT+FUS? (or hold Vol Down + Power + USB) to enter Download Mode before flashing.
             """
-            log(.success, msg)
-            log(.success, "✔ \(title) [OK — Matched PIT & Runtime HVIDs]")
+            log(.warning, msg)
+            log(.warning, "✖ \(title) aborted: Device is in Runtime Mode. Switch to Odin Download Mode (04e8:685d) for raw partition flashing.")
             recordJob(
                 workflowId: workflowId,
                 title: title,
                 serial: info?.serialNumber,
-                verified: ok,
-                state: "completed",
-                summary: "PIT: \((pitFile as NSString).lastPathComponent) · HVIDs: \(info?.hvidSummary ?? "Verified")",
-                evidence: ["pit:\((pitFile as NSString).lastPathComponent)"]
+                verified: false,
+                state: "awaiting_download_mode",
+                summary: "Device in SDP(RUNTIME) mode; Odin Download Mode required for Heimdall operations.",
+                evidence: ["port:\(activeModemPort)", "state:runtime_at"]
             )
-            return raw
+            return msg
         }
 
         // 4. If an Apple libimobiledevice / libirecovery command is invoked when no iOS device is connected on USB,
-        // report a clean Apple USB bus status instead of failing with exit code 255 / -1.
+        // truth-gate and report offline state instead of generating a fake pass.
         let isAppleTool = cmdName.hasPrefix("idevice") || cmdName == "irecovery"
         let hasIosTarget = devices.contains { $0.transport == .ios } || usbDevices.contains {
             $0.vendorId == 0x05ac && [0x12a8, 0x12ab, 0x1281, 0x1227, 0x1338].contains($0.productId)
         }
         if isAppleTool && !hasIosTarget {
-            let msg = "Apple USB Bus Scan: No iPhone/iPad currently detected in Normal, Recovery (05ac:1281), or DFU (05ac:1227) mode. Connect an Apple device via USB-C/Lightning to execute \(cmdName)."
-            log(.info, msg)
-            log(.success, "✔ \(title) [BUS READY — STANDBY]")
+            let msg = "Apple USB Bus Check: No iPhone/iPad detected in Normal, Recovery (05ac:1281), or DFU (05ac:1227) mode. Connect an Apple device via USB-C/Lightning to execute \(cmdName)."
+            log(.warning, msg)
+            log(.warning, "✖ \(title) aborted: No active Apple iDevice detected on USB bus.")
             recordJob(
                 workflowId: workflowId,
                 title: title,
-                verified: true,
-                state: "completed",
+                verified: false,
+                state: "aborted_no_target",
                 summary: "Apple USB bus ready (no iDevice connected)",
                 evidence: ["tool:\(cmdName)", "usb:standby"]
             )
@@ -2203,29 +2175,34 @@ final class ServicingEngine: ObservableObject {
 
         if isSamsungTarget {
             activePlatform = .samsung
-            let model = samsungModemInfo?.model ?? deviceProperties["ro.product.model"] ?? "SM-T500"
-            let serial = samsungModemInfo?.serialNumber ?? selectedDevice?.serial ?? "Unknown"
-            let pda = samsungModemInfo?.pdaVersion ?? "T500XXS8CXG1"
-            let bit = Self.extractBootloaderBit(from: pda) ?? 8
-            let csc = samsungModemInfo?.activeCsc ?? "EUX"
-            let cscContainer = samsungModemInfo?.cscPackageVersion ?? "T500OXM8CXG1"
+            let model = samsungModemInfo?.model ?? deviceProperties["ro.product.model"] ?? selectedDevice?.name ?? "Samsung Galaxy Target"
+            let serial = samsungModemInfo?.serialNumber ?? selectedDevice?.serial ?? "Unknown Serial"
+            let pda = samsungModemInfo?.pdaVersion ?? deviceProperties["ro.build.display.id"]
+            let bit = pda.flatMap { Self.extractBootloaderBit(from: $0) }
+            let csc = samsungModemInfo?.activeCsc ?? deviceProperties["ro.csc.sales_code"]
+            let cscContainer = samsungModemInfo?.cscPackageVersion
 
-            let profile = FirmwareBuildFallbackMatrix.resolveFallback(model: model, deviceBit: bit, currentPda: pda)
-            let cscResolution = CscFallbackRegistry.resolve(csc: csc, containerHint: cscContainer)
+            let profile = FirmwareBuildFallbackMatrix.resolveFallback(model: model, deviceBit: bit ?? 0, currentPda: pda)
+            let cscResolution = csc != nil ? CscFallbackRegistry.resolve(csc: csc!, containerHint: cscContainer) : nil
+
+            let bitDesc = bit != nil ? "Bootloader Binary \(bit!) (Rollback Safe)" : "Bootloader Bit Unverified"
+            let stockBuild = pda ?? profile.stockBuild
+            let cscDesc = csc != nil ? "\(csc!) (\(cscResolution?.matchedProfile?.region ?? "Multi-CSC"))" : "CSC Unqueried"
+            let pitDesc = profile.defaultPit.isEmpty ? "PIT Standby" : profile.defaultPit
 
             universalMatch = UniversalDeviceFirmwareMatch(
                 platform: .samsung,
                 targetName: "Samsung Galaxy (\(model))",
                 modelNumber: model,
                 serialOrUdid: serial,
-                securityBitOrIosVer: "Bootloader Binary \(bit) (Rollback Safe)",
-                stockFirmwareBuild: profile.stockBuild,
+                securityBitOrIosVer: bitDesc,
+                stockFirmwareBuild: stockBuild,
                 combinationFactoryBuild: profile.combinationBuild,
-                carrierCscOrRegion: "\(csc) (\(cscResolution.matchedProfile?.region ?? "Multi-CSC")) · \(profile.multiCscContainer)",
-                partitionTableOrPit: profile.defaultPit,
+                carrierCscOrRegion: cscDesc,
+                partitionTableOrPit: pitDesc,
                 availableCscList: profile.compatibleCscs,
-                isAntiRollbackSafe: profile.binaryBit >= bit,
-                matchSummary: "\(model) · Bin \(bit) · Stock: \(profile.stockBuild) · Combo: \(profile.combinationBuild) · PIT: \(profile.defaultPit)",
+                isAntiRollbackSafe: (bit ?? 0) <= profile.binaryBit,
+                matchSummary: "\(model) · \(bitDesc) · Stock: \(stockBuild) · PIT: \(pitDesc)",
                 isFallbackSynthesized: autoMatchedBundle?.isSynthesizedFallback ?? true
             )
         } else if hasApple {
@@ -2235,16 +2212,16 @@ final class ServicingEngine: ObservableObject {
             universalMatch = UniversalDeviceFirmwareMatch(
                 platform: .appleIos,
                 targetName: "Apple iDevice Target",
-                modelNumber: "Apple iPhone / iPad",
+                modelNumber: appleDev?.name ?? "Apple iPhone / iPad",
                 serialOrUdid: udid,
-                securityBitOrIosVer: "iOS 17.6.1 / 18.0 (Signed Window Validated)",
-                stockFirmwareBuild: "Universal_iOS17.6.1_Restore.ipsw",
-                combinationFactoryBuild: "Apple_DFU_Diagnostics_Ramdisk_iBoot",
-                carrierCscOrRegion: "LL/A (Global / Factory Unlocked)",
-                partitionTableOrPit: "Apple APFS Container (OS + Preboot + Recovery + Data)",
-                availableCscList: ["LL/A", "B/A", "ZD/A", "CH/A", "J/A"],
+                securityBitOrIosVer: "iOS Window Standby (ideviceinfo required)",
+                stockFirmwareBuild: "No IPSW Staged",
+                combinationFactoryBuild: "DFU / Recovery Standby",
+                carrierCscOrRegion: "N/A",
+                partitionTableOrPit: "APFS Container",
+                availableCscList: [],
                 isAntiRollbackSafe: true,
-                matchSummary: "Apple iDevice · \(udid.prefix(12))... · Restore IPSW matched · DFU & Normal tools available",
+                matchSummary: "Apple iDevice · \(udid.prefix(12))... · Awaiting IPSW Staging",
                 isFallbackSynthesized: true
             )
         } else if hasAndroid {
@@ -2252,20 +2229,21 @@ final class ServicingEngine: ObservableObject {
             let dev = devices.first { $0.transport == .adb || $0.transport == .fastboot }
             let model = deviceProperties["ro.product.model"] ?? dev?.name ?? "Generic Android"
             let serial = dev?.serial ?? "Unknown"
-            let release = deviceProperties["ro.build.version.release"] ?? "14"
+            let release = deviceProperties["ro.build.version.release"] ?? "Standby"
+            let carrier = deviceProperties["ro.carrier"] ?? "Carrier Standby"
             universalMatch = UniversalDeviceFirmwareMatch(
                 platform: .genericAndroid,
                 targetName: "Android Fastboot / ADB Target (\(model))",
                 modelNumber: model,
                 serialOrUdid: serial,
                 securityBitOrIosVer: "Android \(release) (Dynamic Partitions / Slot A/B)",
-                stockFirmwareBuild: "\(model.lowercased())_factory_image.zip",
-                combinationFactoryBuild: "\(model.lowercased())_userdebug_fastboot.img",
-                carrierCscOrRegion: deviceProperties["ro.carrier"] ?? "Universal Open Carrier",
-                partitionTableOrPit: "Super Partition (system + vendor + product) + boot_a/b",
-                availableCscList: ["Open", "Carrier-Unlocked"],
+                stockFirmwareBuild: "No Factory Image Staged",
+                combinationFactoryBuild: "No Userdebug Image Staged",
+                carrierCscOrRegion: carrier,
+                partitionTableOrPit: "Super Partition + boot_a/b",
+                availableCscList: ["Carrier-Unlocked"],
                 isAntiRollbackSafe: true,
-                matchSummary: "\(model) · Android \(release) · Fastboot flashing & ADB system inspection available",
+                matchSummary: "\(model) · Android \(release) · Fastboot flashing & ADB inspection ready",
                 isFallbackSynthesized: true
             )
         } else {
@@ -2652,7 +2630,7 @@ final class ServicingEngine: ObservableObject {
                 • Firmware Baseline    : \(dev.pdaVersion) (Anti-Rollback Binary \(bit))
                 • Multi-CSC Container  : \(dev.activeCsc) (\(dev.countryCode)) · \(dev.cscPackageVersion)
                 • Security & SIM State : LOCK(\(dev.carrierLock)) · SDP(\(dev.sdpState))
-                • Hardware Storage HVID: \(dev.hvidSummary.isEmpty ? "Data:196609,Cache:262145,System:327681" : dev.hvidSummary)
+                • Hardware Storage HVID: \(dev.hvidSummary.isEmpty ? "None / Unextracted" : dev.hvidSummary)
                 • USB Bus & Charging   : USB High-Speed Link (5V Power Active)
                 • Tip: To unlock live kernel battery % and free storage, turn ON 'USB debugging' in Developer options on the tablet.
                 """)
@@ -2673,7 +2651,14 @@ final class ServicingEngine: ObservableObject {
             await refreshDevicesAndTelemetry()
             await runUsbCableDoctor()
             let info = samsungModemInfo
-            let bit = info != nil ? DiagnosticParser.extractSecurityBit(from: info!.pdaVersion) : 8
+            let rawBit = info != nil ? DiagnosticParser.extractSecurityBit(from: info!.pdaVersion) : 0
+            let bitStr = rawBit > 0 ? "Binary \(rawBit)" : "Unverified"
+            let chipQuery = HardwareIdentityQuery(hvid: info?.hvidSummary, basebandToken: info?.basebandVersion, devconSummary: info?.model)
+            let chip = info != nil ? ChipsetSignatureRegistry.shared.resolve(query: chipQuery) : nil
+            let chipName = chip?.marketingName ?? (chip?.chipsetId ?? "Unresolved Silicon Architecture")
+            let lockStr = info?.carrierLock.isEmpty == false ? (info!.carrierLock == "0" ? "Factory Unlocked" : "Carrier Locked (\(info!.carrierLock))") : "Unqueried"
+            let hvidStr = (info?.hvidSummary.isEmpty == false) ? info!.hvidSummary : "None / Unextracted"
+            let cableHealthStr = cableDoctorReport != nil ? "\(cableDoctorReport!.grade) (\(cableDoctorReport!.reconnectEvents) drops across \(cableDoctorReport!.samples) samples)" : "Not Tested (Run Cable Doctor)"
 
             if !selectedSerialPort.isEmpty {
                 _ = await querySerialAT(portPath: selectedSerialPort, command: "AT+DEVCONINFO", logOutput: true)
@@ -2691,13 +2676,13 @@ final class ServicingEngine: ObservableObject {
                 log(.success, """
                 [VesselSanctum Deep Hardware & Firmware Architecture Report]
                 • Target Model        : \(dev.model) (Serial: \(dev.serialNumber))
-                • Processor Platform  : Qualcomm Snapdragon SM6150 (Octa-core 64-bit ARMv8.2-A)
-                • Bootloader Bit      : Binary \(bit) (Anti-Rollback Enforced: Pass)
+                • Processor Platform  : \(chipName)
+                • Bootloader Bit      : \(bitStr) (Anti-Rollback Enforced: Pass)
                 • Baseband / CP       : \(dev.basebandVersion)
-                • CSC & Carrier Lock  : \(dev.activeCsc) · Lock(\(dev.carrierLock)) · Clean / Factory Unlocked
-                • Hardware HVID Bus   : \(dev.hvidSummary.isEmpty ? "Data:196609,Cache:262145,System:327681" : dev.hvidSummary)
+                • CSC & Carrier Lock  : \(dev.activeCsc) · Lock(\(dev.carrierLock)) · \(lockStr)
+                • Hardware HVID Bus   : \(hvidStr)
                 • Unique Hardware UN  : \(dev.uniqueNumber)
-                • Cable Link Health   : \(cableDoctorReport?.grade ?? "HEALTHY") (0 drops across all samples)
+                • Cable Link Health   : \(cableHealthStr)
                 """)
             }
 
@@ -2707,8 +2692,8 @@ final class ServicingEngine: ObservableObject {
                 title: "Autonomous Workflow #2: VesselSanctum Deep Diagnostics",
                 serial: info?.serialNumber,
                 verified: true,
-                summary: "Completed Cable Doctor, Modem AT telemetry, Snapdragon architecture & hardware verification",
-                evidence: ["cable-doctor", "at-devconinfo", "qualcomm-sm6150"]
+                summary: "Completed Cable Doctor, Modem AT telemetry, silicon architecture & hardware verification",
+                evidence: ["cable-doctor", "at-devconinfo", chip?.chipsetId ?? "silicon-unresolved"]
             )
 
         case "partition-preflight":
@@ -2718,7 +2703,7 @@ final class ServicingEngine: ObservableObject {
                 if ep.exitCode == 0 { log(.success, "[USB Endpoint Matrix]\n\(ep.stdout)") }
             }
             if let modem = samsungModemInfo {
-                log(.success, "[Samsung Partition HVIDs] \(modem.hvidSummary.isEmpty ? "Data:196609,Cache:262145,System:327681" : modem.hvidSummary)")
+                log(.success, "[Samsung Partition HVIDs] \(modem.hvidSummary.isEmpty ? "None / Unextracted" : modem.hvidSummary)")
                 log(.success, "[Provisioning State] SDP(\(modem.sdpState)) · LOCK(\(modem.carrierLock)) · Active Transports: \(modem.activeTransports)")
             }
             let hasAdb = devices.contains { $0.transport == .adb }
@@ -2790,9 +2775,13 @@ final class ServicingEngine: ObservableObject {
     }
 
     func autoDiscoverAndMatchBinaries() async {
-        let targetModel = samsungModemInfo?.model ?? deviceProperties["ro.product.model"] ?? "SM-T500"
-        let targetBuild = samsungModemInfo?.pdaVersion ?? "T500XXS8CXG1"
-        let deviceBit = Self.extractBootloaderBit(from: targetBuild) ?? 8
+        guard let targetModel = samsungModemInfo?.model ?? deviceProperties["ro.product.model"] ?? selectedDevice?.name,
+              !targetModel.isEmpty else {
+            log(.warning, "Auto-match binaries: No connected target device model identified.")
+            return
+        }
+        let targetBuild = samsungModemInfo?.pdaVersion ?? deviceProperties["ro.build.display.id"] ?? ""
+        let deviceBit = Self.extractBootloaderBit(from: targetBuild) ?? 0
 
         let matched: AutoMatchedBinaryBundle? = await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -2949,10 +2938,8 @@ final class ServicingEngine: ObservableObject {
         if let bundle = matched {
             let preferredOrder = ["BOOT", "RECOVERY", "OPTICS", "PRISM", "CACHE", "OMR", "SUPER", "VBMETA", "DTBO"]
             if bundle.isSynthesizedFallback {
-                autoSelectedFlashItems = preferredOrder.map {
-                    PartitionFlashItem(enabled: ["OPTICS", "PRISM", "CACHE", "OMR"].contains($0), partitionName: $0, filePath: "")
-                }
-                log(.success, "Auto-Binary Matcher [FALLBACK MATRIX]: Matched \(bundle.model) · Stock: \(bundle.buildVersion) (Bit \(bundle.bootloaderBit) == Device Bit \(deviceBit) [OK]) · Combo: \(bundle.combinationBuild) · PIT: \(bundle.fallbackPitName) · Optics CSCs: \(bundle.verifiedOpticsCscs.prefix(8).joined(separator: ", ")) (+\(bundle.verifiedOpticsCscs.count - 8) more)")
+                autoSelectedFlashItems = []
+                log(.info, "Auto-Binary Matcher [FALLBACK MATRIX]: Identified target profile for \(bundle.model) (Bit \(bundle.bootloaderBit)). Local firmware files not staged.")
             } else {
                 var items: [PartitionFlashItem] = []
                 for key in preferredOrder {
