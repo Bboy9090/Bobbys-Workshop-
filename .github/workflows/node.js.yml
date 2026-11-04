@@ -12,6 +12,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
     - uses: actions/checkout@v7
     
@@ -72,6 +74,32 @@ jobs:
           src-tauri/bundle/resources/server/package.json
           src-tauri/bundle/resources/server/package-lock.json
         if-no-files-found: error
+
+    - name: Persist qualified dependency locks to replay branch
+      if: github.head_ref == 'replay/bobfwtools-swift-studio-20261103'
+      env:
+        TARGET_BRANCH: replay/bobfwtools-swift-studio-20261103
+      run: |
+        git fetch origin "$TARGET_BRANCH"
+        git checkout -B "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
+        node -e "const fs=require('fs');const p='package.json';const pkg=JSON.parse(fs.readFileSync(p,'utf8'));pkg.overrides={...(pkg.overrides||{}),minimatch:'11.0.4'};fs.writeFileSync(p,JSON.stringify(pkg,null,2)+'\\n')"
+        npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+        for dir in src-tauri/resources/server src-tauri/bundle/resources/server; do
+          (
+            cd "$dir"
+            node -e "const fs=require('fs');const p='package.json';const pkg=JSON.parse(fs.readFileSync(p,'utf8'));pkg.overrides={...(pkg.overrides||{}),qs:'6.17.1'};fs.writeFileSync(p,JSON.stringify(pkg,null,2)+'\\n')"
+            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          )
+        done
+        git add package.json package-lock.json src-tauri/resources/server/package.json src-tauri/resources/server/package-lock.json src-tauri/bundle/resources/server/package.json src-tauri/bundle/resources/server/package-lock.json
+        if git diff --cached --quiet; then
+          echo "Qualified dependency locks already persisted."
+          exit 0
+        fi
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git commit -m "security: persist qualified npm audit lock remediation"
+        git push origin "HEAD:$TARGET_BRANCH"
 
 
   macos-rust:
