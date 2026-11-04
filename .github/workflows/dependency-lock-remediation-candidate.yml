@@ -1,0 +1,54 @@
+name: Dependency lock remediation candidate
+
+on:
+  push:
+    branches:
+      - replay/bobfwtools-swift-studio-20261103
+
+permissions:
+  contents: read
+
+jobs:
+  refresh-locks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          package-manager-cache: false
+
+      - name: Refresh root dependency floor
+        run: |
+          npm pkg set overrides.minimatch=11.0.4
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts
+          npm audit --audit-level=moderate
+          npm run lint
+          npm run build
+
+      - name: Refresh packaged server dependency floor
+        run: |
+          for dir in src-tauri/resources/server src-tauri/bundle/resources/server; do
+            (
+              cd "$dir"
+              npm pkg set overrides.qs=6.17.1
+              npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+              npm ci --ignore-scripts
+              npm audit --audit-level=moderate
+            )
+          done
+
+      - name: Upload candidate manifests and locks
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-lock-remediation
+          path: |
+            package.json
+            package-lock.json
+            src-tauri/resources/server/package.json
+            src-tauri/resources/server/package-lock.json
+            src-tauri/bundle/resources/server/package.json
+            src-tauri/bundle/resources/server/package-lock.json
+          if-no-files-found: error
