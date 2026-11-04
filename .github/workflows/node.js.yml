@@ -28,7 +28,9 @@ jobs:
       run: npm ci
       
     - name: Install packaged API dependencies
-      run: npm ci --prefix src-tauri/resources/server --ignore-scripts
+      run: |
+        npm ci --prefix src-tauri/resources/server --ignore-scripts
+        npm ci --prefix src-tauri/bundle/resources/server --ignore-scripts
 
     - name: Production Reality Gate
       run: npm run verify:reality
