@@ -2171,11 +2171,12 @@ struct MultiBrandRecoveryView: View {
                                 let desktopPath = (NSHomeDirectory() as NSString).appendingPathComponent("Desktop/device_screenshot_\(Int(Date().timeIntervalSince1970)).png")
                                 let adbBin = engine.toolPaths["adb"] ?? "/usr/local/bin/adb"
                                 if engine.devices.contains(where: { $0.transport == .adb }) {
+                                    let args = engine.adbArgs(["exec-out", "screencap", "-p"]).joined(separator: " ")
                                     _ = await engine.executeAndLog(
                                         workflowId: "adb.screenshot",
                                         title: "Capture Device Screen",
                                         executable: "/bin/sh",
-                                        arguments: ["-c", "\"\(adbBin)\" exec-out screencap -p > \"\(desktopPath)\" && echo \"Saved to \(desktopPath)\""]
+                                        arguments: ["-c", "\"\(adbBin)\" \(args) > \"\(desktopPath)\" && echo \"Saved to \(desktopPath)\""]
                                     )
                                 } else {
                                     _ = await engine.executeAndLog(

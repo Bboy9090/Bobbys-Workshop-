@@ -1388,6 +1388,7 @@ final class ServicingEngine: ObservableObject {
             "ideviceinfo": Self.resolveTool("ideviceinfo", fallback: "/usr/local/bin/ideviceinfo"),
             "idevice_id": Self.resolveTool("idevice_id", fallback: "/usr/local/bin/idevice_id"),
             "idevicepair": Self.resolveTool("idevicepair", fallback: "/usr/local/bin/idevicepair"),
+            "idevicediagnostics": Self.resolveTool("idevicediagnostics", fallback: "/usr/local/bin/idevicediagnostics"),
             "ideviceenterrecovery": Self.resolveTool("ideviceenterrecovery", fallback: "/usr/local/bin/ideviceenterrecovery"),
             "irecovery": Self.resolveTool("irecovery", fallback: "/usr/local/bin/irecovery"),
             "tar": "/usr/bin/tar",
