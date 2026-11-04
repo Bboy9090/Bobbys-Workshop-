@@ -21,11 +21,26 @@ jobs:
         node-version: "24.x"
         package-manager-cache: false
         
+    - name: Generate dependency remediation candidate
+      if: github.head_ref == 'replay/bobfwtools-swift-studio-20261103'
+      run: |
+        npm pkg set overrides.minimatch=11.0.4
+        npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+        for dir in src-tauri/resources/server src-tauri/bundle/resources/server; do
+          (
+            cd "$dir"
+            npm pkg set overrides.qs=6.17.1
+            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          )
+        done
+
     - name: Install Dependencies
       run: npm ci
       
     - name: Install packaged API dependencies
-      run: npm ci --prefix src-tauri/resources/server --ignore-scripts
+      run: |
+        npm ci --prefix src-tauri/resources/server --ignore-scripts
+        npm ci --prefix src-tauri/bundle/resources/server --ignore-scripts
 
     - name: Audit dormant server dependency trees
       run: |
@@ -43,6 +58,20 @@ jobs:
 
     - name: Validate workflow definitions
       run: npm run test:workflows
+
+    - name: Upload dependency remediation candidate
+      if: github.head_ref == 'replay/bobfwtools-swift-studio-20261103'
+      uses: actions/upload-artifact@v4
+      with:
+        name: dependency-lock-remediation
+        path: |
+          package.json
+          package-lock.json
+          src-tauri/resources/server/package.json
+          src-tauri/resources/server/package-lock.json
+          src-tauri/bundle/resources/server/package.json
+          src-tauri/bundle/resources/server/package-lock.json
+        if-no-files-found: error
 
 
   macos-rust:
