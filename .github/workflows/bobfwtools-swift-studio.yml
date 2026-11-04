@@ -2,9 +2,9 @@ name: BobFWTools Native Swift Studio
 
 on:
   pull_request:
-    branches: [ "main-tool-kit", "feat/bobfwtools-macos-foundation" ]
+    branches: [ "main-tool-kit" ]
   push:
-    branches: [ "feat/bobfwtools-macos-foundation", "feat/bobfwtools-universal-firmware-matcher" ]
+    branches: [ "main-tool-kit", "replay/bobfwtools-native-current-main-20261103" ]
 
 permissions:
   contents: read
@@ -15,15 +15,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install native servicing toolchain
+        run: |
+          brew install libusb
+          brew install --cask android-platform-tools
+
       - name: Build BobFWTools Studio Universal 2 App & Packages
+        env:
+          BOBFWTOOLS_INSTALL_TO_APPLICATIONS: "0"
         run: |
           chmod +x build_app.sh
           ./build_app.sh
 
-      - name: Verify Universal 2 Binary Slices
+      - name: Verify Universal 2 Binary Slices and Bundle Integrity
         run: |
-          lipo -info dist/Owner-Private-Only/BobFWTools.app/Contents/MacOS/BobFWTools
-          codesign -dv --verbose=4 dist/Owner-Private-Only/BobFWTools.app
+          APP=dist/Owner-Private-Only/BobFWTools.app
+          test "$(lipo -archs "$APP/Contents/MacOS/BobFWTools")" = "x86_64 arm64"
+          test "$(lipo -archs "$APP/Contents/MacOS/bootforgeusb")" = "x86_64 arm64"
+          test "$(lipo -archs "$APP/Contents/MacOS/adb")" = "x86_64 arm64"
+          test "$(lipo -archs "$APP/Contents/MacOS/fastboot")" = "x86_64 arm64"
+          test -s "$APP/Contents/Resources/chipset_signatures.json"
+          codesign --verify --deep --strict --verbose=2 "$APP"
 
       - name: Upload Owner Private macOS Archive
         uses: actions/upload-artifact@v4

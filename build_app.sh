@@ -42,7 +42,7 @@ mkdir -p /tmp/swift-module-cache
 export SWIFT_MODULE_CACHE_PATH="/tmp/swift-module-cache"
 export CLANG_MODULE_CACHE_PATH="/tmp/swift-module-cache"
 BOOTFORGE_BIN="${PROJECT_DIR}/tools/bootforgeusb"
-ENTITLEMENTS_PLIST="${PROJECT_DIR}/entitlements.plist"
+ENTITLEMENTS_PLIST="${BUILD_ROOT}/entitlements.plist"
 
 rm -rf "${APP_BUNDLE}"
 mkdir -p "${MACOS_DIR}" "${FRAMEWORKS_DIR}" "${RESOURCES_DIR}"
@@ -148,8 +148,8 @@ cat > "${ENTITLEMENTS_PLIST}" <<ENT_EOF
 </plist>
 ENT_EOF
 
-ENTITLEMENTS_STORE_PLIST="${PROJECT_DIR}/entitlements.store.plist"
-ENTITLEMENTS_HELPER_PLIST="${PROJECT_DIR}/entitlements.helper.plist"
+ENTITLEMENTS_STORE_PLIST="${BUILD_ROOT}/entitlements.store.plist"
+ENTITLEMENTS_HELPER_PLIST="${BUILD_ROOT}/entitlements.helper.plist"
 
 cat > "${ENTITLEMENTS_STORE_PLIST}" <<STORE_ENT_EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -189,25 +189,38 @@ echo "[2/5] Installing AppIcon.icns & Bundled Resources..."
 if [ -f "${PROJECT_DIR}/store_packaging/macos/AppIcon.icns" ]; then
     cp "${PROJECT_DIR}/store_packaging/macos/AppIcon.icns" "${RESOURCES_DIR}/AppIcon.icns"
 fi
-if [ -f "${PROJECT_DIR}/Resources/chipset_signatures.json" ]; then
-    cp "${PROJECT_DIR}/Resources/chipset_signatures.json" "${RESOURCES_DIR}/chipset_signatures.json"
+if [ -f "${PROJECT_DIR}/resources/chipset_signatures.json" ]; then
+    cp "${PROJECT_DIR}/resources/chipset_signatures.json" "${RESOURCES_DIR}/chipset_signatures.json"
 fi
 
-echo "[3/5] Bundling native Rust BootForge USB engine, ADB/Fastboot/Heimdall & self-contained libusb dylib..."
-if [ -f "${PROJECT_DIR}/tools/bootforgeusb" ]; then
-    cp "${PROJECT_DIR}/tools/bootforgeusb" "${MACOS_DIR}/bootforgeusb"
-    chmod +x "${MACOS_DIR}/bootforgeusb"
-elif [ -f "${BOOTFORGE_BIN}" ]; then
-    cp "${BOOTFORGE_BIN}" "${MACOS_DIR}/bootforgeusb"
-    chmod +x "${MACOS_DIR}/bootforgeusb"
+echo "[3/5] Building Universal 2 BootForge USB engine and bundling platform tools..."
+BOOTFORGE_MANIFEST="${PROJECT_DIR}/libs/bootforgeusb/Cargo.toml"
+if [ ! -f "${BOOTFORGE_MANIFEST}" ]; then
+    echo "ERROR: BootForge source manifest missing: ${BOOTFORGE_MANIFEST}" >&2
+    exit 1
 fi
+if ! command -v rustup >/dev/null 2>&1; then
+    echo "ERROR: rustup is required for deterministic Universal 2 BootForge builds." >&2
+    exit 1
+fi
+rustup target add x86_64-apple-darwin aarch64-apple-darwin >/dev/null
+rustup run stable cargo build --locked --manifest-path "${BOOTFORGE_MANIFEST}" --release --target x86_64-apple-darwin
+rustup run stable cargo build --locked --manifest-path "${BOOTFORGE_MANIFEST}" --release --target aarch64-apple-darwin
+lipo -create \
+    "${PROJECT_DIR}/libs/bootforgeusb/target/x86_64-apple-darwin/release/bootforgeusb" \
+    "${PROJECT_DIR}/libs/bootforgeusb/target/aarch64-apple-darwin/release/bootforgeusb" \
+    -output "${MACOS_DIR}/bootforgeusb"
+chmod +x "${MACOS_DIR}/bootforgeusb"
 
 if [ -f "${PROJECT_DIR}/tools/libusb-1.0.0.dylib" ]; then
     cp "${PROJECT_DIR}/tools/libusb-1.0.0.dylib" "${FRAMEWORKS_DIR}/libusb-1.0.0.dylib"
     chmod 755 "${FRAMEWORKS_DIR}/libusb-1.0.0.dylib"
-elif [ -f "/usr/local/opt/libusb/lib/libusb-1.0.0.dylib" ]; then
-    cp "/usr/local/opt/libusb/lib/libusb-1.0.0.dylib" "${FRAMEWORKS_DIR}/libusb-1.0.0.dylib" 2>/dev/null || true
-    chmod 755 "${FRAMEWORKS_DIR}/libusb-1.0.0.dylib" 2>/dev/null || true
+elif command -v brew >/dev/null 2>&1; then
+    LIBUSB_PREFIX="$(brew --prefix libusb 2>/dev/null || true)"
+    if [ -n "${LIBUSB_PREFIX}" ] && [ -f "${LIBUSB_PREFIX}/lib/libusb-1.0.0.dylib" ]; then
+        cp "${LIBUSB_PREFIX}/lib/libusb-1.0.0.dylib" "${FRAMEWORKS_DIR}/libusb-1.0.0.dylib"
+        chmod 755 "${FRAMEWORKS_DIR}/libusb-1.0.0.dylib"
+    fi
 fi
 
 if [ -f "${FRAMEWORKS_DIR}/libusb-1.0.0.dylib" ] && [ -f "${MACOS_DIR}/bootforgeusb" ]; then
@@ -215,13 +228,16 @@ if [ -f "${FRAMEWORKS_DIR}/libusb-1.0.0.dylib" ] && [ -f "${MACOS_DIR}/bootforge
     install_name_tool -change "/usr/local/opt/libusb/lib/libusb-1.0.0.dylib" "@executable_path/../Frameworks/libusb-1.0.0.dylib" "${MACOS_DIR}/bootforgeusb" 2>/dev/null || true
 fi
 
-for TOOL in adb fastboot heimdall; do
+for TOOL in adb fastboot; do
     if [ -f "${PROJECT_DIR}/tools/${TOOL}" ]; then
         cp "${PROJECT_DIR}/tools/${TOOL}" "${MACOS_DIR}/${TOOL}"
         chmod +x "${MACOS_DIR}/${TOOL}"
-    elif [ -f "/usr/local/bin/${TOOL}" ]; then
-        cp -L "/usr/local/bin/${TOOL}" "${MACOS_DIR}/${TOOL}" 2>/dev/null || true
-        chmod +x "${MACOS_DIR}/${TOOL}" 2>/dev/null || true
+    elif command -v "${TOOL}" >/dev/null 2>&1; then
+        cp -L "$(command -v "${TOOL}")" "${MACOS_DIR}/${TOOL}"
+        chmod +x "${MACOS_DIR}/${TOOL}"
+    else
+        echo "ERROR: required platform tool '${TOOL}' is unavailable." >&2
+        exit 1
     fi
 done
 
@@ -258,7 +274,7 @@ xattr -d com.apple.fileprovider.fpfs#P "${APP_BUNDLE}" 2>/dev/null || true
 if [ -f "${FRAMEWORKS_DIR}/libusb-1.0.0.dylib" ]; then
     codesign --force --sign - --options runtime "${FRAMEWORKS_DIR}/libusb-1.0.0.dylib"
 fi
-for TOOL in bootforgeusb adb fastboot heimdall; do
+for TOOL in bootforgeusb adb fastboot; do
     if [ -f "${MACOS_DIR}/${TOOL}" ]; then
         codesign --force --sign - --options runtime "${MACOS_DIR}/${TOOL}"
     fi
@@ -279,7 +295,7 @@ chmod 600 "${OWNER_DIST_DIR}/BobFWTools-Owner-Private-macOS.zip"
 
 killall "${APP_NAME}" 2>/dev/null || true
 sleep 1
-if rm -rf "/Applications/${APP_NAME}.app" 2>/dev/null && cp -R "${APP_BUNDLE}" "/Applications/${APP_NAME}.app" 2>/dev/null; then
+if [[ -z "${CI:-}" && "${BOBFWTOOLS_INSTALL_TO_APPLICATIONS:-1}" == "1" ]] && rm -rf "/Applications/${APP_NAME}.app" 2>/dev/null && cp -R "${APP_BUNDLE}" "/Applications/${APP_NAME}.app" 2>/dev/null; then
     echo ""
     echo "${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
     echo "${C_BOLD} 🚀 PRIMARY AGENT HOST & OPERATOR RUNTIME: ${C_CYAN}/Applications/${APP_NAME}.app${C_RESET}"
@@ -291,7 +307,7 @@ if rm -rf "/Applications/${APP_NAME}.app" 2>/dev/null && cp -R "${APP_BUNDLE}" "
     echo "${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
     echo ""
 else
-    echo "Preserved local app in ${OWNER_DIST_DIR}/${APP_NAME}.app"
+    echo "Qualification/local build preserved app in ${OWNER_DIST_DIR}/${APP_NAME}.app (Applications install skipped)"
 fi
 
 echo "[6/6] Compiling & packaging SEPARATE Public Store Submission Edition (-DSTORE_EDITION, zero Owner code)..."
@@ -332,7 +348,7 @@ xattr -c "${STORE_BUNDLE}" 2>/dev/null || true
 xattr -cr "${STORE_BUNDLE}" 2>/dev/null || true
 xattr -d com.apple.FinderInfo "${STORE_BUNDLE}" 2>/dev/null || true
 xattr -d com.apple.fileprovider.fpfs#P "${STORE_BUNDLE}" 2>/dev/null || true
-for TOOL in bootforgeusb adb fastboot heimdall; do
+for TOOL in bootforgeusb adb fastboot; do
     if [ -f "${STORE_BUNDLE}/Contents/MacOS/${TOOL}" ]; then
         codesign --force --sign - --options runtime --entitlements "${ENTITLEMENTS_HELPER_PLIST}" "${STORE_BUNDLE}/Contents/MacOS/${TOOL}"
     fi
@@ -350,7 +366,11 @@ echo ""
 echo "${C_CYAN}══════════════════════════════════════════════════════════════════════${C_RESET}"
 echo "${C_BOLD}  BOBFWTOOLS STUDIO · BUILD & DEPLOYMENT SUMMARY${C_RESET}"
 echo "${C_CYAN}══════════════════════════════════════════════════════════════════════${C_RESET}"
-echo "  1. ${C_BOLD}Agent Host Target (Installed):${C_RESET} ${C_GREEN}/Applications/${APP_NAME}.app${C_RESET}"
+if [[ -z "${CI:-}" && "${BOBFWTOOLS_INSTALL_TO_APPLICATIONS:-1}" == "1" ]]; then
+    echo "  1. ${C_BOLD}Agent Host Target (Installed):${C_RESET} ${C_GREEN}/Applications/${APP_NAME}.app${C_RESET}"
+else
+    echo "  1. ${C_BOLD}Agent Host Target:${C_RESET} ${C_YELLOW}installation skipped for qualification/CI${C_RESET}"
+fi
 echo "  2. ${C_BOLD}Owner Private Standalone Zip :${C_RESET}  ${C_MAGENTA}${OWNER_DIST_DIR}/BobFWTools-Owner-Private-macOS.zip${C_RESET} ${C_DIM}(mode 600)${C_RESET}"
 echo "  3. ${C_BOLD}Public Store Submission Zip  :${C_RESET}  ${C_YELLOW}${STORE_DIST_DIR}/BobFWTools-Store-Submission-macOS.zip${C_RESET}"
 echo "${C_CYAN}══════════════════════════════════════════════════════════════════════${C_RESET}"
