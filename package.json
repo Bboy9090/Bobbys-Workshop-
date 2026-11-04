@@ -147,5 +147,8 @@
       "packages/*"
     ]
   },
-  "description": "BobFWTools — professional macOS Android device connectivity, MTP, ADB/Fastboot diagnostics, transfer, and support tooling."
+  "description": "BobFWTools — professional macOS Android device connectivity, MTP, ADB/Fastboot diagnostics, transfer, and support tooling.",
+  "overrides": {
+    "minimatch": "11.0.4"
+  }
 }
