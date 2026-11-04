@@ -1,102 +1,45 @@
 # BobFWTools macOS Release Runbook
 
-This runbook covers the public **standard BobFWTools macOS app**. It does not authorize distribution of the qualified destructive-writer build.
-
-## When the release workflow becomes runnable
-
-The manual `BobFWTools macOS Release` workflow must exist on the repository default branch (`main-tool-kit`) before GitHub will normally expose it as a Run workflow action.
-
-PR #203 currently targets `feat/bobfwtools-calibration-edl-safety`, so the release workflow becomes operational only after this work is propagated to `main-tool-kit`.
+The `BobFWTools macOS Signed Release` workflow on `main-tool-kit` is the public macOS release lane. It builds only the normal, non-qualified BobFWTools app.
 
 ## Required GitHub Actions secrets
 
-Configure these repository or environment secrets in GitHub Actions:
+- `MACOS_CERTIFICATE_P12_BASE64`
+- `MACOS_CERTIFICATE_PASSWORD`
+- `MACOS_SIGNING_IDENTITY`
+- `APPLE_ID`
+- `APPLE_APP_SPECIFIC_PASSWORD`
+- `APPLE_TEAM_ID`
 
-- `BOBFW_DEVELOPER_ID_P12_BASE64` — base64-encoded Developer ID Application certificate and private key exported as PKCS#12.
-- `BOBFW_DEVELOPER_ID_P12_PASSWORD` — password used when the PKCS#12 was exported.
-- `BOBFW_DEVELOPER_IDENTITY` — exact Developer ID Application identity shown by macOS `security find-identity -v -p codesigning`.
-- `APPLE_ID` — Apple account used for notarization.
-- `APPLE_APP_SPECIFIC_PASSWORD` — app-specific password for that Apple account.
-- `APPLE_TEAM_ID` — Apple Developer Team ID. The signing certificate TeamIdentifier must match this value.
+Never commit certificate bytes, private keys, passwords, Apple credentials, or secret values.
 
-Do not commit any certificate, private key, password, Apple ID credential, or secret value to the repository.
+## Release sequence
 
-## Run the release
+1. Confirm the intended source commit is on `main-tool-kit`.
+2. Confirm ordinary Node.js CI and BobFWTools macOS Core are green.
+3. Open GitHub Actions → **BobFWTools macOS Signed Release** → **Run workflow**.
+4. Enter a release label containing only letters, numbers, `.`, `_`, or `-` (1–64 characters).
+5. Start the workflow.
 
-1. Confirm the desired source commit is on `main-tool-kit`.
-2. Confirm ordinary Node.js CI and BobFWTools macOS Core are green for that source.
-3. Open GitHub Actions and select **BobFWTools macOS Release**.
-4. Choose **Run workflow**.
-5. Enter a short release label such as `0.1.0-rc1`. The workflow sanitizes the label before using it in artifact names or provenance metadata.
-6. Start the workflow.
+The release workflow does not permit overlapping release jobs.
 
-The workflow intentionally fails closed if any release credential is missing.
+## Evidence produced
 
-## What the workflow proves
+A successful run proves:
 
-The release job:
+- production reality/tests passed before packaging;
+- the app is universal `x86_64` + `arm64`;
+- the public build does not contain the qualified destructive executor;
+- the Developer ID certificate matches `APPLE_TEAM_ID`;
+- hardened-runtime signing verifies;
+- Apple accepted app notarization;
+- Apple accepted DMG notarization;
+- both tickets were stapled and validated;
+- Gatekeeper accepted both the app and DMG;
+- source revision and SHA-256 artifact identities were recorded.
 
-1. Re-runs source reality, TypeScript, repository tests, workflow validation, and BootForgeUSB tests.
-2. Builds the universal standard macOS app.
-3. Verifies the unsigned build before signing.
-4. Creates a temporary keychain and imports the Developer ID certificate.
-5. Requires the certificate TeamIdentifier to match `APPLE_TEAM_ID`.
-6. Signs with hardened runtime and a secure timestamp.
-7. Verifies the signed app.
-8. Submits the app to Apple with `notarytool`.
-9. Requires notarization status exactly `Accepted`.
-10. Staples and validates the notarization ticket.
-11. Requires Gatekeeper `spctl` acceptance.
-12. Confirms both `x86_64` and `arm64` architecture evidence through the normal app verifier.
-13. Confirms the built binary contains the source revision.
-14. Produces a machine-readable release provenance receipt.
-15. Uploads the notarized app, Apple notarization receipt, and BobFWTools release receipt.
-16. Deletes the temporary signing keychain even when the job fails.
-
-## Expected artifacts
-
-The workflow uploads an artifact named:
-
-`BobFWTools-macOS-notarized-<sanitized-release-label>`
-
-It contains:
-
-- `BobFWTools-DeveloperID.app`
-- `bobfwtools-notarization-receipt.json`
-- `bobfwtools-release-receipt.json`
-
-The BobFWTools release receipt records:
-
-- release label
-- source revision
-- executable SHA-256
-- Info.plist SHA-256
-- architectures
-- Developer ID authority
-- TeamIdentifier
-- signing identifier
-- Apple notarization status
-- Apple notarization submission ID
-- notarization receipt SHA-256
-- stapling validation
-- Gatekeeper acceptance
-- an explicit declaration that the qualified destructive writer is not included
-
-## Failure handling
-
-Do not bypass a red signing or notarization gate.
-
-If the workflow fails:
-
-- Missing credential: configure the named secret and rerun.
-- Certificate import/signing failure: verify the PKCS#12, password, Developer ID identity, and Team ID.
-- TeamIdentifier mismatch: use the correct Developer ID certificate for the configured Apple team.
-- Notarization rejected: inspect Apple's notarization result and correct the reported app/signing issue before rerunning.
-- Stapler or Gatekeeper failure: do not distribute that artifact.
-- Source/test/build failure: fix the source branch and produce a fresh release run.
+The uploaded release contains the notarized DMG, zipped app, Apple notarization JSON receipts, the legacy text receipt, and `RELEASE-RECEIPT.json`.
 
 ## Qualified destructive-writer boundary
 
-The qualified destructive-writer app produced by macOS Core is a qualification artifact, not the public release artifact.
-
-Do not sign/notarize/distribute it as production software until the designated-device physical qualification process has real bench-write and post-write verification evidence and the project explicitly opens a qualified release lane.
+The qualified destructive-writer artifact from macOS Core is a qualification artifact only. Do not sign, notarize, or distribute it as the public production release until designated-device destructive bench-write and post-write verification evidence has been completed and a separate qualified release policy is explicitly approved.
