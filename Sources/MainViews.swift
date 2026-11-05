@@ -3115,6 +3115,7 @@ struct JobsNotesAndBridgeView: View {
 enum ConsoleDisplayMode: String, CaseIterable {
     case engineLogs = "Execution Logs"
     case telemetry = "Telemetry Visualizer"
+    case dualTiles = "Live Dual Monitor"
 }
 
 // MARK: - Automated Database Size Monitor Pane
@@ -3361,7 +3362,7 @@ struct ConsoleLogPanel: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 230)
+                .frame(width: 330)
 
                 Spacer()
 
@@ -3387,6 +3388,13 @@ struct ConsoleLogPanel: View {
 
             if consoleMode == .telemetry {
                 BobFWTelemetryConsoleView()
+            } else if consoleMode == .dualTiles {
+                VStack(spacing: 8) {
+                    BobFWDatabaseMonitorView()
+                        .padding(.horizontal, 8)
+                        .padding(.top, 8)
+                    BobFWTelemetryConsoleView()
+                }
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
