@@ -1,0 +1,118 @@
+name: BobFWTools Microsoft Store MSIX
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/bobfwtools-microsoft-store-msix.yml"
+      - "scripts/release/build-bobfwtools-msix.ps1"
+      - "tests/bobfwtools-microsoft-store-msix.test.mjs"
+  workflow_dispatch:
+    inputs:
+      identity_name:
+        description: "Partner Center package identity Name"
+        required: true
+        type: string
+      publisher:
+        description: "Partner Center Publisher distinguished name"
+        required: true
+        type: string
+      package_version:
+        description: "Four-part Store version, e.g. 0.1.0.0"
+        required: true
+        type: string
+      release_label:
+        description: "Human-readable package label"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bobfwtools-microsoft-store-msix-\${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.x"
+          package-manager-cache: false
+      - run: npm ci
+      - run: node tests/bobfwtools-microsoft-store-msix.test.mjs
+
+  build-sign-msix:
+    if: github.event_name == 'workflow_dispatch'
+    needs: preflight
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.x"
+          package-manager-cache: false
+      - run: npm ci
+      - name: Verify release source
+        shell: pwsh
+        run: |
+          npm run verify:reality
+          npm run typecheck
+          npm test
+          npm run test:workflows
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Build Windows release executable and installers
+        shell: pwsh
+        run: npm run tauri:build:windows
+      - name: Build unsigned Store MSIX
+        shell: pwsh
+        env:
+          IDENTITY_NAME: \${{ inputs.identity_name }}
+          PUBLISHER: \${{ inputs.publisher }}
+          PACKAGE_VERSION: \${{ inputs.package_version }}
+          RELEASE_LABEL: \${{ inputs.release_label }}
+        run: ./scripts/release/build-bobfwtools-msix.ps1 -IdentityName $env:IDENTITY_NAME -Publisher $env:PUBLISHER -PackageVersion $env:PACKAGE_VERSION -ReleaseLabel $env:RELEASE_LABEL -OutputDirectory "$env:RUNNER_TEMP\msix"
+      - name: Sign and verify exact MSIX
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_PFX_BASE64: \${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+          WINDOWS_SIGNING_PFX_PASSWORD: \${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+          WINDOWS_SIGNING_CERT_THUMBPRINT: \${{ secrets.WINDOWS_SIGNING_CERT_THUMBPRINT }}
+        run: |
+          $pkg=Get-ChildItem "$env:RUNNER_TEMP\msix\*.msix" | Select-Object -First 1
+          if (-not $pkg) { throw 'MSIX package missing' }
+          ./scripts/release/sign-windows-authenticode.ps1 -InputPath $pkg.FullName -ReceiptPath "$env:RUNNER_TEMP\msix\MSIX-SIGNATURE-RECEIPT.json"
+          $build=Get-Content "$env:RUNNER_TEMP\msix\MSIX-BUILD-RECEIPT.json" -Raw | ConvertFrom-Json
+          $sig=Get-Content "$env:RUNNER_TEMP\msix\MSIX-SIGNATURE-RECEIPT.json" -Raw | ConvertFrom-Json
+          $receipt=[ordered]@{
+            schema='com.bobbyblanco.bobfwtools.microsoft-store-package.v1'
+            product='BobFWTools'
+            distribution='microsoft-store'
+            sourceRevision=$env:GITHUB_SHA
+            identityName=$build.identityName
+            publisher=$build.publisher
+            packageVersion=$build.packageVersion
+            package=[ordered]@{
+              name=$build.package.name
+              sha256=$sig.artifact.sha256
+              signed=$true
+              authenticodeStatus=$sig.verification.authenticodeStatus
+            }
+            storeUploaded=$false
+            storeReviewApproved=$false
+            deviceWriteAuthorityGranted=$false
+            scope='Signed Microsoft Store MSIX evidence only; Partner Center upload and Microsoft certification are not proven'
+          }
+          $receipt | ConvertTo-Json -Depth 7 | Set-Content "$env:RUNNER_TEMP\msix\MICROSOFT-STORE-RECEIPT.json" -Encoding utf8
+      - uses: actions/upload-artifact@v7
+        with:
+          name: BobFWTools-microsoft-store-\${{ github.sha }}
+          path: |
+            \${{ runner.temp }}/msix/*.msix
+            \${{ runner.temp }}/msix/*.json
+          if-no-files-found: error
