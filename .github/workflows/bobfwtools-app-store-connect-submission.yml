@@ -106,12 +106,12 @@ jobs:
           OUT: ${{ steps.package.outputs.out }}
         run: |
           set -euo pipefail
-          mapfile -d '' PKGS < <(find "$OUT/package" -type f -name '*.pkg' -print0)
-          [[ "${#PKGS[@]}" -eq 1 ]] || {
-            echo "Expected exactly one signed .pkg artifact" >&2
+          PKG_COUNT="$(find "$OUT/package" -type f -name '*.pkg' | wc -l | tr -d '[:space:]')"
+          [[ "$PKG_COUNT" == "1" ]] || {
+            echo "Expected exactly one signed .pkg artifact, found $PKG_COUNT" >&2
             exit 1
           }
-          PKG="${PKGS[0]}"
+          PKG="$(find "$OUT/package" -type f -name '*.pkg' -print -quit)"
           PACKAGE_RECEIPT="$(find "$OUT/package" -type f -name 'PACKAGE-RECEIPT.json' -print -quit)"
           ARCHIVE_RECEIPT="$(find "$OUT/package" -type f -name 'APP-STORE-ARCHIVE-RECEIPT.json' -print -quit)"
           SHA_FILE="$(find "$OUT/package" -type f -name 'INSTALLER-PACKAGE.sha256' -print -quit)"
