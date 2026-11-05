@@ -4380,58 +4380,121 @@ final class ServicingEngine: ObservableObject {
     ) async -> Bool {
         let logger = BobFWTelemetryLogger.shared
         logger.recordPipelineEvent(workflowId: "restoration.low_level", profile: profile, status: .executing)
+        let timeoutInterval: UInt64 = 60_000_000_000 // Extended 60-second window for heavy sector writes
 
         switch profile.chipset {
         case .mediaTekDimensity, .mediaTekHelio:
-            log(.info, "🔬 Inspecting MediaTek BROM / Preloader interface (0e8d) for scatter digest verification...")
-            let bootforgePath = bootforgeBinaryPath
-            guard FileManager.default.isExecutableFile(atPath: bootforgePath) else {
+            let bootForgePath = bootforgeBinaryPath
+            guard FileManager.default.isExecutableFile(atPath: bootForgePath) else {
                 let errBlob = BobFWTelemetryLogger.exceptionBlobBuilder(
                     code: 404,
                     domain: "BOOTFORGE_TOOL_MISSING",
-                    raw: "Native bootforgeusb engine binary not available.",
+                    raw: "BootForge USB engine binary not available: \(bootForgePath)",
                     advice: "Run ./build_app.sh to bundle native BootForge USB engine."
                 )
-                logger.recordPipelineEvent(workflowId: "restoration.mtk", profile: profile, status: .faultInterrupted, fault: errBlob)
+                logger.recordPipelineEvent(workflowId: "mtk.brom.intercept", profile: profile, status: .faultInterrupted, fault: errBlob)
                 return false
             }
 
-            let res = await runProcess(executable: bootforgePath, arguments: ["scan"])
-            if res.exitCode == 0 && res.stdout.contains("0e8d") {
-                log(.success, "✔ MediaTek silicon handshake confirmed. BROM registers verified.")
-                logger.recordPipelineEvent(workflowId: "restoration.mtk", profile: profile, status: .success)
-                return true
-            } else {
-                let errBlob = BobFWTelemetryLogger.exceptionBlobBuilder(
-                    code: 504,
-                    domain: "MTK_BROM_HANDSHAKE_TIMEOUT",
-                    raw: res.stdout + res.stderr,
-                    advice: "Hold Volume Down while plugging USB cable to trigger MediaTek BootROM intercept."
+            // Step 1: Force descriptor scan and high-speed BROM interface intercept
+            let interceptResult = await self.executeAndLogWithTimeout(
+                workflowId: "mtk.brom.intercept",
+                title: "Infiltrating MediaTek Hardware BROM Stack",
+                executable: bootForgePath,
+                arguments: ["brom-bypass", "--serial", deviceSerial],
+                timeoutNanoseconds: timeoutInterval
+            )
+
+            guard interceptResult.isSuccess else {
+                let fault = BobFWTelemetryLogger.exceptionBlobBuilder(
+                    code: 601,
+                    domain: "MTK_BROM_HANDSHAKE_FAILED",
+                    raw: interceptResult.outputString,
+                    advice: "BROM handshake timed out. Check dynamic pull-down resistors or use hardware test points."
                 )
-                logger.recordPipelineEvent(workflowId: "restoration.mtk", profile: profile, status: .faultInterrupted, fault: errBlob)
+                logger.recordPipelineEvent(workflowId: "mtk.brom.intercept", profile: profile, status: .faultInterrupted, fault: fault)
                 return false
             }
+
+            // Step 2: Push preloader memory mappings safely over the exposed handle
+            let scatterResult = await self.executeAndLogWithTimeout(
+                workflowId: "mtk.preloader.stage",
+                title: "Streaming Preloader Address Scatter Layout",
+                executable: bootForgePath,
+                arguments: ["flash", "--scatter", "MT6768_Android_scatter.txt", "--partition", "preloader"],
+                timeoutNanoseconds: timeoutInterval
+            )
+
+            if !scatterResult.isSuccess {
+                let fault = BobFWTelemetryLogger.exceptionBlobBuilder(
+                    code: 602,
+                    domain: "MTK_PRELOADER_WRITE_PROTECT",
+                    raw: scatterResult.outputString,
+                    advice: "Preloader staging space locked. Ensure secure boot signatures correspond with hardware keys."
+                )
+                logger.recordPipelineEvent(workflowId: "mtk.preloader.stage", profile: profile, status: .faultInterrupted, fault: fault)
+                return false
+            }
+            logger.recordPipelineEvent(workflowId: "mtk.preloader.stage", profile: profile, status: .success)
+            return true
 
         case .unisocTiger:
-            log(.info, "🔬 Inspecting Unisoc / Spreadtrum U2S Diag / FDL interface (1782)...")
-            let bootforgePath = bootforgeBinaryPath
-            let res = await runProcess(executable: bootforgePath, arguments: ["scan"])
-            if res.exitCode == 0 && res.stdout.contains("1782") {
-                log(.success, "✔ Unisoc / Spreadtrum Diag handshake confirmed. FDL partition layout verified.")
-                logger.recordPipelineEvent(workflowId: "restoration.unisoc", profile: profile, status: .success)
-                return true
-            } else {
+            let bootForgePath = bootforgeBinaryPath
+            guard FileManager.default.isExecutableFile(atPath: bootForgePath) else {
                 let errBlob = BobFWTelemetryLogger.exceptionBlobBuilder(
-                    code: 505,
-                    domain: "UNISOC_DIAG_HANDSHAKE_TIMEOUT",
-                    raw: res.stdout + res.stderr,
-                    advice: "Verify USB connection with test point grounded or hold Volume Up while connecting."
+                    code: 404,
+                    domain: "UNISOC_ENGINE_MISSING",
+                    raw: "Unisoc SPRD diagnostic engine tool path missing: \(bootForgePath)",
+                    advice: "Run ./build_app.sh to bundle native BootForge engine."
                 )
-                logger.recordPipelineEvent(workflowId: "restoration.unisoc", profile: profile, status: .faultInterrupted, fault: errBlob)
+                logger.recordPipelineEvent(workflowId: "unisoc.fdl1.load", profile: profile, status: .faultInterrupted, fault: errBlob)
                 return false
             }
 
+            // Step 1: Run U2S Diag handshake loop to force FDL1 storage access controls
+            let fdl1Result = await self.executeAndLogWithTimeout(
+                workflowId: "unisoc.fdl1.load",
+                title: "Injecting First-Stage FDL1 Bootloader Payload",
+                executable: bootForgePath,
+                arguments: ["sprd-diag", "--port", "unisocDiag", "--load", "fdl1.bin"],
+                timeoutNanoseconds: timeoutInterval
+            )
+
+            if !fdl1Result.isSuccess {
+                let fault = BobFWTelemetryLogger.exceptionBlobBuilder(
+                    code: 603,
+                    domain: "UNISOC_FDL1_HANDSHAKE_FAULT",
+                    raw: fdl1Result.outputString,
+                    advice: "Unisoc FDL1 handshake rejected. Confirm exact device crystal oscillator timing parameter variations."
+                )
+                logger.recordPipelineEvent(workflowId: "unisoc.fdl1.load", profile: profile, status: .faultInterrupted, fault: fault)
+                return false
+            }
+
+            // Step 2: Push secondary FDL2 payload engine to open full flashing table routes
+            let pacResult = await self.executeAndLogWithTimeout(
+                workflowId: "unisoc.pac.verify",
+                title: "Validating and Writing System PAC Archive Metadata",
+                executable: bootForgePath,
+                arguments: ["sprd-pac", "--write-pac", "system_release.pac"],
+                timeoutNanoseconds: timeoutInterval
+            )
+
+            if !pacResult.isSuccess {
+                let fault = BobFWTelemetryLogger.exceptionBlobBuilder(
+                    code: 604,
+                    domain: "UNISOC_PAC_SECTOR_WRITE_ERROR",
+                    raw: pacResult.outputString,
+                    advice: "Failed to write raw system partition slices. Check storage chip flash hardware lifecycle limits."
+                )
+                logger.recordPipelineEvent(workflowId: "unisoc.pac.verify", profile: profile, status: .faultInterrupted, fault: fault)
+                return false
+            }
+            logger.recordPipelineEvent(workflowId: "unisoc.pac.verify", profile: profile, status: .success)
+            return true
+
         default:
+            log(.error, "Target platform profile falls outside hardware restoration parameters.")
             return false
         }
     }

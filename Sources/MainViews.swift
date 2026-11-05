@@ -3110,11 +3110,123 @@ struct JobsNotesAndBridgeView: View {
     }
 }
 
-// MARK: - Right Console Panel
+// MARK: - Right Console Panel & Telemetry Visualizer
+
+enum ConsoleDisplayMode: String, CaseIterable {
+    case engineLogs = "Execution Logs"
+    case telemetry = "Telemetry Visualizer"
+}
+
+struct BobFWTelemetryConsoleView: View {
+    @ObservedObject private var telemetry = BobFWTelemetryLogger.shared
+    @State private var filterQuery: String = ""
+    @State private var autoScrollToBottom: Bool = true
+
+    var filteredLogs: [BobFWTelemetryLogger.PipelineSessionRecord] {
+        if filterQuery.isEmpty { return telemetry.historicalLedger }
+        return telemetry.historicalLedger.filter { $0.workflowId.localizedCaseInsensitiveContains(filterQuery) }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Live Status Header Toolbar
+            HStack {
+                TextField("Filter by Workflow ID...", text: $filterQuery)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11, design: .monospaced))
+
+                Button {
+                    telemetry.historicalLedger.removeAll()
+                } label: {
+                    Label("Clear", systemImage: "trash")
+                }
+                .controlSize(.small)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color(NSColor.controlBackgroundColor))
+
+            Divider()
+
+            // Scrolling Live Terminal Log Layout
+            ScrollViewReader { proxy in
+                List(filteredLogs) { record in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text(record.timestamp, style: .time)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(.secondary)
+
+                            Text("[\(record.workflowId)]")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(.orange)
+
+                            Spacer()
+
+                            // Badge indicating precise execution status state
+                            Text(record.executionStatus.rawValue)
+                                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(statusColorModifier(record.executionStatus).opacity(0.2))
+                                .foregroundColor(statusColorModifier(record.executionStatus))
+                                .cornerRadius(4)
+                        }
+
+                        if let profile = record.hardwareProfile {
+                            Text("Target: \(profile.chipset.rawValue) · Transport: \(profile.activeTransport.rawValue)")
+                                .font(.system(size: 10.5, design: .monospaced))
+                                .foregroundColor(.accentColor)
+                        }
+
+                        // Render Exception Box only if process fault is trapped
+                        if let fault = record.capturedException {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("⚠️ FAULT [\(fault.errorDomain)] CODE: \(fault.systemErrorCode)")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.red)
+
+                                if !fault.lowerLevelRawOutput.isEmpty {
+                                    Text("Raw: \(fault.lowerLevelRawOutput)")
+                                        .font(.system(size: 9.5, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(2)
+                                }
+
+                                Text("Mitigation Advice: \(fault.targetedMitigationAdvice)")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(.green)
+                            }
+                            .padding(6)
+                            .background(RoundedRectangle(cornerRadius: 4).fill(Color.red.opacity(0.12)))
+                        }
+                    }
+                    .padding(.vertical, 2)
+                    .id(record.id)
+                }
+                .onChange(of: telemetry.historicalLedger.count) { _, _ in
+                    if autoScrollToBottom, let lastRecord = filteredLogs.last {
+                        withAnimation { proxy.scrollTo(lastRecord.id, anchor: .bottom) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func statusColorModifier(_ status: BobFWTelemetryLogger.OperationalStatus) -> Color {
+        switch status {
+        case .processStaged: return .gray
+        case .executing: return .yellow
+        case .success: return .green
+        case .faultInterrupted, .busTimeout: return .red
+        }
+    }
+}
 
 struct ConsoleLogPanel: View {
     @ObservedObject var engine: ServicingEngine
     @Binding var customCommand: String
+    @State private var consoleMode: ConsoleDisplayMode = .engineLogs
 
     private static let timeFormatter: DateFormatter = {
         let df = DateFormatter()
@@ -3124,79 +3236,91 @@ struct ConsoleLogPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Label("LIVE EXECUTION & AUDIT CONSOLE", systemImage: "terminal.fill")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.secondary)
-                Spacer()
-                Button("Copy Log") {
-                    let allText = engine.logs.map { "[\(Self.timeFormatter.string(from: $0.timestamp))] [\($0.level.rawValue)] \($0.message)" }.joined(separator: "\n")
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(allText, forType: .string)
+            HStack(spacing: 8) {
+                Picker("", selection: $consoleMode) {
+                    ForEach(ConsoleDisplayMode.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
                 }
-                .controlSize(.small)
+                .pickerStyle(.segmented)
+                .frame(width: 230)
 
-                Button("Clear") {
-                    engine.clearLogs()
+                Spacer()
+
+                if consoleMode == .engineLogs {
+                    Button("Copy") {
+                        let allText = engine.logs.map { "[\(Self.timeFormatter.string(from: $0.timestamp))] [\($0.level.rawValue)] \($0.message)" }.joined(separator: "\n")
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(allText, forType: .string)
+                    }
+                    .controlSize(.small)
+
+                    Button("Clear") {
+                        engine.clearLogs()
+                    }
+                    .controlSize(.small)
                 }
-                .controlSize(.small)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background(Color(NSColor.controlBackgroundColor))
 
             Divider()
 
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 6) {
-                        ForEach(engine.logs) { item in
-                            HStack(alignment: .top, spacing: 8) {
-                                Text(Self.timeFormatter.string(from: item.timestamp))
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundColor(.secondary)
+            if consoleMode == .telemetry {
+                BobFWTelemetryConsoleView()
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 6) {
+                            ForEach(engine.logs) { item in
+                                HStack(alignment: .top, spacing: 8) {
+                                    Text(Self.timeFormatter.string(from: item.timestamp))
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundColor(.secondary)
 
-                                Text(item.level.rawValue)
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 1)
-                                    .background(RoundedRectangle(cornerRadius: 4).fill(badgeColor(item.level).opacity(0.2)))
-                                    .foregroundColor(badgeColor(item.level))
+                                    Text(item.level.rawValue)
+                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1)
+                                        .background(RoundedRectangle(cornerRadius: 4).fill(badgeColor(item.level).opacity(0.2)))
+                                        .foregroundColor(badgeColor(item.level))
 
-                                Text(item.message)
-                                    .font(.system(size: 11.5, design: .monospaced))
-                                    .foregroundColor(.primary)
-                                    .textSelection(.enabled)
+                                    Text(item.message)
+                                        .font(.system(size: 11.5, design: .monospaced))
+                                        .foregroundColor(.primary)
+                                        .textSelection(.enabled)
+                                }
+                                .id(item.id)
                             }
-                            .id(item.id)
+                        }
+                        .padding(12)
+                    }
+                    .background(Color(NSColor.textBackgroundColor))
+                    .onChange(of: engine.logs.count) { _, _ in
+                        if let last = engine.logs.last {
+                            proxy.scrollTo(last.id, anchor: .bottom)
                         }
                     }
-                    .padding(12)
                 }
-                .background(Color(NSColor.textBackgroundColor))
-                .onChange(of: engine.logs.count) { _, _ in
-                    if let last = engine.logs.last {
-                        proxy.scrollTo(last.id, anchor: .bottom)
-                    }
-                }
-            }
 
-            Divider()
+                Divider()
 
-            // Quick Shell / ADB / BootForge Command Bar
-            HStack(spacing: 8) {
-                TextField("Run direct adb / fastboot / bootforgeusb command...", text: $customCommand)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12, design: .monospaced))
-                    .onSubmit {
+                // Quick Shell / ADB / BootForge Command Bar
+                HStack(spacing: 8) {
+                    TextField("Run direct adb / fastboot / bootforgeusb command...", text: $customCommand)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .onSubmit {
+                            runCustomShell()
+                        }
+                    Button("Run") {
                         runCustomShell()
                     }
-                Button("Run") {
-                    runCustomShell()
                 }
+                .padding(10)
+                .background(Color(NSColor.controlBackgroundColor))
             }
-            .padding(10)
-            .background(Color(NSColor.controlBackgroundColor))
         }
     }
 
