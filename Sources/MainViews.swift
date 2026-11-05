@@ -2860,6 +2860,105 @@ struct AppleServicingView: View {
 
 // MARK: - Module 7: Audited Jobs, Repair Notes & Windows .EXE / UTM Bridge
 
+struct BobFWTelemetryLedgerCard: View {
+    @ObservedObject private var logger = BobFWTelemetryLogger.shared
+
+    var body: some View {
+        GroupBox(label: Label("Multi-Platform Hardware Telemetry Ledger (\(logger.historicalLedger.count) events)", systemImage: "waveform.path.badge.plus")) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Asynchronous thread-isolated telemetry records across chipset and transport pipelines:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    if !logger.historicalLedger.isEmpty {
+                        Button("Clear Ledger") {
+                            logger.historicalLedger.removeAll()
+                        }
+                        .controlSize(.small)
+                    }
+                }
+
+                if logger.historicalLedger.isEmpty {
+                    Text("No telemetry events recorded yet. Execute any diagnostic, guided wizard, or restoration workflow to populate.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.vertical, 8)
+                } else {
+                    ScrollView {
+                        VStack(spacing: 6) {
+                            ForEach(logger.historicalLedger.reversed()) { record in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Text("[\(record.workflowId)]")
+                                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        if let chip = record.hardwareProfile?.chipset {
+                                            Text(chip.rawValue)
+                                                .font(.system(size: 9.5, design: .monospaced))
+                                                .padding(.horizontal, 4)
+                                                .padding(.vertical, 1)
+                                                .background(RoundedRectangle(cornerRadius: 3).fill(Color.blue.opacity(0.15)))
+                                                .foregroundColor(.blue)
+                                        }
+                                        Spacer()
+                                        Text(record.executionStatus.rawValue)
+                                            .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 2)
+                                            .background(RoundedRectangle(cornerRadius: 3).fill(statusBackground(record.executionStatus)))
+                                            .foregroundColor(statusForeground(record.executionStatus))
+                                    }
+
+                                    if let exc = record.capturedException {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Domain: \(exc.errorDomain) (Code \(exc.systemErrorCode))")
+                                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                                .foregroundColor(.red)
+                                            if !exc.lowerLevelRawOutput.isEmpty {
+                                                Text(exc.lowerLevelRawOutput)
+                                                    .font(.system(size: 9.5, design: .monospaced))
+                                                    .foregroundColor(.secondary)
+                                                    .lineLimit(2)
+                                            }
+                                            Text("Mitigation: \(exc.targetedMitigationAdvice)")
+                                                .font(.system(size: 9.5, weight: .medium))
+                                                .foregroundColor(.accentColor)
+                                        }
+                                        .padding(4)
+                                        .background(RoundedRectangle(cornerRadius: 4).fill(Color.red.opacity(0.08)))
+                                    }
+                                }
+                                .padding(6)
+                                .background(RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.controlBackgroundColor)))
+                            }
+                        }
+                    }
+                    .frame(height: 160)
+                }
+            }
+            .padding(8)
+        }
+    }
+
+    private func statusBackground(_ status: BobFWTelemetryLogger.OperationalStatus) -> Color {
+        switch status {
+        case .success: return Color.green.opacity(0.2)
+        case .executing, .processStaged: return Color.blue.opacity(0.2)
+        case .faultInterrupted: return Color.red.opacity(0.2)
+        case .busTimeout: return Color.orange.opacity(0.2)
+        }
+    }
+
+    private func statusForeground(_ status: BobFWTelemetryLogger.OperationalStatus) -> Color {
+        switch status {
+        case .success: return .green
+        case .executing, .processStaged: return .blue
+        case .faultInterrupted: return .red
+        case .busTimeout: return .orange
+        }
+    }
+}
+
 struct JobsNotesAndBridgeView: View {
     @ObservedObject var engine: ServicingEngine
     @State private var exePath: String = ""
@@ -2925,6 +3024,9 @@ struct JobsNotesAndBridgeView: View {
                 }
                 .padding(8)
             }
+
+            // Real-Time Asynchronous Telemetry Isolation Ledger
+            BobFWTelemetryLedgerCard()
 
             // UTM & Wine Bridge
             GroupBox(label: Label("USB Passthrough VM Bridge", systemImage: "macwindow.on.rectangle")) {
