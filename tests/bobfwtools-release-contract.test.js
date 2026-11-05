@@ -6,6 +6,19 @@ const root = process.cwd();
 const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 
 describe('BobFWTools macOS signed release contract', () => {
+  it('keeps common desktop UI and installer copy platform-neutral', () => {
+    const config = JSON.parse(read('src-tauri/tauri.conf.json'));
+    const app = read('src/App.tsx');
+    const pkg = JSON.parse(read('package.json'));
+    const cargo = read('src-tauri/Cargo.toml');
+    expect(config.app.windows[0].title).toBe('BobFWTools — Android Device Diagnostics');
+    expect(config.bundle.shortDescription).not.toMatch(/for macOS/i);
+    expect(config.bundle.longDescription).toContain('supported desktop platforms');
+    expect(app).toContain('Android connectivity · native USB + MTP');
+    expect(pkg.description).not.toMatch(/macOS/i);
+    expect(cargo).not.toContain('professional macOS Android connectivity');
+  });
+
   it('keeps the public release non-qualified, serialized, signed, notarized, and auditable', () => {
     const workflow = read('.github/workflows/bobfwtools-macos-release.yml');
     const preflight = read('scripts/verify-bobfwtools-macos-release-preflight.sh');
