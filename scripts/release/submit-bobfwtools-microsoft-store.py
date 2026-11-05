@@ -180,8 +180,31 @@ def main() -> int:
             time.sleep(10)
 
         status_errors = (status_payload.get("statusDetails") or {}).get("errors") or []
-        if status in ("CommitFailed", "PreProcessingFailed", "CertificationFailed", "ReleaseFailed", "PublishFailed"):
-            raise RuntimeError(f"Partner Center submission entered failure status {status}: {status_errors}")
+        confirmed_statuses = {
+            "PreProcessing",
+            "Certification",
+            "Release",
+            "PendingPublication",
+            "Publishing",
+            "Published",
+        }
+        failure_statuses = {
+            "Canceled",
+            "CommitFailed",
+            "PreProcessingFailed",
+            "CertificationFailed",
+            "ReleaseFailed",
+            "PublishFailed",
+        }
+        if status in failure_statuses:
+            raise RuntimeError(
+                f"Partner Center submission entered failure status {status}: {status_errors}"
+            )
+        if status not in confirmed_statuses:
+            raise RuntimeError(
+                "Partner Center commit was not confirmed after polling; "
+                f"last status={status or 'empty'}"
+            )
 
         receipt = {
             "schema": "com.bobbyblanco.bobfwtools.microsoft-store-submission-receipt.v1",
