@@ -1,0 +1,231 @@
+name: BobFWTools Mac App Store Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_label:
+        description: "Human-readable release label, for example 0.1.0-mas-rc1"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bobfwtools-mac-app-store-package
+  cancel-in-progress: false
+
+jobs:
+  build-app-store-package:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      BOBFW_EXPECTED_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      BOBFW_MAC_APP_DISTRIBUTION_P12_BASE64: ${{ secrets.BOBFW_MAC_APP_DISTRIBUTION_P12_BASE64 }}
+      BOBFW_MAC_APP_DISTRIBUTION_P12_PASSWORD: ${{ secrets.BOBFW_MAC_APP_DISTRIBUTION_P12_PASSWORD }}
+      BOBFW_MAC_APP_DISTRIBUTION_IDENTITY: ${{ secrets.BOBFW_MAC_APP_DISTRIBUTION_IDENTITY }}
+      BOBFW_MAC_INSTALLER_DISTRIBUTION_P12_BASE64: ${{ secrets.BOBFW_MAC_INSTALLER_DISTRIBUTION_P12_BASE64 }}
+      BOBFW_MAC_INSTALLER_DISTRIBUTION_P12_PASSWORD: ${{ secrets.BOBFW_MAC_INSTALLER_DISTRIBUTION_P12_PASSWORD }}
+      BOBFW_MAC_INSTALLER_DISTRIBUTION_IDENTITY: ${{ secrets.BOBFW_MAC_INSTALLER_DISTRIBUTION_IDENTITY }}
+      BOBFW_MAC_APP_STORE_PROFILE_BASE64: ${{ secrets.BOBFW_MAC_APP_STORE_PROFILE_BASE64 }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate required App Store signing material
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in \
+            APPLE_TEAM_ID \
+            BOBFW_MAC_APP_DISTRIBUTION_P12_BASE64 \
+            BOBFW_MAC_APP_DISTRIBUTION_P12_PASSWORD \
+            BOBFW_MAC_APP_DISTRIBUTION_IDENTITY \
+            BOBFW_MAC_INSTALLER_DISTRIBUTION_P12_BASE64 \
+            BOBFW_MAC_INSTALLER_DISTRIBUTION_P12_PASSWORD \
+            BOBFW_MAC_INSTALLER_DISTRIBUTION_IDENTITY \
+            BOBFW_MAC_APP_STORE_PROFILE_BASE64
+          do
+            [[ -n "${!name:-}" ]] || missing+=("$name")
+          done
+          if (( ${#missing[@]} )); then
+            printf 'Missing App Store signing secret: %s\n' "${missing[@]}"
+            exit 1
+          fi
+
+      - name: Use Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24.x"
+          package-manager-cache: false
+
+      - name: Install dependencies and run release tests
+        run: |
+          npm ci
+          npm run verify:reality
+          npm run typecheck
+          npm test
+          npm run test:workflows
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Import Mac App Store certificates and provisioning profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/bobfwtools-mas.keychain-db"
+          APP_CERT="$RUNNER_TEMP/mac-app-distribution.p12"
+          INSTALLER_CERT="$RUNNER_TEMP/mac-installer-distribution.p12"
+          PROFILE="$RUNNER_TEMP/BobFWTools.provisionprofile"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+
+          printf '%s' "$BOBFW_MAC_APP_DISTRIBUTION_P12_BASE64" | openssl base64 -d -A > "$APP_CERT"
+          printf '%s' "$BOBFW_MAC_INSTALLER_DISTRIBUTION_P12_BASE64" | openssl base64 -d -A > "$INSTALLER_CERT"
+          printf '%s' "$BOBFW_MAC_APP_STORE_PROFILE_BASE64" | openssl base64 -d -A > "$PROFILE"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$APP_CERT" \
+            -k "$KEYCHAIN" \
+            -P "$BOBFW_MAC_APP_DISTRIBUTION_P12_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security import "$INSTALLER_CERT" \
+            -k "$KEYCHAIN" \
+            -P "$BOBFW_MAC_INSTALLER_DISTRIBUTION_P12_PASSWORD" \
+            -T /usr/bin/productbuild \
+            -T /usr/bin/productsign \
+            -T /usr/bin/security
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+
+          security find-identity -v -p codesigning "$KEYCHAIN" | grep -F "$BOBFW_MAC_APP_DISTRIBUTION_IDENTITY"
+          security find-identity -v "$KEYCHAIN" | grep -F "$BOBFW_MAC_INSTALLER_DISTRIBUTION_IDENTITY"
+
+          bash scripts/verify-bobfwtools-mac-app-store-profile.sh "$PROFILE"
+          echo "BOBFW_MAS_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          echo "BOBFW_MAS_PROFILE=$PROFILE" >> "$GITHUB_ENV"
+
+      - name: Build universal BobFWTools app
+        run: npm run tauri:build:macos:ci
+
+      - name: Embed profile and sign App Store candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app"
+          test -d "$APP"
+          mkdir -p "$APP/Contents"
+          cp "$BOBFW_MAS_PROFILE" "$APP/Contents/embedded.provisionprofile"
+
+          while IFS= read -r -d '' item; do
+            if file "$item" | grep -q 'Mach-O'; then
+              codesign \
+                --force \
+                --timestamp \
+                --sign "$BOBFW_MAC_APP_DISTRIBUTION_IDENTITY" \
+                "$item"
+            fi
+          done < <(find "$APP/Contents/Frameworks" "$APP/Contents/MacOS" -type f -print0 2>/dev/null || true)
+
+          codesign \
+            --force \
+            --timestamp \
+            --entitlements src-tauri/entitlements.mac.plist \
+            --sign "$BOBFW_MAC_APP_DISTRIBUTION_IDENTITY" \
+            "$APP"
+
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+      - name: Create exact App Store archive receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app"
+          OUT="$RUNNER_TEMP/mac-app-store"
+          mkdir -p "$OUT"
+          bash scripts/create-bobfwtools-app-store-archive-receipt.sh \
+            "$APP" \
+            "$OUT/APP-STORE-ARCHIVE-RECEIPT.json"
+
+      - name: Build signed Mac App Store installer package
+        shell: bash
+        env:
+          RELEASE_LABEL: ${{ inputs.release_label }}
+        run: |
+          set -euo pipefail
+          SAFE_LABEL="$(printf '%s' "$RELEASE_LABEL" | tr -cs 'A-Za-z0-9._-' '-' | sed 's/^-*//; s/-*$//' | cut -c1-64)"
+          test -n "$SAFE_LABEL"
+          APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/BobFWTools.app"
+          OUT="$RUNNER_TEMP/mac-app-store"
+          PKG="$OUT/BobFWTools-$SAFE_LABEL-mac-app-store.pkg"
+
+          productbuild \
+            --sign "$BOBFW_MAC_INSTALLER_DISTRIBUTION_IDENTITY" \
+            --component "$APP" /Applications \
+            "$PKG"
+
+          test -s "$PKG"
+          pkgutil --check-signature "$PKG"
+          shasum -a 256 "$PKG" | tee "$OUT/INSTALLER-PACKAGE.sha256"
+          echo "BOBFW_MAS_PKG=$PKG" >> "$GITHUB_ENV"
+
+      - name: Write package qualification receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/mac-app-store"
+          PKG="$BOBFW_MAS_PKG"
+          PKG_SHA="$(shasum -a 256 "$PKG" | awk '{print $1}')"
+          SIGNATURE="$(pkgutil --check-signature "$PKG" 2>&1)"
+          printf '%s\n' "$SIGNATURE"
+          printf '%s\n' "$SIGNATURE" | grep -F "$BOBFW_MAC_INSTALLER_DISTRIBUTION_IDENTITY"
+
+          python3 - "$OUT/PACKAGE-RECEIPT.json" "$PKG_SHA" "$GITHUB_SHA" <<'PY'
+          import json, sys
+          output, pkg_sha, source_sha = sys.argv[1:]
+          data = {
+              "schema": "com.bobbyblanco.bobfwtools.mac-app-store-package-receipt.v1",
+              "product": "BobFWTools",
+              "distribution": "mac-app-store",
+              "sourceRevision": source_sha,
+              "installerPackageSha256": pkg_sha,
+              "signedInstallerPackage": True,
+              "appStoreConnectUploaded": False,
+              "appStoreReviewApproved": False,
+              "scope": "Signed Mac App Store package evidence only; upload and Apple review are not proven",
+          }
+          with open(output, "w", encoding="utf-8") as f:
+              json.dump(data, f, indent=2, sort_keys=True)
+              f.write("\n")
+          PY
+
+      - name: Upload owner-private Mac App Store package evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: BobFWTools-mac-app-store-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/mac-app-store/*.pkg
+            ${{ runner.temp }}/mac-app-store/*.json
+            ${{ runner.temp }}/mac-app-store/*.sha256
+          if-no-files-found: error
+
+      - name: Cleanup temporary signing material
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          security delete-keychain "$BOBFW_MAS_KEYCHAIN" >/dev/null 2>&1
+          rm -f "$RUNNER_TEMP/mac-app-distribution.p12"
+          rm -f "$RUNNER_TEMP/mac-installer-distribution.p12"
+          rm -f "$RUNNER_TEMP/BobFWTools.provisionprofile"
