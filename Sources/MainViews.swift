@@ -365,6 +365,159 @@ struct BackendBadge: View {
     }
 }
 
+// MARK: - Reusable Guided Step-by-Step State Machine Wizard View
+
+struct GuidedWorkflowWizardCard: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let steps: [GuidedPipelineStep]
+    let onExecuteStep: (Int) -> Void
+    let onReset: () -> Void
+
+    var body: some View {
+        GroupBox(label: Label(title, systemImage: icon)) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Button("Reset Pipeline", action: onReset)
+                        .controlSize(.small)
+                }
+
+                VStack(spacing: 8) {
+                    ForEach(steps) { step in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(alignment: .center, spacing: 10) {
+                                // Step indicator circle
+                                ZStack {
+                                    Circle()
+                                        .fill(stepBadgeBackground(step.state))
+                                        .frame(width: 24, height: 24)
+                                    Text("\(step.stepNumber)")
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .foregroundColor(stepBadgeTextColor(step.state))
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 6) {
+                                        Text(step.title)
+                                            .font(.system(size: 12, weight: .semibold))
+                                        Text("[\(step.requiredTransport.rawValue)]")
+                                            .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1)
+                                            .background(RoundedRectangle(cornerRadius: 3).fill(Color.secondary.opacity(0.15)))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Text(step.detail)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                }
+
+                                Spacer()
+
+                                // State badge
+                                Text(step.state.rawValue)
+                                    .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(RoundedRectangle(cornerRadius: 4).fill(stepBadgeBackground(step.state)))
+                                    .foregroundColor(stepBadgeTextColor(step.state))
+
+                                // Action Button
+                                Button {
+                                    onExecuteStep(step.stepNumber)
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        if step.state == .running {
+                                            ProgressView().controlSize(.mini)
+                                        } else if step.state == .succeeded {
+                                            Image(systemName: "checkmark")
+                                        } else if step.state == .locked {
+                                            Image(systemName: "lock.fill")
+                                        } else if step.state == .failed {
+                                            Image(systemName: "arrow.clockwise")
+                                        }
+                                        Text(buttonLabel(for: step))
+                                    }
+                                }
+                                .controlSize(.small)
+                                .buttonStyle(.bordered)
+                                .disabled(step.state == .locked || step.state == .running || step.state == .succeeded)
+                            }
+
+                            // Technician Action Callout
+                            if let action = step.technicianAction, (step.state == .ready || step.state == .failed) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "hand.tap.fill")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.orange)
+                                    Text("Technician Action: \(action)")
+                                        .font(.system(size: 10.5, weight: .medium))
+                                        .foregroundColor(.orange)
+                                }
+                                .padding(.leading, 34)
+                            }
+
+                            // Evidence Box
+                            if let ev = step.resultEvidence, !ev.isEmpty {
+                                HStack(alignment: .top, spacing: 6) {
+                                    Image(systemName: step.state == .succeeded ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(step.state == .succeeded ? .green : .red)
+                                    Text(ev)
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(.primary)
+                                        .lineLimit(2)
+                                }
+                                .padding(6)
+                                .background(RoundedRectangle(cornerRadius: 4).fill(Color(NSColor.controlBackgroundColor)))
+                                .padding(.leading, 34)
+                            }
+                        }
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.windowBackgroundColor)))
+                    }
+                }
+            }
+            .padding(8)
+        }
+    }
+
+    private func buttonLabel(for step: GuidedPipelineStep) -> String {
+        switch step.state {
+        case .locked: return "Locked"
+        case .ready: return "Execute Step \(step.stepNumber)"
+        case .running: return "Running..."
+        case .succeeded: return "Passed"
+        case .failed: return "Retry Step \(step.stepNumber)"
+        }
+    }
+
+    private func stepBadgeBackground(_ state: PipelineStepState) -> Color {
+        switch state {
+        case .locked: return Color.secondary.opacity(0.2)
+        case .ready: return Color.blue.opacity(0.2)
+        case .running: return Color.orange.opacity(0.25)
+        case .succeeded: return Color.green.opacity(0.2)
+        case .failed: return Color.red.opacity(0.2)
+        }
+    }
+
+    private func stepBadgeTextColor(_ state: PipelineStepState) -> Color {
+        switch state {
+        case .locked: return .secondary
+        case .ready: return .blue
+        case .running: return .orange
+        case .succeeded: return .green
+        case .failed: return .red
+        }
+    }
+}
+
 // MARK: - Module 1: BobFWTools Connection Matrix & USB Cable Doctor
 
 struct ConnectionMatrixAndDoctorView: View {
@@ -1382,6 +1535,20 @@ struct SamsungSuiteView: View {
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
             }
 
+            // Guided Step-by-Step Servicing Pipeline Wizard
+            GuidedWorkflowWizardCard(
+                title: "Samsung Guided Carrier & Servicing Wizard",
+                subtitle: "Enforces Step-by-Step isolation: Port Discovery -> AT Handshake -> Carrier Preflight -> Intent Dispatch",
+                icon: "arrow.triangle.2.circlepath.circle.fill",
+                steps: engine.samsungWizardSteps,
+                onExecuteStep: { step in
+                    Task { await engine.executeSamsungWizardStep(stepNumber: step, targetCsc: targetCscCode) }
+                },
+                onReset: {
+                    engine.resetSamsungWizard()
+                }
+            )
+
             // Section 1: MTP / USB Modem Mode (AT Commands)
             GroupBox(label: Label("Samsung USB Modem AT Operations (\(engine.selectedSerialPort.isEmpty ? "No Modem Port" : (engine.selectedSerialPort as NSString).lastPathComponent))", systemImage: "cable.connector")) {
                 VStack(alignment: .leading, spacing: 10) {
@@ -2268,6 +2435,20 @@ struct FastbootWorkshopView: View {
                 subtitle: "Read bootloader variables, switch A/B slots, flash partition images, and inspect unlock state"
             )
 
+            // Guided Step-by-Step State Machine Wizard
+            GuidedWorkflowWizardCard(
+                title: "Fastboot Guided Qualification Wizard",
+                subtitle: "Enforces Step-by-Step isolation: Protocol Detection -> Secure State Qualification -> Slot & Partition Inspection",
+                icon: "bolt.horizontal.circle.fill",
+                steps: engine.fastbootWizardSteps,
+                onExecuteStep: { step in
+                    Task { await engine.executeFastbootWizardStep(stepNumber: step) }
+                },
+                onReset: {
+                    engine.resetFastbootWizard()
+                }
+            )
+
             GroupBox(label: Label("Fastboot Telemetry & Slot Control", systemImage: "cpu")) {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 10) {
@@ -2600,6 +2781,20 @@ struct AppleServicingView: View {
                 .padding(10)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
             }
+
+            // Guided Step-by-Step State Machine Wizard
+            GuidedWorkflowWizardCard(
+                title: "Apple Guided Diagnostics & Trust Wizard",
+                subtitle: "Enforces Step-by-Step isolation: USB 05ac Enumeration -> Host SSL Lockdownd Pairing -> Telemetry Audit",
+                icon: "iphone.badge.play",
+                steps: engine.appleWizardSteps,
+                onExecuteStep: { step in
+                    Task { await engine.executeAppleWizardStep(stepNumber: step) }
+                },
+                onReset: {
+                    engine.resetAppleWizard()
+                }
+            )
 
             GroupBox(label: Label("iPhone / iPad Lockdownd & Recovery Operations", systemImage: "iphone.gen3")) {
                 VStack(alignment: .leading, spacing: 10) {

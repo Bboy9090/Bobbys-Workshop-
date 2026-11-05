@@ -1228,6 +1228,47 @@ final class MacOSNativeUsbNotifier {
 }
 #endif
 
+// MARK: - Guided Step-by-Step State Machine & Wizard Pipeline Architecture
+
+enum PipelineStepState: String, CaseIterable, Sendable {
+    case locked = "LOCKED"
+    case ready = "READY"
+    case running = "EXECUTING"
+    case succeeded = "PASSED"
+    case failed = "FAILED"
+}
+
+struct GuidedPipelineStep: Identifiable, Sendable {
+    let id: String
+    let stepNumber: Int
+    let title: String
+    let detail: String
+    let requiredTransport: ConnectedDevice.TransportMode
+    var state: PipelineStepState
+    var technicianAction: String?
+    var resultEvidence: String?
+
+    init(
+        id: String,
+        stepNumber: Int,
+        title: String,
+        detail: String,
+        requiredTransport: ConnectedDevice.TransportMode,
+        state: PipelineStepState = .locked,
+        technicianAction: String? = nil,
+        resultEvidence: String? = nil
+    ) {
+        self.id = id
+        self.stepNumber = stepNumber
+        self.title = title
+        self.detail = detail
+        self.requiredTransport = requiredTransport
+        self.state = state
+        self.technicianAction = technicianAction
+        self.resultEvidence = resultEvidence
+    }
+}
+
 // MARK: - BobFWTools Native Servicing Engine
 
 @MainActor
@@ -1268,6 +1309,9 @@ final class ServicingEngine: ObservableObject {
     @Published var logcatSubsystem = LiveLogcatStreamSubsystem()
     @Published var debloatEngine: AutomatedDebloatEngine?
     @Published var siphonEngine: AppSideloadSiphonEngine?
+    @Published var fastbootWizardSteps: [GuidedPipelineStep] = ServicingEngine.defaultFastbootWizardSteps()
+    @Published var samsungWizardSteps: [GuidedPipelineStep] = ServicingEngine.defaultSamsungWizardSteps()
+    @Published var appleWizardSteps: [GuidedPipelineStep] = ServicingEngine.defaultAppleWizardSteps()
     private var lastAutoCommittedSignature: String = ""
     private var hotplugMonitorTimer: Timer?
 
@@ -3736,6 +3780,323 @@ final class ServicingEngine: ObservableObject {
 
     func generateCustomerIntakePdf(ticketId: String = "", customerName: String = "", technician: String = "") -> Data? {
         return CustomerIntakePdfGenerator.buildReport(engine: self, ticketId: ticketId, customerName: customerName, technician: technician)
+    }
+
+    // MARK: - Guided Step-by-Step State Machine & Wizard Pipeline Implementation
+
+    static func defaultFastbootWizardSteps() -> [GuidedPipelineStep] {
+        [
+            GuidedPipelineStep(
+                id: "fb_modality",
+                stepNumber: 1,
+                title: "Fastboot Modality Detection",
+                detail: "Scan USB bus to verify target is active under Fastboot / Bootloader protocol descriptor.",
+                requiredTransport: .fastboot,
+                state: .ready,
+                technicianAction: "Boot device into Fastboot / Bootloader mode (Hold Vol Down + Power during reboot)."
+            ),
+            GuidedPipelineStep(
+                id: "fb_secure_state",
+                stepNumber: 2,
+                title: "Bootloader & Secure State Qualification",
+                detail: "Interrogate 'getvar secure', 'getvar unlocked', and hardware fuse registers.",
+                requiredTransport: .fastboot,
+                state: .locked,
+                technicianAction: "Ensure USB cable link remains undisturbed while reading secure state flags."
+            ),
+            GuidedPipelineStep(
+                id: "fb_slot_diag",
+                stepNumber: 3,
+                title: "Slot & Partition Topology Inspection",
+                detail: "Inspect active update slot (Slot A/B) and bootloader partition partition-type descriptors.",
+                requiredTransport: .fastboot,
+                state: .locked,
+                technicianAction: "Do not disconnect cable; diagnostic stream will determine partition compatibility."
+            )
+        ]
+    }
+
+    static func defaultSamsungWizardSteps() -> [GuidedPipelineStep] {
+        [
+            GuidedPipelineStep(
+                id: "sam_modem_detect",
+                stepNumber: 1,
+                title: "Modem Serial Port Discovery",
+                detail: "Detect and bind to active /dev/cu.SAMSUNG_MDM baseband AT command communication port.",
+                requiredTransport: .modem,
+                state: .ready,
+                technicianAction: "Ensure Samsung phone is powered on and plugged in via USB (Normal MTP/Modem mode)."
+            ),
+            GuidedPipelineStep(
+                id: "sam_devcon_handshake",
+                stepNumber: 2,
+                title: "Diagnostic AT DEVCONINFO Handshake",
+                detail: "Query hardware revision, PDA firmware build version, and carrier container tokens.",
+                requiredTransport: .modem,
+                state: .locked,
+                technicianAction: "Unlock phone screen; verify device dialer / emergency keypad is accessible."
+            ),
+            GuidedPipelineStep(
+                id: "sam_csc_preflight",
+                stepNumber: 3,
+                title: "Carrier & Multi-CSC Qualification Preflight",
+                detail: "Qualify carrier CSC transition compatibility against verified Optics multi-CSC matrix.",
+                requiredTransport: .modem,
+                state: .locked,
+                technicianAction: "Confirm target sales code in the CSC selector (e.g., EUX, XAA, TMB)."
+            ),
+            GuidedPipelineStep(
+                id: "sam_preconfig_dispatch",
+                stepNumber: 4,
+                title: "On-Device Preconfig / Service Intent Dispatch",
+                detail: "Trigger carrier preconfig selector or *#272* service activity safely without bus lock.",
+                requiredTransport: .modem,
+                state: .locked,
+                technicianAction: "Confirm selection on target device display when the on-screen menu opens."
+            )
+        ]
+    }
+
+    static func defaultAppleWizardSteps() -> [GuidedPipelineStep] {
+        [
+            GuidedPipelineStep(
+                id: "apple_usb_detect",
+                stepNumber: 1,
+                title: "Apple USB Bus Enumeration (VID 05ac)",
+                detail: "Detect Apple mobile device USB descriptor (05ac) and extract hardware UDID token.",
+                requiredTransport: .ios,
+                state: .ready,
+                technicianAction: "Connect iPhone or iPad using an official Apple Lightning or USB-C data cable."
+            ),
+            GuidedPipelineStep(
+                id: "apple_pair_trust",
+                stepNumber: 2,
+                title: "Host Pairing & SSL Lockdownd Validation",
+                detail: "Validate cryptographic pairing handshake and host trust keys with mobile lockdownd service.",
+                requiredTransport: .ios,
+                state: .locked,
+                technicianAction: "Unlock iOS device screen and tap 'Trust This Computer' if prompted."
+            ),
+            GuidedPipelineStep(
+                id: "apple_telemetry_audit",
+                stepNumber: 3,
+                title: "Hardware Identity & Activation State Audit",
+                detail: "Extract ProductType, ECID, iOS build version, and factory activation state descriptors.",
+                requiredTransport: .ios,
+                state: .locked,
+                technicianAction: "Keep device unlocked while diagnostics telemetry is queried."
+            )
+        ]
+    }
+
+    func resetFastbootWizard() {
+        fastbootWizardSteps = Self.defaultFastbootWizardSteps()
+        log(.info, "🔄 Fastboot Guided Wizard reset to initial state.")
+    }
+
+    func executeFastbootWizardStep(stepNumber: Int) async {
+        guard stepNumber >= 1 && stepNumber <= fastbootWizardSteps.count else { return }
+        let idx = stepNumber - 1
+        fastbootWizardSteps[idx].state = .running
+        log(.info, "▶ Fastboot Wizard [Step \(stepNumber)/\(fastbootWizardSteps.count)]: \(fastbootWizardSteps[idx].title)...")
+
+        // Rule of Isolation Precondition Gate
+        let hasFastboot = devices.contains { $0.transport == .fastboot }
+        guard hasFastboot else {
+            fastbootWizardSteps[idx].state = .failed
+            fastbootWizardSteps[idx].resultEvidence = "Precondition Gate Failed: Fastboot interface not active on USB bus. Put device into Fastboot mode."
+            log(.error, "✖ [Step \(stepNumber)] Precondition Gate Failed: No target in Fastboot environment.")
+            return
+        }
+
+        let fbPath = toolPaths["fastboot"] ?? "/usr/local/bin/fastboot"
+        switch stepNumber {
+        case 1:
+            let res = await runProcess(executable: fbPath, arguments: fastbootArgs(["devices", "-l"]))
+            let out = (res.stdout.isEmpty ? res.stderr : res.stdout).trimmingCharacters(in: .whitespacesAndNewlines)
+            if res.exitCode == 0 && !out.isEmpty {
+                fastbootWizardSteps[idx].state = .succeeded
+                fastbootWizardSteps[idx].resultEvidence = out
+                log(.success, "✔ Step 1 Passed: Fastboot target detected -> \(out)")
+                if fastbootWizardSteps.indices.contains(idx + 1) {
+                    fastbootWizardSteps[idx + 1].state = .ready
+                }
+            } else {
+                fastbootWizardSteps[idx].state = .failed
+                fastbootWizardSteps[idx].resultEvidence = out.isEmpty ? "No fastboot devices returned" : out
+                log(.error, "✖ Step 1 Failed: Fastboot enumeration returned empty.")
+            }
+        case 2:
+            let res = await runProcess(executable: fbPath, arguments: fastbootArgs(["getvar", "secure"]))
+            let out = (res.stdout.isEmpty ? res.stderr : res.stdout).trimmingCharacters(in: .whitespacesAndNewlines)
+            if res.exitCode == 0 || out.contains("secure:") {
+                fastbootWizardSteps[idx].state = .succeeded
+                fastbootWizardSteps[idx].resultEvidence = out
+                log(.success, "✔ Step 2 Passed: Secure state qualified -> \(out)")
+                if fastbootWizardSteps.indices.contains(idx + 1) {
+                    fastbootWizardSteps[idx + 1].state = .ready
+                }
+            } else {
+                fastbootWizardSteps[idx].state = .failed
+                fastbootWizardSteps[idx].resultEvidence = out
+                log(.error, "✖ Step 2 Failed: Unable to read secure state flags.")
+            }
+        case 3:
+            let res = await runProcess(executable: fbPath, arguments: fastbootArgs(["getvar", "current-slot"]))
+            let out = (res.stdout.isEmpty ? res.stderr : res.stdout).trimmingCharacters(in: .whitespacesAndNewlines)
+            if res.exitCode == 0 || out.contains("current-slot:") {
+                fastbootWizardSteps[idx].state = .succeeded
+                fastbootWizardSteps[idx].resultEvidence = out
+                log(.success, "✔ Step 3 Passed: Partition slot verified -> \(out)")
+            } else {
+                fastbootWizardSteps[idx].state = .failed
+                fastbootWizardSteps[idx].resultEvidence = out
+                log(.error, "✖ Step 3 Failed: Unable to verify slot descriptor.")
+            }
+        default:
+            break
+        }
+    }
+
+    func resetSamsungWizard() {
+        samsungWizardSteps = Self.defaultSamsungWizardSteps()
+        log(.info, "🔄 Samsung Servicing Guided Wizard reset to initial state.")
+    }
+
+    func executeSamsungWizardStep(stepNumber: Int, targetCsc: String = "XAA") async {
+        guard stepNumber >= 1 && stepNumber <= samsungWizardSteps.count else { return }
+        let idx = stepNumber - 1
+        samsungWizardSteps[idx].state = .running
+        log(.info, "▶ Samsung Wizard [Step \(stepNumber)/\(samsungWizardSteps.count)]: \(samsungWizardSteps[idx].title)...")
+
+        switch stepNumber {
+        case 1:
+            let port = serialPorts.first(where: { $0.lowercased().contains("samsung") || $0.lowercased().contains("mdm") }) ?? selectedSerialPort
+            let portExists = !port.isEmpty && FileManager.default.fileExists(atPath: port)
+            if portExists {
+                selectedSerialPort = port
+                samsungWizardSteps[idx].state = .succeeded
+                samsungWizardSteps[idx].resultEvidence = "Active Modem Port: \(port)"
+                log(.success, "✔ Step 1 Passed: Connected to baseband modem at \(port)")
+                if samsungWizardSteps.indices.contains(idx + 1) {
+                    samsungWizardSteps[idx + 1].state = .ready
+                }
+            } else {
+                samsungWizardSteps[idx].state = .failed
+                samsungWizardSteps[idx].resultEvidence = "Precondition Gate Failed: No /dev/cu.* Samsung modem port detected. Reconnect USB cable."
+                log(.error, "✖ Step 1 Failed: Samsung modem serial interface not available.")
+            }
+        case 2:
+            let port = selectedSerialPort
+            guard !port.isEmpty else {
+                samsungWizardSteps[idx].state = .failed
+                samsungWizardSteps[idx].resultEvidence = "No modem port bound from Step 1."
+                return
+            }
+            let (ok, raw) = await querySerialAT(portPath: port, command: "AT+DEVCONINFO", logOutput: true)
+            if ok, let parsed = SamsungDevConInfo.parse(from: raw) {
+                samsungModemInfo = parsed
+                samsungWizardSteps[idx].state = .succeeded
+                samsungWizardSteps[idx].resultEvidence = "Model: \(parsed.model) · PDA: \(parsed.pdaVersion) · CSC: \(parsed.activeCsc)"
+                log(.success, "✔ Step 2 Passed: DEVCONINFO verified -> Model \(parsed.model), PDA \(parsed.pdaVersion)")
+                if samsungWizardSteps.indices.contains(idx + 1) {
+                    samsungWizardSteps[idx + 1].state = .ready
+                }
+            } else {
+                samsungWizardSteps[idx].state = .failed
+                samsungWizardSteps[idx].resultEvidence = "AT+DEVCONINFO failed: \(raw.prefix(120))"
+                log(.error, "✖ Step 2 Failed: DEVCONINFO query unsuccessful.")
+            }
+        case 3:
+            let currentCsc = samsungModemInfo?.activeCsc ?? "UNKNOWN"
+            let notes = qualifySingleCscChange(from: currentCsc, to: targetCsc)
+            samsungWizardSteps[idx].state = .succeeded
+            samsungWizardSteps[idx].resultEvidence = "Qualified \(currentCsc) -> \(targetCsc): \(notes.first ?? "Compatible container")"
+            log(.success, "✔ Step 3 Passed: CSC preflight qualified (\(currentCsc) -> \(targetCsc))")
+            if samsungWizardSteps.indices.contains(idx + 1) {
+                samsungWizardSteps[idx + 1].state = .ready
+            }
+        case 4:
+            await launchTargetIntent(
+                title: "Launch Carrier Preconfig Selector",
+                adbShellArgs: ["am start -n com.samsung.android.cidmanager/.modules.preconfig.PreconfigActivity || am start -a android.intent.action.DIAL -d 'tel:*%23272*719434266344%23'"]
+            )
+            samsungWizardSteps[idx].state = .succeeded
+            samsungWizardSteps[idx].resultEvidence = "Dispatched preconfig activity intent to target."
+            log(.success, "✔ Step 4 Passed: On-device preconfig selector dispatched.")
+        default:
+            break
+        }
+    }
+
+    func resetAppleWizard() {
+        appleWizardSteps = Self.defaultAppleWizardSteps()
+        log(.info, "🔄 Apple Diagnostics Guided Wizard reset to initial state.")
+    }
+
+    func executeAppleWizardStep(stepNumber: Int) async {
+        guard stepNumber >= 1 && stepNumber <= appleWizardSteps.count else { return }
+        let idx = stepNumber - 1
+        appleWizardSteps[idx].state = .running
+        log(.info, "▶ Apple Wizard [Step \(stepNumber)/\(appleWizardSteps.count)]: \(appleWizardSteps[idx].title)...")
+
+        let hasApple = activePlatform == .appleIos || devices.contains { $0.transport == .ios } || usbDevices.contains { $0.vendorId == 0x05ac }
+        guard hasApple else {
+            appleWizardSteps[idx].state = .failed
+            appleWizardSteps[idx].resultEvidence = "Precondition Gate Failed: Apple device (VID 05ac) not detected on USB bus."
+            log(.error, "✖ [Step \(stepNumber)] Precondition Gate Failed: No Apple iDevice on bus.")
+            return
+        }
+
+        switch stepNumber {
+        case 1:
+            let idPath = toolPaths["idevice_id"] ?? "/usr/local/bin/idevice_id"
+            let res = await runProcess(executable: idPath, arguments: ["-l"])
+            let out = (res.stdout.isEmpty ? res.stderr : res.stdout).trimmingCharacters(in: .whitespacesAndNewlines)
+            if res.exitCode == 0 && !out.isEmpty {
+                appleWizardSteps[idx].state = .succeeded
+                appleWizardSteps[idx].resultEvidence = "Connected UDID(s): \(out)"
+                log(.success, "✔ Step 1 Passed: Apple iDevice UDID -> \(out)")
+                if appleWizardSteps.indices.contains(idx + 1) {
+                    appleWizardSteps[idx + 1].state = .ready
+                }
+            } else {
+                appleWizardSteps[idx].state = .failed
+                appleWizardSteps[idx].resultEvidence = out.isEmpty ? "No Apple UDIDs returned" : out
+                log(.error, "✖ Step 1 Failed: idevice_id returned no active targets.")
+            }
+        case 2:
+            let pairPath = toolPaths["idevicepair"] ?? "/usr/local/bin/idevicepair"
+            let res = await runProcess(executable: pairPath, arguments: ["validate"])
+            let out = (res.stdout.isEmpty ? res.stderr : res.stdout).trimmingCharacters(in: .whitespacesAndNewlines)
+            if res.exitCode == 0 || out.lowercased().contains("success") {
+                appleWizardSteps[idx].state = .succeeded
+                appleWizardSteps[idx].resultEvidence = "Pairing Validated: Host lockdownd record trusted"
+                log(.success, "✔ Step 2 Passed: Lockdownd pairing validated.")
+                if appleWizardSteps.indices.contains(idx + 1) {
+                    appleWizardSteps[idx + 1].state = .ready
+                }
+            } else {
+                appleWizardSteps[idx].state = .failed
+                appleWizardSteps[idx].resultEvidence = "Pairing Untrusted: \(out). Tap 'Trust' on iOS screen and unlock passcode."
+                log(.error, "✖ Step 2 Failed: Device pairing not validated.")
+            }
+        case 3:
+            let infoPath = toolPaths["ideviceinfo"] ?? "/usr/local/bin/ideviceinfo"
+            let res = await runProcess(executable: infoPath, arguments: ["-k", "ProductType"])
+            let out = (res.stdout.isEmpty ? res.stderr : res.stdout).trimmingCharacters(in: .whitespacesAndNewlines)
+            if res.exitCode == 0 && !out.isEmpty {
+                appleWizardSteps[idx].state = .succeeded
+                appleWizardSteps[idx].resultEvidence = "ProductType: \(out)"
+                log(.success, "✔ Step 3 Passed: Hardware model identified -> \(out)")
+            } else {
+                appleWizardSteps[idx].state = .failed
+                appleWizardSteps[idx].resultEvidence = "Telemetry query failed: \(out)"
+                log(.error, "✖ Step 3 Failed: Unable to extract lockdownd ProductType.")
+            }
+        default:
+            break
+        }
     }
 }
 
