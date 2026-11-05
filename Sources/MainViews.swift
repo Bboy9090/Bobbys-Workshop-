@@ -3117,10 +3117,104 @@ enum ConsoleDisplayMode: String, CaseIterable {
     case telemetry = "Telemetry Visualizer"
 }
 
+// MARK: - Automated Database Size Monitor Pane
+
+struct BobFWDatabaseMonitorView: View {
+    @ObservedObject private var logger = BobFWTelemetryLogger.shared
+    @State private var loggedRowsCount: Int = 0
+    @State private var databaseSizeString: String = "0 KB"
+
+    private let monitoringTimer = Timer.publish(every: 2.0, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "square.stack.3d.up.fill")
+                    .font(.title2)
+                    .foregroundColor(.orange)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("SQLite Audit Ledger Storage Monitor")
+                        .font(.headline)
+                    Text("Target Workspace File Vector Tracking Allocation")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+                Spacer()
+
+                Button(action: { refreshStorageMetrics() }) {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+            }
+
+            Divider()
+
+            HStack(spacing: 20) {
+                // Metric Node 1: Log Volume Count
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("COMMITTED ENTRIES")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.gray)
+                    Text("\(loggedRowsCount)")
+                        .font(.system(size: 22, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                // Metric Node 2: Database Allocation Size
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("LEDGER DISK SPACE")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.gray)
+                    Text(databaseSizeString)
+                        .font(.system(size: 22, weight: .bold, design: .monospaced))
+                        .foregroundColor(.cyan)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.vertical, 4)
+
+            // Operational Safety Action Button
+            Button(action: {
+                logger.purgeTelemetryLedger()
+                refreshStorageMetrics()
+            }) {
+                HStack {
+                    Spacer()
+                    Image(systemName: "bolt.fill")
+                    Text("Purge Offline Ledger Indices")
+                    Spacer()
+                }
+            }
+            .buttonStyle(.bordered)
+            .tint(.orange)
+        }
+        .padding()
+        .background(Color(NSColor.windowBackgroundColor).opacity(0.8))
+        .cornerRadius(8)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+        .onAppear { refreshStorageMetrics() }
+        .onReceive(monitoringTimer) { _ in refreshStorageMetrics() }
+    }
+
+    /// Queries metrics directly from file indices and formats them for the user
+    private func refreshStorageMetrics() {
+        let stats = logger.fetchDatabaseStorageMetrics()
+        self.loggedRowsCount = stats.rowCount
+
+        let byteFormatter = ByteCountFormatter()
+        byteFormatter.allowedUnits = [.useKB, .useMB]
+        byteFormatter.countStyle = .file
+        self.databaseSizeString = byteFormatter.string(fromByteCount: stats.sizeInBytes)
+    }
+}
+
 struct BobFWTelemetryConsoleView: View {
     @ObservedObject private var telemetry = BobFWTelemetryLogger.shared
     @State private var filterQuery: String = ""
     @State private var autoScrollToBottom: Bool = true
+    @State private var showDatabaseMonitor: Bool = false
 
     var filteredLogs: [BobFWTelemetryLogger.PipelineSessionRecord] {
         if filterQuery.isEmpty { return telemetry.historicalLedger }
@@ -3145,6 +3239,30 @@ struct BobFWTelemetryConsoleView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(Color(NSColor.controlBackgroundColor))
+
+            Divider()
+
+            // Collapsible SQLite Audit Ledger Storage Monitor
+            DisclosureGroup(
+                isExpanded: $showDatabaseMonitor,
+                content: {
+                    BobFWDatabaseMonitorView()
+                        .padding(8)
+                },
+                label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "cylinder.split.1x2.fill")
+                            .foregroundColor(.orange)
+                        Text("Audit Ledger Storage Monitor")
+                            .font(.system(size: 11, weight: .semibold))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 4)
+                }
+            )
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
 
             Divider()
 

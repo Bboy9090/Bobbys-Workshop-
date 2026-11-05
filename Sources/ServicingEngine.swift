@@ -1293,10 +1293,103 @@ public struct HardwareSecurityConstraints: OptionSet, Codable, Sendable {
 
 public final class BobFWTelemetryLogger: ObservableObject, @unchecked Sendable {
     public static let shared = BobFWTelemetryLogger()
-    private init() {}
 
     @Published public var historicalLedger: [PipelineSessionRecord] = []
     private let queue = DispatchQueue(label: "com.bobfwtools.telemetry.isolation", qos: .userInitiated)
+    private var dbPointer: OpaquePointer?
+    public private(set) var activeDatabasePath: String = ""
+
+    private init() {
+        initializeTelemetryDatabaseTable()
+    }
+
+    deinit {
+        if let ptr = dbPointer {
+            sqlite3_close(ptr)
+        }
+    }
+
+    public var databasePath: String {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dbDir = appSupport.appendingPathComponent("BobFWTools/records", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: dbDir, withIntermediateDirectories: true)
+            return dbDir.appendingPathComponent("workspace.db").path
+        } catch {
+            let tmpDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("BobFWTools/records", isDirectory: true)
+            try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+            return tmpDir.appendingPathComponent("workspace.db").path
+        }
+    }
+
+    public func initializeTelemetryDatabaseTable(customPath: String? = nil) {
+        queue.sync {
+            if let existing = self.dbPointer {
+                sqlite3_close(existing)
+                self.dbPointer = nil
+            }
+            let targetPath = customPath ?? self.databasePath
+            self.activeDatabasePath = targetPath
+
+            let targetURL = URL(fileURLWithPath: targetPath)
+            let parentDir = targetURL.deletingLastPathComponent()
+            try? FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
+
+            if sqlite3_open_v2(targetPath, &self.dbPointer, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) != SQLITE_OK {
+                // If opening in Application Support failed (e.g. sandboxed CLI test), fall back cleanly to NSTemporaryDirectory
+                let tempPrefix = NSTemporaryDirectory()
+                if customPath == nil && !targetPath.hasPrefix(tempPrefix) {
+                    let fallbackDir = URL(fileURLWithPath: tempPrefix).appendingPathComponent("BobFWTools/records", isDirectory: true)
+                    try? FileManager.default.createDirectory(at: fallbackDir, withIntermediateDirectories: true)
+                    let fallbackPath = fallbackDir.appendingPathComponent("workspace.db").path
+                    if sqlite3_open_v2(fallbackPath, &self.dbPointer, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK {
+                        self.activeDatabasePath = fallbackPath
+                        let schema = """
+                        PRAGMA foreign_keys = ON;
+                        PRAGMA journal_mode = WAL;
+
+                        CREATE TABLE IF NOT EXISTS telemetry_records (
+                            id TEXT PRIMARY KEY NOT NULL,
+                            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            workflow_id TEXT NOT NULL,
+                            chipset TEXT,
+                            transport TEXT,
+                            status TEXT NOT NULL,
+                            error_code INTEGER,
+                            error_domain TEXT,
+                            raw_output TEXT,
+                            mitigation_advice TEXT
+                        );
+                        """
+                        sqlite3_exec(self.dbPointer, schema, nil, nil, nil)
+                        return
+                    }
+                }
+                let err = self.dbPointer != nil ? String(cString: sqlite3_errmsg(self.dbPointer)) : "unknown"
+                NSLog("[BobFWTelemetryLogger] Failed to open telemetry database at \(targetPath): \(err)")
+                return
+            }
+
+            let schema = """
+            PRAGMA foreign_keys = ON;
+            PRAGMA journal_mode = WAL;
+
+            CREATE TABLE IF NOT EXISTS telemetry_records (
+                id TEXT PRIMARY KEY NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                workflow_id TEXT NOT NULL,
+                chipset TEXT,
+                transport TEXT,
+                status TEXT NOT NULL,
+                error_code INTEGER,
+                error_domain TEXT,
+                raw_output TEXT,
+                mitigation_advice TEXT
+            );
+            """
+            sqlite3_exec(self.dbPointer, schema, nil, nil, nil)
+        }
+    }
 
     public struct PipelineSessionRecord: Identifiable, Codable, Sendable {
         public let id: UUID
@@ -1322,24 +1415,184 @@ public final class BobFWTelemetryLogger: ObservableObject, @unchecked Sendable {
         public let targetedMitigationAdvice: String
     }
 
+    public func commitRecordToSQLite(record: PipelineSessionRecord) {
+        guard let db = self.dbPointer else { return }
+
+        let insertSQL = """
+        INSERT INTO telemetry_records (
+            id, timestamp, workflow_id, chipset, transport, status,
+            error_code, error_domain, raw_output, mitigation_advice
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, insertSQL, -1, &statement, nil) == SQLITE_OK else {
+            return
+        }
+        defer { sqlite3_finalize(statement) }
+
+        let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
+        let idString = record.id.uuidString
+        sqlite3_bind_text(statement, 1, idString, -1, SQLITE_TRANSIENT)
+
+        let isoDate = ISO8601DateFormatter().string(from: record.timestamp)
+        sqlite3_bind_text(statement, 2, isoDate, -1, SQLITE_TRANSIENT)
+
+        sqlite3_bind_text(statement, 3, record.workflowId, -1, SQLITE_TRANSIENT)
+
+        if let chipset = record.hardwareProfile?.chipset.rawValue {
+            sqlite3_bind_text(statement, 4, chipset, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(statement, 4)
+        }
+
+        if let transport = record.hardwareProfile?.activeTransport.rawValue {
+            sqlite3_bind_text(statement, 5, transport, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(statement, 5)
+        }
+
+        sqlite3_bind_text(statement, 6, record.executionStatus.rawValue, -1, SQLITE_TRANSIENT)
+
+        if let fault = record.capturedException {
+            sqlite3_bind_int(statement, 7, fault.systemErrorCode)
+            sqlite3_bind_text(statement, 8, fault.errorDomain, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(statement, 9, fault.lowerLevelRawOutput, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(statement, 10, fault.targetedMitigationAdvice, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(statement, 7)
+            sqlite3_bind_null(statement, 8)
+            sqlite3_bind_null(statement, 9)
+            sqlite3_bind_null(statement, 10)
+        }
+
+        _ = sqlite3_step(statement)
+    }
+
     public func recordPipelineEvent(
         workflowId: String,
         profile: MobileDeviceHardwareProfile?,
         status: OperationalStatus,
         fault: ExceptionDiagnosticBlob? = nil
     ) {
+        let record = PipelineSessionRecord(
+            id: UUID(),
+            timestamp: Date(),
+            workflowId: workflowId,
+            hardwareProfile: profile,
+            executionStatus: status,
+            capturedException: fault
+        )
         queue.async {
-            let record = PipelineSessionRecord(
-                id: UUID(),
-                timestamp: Date(),
-                workflowId: workflowId,
-                hardwareProfile: profile,
-                executionStatus: status,
-                capturedException: fault
-            )
+            self.commitRecordToSQLite(record: record)
             DispatchQueue.main.async {
                 self.historicalLedger.append(record)
             }
+        }
+    }
+
+    public func fetchTelemetryRecordCount() -> Int {
+        var count = 0
+        queue.sync {
+            guard let db = self.dbPointer else { return }
+            var stmt: OpaquePointer?
+            if sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM telemetry_records;", -1, &stmt, nil) == SQLITE_OK {
+                if sqlite3_step(stmt) == SQLITE_ROW {
+                    count = Int(sqlite3_column_int(stmt, 0))
+                }
+                sqlite3_finalize(stmt)
+            }
+        }
+        return count
+    }
+
+    public func fetchLastRecordedStatus(workflowId: String? = nil) -> OperationalStatus? {
+        var result: OperationalStatus?
+        queue.sync {
+            guard let db = self.dbPointer else { return }
+            var stmt: OpaquePointer?
+            let query = workflowId != nil
+                ? "SELECT status FROM telemetry_records WHERE workflow_id = ? ORDER BY timestamp DESC LIMIT 1;"
+                : "SELECT status FROM telemetry_records ORDER BY timestamp DESC LIMIT 1;"
+
+            if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+                if let wid = workflowId {
+                    let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+                    sqlite3_bind_text(stmt, 1, wid, -1, SQLITE_TRANSIENT)
+                }
+                if sqlite3_step(stmt) == SQLITE_ROW, let cStr = sqlite3_column_text(stmt, 0) {
+                    let statusStr = String(cString: cStr)
+                    result = OperationalStatus(rawValue: statusStr)
+                }
+                sqlite3_finalize(stmt)
+            }
+        }
+        return result
+    }
+
+    public func fetchLastCapturedExceptionCode(workflowId: String? = nil) -> Int32? {
+        var result: Int32?
+        queue.sync {
+            guard let db = self.dbPointer else { return }
+            var stmt: OpaquePointer?
+            let query = workflowId != nil
+                ? "SELECT error_code FROM telemetry_records WHERE workflow_id = ? AND error_code IS NOT NULL ORDER BY timestamp DESC LIMIT 1;"
+                : "SELECT error_code FROM telemetry_records WHERE error_code IS NOT NULL ORDER BY timestamp DESC LIMIT 1;"
+
+            if sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK {
+                if let wid = workflowId {
+                    let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+                    sqlite3_bind_text(stmt, 1, wid, -1, SQLITE_TRANSIENT)
+                }
+                if sqlite3_step(stmt) == SQLITE_ROW {
+                    result = sqlite3_column_int(stmt, 0)
+                }
+                sqlite3_finalize(stmt)
+            }
+        }
+        return result
+    }
+
+    public func flushPendingWrites() {
+        queue.sync {}
+    }
+
+    /// Queries active database statistics directly from operational tracking sectors
+    public func fetchDatabaseStorageMetrics() -> (rowCount: Int, sizeInBytes: Int64) {
+        var rows = 0
+        let targetPath = self.activeDatabasePath.isEmpty ? self.databasePath : self.activeDatabasePath
+
+        queue.sync {
+            guard let db = self.dbPointer else { return }
+            let countSQL = "SELECT COUNT(*) FROM telemetry_records;"
+            var statement: OpaquePointer?
+            if sqlite3_prepare_v2(db, countSQL, -1, &statement, nil) == SQLITE_OK {
+                if sqlite3_step(statement) == SQLITE_ROW {
+                    rows = Int(sqlite3_column_int(statement, 0))
+                }
+            }
+            sqlite3_finalize(statement)
+        }
+
+        // Calculate raw size metric properties on disk
+        let fileManager = FileManager.default
+        if let attributes = try? fileManager.attributesOfItem(atPath: targetPath),
+           let fileSize = attributes[.size] as? Int64 {
+            return (rows, fileSize)
+        }
+
+        return (rows, 0)
+    }
+
+    /// Purges all committed telemetry records from disk and cleans in-memory ledger
+    public func purgeTelemetryLedger() {
+        queue.sync {
+            guard let db = self.dbPointer else { return }
+            _ = sqlite3_exec(db, "DELETE FROM telemetry_records; VACUUM;", nil, nil, nil)
+        }
+        DispatchQueue.main.async {
+            self.historicalLedger.removeAll()
         }
     }
 
@@ -1573,6 +1826,7 @@ final class ServicingEngine: ObservableObject {
     }
 
     init() {
+        BobFWTelemetryLogger.shared.initializeTelemetryDatabaseTable()
         loadPersistentData()
         log(.info, "BobFWTools Studio (Bobby's Workshop — Phoenix Forge) initialized.")
         log(.info, "BootForge USB Engine: \(bootforgeBinaryPath)")
@@ -6309,6 +6563,19 @@ public final class SQLiteAuditLedger: @unchecked Sendable {
             grade TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(device_serial) REFERENCES devices(serial_token) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS telemetry_records (
+            id TEXT PRIMARY KEY NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            workflow_id TEXT NOT NULL,
+            chipset TEXT,
+            transport TEXT,
+            status TEXT NOT NULL,
+            error_code INTEGER,
+            error_domain TEXT,
+            raw_output TEXT,
+            mitigation_advice TEXT
         );
         """
         try execute(sql: schema)
