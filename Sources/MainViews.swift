@@ -1415,13 +1415,13 @@ struct SamsungSuiteView: View {
                     if let bundle = engine.autoMatchedBundle {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                Label(bundle.isSynthesizedFallback ? "AUTO-BINARY MATCHER: FALLBACK MATRIX VERIFIED" : "AUTO-BINARY MATCHER: VERIFIED LOCAL BUNDLE", systemImage: bundle.isSynthesizedFallback ? "bolt.shield.fill" : "checkmark.seal.fill")
+                                Label(bundle.isSynthesizedFallback ? "AUTO-BINARY MATCHER: PLANNING HINT — UNVERIFIED" : "AUTO-BINARY MATCHER: VERIFIED LOCAL BUNDLE", systemImage: bundle.isSynthesizedFallback ? "exclamationmark.shield.fill" : "checkmark.seal.fill")
                                     .font(.system(size: 11.5, weight: .bold))
-                                    .foregroundColor(bundle.isSynthesizedFallback ? .blue : .green)
+                                    .foregroundColor(bundle.isSynthesizedFallback ? .orange : .green)
                                 Spacer()
-                                Text("Model: \(bundle.model) · Device Bit: \(bundle.bootloaderBit) [\(bundle.bitMatchesDevice ? "ANTI-ROLLBACK OK" : "BIT MISMATCH")]")
+                                Text(bundle.isSynthesizedFallback ? "Model: \(bundle.model) · SYNTHESIZED METADATA — NO WRITE AUTHORITY" : "Model: \(bundle.model) · Device Bit: \(bundle.bootloaderBit) [\(bundle.bitMatchesDevice ? "ANTI-ROLLBACK OK" : "BIT MISMATCH")]")
                                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                    .foregroundColor(bundle.bitMatchesDevice ? .green : .red)
+                                    .foregroundColor(bundle.isSynthesizedFallback ? .orange : (bundle.bitMatchesDevice ? .green : .red))
                             }
 
                             HStack(spacing: 12) {
@@ -1454,14 +1454,14 @@ struct SamsungSuiteView: View {
                             }
 
                             if !bundle.verifiedOpticsCscs.isEmpty {
-                                Text("Verified Fallback CSCs (\(bundle.verifiedOpticsCscs.count)): \(bundle.verifiedOpticsCscs.prefix(12).joined(separator: " · ")) (+\(bundle.verifiedOpticsCscs.count - 12) more)")
+                                Text(bundle.isSynthesizedFallback ? "Suggested CSC catalog entries only — no local optics evidence." : "Verified local CSC evidence (\(bundle.verifiedOpticsCscs.count)): \(bundle.verifiedOpticsCscs.prefix(12).joined(separator: " · "))")
                                     .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
                                     .foregroundColor(.accentColor)
                                     .lineLimit(1)
                             }
                         }
                         .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 8).fill((bundle.isSynthesizedFallback ? Color.blue : Color.green).opacity(0.08)))
+                        .background(RoundedRectangle(cornerRadius: 8).fill((bundle.isSynthesizedFallback ? Color.orange : Color.green).opacity(0.08)))
                     } else {
                         HStack {
                             Text("Background Auto-Binary Matcher: Scanning local firmware directories...")
@@ -1510,6 +1510,10 @@ struct SamsungSuiteView: View {
                         .controlSize(.small)
 
                         Button("Auto-Load Matched Binaries into Odin Table") {
+                            guard engine.autoMatchedBundle?.isSynthesizedFallback == false else {
+                                engine.log(.warning, "Auto-load blocked: synthesized fallback metadata is not a verified local firmware bundle.")
+                                return
+                            }
                             if !engine.autoSelectedFlashItems.isEmpty {
                                 flashItems = engine.autoSelectedFlashItems
                                 engine.log(.success, "Auto-loaded \(flashItems.count) matched SM-T500 Bit 8 partition binaries into Heimdall/Odin flash table.")
