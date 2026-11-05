@@ -611,7 +611,7 @@ struct FirmwareBuildFallbackMatrix {
                 defaultPit: nearest.defaultPit,
                 multiCscContainer: csc,
                 compatibleCscs: nearest.compatibleCscs,
-                isFusedSafe: true
+                isFusedSafe: false
             )
         }
 
@@ -630,7 +630,7 @@ struct FirmwareBuildFallbackMatrix {
             defaultPit: pit,
             multiCscContainer: csc,
             compatibleCscs: groupCscs,
-            isFusedSafe: true
+            isFusedSafe: false
         )
     }
 }
@@ -2858,8 +2858,8 @@ final class ServicingEngine: ObservableObject {
                         extractedImagesDir: nil,
                         matchedPartitionImages: [:],
                         verifiedOpticsCscs: fallbackProfile.compatibleCscs,
-                        bitMatchesDevice: fallbackProfile.binaryBit >= deviceBit,
-                        modelMatchesDevice: true,
+                        bitMatchesDevice: false,
+                        modelMatchesDevice: false,
                         isSynthesizedFallback: true,
                         combinationBuild: fallbackProfile.combinationBuild,
                         stockBuild: fallbackProfile.stockBuild,
@@ -2949,10 +2949,8 @@ final class ServicingEngine: ObservableObject {
         if let bundle = matched {
             let preferredOrder = ["BOOT", "RECOVERY", "OPTICS", "PRISM", "CACHE", "OMR", "SUPER", "VBMETA", "DTBO"]
             if bundle.isSynthesizedFallback {
-                autoSelectedFlashItems = preferredOrder.map {
-                    PartitionFlashItem(enabled: ["OPTICS", "PRISM", "CACHE", "OMR"].contains($0), partitionName: $0, filePath: "")
-                }
-                log(.success, "Auto-Binary Matcher [FALLBACK MATRIX]: Matched \(bundle.model) · Stock: \(bundle.buildVersion) (Bit \(bundle.bootloaderBit) == Device Bit \(deviceBit) [OK]) · Combo: \(bundle.combinationBuild) · PIT: \(bundle.fallbackPitName) · Optics CSCs: \(bundle.verifiedOpticsCscs.prefix(8).joined(separator: ", ")) (+\(bundle.verifiedOpticsCscs.count - 8) more)")
+                autoSelectedFlashItems = []
+                log(.warning, "Auto-Binary Matcher [PLANNING HINT ONLY]: No local verified firmware bundle exists for \(bundle.model). Suggested stock/combo/PIT/CSC metadata is non-authoritative and cannot unlock flashing, CSC verification, or anti-rollback approval.")
             } else {
                 var items: [PartitionFlashItem] = []
                 for key in preferredOrder {
@@ -3051,16 +3049,16 @@ final class ServicingEngine: ObservableObject {
                 "CAC", "CAU", "CPW", "EUX", "EUY", "SEK", "SER", "SKZ",
                 "TUR", "WWA", "WWB", "WWC", "WWD", "XAC", "XAR"
             ]
-            let opticsList = (bundle?.verifiedOpticsCscs.isEmpty == false) ? bundle!.verifiedOpticsCscs : knownOxm
+            let opticsList = (bundle?.isSynthesizedFallback == false && bundle?.verifiedOpticsCscs.isEmpty == false) ? bundle!.verifiedOpticsCscs : []
             let inOptics = opticsList.contains(cleanCode.uppercased())
 
             if model.uppercased().hasPrefix("SM-") {
-                if let b = bundle, b.modelMatchesDevice && b.bitMatchesDevice && inOptics {
+                if let b = bundle, !b.isSynthesizedFallback, b.modelMatchesDevice && b.bitMatchesDevice && inOptics {
                     status = "BINARY + OPTICS VERIFIED"
                     detail = "Transition \(prevCode) → \(cleanCode) on \(model): Verified inside local optics.img (Bit \(b.bootloaderBit) == Device Bit \(b.bootloaderBit), PIT: \(((b.pitPath ?? "GTA4LWIFI") as NSString).lastPathComponent))."
                 } else if isMultiCscContainer || inOptics {
-                    status = inOptics ? "BINARY + OPTICS VERIFIED" : "MULTI-CSC PREFLIGHT"
-                    detail = "Transition \(prevCode) → \(cleanCode) on \(model) (\(cscPkg)): \(inOptics ? "Verified in official OXM optics container" : "Code requires supplementary carrier package")."
+                    status = inOptics ? "LOCAL OPTICS EVIDENCE PRESENT" : "MULTI-CSC PREFLIGHT"
+                    detail = "Transition \(prevCode) → \(cleanCode) on \(model) (\(cscPkg)): \(inOptics ? "Observed in a local optics-derived list; exact firmware provenance and execution authority remain separate gates" : "Code requires a verified matching carrier package")."
                 } else {
                     status = "PREFLIGHT READY"
                     detail = "Transition \(prevCode) → \(cleanCode) on \(model): Requires matching \(cleanCode) CSC package."
