@@ -55,11 +55,15 @@ python3 - "$EXPIRATION" <<'PY' || exit 1
 from datetime import datetime, timezone
 import sys
 raw=sys.argv[1].strip()
-formats=("%Y-%m-%d %H:%M:%S +0000","%Y-%m-%dT%H:%M:%SZ")
+formats=(
+    ("%Y-%m-%d %H:%M:%S +0000", raw),
+    ("%Y-%m-%dT%H:%M:%SZ", raw),
+    ("%a %b %d %H:%M:%S UTC %Y", raw),
+)
 parsed=None
-for fmt in formats:
+for fmt, candidate in formats:
     try:
-        parsed=datetime.strptime(raw,fmt).replace(tzinfo=timezone.utc)
+        parsed=datetime.strptime(candidate,fmt).replace(tzinfo=timezone.utc)
         break
     except ValueError:
         pass
