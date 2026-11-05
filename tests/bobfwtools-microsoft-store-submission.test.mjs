@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 
 const workflow = await readFile('.github/workflows/bobfwtools-microsoft-store-submission.yml', 'utf8')
 const client = await readFile('scripts/release/submit-bobfwtools-microsoft-store.py', 'utf8')
+const producer = await readFile('.github/workflows/bobfwtools-microsoft-store-msix.yml', 'utf8')
 
 for (const required of [
   'package_run_id',
@@ -36,6 +37,24 @@ for (const required of [
   'storePublished',
   'deviceWriteAuthorityGranted',
 ]) assert.ok(client.includes(required), 'submission client missing: ' + required)
+
+
+assert.equal(producer.includes('\\${{'), false, 'producer must not escape GitHub expressions')
+assert.ok(producer.includes('name: BobFWTools-microsoft-store-${{ github.sha }}'))
+assert.ok(workflow.includes('--name "BobFWTools-microsoft-store-$SOURCE_SHA"'))
+
+for (const requiredStatus of [
+  '"PreProcessing"',
+  '"Certification"',
+  '"Release"',
+  '"PendingPublication"',
+  '"Publishing"',
+  '"Published"',
+  '"Canceled"',
+  '"CommitFailed"',
+]) assert.ok(client.includes(requiredStatus), 'submission client missing status contract: ' + requiredStatus)
+
+assert.ok(client.includes('Partner Center commit was not confirmed after polling'))
 
 assert.equal(client.includes('"microsoftCertificationPassed": True'), false)
 assert.equal(client.includes('"storePublished": True'), false)
