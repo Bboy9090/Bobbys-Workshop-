@@ -1,6 +1,12 @@
 name: BobFWTools Microsoft Store Submission Evidence
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/bobfwtools-microsoft-store-submission.yml'
+      - 'scripts/release/submit-bobfwtools-microsoft-store.py'
+      - 'tests/bobfwtools-microsoft-store-submission.test.mjs'
+      - 'docs/BOBFWTOOLS_MICROSOFT_STORE_SUBMISSION.md'
   workflow_dispatch:
     inputs:
       package_run_id:
@@ -25,7 +31,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.x"
+          package-manager-cache: false
+      - name: Verify Partner Center submission contract
+        run: |
+          python3 -m py_compile scripts/release/submit-bobfwtools-microsoft-store.py
+          node tests/bobfwtools-microsoft-store-submission.test.mjs
+
   submit:
+    if: github.event_name == 'workflow_dispatch'
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
