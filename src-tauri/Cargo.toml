@@ -1,7 +1,7 @@
 [package]
 name = "bobfwtools"
 version = "0.1.0"
-description = "BobFWTools - professional macOS Android connectivity, diagnostics, MTP and device support toolkit"
+description = "BobFWTools - professional Android connectivity, diagnostics, MTP and device support toolkit"
 authors = ["Bobby Blanco"]
 license = "MIT"
 repository = ""
