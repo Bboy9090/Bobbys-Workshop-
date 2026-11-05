@@ -322,7 +322,7 @@ public struct BobFWTelemetryConsoleView: View {
                     .id(record.id)
                 }
                 .background(Color.black)
-                .onChange(of: telemetry.historicalLedger.count) { _ in
+                .onChange(of: telemetry.historicalLedger.count) { _, _ in
                     if autoScrollToBottom, let lastRecord = filteredLogs.last {
                         withAnimation { proxy.scrollTo(lastRecord.id, anchor: .bottom) }
                     }
