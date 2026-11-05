@@ -1128,7 +1128,7 @@ export default function App() {
         <div>
           <h1 className="text-lg font-semibold tracking-tight text-white">BobFWTools</h1>
           <p className="text-xs text-slate-500">
-            Android connectivity for macOS · native USB + MTP
+            Android connectivity · native USB + MTP
           </p>
         </div>
         <div className="flex items-center gap-3">

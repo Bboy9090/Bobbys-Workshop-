@@ -150,7 +150,7 @@
       "packages/*"
     ]
   },
-  "description": "BobFWTools — professional macOS Android device connectivity, MTP, ADB/Fastboot diagnostics, transfer, and support tooling.",
+  "description": "BobFWTools — professional Android device connectivity, MTP, ADB/Fastboot diagnostics, transfer, and authorized support tooling.",
   "overrides": {
     "body-parser": "1.20.9",
     "fast-uri": "3.1.9",
