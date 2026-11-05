@@ -1,0 +1,186 @@
+name: BobFWTools Microsoft Store Submission Evidence
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/bobfwtools-microsoft-store-submission.yml'
+      - 'scripts/release/submit-bobfwtools-microsoft-store.py'
+      - 'tests/bobfwtools-microsoft-store-submission.test.mjs'
+      - 'docs/BOBFWTOOLS_MICROSOFT_STORE_SUBMISSION.md'
+  workflow_dispatch:
+    inputs:
+      package_run_id:
+        description: "Successful BobFWTools Microsoft Store MSIX workflow run ID"
+        required: true
+        type: string
+      application_id:
+        description: "Partner Center Store application ID"
+        required: true
+        type: string
+      confirm_submit:
+        description: "Type SUBMIT to authorize Partner Center upload and commit"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: bobfwtools-microsoft-store-submission
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.x"
+          package-manager-cache: false
+      - name: Verify Partner Center submission contract
+        run: |
+          python3 -m py_compile scripts/release/submit-bobfwtools-microsoft-store.py
+          node tests/bobfwtools-microsoft-store-submission.test.mjs
+
+  submit:
+    if: github.event_name == 'workflow_dispatch'
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BOBFW_MS_STORE_TENANT_ID: ${{ secrets.BOBFW_MS_STORE_TENANT_ID }}
+      BOBFW_MS_STORE_CLIENT_ID: ${{ secrets.BOBFW_MS_STORE_CLIENT_ID }}
+      BOBFW_MS_STORE_CLIENT_SECRET: ${{ secrets.BOBFW_MS_STORE_CLIENT_SECRET }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Require explicit Store submission authorization
+        shell: bash
+        env:
+          CONFIRM_SUBMIT: ${{ inputs.confirm_submit }}
+        run: |
+          set -euo pipefail
+          [[ "$CONFIRM_SUBMIT" == "SUBMIT" ]] || {
+            echo "Partner Center submission blocked. Re-run and type SUBMIT exactly." >&2
+            exit 1
+          }
+
+      - name: Validate Partner Center credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in BOBFW_MS_STORE_TENANT_ID BOBFW_MS_STORE_CLIENT_ID BOBFW_MS_STORE_CLIENT_SECRET; do
+            [[ -n "${!name:-}" ]] || {
+              echo "Missing Microsoft Store secret: $name" >&2
+              exit 1
+            }
+          done
+
+      - name: Resolve exact successful Microsoft Store package run
+        id: package
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_RUN_ID: ${{ inputs.package_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$PACKAGE_RUN_ID" =~ ^[0-9]+$ ]] || {
+            echo "package_run_id must be numeric" >&2
+            exit 1
+          }
+
+          RUN_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${PACKAGE_RUN_ID}")"
+          RUN_NAME="$(jq -r '.name' <<<"$RUN_JSON")"
+          RUN_EVENT="$(jq -r '.event' <<<"$RUN_JSON")"
+          RUN_STATUS="$(jq -r '.status' <<<"$RUN_JSON")"
+          RUN_CONCLUSION="$(jq -r '.conclusion' <<<"$RUN_JSON")"
+          SOURCE_SHA="$(jq -r '.head_sha' <<<"$RUN_JSON")"
+
+          [[ "$RUN_NAME" == "BobFWTools Microsoft Store MSIX" ]] || {
+            echo "Run is not the Microsoft Store MSIX package workflow: $RUN_NAME" >&2
+            exit 1
+          }
+          [[ "$RUN_EVENT" == "workflow_dispatch" ]] || {
+            echo "MSIX package run must be manually dispatched" >&2
+            exit 1
+          }
+          [[ "$RUN_STATUS" == "completed" && "$RUN_CONCLUSION" == "success" ]] || {
+            echo "MSIX package run is not a completed success" >&2
+            exit 1
+          }
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "MSIX package run head SHA is invalid" >&2
+            exit 1
+          }
+
+          OUT="$RUNNER_TEMP/bobfwtools-microsoft-store"
+          mkdir -p "$OUT/package"
+          gh run download "$PACKAGE_RUN_ID"             --repo "$GITHUB_REPOSITORY"             --name "BobFWTools-microsoft-store-$SOURCE_SHA"             --dir "$OUT/package"
+
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "out=$OUT" >> "$GITHUB_OUTPUT"
+
+      - name: Verify exact signed MSIX and source-bound receipt
+        id: verify
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.package.outputs.source_sha }}
+          OUT: ${{ steps.package.outputs.out }}
+        run: |
+          set -euo pipefail
+          MSIX_COUNT="$(find "$OUT/package" -type f -name '*.msix' | wc -l | tr -d '[:space:]')"
+          [[ "$MSIX_COUNT" == "1" ]] || {
+            echo "Expected exactly one MSIX package, found $MSIX_COUNT" >&2
+            exit 1
+          }
+          MSIX="$(find "$OUT/package" -type f -name '*.msix' -print -quit)"
+          RECEIPT="$(find "$OUT/package" -type f -name 'MICROSOFT-STORE-RECEIPT.json' -print -quit)"
+          [[ -s "$RECEIPT" ]] || {
+            echo "Microsoft Store package receipt is missing" >&2
+            exit 1
+          }
+
+          MSIX_SHA="$(sha256sum "$MSIX" | awk '{print $1}')"
+          python3 - "$RECEIPT" "$SOURCE_SHA" "$MSIX_SHA" "$(basename "$MSIX")" <<'PY'
+          import json, sys
+          receipt_path, source_sha, package_sha, package_name = sys.argv[1:]
+          receipt = json.load(open(receipt_path, encoding="utf-8-sig"))
+          assert receipt["schema"] == "com.bobbyblanco.bobfwtools.microsoft-store-package.v1"
+          assert receipt["distribution"] == "microsoft-store"
+          assert receipt["sourceRevision"] == source_sha
+          assert receipt["package"]["name"] == package_name
+          assert receipt["package"]["sha256"].lower() == package_sha.lower()
+          assert receipt["package"]["signed"] is True
+          assert str(receipt["package"]["authenticodeStatus"]).lower() == "valid"
+          assert receipt["storeUploaded"] is False
+          assert receipt["storeReviewApproved"] is False
+          assert receipt["deviceWriteAuthorityGranted"] is False
+          PY
+
+          echo "msix=$MSIX" >> "$GITHUB_OUTPUT"
+          echo "msix_sha=$MSIX_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Submit exact MSIX to Partner Center
+        shell: bash
+        env:
+          MSIX: ${{ steps.verify.outputs.msix }}
+          SOURCE_SHA: ${{ steps.package.outputs.source_sha }}
+          OUT: ${{ steps.package.outputs.out }}
+          PACKAGE_RUN_ID: ${{ inputs.package_run_id }}
+          APPLICATION_ID: ${{ inputs.application_id }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release/submit-bobfwtools-microsoft-store.py             --package "$MSIX"             --application-id "$APPLICATION_ID"             --source-sha "$SOURCE_SHA"             --package-run-id "$PACKAGE_RUN_ID"             --output "$OUT/MICROSOFT-STORE-SUBMISSION-RECEIPT.json"
+
+      - name: Upload owner-private Partner Center submission evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: BobFWTools-microsoft-store-submission-${{ github.run_id }}
+          path: |
+            ${{ steps.package.outputs.out }}/MICROSOFT-STORE-SUBMISSION-RECEIPT.json
+          if-no-files-found: warn
+          retention-days: 30
