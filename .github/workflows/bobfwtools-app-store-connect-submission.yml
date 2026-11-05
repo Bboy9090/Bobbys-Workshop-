@@ -123,25 +123,25 @@ jobs:
 
           PKG_SHA="$(shasum -a 256 "$PKG" | awk '{print $1}')"
           python3 - "$PACKAGE_RECEIPT" "$ARCHIVE_RECEIPT" "$SOURCE_SHA" "$PKG_SHA" <<'PY'
-import json, sys
-package_path, archive_path, source_sha, pkg_sha = sys.argv[1:]
-package = json.load(open(package_path, encoding="utf-8"))
-archive = json.load(open(archive_path, encoding="utf-8"))
-
-assert package["schema"] == "com.bobbyblanco.bobfwtools.mac-app-store-package-receipt.v1"
-assert package["distribution"] == "mac-app-store"
-assert package["sourceRevision"] == source_sha
-assert package["installerPackageSha256"] == pkg_sha
-assert package["signedInstallerPackage"] is True
-assert package["appStoreConnectUploaded"] is False
-assert package["appStoreReviewApproved"] is False
-
-assert archive["schema"] == "com.bobbyblanco.bobfwtools.app-store-archive-receipt.v1"
-assert archive["distribution"] == "mac-app-store"
-assert archive["bundleId"] == "com.bobbyblanco.bobfwtools"
-assert archive["embeddedProvisioningProfile"] is True
-assert archive["sandboxEntitlementsVerified"] is True
-PY
+          import json, sys
+          package_path, archive_path, source_sha, pkg_sha = sys.argv[1:]
+          package = json.load(open(package_path, encoding="utf-8"))
+          archive = json.load(open(archive_path, encoding="utf-8"))
+          
+          assert package["schema"] == "com.bobbyblanco.bobfwtools.mac-app-store-package-receipt.v1"
+          assert package["distribution"] == "mac-app-store"
+          assert package["sourceRevision"] == source_sha
+          assert package["installerPackageSha256"] == pkg_sha
+          assert package["signedInstallerPackage"] is True
+          assert package["appStoreConnectUploaded"] is False
+          assert package["appStoreReviewApproved"] is False
+          
+          assert archive["schema"] == "com.bobbyblanco.bobfwtools.app-store-archive-receipt.v1"
+          assert archive["distribution"] == "mac-app-store"
+          assert archive["bundleId"] == "com.bobbyblanco.bobfwtools"
+          assert archive["embeddedProvisioningProfile"] is True
+          assert archive["sandboxEntitlementsVerified"] is True
+          PY
 
           grep -F "$PKG_SHA" "$SHA_FILE" >/dev/null
           pkgutil --check-signature "$PKG"
@@ -192,28 +192,28 @@ PY
         run: |
           set -euo pipefail
           python3 - "$OUT/APP-STORE-CONNECT-SUBMISSION-RECEIPT.json" "$SOURCE_SHA" "$PKG_SHA" "$PACKAGE_RUN_ID" "$GITHUB_RUN_ID" <<'PY'
-import json, sys
-output, source_sha, pkg_sha, package_run_id, submission_run_id = sys.argv[1:]
-receipt = {
-    "schema": "com.bobbyblanco.bobfwtools.app-store-connect-submission-receipt.v1",
-    "product": "BobFWTools",
-    "bundleId": "com.bobbyblanco.bobfwtools",
-    "distribution": "mac-app-store",
-    "sourceRevision": source_sha,
-    "installerPackageSha256": pkg_sha,
-    "packageWorkflowRunId": int(package_run_id),
-    "submissionWorkflowRunId": int(submission_run_id),
-    "appStoreConnectValidationPassed": True,
-    "appStoreConnectUploaded": True,
-    "appleProcessingComplete": False,
-    "appStoreReviewSubmitted": False,
-    "appStoreReviewApproved": False,
-    "scope": "Successful altool validation and binary upload only; App Store processing and review remain unproven",
-}
-with open(output, "w", encoding="utf-8") as f:
-    json.dump(receipt, f, indent=2, sort_keys=True)
-    f.write("\n")
-PY
+          import json, sys
+          output, source_sha, pkg_sha, package_run_id, submission_run_id = sys.argv[1:]
+          receipt = {
+              "schema": "com.bobbyblanco.bobfwtools.app-store-connect-submission-receipt.v1",
+              "product": "BobFWTools",
+              "bundleId": "com.bobbyblanco.bobfwtools",
+              "distribution": "mac-app-store",
+              "sourceRevision": source_sha,
+              "installerPackageSha256": pkg_sha,
+              "packageWorkflowRunId": int(package_run_id),
+              "submissionWorkflowRunId": int(submission_run_id),
+              "appStoreConnectValidationPassed": True,
+              "appStoreConnectUploaded": True,
+              "appleProcessingComplete": False,
+              "appStoreReviewSubmitted": False,
+              "appStoreReviewApproved": False,
+              "scope": "Successful altool validation and binary upload only; App Store processing and review remain unproven",
+          }
+          with open(output, "w", encoding="utf-8") as f:
+              json.dump(receipt, f, indent=2, sort_keys=True)
+              f.write("\n")
+          PY
 
       - name: Upload owner-private submission evidence
         if: always()
