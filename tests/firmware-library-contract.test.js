@@ -1196,3 +1196,24 @@ describe('Diagnostic readiness is distinct from write readiness', () => {
     expect(ui).toContain('WRITE GATES INCOMPLETE');
   });
 });
+
+
+describe('Native Swift synthesized firmware fallback authority', () => {
+  it('keeps synthesized Samsung fallback metadata planning-only and fail-closed', () => {
+    const engine = read('Sources/ServicingEngine.swift');
+    const ui = read('Sources/MainViews.swift');
+
+    expect(engine).toContain('Auto-Binary Matcher [PLANNING HINT ONLY]');
+    expect(engine).toContain('autoSelectedFlashItems = []');
+    expect(engine).toContain('!b.isSynthesizedFallback');
+    expect(engine).toContain('bundle?.isSynthesizedFallback == false');
+    expect(engine).toContain('bitMatchesDevice: false');
+    expect(engine).toContain('modelMatchesDevice: false');
+
+    expect(ui).toContain('PLANNING HINT — UNVERIFIED');
+    expect(ui).toContain('SYNTHESIZED METADATA — NO WRITE AUTHORITY');
+    expect(ui).toContain('Suggested CSC catalog entries only — no local optics evidence.');
+    expect(ui).toContain('Auto-load blocked: synthesized fallback metadata is not a verified local firmware bundle.');
+    expect(ui).not.toContain('FALLBACK MATRIX VERIFIED');
+  });
+});
