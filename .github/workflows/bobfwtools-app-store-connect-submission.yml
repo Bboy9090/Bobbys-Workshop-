@@ -1,0 +1,236 @@
+name: BobFWTools App Store Connect Submission Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_run_id:
+        description: "Successful BobFWTools Mac App Store Package workflow run ID"
+        required: true
+        type: string
+      confirm_upload:
+        description: "Type UPLOAD to authorize delivery to App Store Connect"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: bobfwtools-app-store-connect-submission
+  cancel-in-progress: false
+
+jobs:
+  submit:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      BOBFW_ASC_API_KEY_ID: ${{ secrets.BOBFW_ASC_API_KEY_ID }}
+      BOBFW_ASC_API_ISSUER_ID: ${{ secrets.BOBFW_ASC_API_ISSUER_ID }}
+      BOBFW_ASC_API_KEY_P8_BASE64: ${{ secrets.BOBFW_ASC_API_KEY_P8_BASE64 }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Require explicit upload authorization
+        shell: bash
+        env:
+          CONFIRM_UPLOAD: ${{ inputs.confirm_upload }}
+        run: |
+          set -euo pipefail
+          [[ "$CONFIRM_UPLOAD" == "UPLOAD" ]] || {
+            echo "Submission is blocked. Re-run and type UPLOAD exactly." >&2
+            exit 1
+          }
+
+      - name: Validate App Store Connect API credentials are configured
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in BOBFW_ASC_API_KEY_ID BOBFW_ASC_API_ISSUER_ID BOBFW_ASC_API_KEY_P8_BASE64; do
+            [[ -n "${!name:-}" ]] || {
+              echo "Missing App Store Connect secret: $name" >&2
+              exit 1
+            }
+          done
+
+      - name: Resolve and download exact qualified package artifact
+        id: package
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_RUN_ID: ${{ inputs.package_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$PACKAGE_RUN_ID" =~ ^[0-9]+$ ]] || {
+            echo "package_run_id must be numeric" >&2
+            exit 1
+          }
+
+          RUN_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${PACKAGE_RUN_ID}")"
+          RUN_NAME="$(jq -r '.name' <<<"$RUN_JSON")"
+          RUN_EVENT="$(jq -r '.event' <<<"$RUN_JSON")"
+          RUN_STATUS="$(jq -r '.status' <<<"$RUN_JSON")"
+          RUN_CONCLUSION="$(jq -r '.conclusion' <<<"$RUN_JSON")"
+          SOURCE_SHA="$(jq -r '.head_sha' <<<"$RUN_JSON")"
+
+          [[ "$RUN_NAME" == "BobFWTools Mac App Store Package" ]] || {
+            echo "Run is not the Mac App Store package workflow: $RUN_NAME" >&2
+            exit 1
+          }
+          [[ "$RUN_EVENT" == "workflow_dispatch" ]] || {
+            echo "Package run must be manually dispatched" >&2
+            exit 1
+          }
+          [[ "$RUN_STATUS" == "completed" && "$RUN_CONCLUSION" == "success" ]] || {
+            echo "Package run is not a completed success" >&2
+            exit 1
+          }
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "Package run head SHA is invalid" >&2
+            exit 1
+          }
+
+          OUT="$RUNNER_TEMP/bobfwtools-app-store-connect"
+          mkdir -p "$OUT/package"
+          gh run download "$PACKAGE_RUN_ID"             --repo "$GITHUB_REPOSITORY"             --name "BobFWTools-mac-app-store-$SOURCE_SHA"             --dir "$OUT/package"
+
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "out=$OUT" >> "$GITHUB_OUTPUT"
+
+      - name: Verify package provenance and receipt
+        id: verify
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.package.outputs.source_sha }}
+          OUT: ${{ steps.package.outputs.out }}
+        run: |
+          set -euo pipefail
+          PKG_COUNT="$(find "$OUT/package" -type f -name '*.pkg' | wc -l | tr -d '[:space:]')"
+          [[ "$PKG_COUNT" == "1" ]] || {
+            echo "Expected exactly one signed .pkg artifact, found $PKG_COUNT" >&2
+            exit 1
+          }
+          PKG="$(find "$OUT/package" -type f -name '*.pkg' -print -quit)"
+          PACKAGE_RECEIPT="$(find "$OUT/package" -type f -name 'PACKAGE-RECEIPT.json' -print -quit)"
+          ARCHIVE_RECEIPT="$(find "$OUT/package" -type f -name 'APP-STORE-ARCHIVE-RECEIPT.json' -print -quit)"
+          SHA_FILE="$(find "$OUT/package" -type f -name 'INSTALLER-PACKAGE.sha256' -print -quit)"
+
+          [[ -s "$PACKAGE_RECEIPT" && -s "$ARCHIVE_RECEIPT" && -s "$SHA_FILE" ]] || {
+            echo "Required package evidence is incomplete" >&2
+            exit 1
+          }
+
+          PKG_SHA="$(shasum -a 256 "$PKG" | awk '{print $1}')"
+          python3 - "$PACKAGE_RECEIPT" "$ARCHIVE_RECEIPT" "$SOURCE_SHA" "$PKG_SHA" <<'PY'
+          import json, sys
+          package_path, archive_path, source_sha, pkg_sha = sys.argv[1:]
+          package = json.load(open(package_path, encoding="utf-8"))
+          archive = json.load(open(archive_path, encoding="utf-8"))
+          
+          assert package["schema"] == "com.bobbyblanco.bobfwtools.mac-app-store-package-receipt.v1"
+          assert package["distribution"] == "mac-app-store"
+          assert package["sourceRevision"] == source_sha
+          assert package["installerPackageSha256"] == pkg_sha
+          assert package["signedInstallerPackage"] is True
+          assert package["appStoreConnectUploaded"] is False
+          assert package["appStoreReviewApproved"] is False
+          
+          assert archive["schema"] == "com.bobbyblanco.bobfwtools.app-store-archive-receipt.v1"
+          assert archive["distribution"] == "mac-app-store"
+          assert archive["bundleId"] == "com.bobbyblanco.bobfwtools"
+          assert archive["embeddedProvisioningProfile"] is True
+          assert archive["sandboxEntitlementsVerified"] is True
+          PY
+
+          grep -F "$PKG_SHA" "$SHA_FILE" >/dev/null
+          pkgutil --check-signature "$PKG"
+
+          echo "pkg=$PKG" >> "$GITHUB_OUTPUT"
+          echo "pkg_sha=$PKG_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Materialize App Store Connect API key
+        id: key
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY_DIR="$RUNNER_TEMP/bobfwtools-asc-key"
+          KEY_PATH="$KEY_DIR/AuthKey_${BOBFW_ASC_API_KEY_ID}.p8"
+          mkdir -p "$KEY_DIR"
+          printf '%s' "$BOBFW_ASC_API_KEY_P8_BASE64" | openssl base64 -d -A > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          grep -q 'BEGIN PRIVATE KEY' "$KEY_PATH"
+          echo "path=$KEY_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Validate package with App Store Connect
+        shell: bash
+        env:
+          PKG: ${{ steps.verify.outputs.pkg }}
+          KEY_PATH: ${{ steps.key.outputs.path }}
+          OUT: ${{ steps.package.outputs.out }}
+        run: |
+          set -euo pipefail
+          xcrun altool             --validate-app "$PKG"             --platform macos             --api-key "$BOBFW_ASC_API_KEY_ID"             --api-issuer "$BOBFW_ASC_API_ISSUER_ID"             --p8-file-path "$KEY_PATH"             2>&1 | tee "$OUT/APP-STORE-CONNECT-VALIDATION.log"
+
+      - name: Upload exact package to App Store Connect
+        shell: bash
+        env:
+          PKG: ${{ steps.verify.outputs.pkg }}
+          KEY_PATH: ${{ steps.key.outputs.path }}
+          OUT: ${{ steps.package.outputs.out }}
+        run: |
+          set -euo pipefail
+          xcrun altool             --upload-app "$PKG"             --platform macos             --api-key "$BOBFW_ASC_API_KEY_ID"             --api-issuer "$BOBFW_ASC_API_ISSUER_ID"             --p8-file-path "$KEY_PATH"             --wait             2>&1 | tee "$OUT/APP-STORE-CONNECT-UPLOAD.log"
+
+      - name: Write source-bound submission receipt
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.package.outputs.source_sha }}
+          PKG_SHA: ${{ steps.verify.outputs.pkg_sha }}
+          OUT: ${{ steps.package.outputs.out }}
+          PACKAGE_RUN_ID: ${{ inputs.package_run_id }}
+        run: |
+          set -euo pipefail
+          python3 - "$OUT/APP-STORE-CONNECT-SUBMISSION-RECEIPT.json" "$SOURCE_SHA" "$PKG_SHA" "$PACKAGE_RUN_ID" "$GITHUB_RUN_ID" <<'PY'
+          import json, sys
+          output, source_sha, pkg_sha, package_run_id, submission_run_id = sys.argv[1:]
+          receipt = {
+              "schema": "com.bobbyblanco.bobfwtools.app-store-connect-submission-receipt.v1",
+              "product": "BobFWTools",
+              "bundleId": "com.bobbyblanco.bobfwtools",
+              "distribution": "mac-app-store",
+              "sourceRevision": source_sha,
+              "installerPackageSha256": pkg_sha,
+              "packageWorkflowRunId": int(package_run_id),
+              "submissionWorkflowRunId": int(submission_run_id),
+              "appStoreConnectValidationPassed": True,
+              "appStoreConnectUploaded": True,
+              "appleProcessingComplete": False,
+              "appStoreReviewSubmitted": False,
+              "appStoreReviewApproved": False,
+              "scope": "Successful altool validation and binary upload only; App Store processing and review remain unproven",
+          }
+          with open(output, "w", encoding="utf-8") as f:
+              json.dump(receipt, f, indent=2, sort_keys=True)
+              f.write("\n")
+          PY
+
+      - name: Upload owner-private submission evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: BobFWTools-app-store-connect-${{ github.run_id }}
+          path: |
+            ${{ steps.package.outputs.out }}/*.log
+            ${{ steps.package.outputs.out }}/*RECEIPT.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Cleanup App Store Connect private key
+        if: always()
+        shell: bash
+        env:
+          KEY_PATH: ${{ steps.key.outputs.path }}
+        run: |
+          set +e
+          [[ -n "$KEY_PATH" ]] && rm -f "$KEY_PATH"
