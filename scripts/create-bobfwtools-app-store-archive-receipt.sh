@@ -41,7 +41,8 @@ AUTHORITY="$(printf '%s\n' "$DETAILS" | awk -F= '/^Authority=/ {print substr($0,
 [[ "$AUTHORITY" == *"Apple Distribution"* || "$AUTHORITY" == *"3rd Party Mac Developer Application"* ]] || fail "App Store distribution authority not detected"
 
 ENTITLEMENTS_JSON="$(mktemp)"
-trap 'rm -f "$ENTITLEMENTS_JSON"' EXIT
+ARCHIVE_TMP_DIR="$(mktemp -d)"
+trap 'rm -f "$ENTITLEMENTS_JSON"; rm -rf "$ARCHIVE_TMP_DIR"' EXIT
 codesign -d --entitlements :- "$APP_PATH" > "$ENTITLEMENTS_JSON" 2>/dev/null || fail "unable to read signed entitlements"
 for key in   com.apple.security.app-sandbox   com.apple.security.device.usb   com.apple.security.files.user-selected.read-write
 do
@@ -51,7 +52,12 @@ done
 ARCHS="$(lipo -archs "$BIN")"
 [[ " $ARCHS " == *" x86_64 "* && " $ARCHS " == *" arm64 "* ]] || fail "App Store candidate is not universal"
 
-APP_SHA256="$(ditto -c -k --keepParent "$APP_PATH" "$TMPDIR/BobFWTools-appstore-candidate.zip" >/dev/null 2>&1; shasum -a 256 "$TMPDIR/BobFWTools-appstore-candidate.zip" | awk '{print $1}')"
+ARCHIVE_ZIP="$ARCHIVE_TMP_DIR/BobFWTools-appstore-candidate.zip"
+if ! ditto -c -k --keepParent "$APP_PATH" "$ARCHIVE_ZIP" >/dev/null 2>&1; then
+  fail "unable to create App Store candidate archive"
+fi
+[[ -s "$ARCHIVE_ZIP" ]] || fail "App Store candidate archive is missing or empty"
+APP_SHA256="$(shasum -a 256 "$ARCHIVE_ZIP" | awk '{print $1}')"
 BIN_SHA256="$(shasum -a 256 "$BIN" | awk '{print $1}')"
 PLIST_SHA256="$(shasum -a 256 "$PLIST" | awk '{print $1}')"
 PROFILE_SHA256="$(shasum -a 256 "$PROFILE" | awk '{print $1}')"
