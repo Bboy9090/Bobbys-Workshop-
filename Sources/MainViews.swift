@@ -2182,12 +2182,21 @@ struct MultiBrandRecoveryView: View {
     @State private var packageFilter: String = ""
     @State private var selectedPackage: String = ""
     @State private var recoveryKind: String = "qualcomm-edl"
+    @State private var selectedCalibrationPartition: String = "efs"
+    @State private var partitionFilter: String = ""
 
     var filteredPackages: [String] {
         if packageFilter.trimmingCharacters(in: .whitespaces).isEmpty {
             return engine.installedPackages
         }
         return engine.installedPackages.filter { $0.localizedCaseInsensitiveContains(packageFilter) }
+    }
+
+    var filteredPartitions: [RawGptPartitionEntry] {
+        if partitionFilter.trimmingCharacters(in: .whitespaces).isEmpty {
+            return engine.liveGptPartitions
+        }
+        return engine.liveGptPartitions.filter { $0.name.localizedCaseInsensitiveContains(partitionFilter) }
     }
 
     var body: some View {
@@ -2207,7 +2216,7 @@ struct MultiBrandRecoveryView: View {
                                     workflowId: "bootforge.recovery_scan",
                                     title: "BootForge Recovery Candidate Scan",
                                     executable: engine.bootforgeBinaryPath,
-                                    arguments: ["scan"]
+                                    arguments: ["recovery-scan"]
                                 )
                             }
                         }
@@ -2223,6 +2232,170 @@ struct MultiBrandRecoveryView: View {
                                 Task {
                                     await engine.inspectMtkOrSpdPackage(path: file)
                                 }
+                            }
+                        }
+                    }
+                }
+                .padding(8)
+            }
+
+            // USB Bus Power, Current & Link Stability Monitor
+            GroupBox(label: Label("Host USB Controller Link & VBUS Stability Meter", systemImage: "bolt.badge.clock.fill")) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 20) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("CONNECTION SPEED").font(.system(size: 9.5, weight: .bold)).foregroundColor(.secondary)
+                            Text(String(format: "%.0f Mbps", engine.usbBusSpeedMbps))
+                                .font(.system(size: 16, weight: .bold, design: .monospaced))
+                                .foregroundColor(.cyan)
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("LINK INTEGRITY").font(.system(size: 9.5, weight: .bold)).foregroundColor(.secondary)
+                            Text(engine.usbBusHealthState)
+                                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                .foregroundColor(engine.usbBusHealthState.contains("OPTIMAL") ? .green : .orange)
+                        }
+
+                        Spacer()
+
+                        Button("Probe USB Bus Integrity") {
+                            _ = engine.probeUsbBusStability()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+                .padding(8)
+            }
+
+            // Structural Storage Memory Map Interrogation (Raw GPT Partition Tree)
+            GroupBox(label: Label("Structural Storage Memory Map Interrogation (Raw GPT Partition Tree)", systemImage: "cylinder.split.1x2.fill")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        Button("Query Live Device GPT (Fastboot/ADB)") {
+                            Task {
+                                _ = await engine.queryDeviceGptPartitionMap()
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        Button("Parse Firehose rawprogram XML...") {
+                            if let xmlPath = pickFile(allowedExtensions: ["xml"]) {
+                                if let content = try? String(contentsOfFile: xmlPath, encoding: .utf8) {
+                                    let parsed = engine.parseRawProgramXmlGpt(xmlString: content)
+                                    engine.liveGptPartitions = parsed
+                                    engine.log(.success, "Parsed \(parsed.count) partition sectors from \(xmlPath)")
+                                }
+                            }
+                        }
+
+                        Button("Parse MTK Scatter...") {
+                            if let txtPath = pickFile(allowedExtensions: ["txt"]) {
+                                if let content = try? String(contentsOfFile: txtPath, encoding: .utf8) {
+                                    let parsed = engine.parseMediaTekScatterGpt(scatterString: content)
+                                    engine.liveGptPartitions = parsed
+                                    engine.log(.success, "Parsed \(parsed.count) scatter partitions from \(txtPath)")
+                                }
+                            }
+                        }
+
+                        Spacer()
+
+                        TextField("Filter partition name...", text: $partitionFilter)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11, design: .monospaced))
+                            .frame(width: 170)
+                    }
+
+                    if engine.liveGptPartitions.isEmpty {
+                        Text("No partition table loaded yet. Connect a device in Fastboot/ADB or load a Firehose rawprogram/Scatter archive.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.vertical, 8)
+                    } else {
+                        ScrollView {
+                            LazyVStack(spacing: 4) {
+                                ForEach(filteredPartitions) { part in
+                                    HStack {
+                                        if part.isCalibration {
+                                            Image(systemName: "shield.checkered")
+                                                .foregroundColor(.yellow)
+                                                .font(.caption)
+                                        } else {
+                                            Image(systemName: "internaldrive")
+                                                .foregroundColor(.secondary)
+                                                .font(.caption)
+                                        }
+
+                                        Text(part.name)
+                                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                            .foregroundColor(part.isCalibration ? .yellow : .primary)
+
+                                        Spacer()
+
+                                        Text(part.partitionType.uppercased())
+                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                            .padding(.horizontal, 4)
+                                            .padding(.vertical, 1)
+                                            .background(Color.blue.opacity(0.15))
+                                            .foregroundColor(.blue)
+                                            .cornerRadius(3)
+
+                                        Text(part.formattedSize)
+                                            .font(.system(size: 11, design: .monospaced))
+                                            .foregroundColor(.secondary)
+
+                                        Text("LBA: \(part.startLba)")
+                                            .font(.system(size: 9, design: .monospaced))
+                                            .foregroundColor(.secondary.opacity(0.7))
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+                                    .cornerRadius(4)
+                                }
+                            }
+                        }
+                        .frame(maxHeight: 180)
+                    }
+                }
+                .padding(8)
+            }
+
+            // Non-Destructive Calibration Partition Backup Engine
+            GroupBox(label: Label("Non-Destructive Calibration Data Backup Engine (NVRAM / EFS / PERSIST)", systemImage: "lock.shield.fill")) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Safely archive critical RF calibration sectors to ~/Library/Application Support/BobFWTools/backups/calibration:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    HStack(spacing: 12) {
+                        Picker("Target Partition:", selection: $selectedCalibrationPartition) {
+                            ForEach(Array(ServicingEngine.calibrationAllowlist).sorted(), id: \.self) { p in
+                                Text(p.uppercased()).tag(p)
+                            }
+                        }
+                        .frame(width: 220)
+
+                        Button("Backup Calibration Snapshot") {
+                            Task {
+                                let (ok, msg) = await engine.createCalibrationBackupSnapshot(partitionName: selectedCalibrationPartition)
+                                if ok {
+                                    engine.log(.success, "✔ Backup completed: \(msg)")
+                                } else {
+                                    engine.log(.error, "✖ Backup failed: \(msg)")
+                                }
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        if let lastManifest = engine.lastCalibrationBackupManifest {
+                            HStack(spacing: 4) {
+                                Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
+                                Text("Manifest: \((lastManifest as NSString).lastPathComponent)")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.green)
                             }
                         }
                     }
