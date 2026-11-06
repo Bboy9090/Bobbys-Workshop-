@@ -205,8 +205,18 @@ class ShadowLogger {
             const entry = JSON.parse(this.decrypt(line));
             if (deviceSerial && entry.deviceSerial !== deviceSerial) continue;
             if (operation && entry.operation !== operation) continue;
-            if (startDate && entry.timestamp && new Date(entry.timestamp) < new Date(startDate)) continue;
-            if (endDate && entry.timestamp && new Date(entry.timestamp) > new Date(endDate)) continue;
+            if (startDate && entry.timestamp) {
+              const startBound = typeof startDate === 'string' && !startDate.includes('T')
+                ? new Date(`${startDate}T00:00:00.000Z`)
+                : new Date(startDate);
+              if (new Date(entry.timestamp) < startBound) continue;
+            }
+            if (endDate && entry.timestamp) {
+              const endBound = typeof endDate === 'string' && !endDate.includes('T')
+                ? new Date(`${endDate}T23:59:59.999Z`)
+                : new Date(endDate);
+              if (new Date(entry.timestamp) > endBound) continue;
+            }
             results.push(entry);
             if (results.length >= limit) {
               return results;

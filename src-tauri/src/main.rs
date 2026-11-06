@@ -52,6 +52,7 @@ mod mode_control;
 mod samsung_probe;
 mod samsung_service_bundle;
 mod driver_binding;
+mod phoenix_sanctum;
 #[cfg(feature = "legacy-backends")]
 use python_backend::{launch_python_backend, shutdown_python_backend};
 #[cfg(feature = "legacy-backends")]
@@ -73,6 +74,14 @@ use mode_control::{fastboot_mode_devices, fastboot_reboot_mode, mode_transition_
 use samsung_probe::{execute_pit_dry_run, samsung_download_probe};
 use samsung_service_bundle::samsung_service_bundle_create;
 use driver_binding::{driver_binding_scan, driver_binding_release_and_rescan, driver_binding_candidates, driver_binding_conflict_plan, driver_binding_cleanup_report, driver_binding_snapshot, driver_binding_rollback_plan, driver_binding_stability_test, driver_binding_elevation_status, driver_binding_inspect_inf, driver_binding_stage_and_relatch};
+use phoenix_sanctum::{
+    sanctum_issue_chamber_grant,
+    sanctum_audit_root_privilege,
+    sanctum_audit_silicon_fuses,
+    sanctum_probe_baseband_crucible,
+    sanctum_stage_root_artifact,
+    sanctum_verify_shadow_chain,
+};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -6328,6 +6337,12 @@ fn tauri_get_registered_commands() -> Vec<&'static str> {
         "workstation_initialize",
         "audit_recent",
         "audit_log_path",
+        "sanctum_issue_chamber_grant",
+        "sanctum_audit_root_privilege",
+        "sanctum_audit_silicon_fuses",
+        "sanctum_probe_baseband_crucible",
+        "sanctum_stage_root_artifact",
+        "sanctum_verify_shadow_chain",
         "tauri_get_registered_commands",
     ];
     #[cfg(feature = "qualified-flash")]
@@ -6582,6 +6597,12 @@ bootforgeusb_transport_scan,
             workstation_initialize,
             audit_recent,
             audit_log_path,
+            sanctum_issue_chamber_grant,
+            sanctum_audit_root_privilege,
+            sanctum_audit_silicon_fuses,
+            sanctum_probe_baseband_crucible,
+            sanctum_stage_root_artifact,
+            sanctum_verify_shadow_chain,
             tauri_get_registered_commands,
         ])
         .run(tauri::generate_context!())

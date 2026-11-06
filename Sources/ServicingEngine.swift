@@ -1709,6 +1709,9 @@ final class ServicingEngine: ObservableObject {
     @Published var usbBusHealthState: String = "STANDBY"
     @Published var usbBusSpeedMbps: Double = 480.0
     @Published var lastCalibrationBackupManifest: String? = nil
+    @Published var sanctumPrivilegeSummary: String = "Not Audited"
+    @Published var sanctumChainHeadHash: String = "0000000000000000"
+    @Published var sanctumChainCount: Int = 0
     @Published var decryptedLogPreview: String = ""
     @Published var servicingHistoryLedger: [IntakeLedgerRecord] = []
     @Published var activeCustomerId: String = "WALK_IN_DEFAULT"
@@ -5100,6 +5103,134 @@ final class ServicingEngine: ObservableObject {
         self.usbBusSpeedMbps = speedMbps
 
         return (isStable, speedMbps, vbus)
+    }
+
+    // MARK: - Phoenix Sanctum Native Interrogation & Hash-Chained Shadow Ledger
+
+    public func runPhoenixSanctumRootAndSiliconAudit() async {
+        isBusy = true
+        defer { isBusy = false }
+        log(.info, "▶ [Phoenix Sanctum] Running Live Root Privilege, Silicon Fuse & EFS Block-Node Interrogation...")
+
+        let adbPath = toolPaths["adb"] ?? "/usr/local/bin/adb"
+        let hasAdb = devices.contains { $0.transport == .adb }
+        var uid = "unconnected"
+        var selinux = "Unknown"
+        var suPaths: [String] = []
+        var verifiedBoot = "unknown"
+        var flashLocked = "1"
+        var socPlatform = "unknown"
+        var warrantyFuse = "0x0"
+
+        if hasAdb && FileManager.default.isExecutableFile(atPath: adbPath) {
+            let uidRes = await runProcess(executable: adbPath, arguments: adbArgs(["shell", "id -u"]), logCommand: false)
+            uid = uidRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            let seRes = await runProcess(executable: adbPath, arguments: adbArgs(["shell", "getenforce"]), logCommand: false)
+            selinux = seRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            let suRes = await runProcess(
+                executable: adbPath,
+                arguments: adbArgs(["shell", "for p in /system/bin/su /system/xbin/su /sbin/su /vendor/bin/su /data/adb/magisk/magisk /data/adb/ksud /data/adb/apd; do [ -e \"$p\" ] && echo \"$p\"; done"]),
+                logCommand: false
+            )
+            suPaths = suRes.stdout
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+
+            let propRes = await runProcess(executable: adbPath, arguments: adbArgs(["shell", "getprop"]), logCommand: false)
+            for line in propRes.stdout.components(separatedBy: .newlines) {
+                if line.contains("[ro.boot.verifiedbootstate]:") {
+                    verifiedBoot = line.components(separatedBy: ": [").last?.replacingOccurrences(of: "]", with: "") ?? verifiedBoot
+                } else if line.contains("[ro.boot.flash.locked]:") {
+                    flashLocked = line.components(separatedBy: ": [").last?.replacingOccurrences(of: "]", with: "") ?? flashLocked
+                } else if line.contains("[ro.board.platform]:") {
+                    socPlatform = line.components(separatedBy: ": [").last?.replacingOccurrences(of: "]", with: "") ?? socPlatform
+                } else if line.contains("[ro.boot.warranty_bit]:") {
+                    warrantyFuse = line.components(separatedBy: ": [").last?.replacingOccurrences(of: "]", with: "") ?? warrantyFuse
+                }
+            }
+        } else if let modem = samsungModemInfo {
+            socPlatform = modem.model
+            verifiedBoot = "Runtime (\(modem.carrierLock))"
+        }
+
+        let isRooted = uid == "0" || !suPaths.isEmpty
+        let blUnlocked = flashLocked == "0" || verifiedBoot.lowercased() == "orange"
+        let summary = "Root: \(isRooted ? "DETECTED" : "UNROOTED") · UID: \(uid) · Bootloader: \(blUnlocked ? "UNLOCKED" : "LOCKED") · SELinux: \(selinux) · SoC: \(socPlatform) · Fuse: \(warrantyFuse)"
+        sanctumPrivilegeSummary = summary
+
+        let serial = selectedDevice?.serial ?? samsungModemInfo?.serialNumber ?? "WORKSTATION"
+        appendSanctumHashChainRecord(
+            chamber: "root-silicon-sanctum",
+            operation: "interrogate-privilege-and-fuses",
+            serial: serial,
+            detail: summary
+        )
+
+        log(.success, "✔ [Phoenix Sanctum] \(summary)")
+        recordJob(
+            workflowId: "sanctum.privilege_silicon_audit",
+            title: "Phoenix Sanctum Root & Silicon Fuse Interrogation",
+            serial: serial,
+            verified: true,
+            summary: summary,
+            evidence: ["uid:\(uid)", "selinux:\(selinux)", "boot:\(verifiedBoot)", "chainHead:\(sanctumChainHeadHash.prefix(16))"]
+        )
+    }
+
+    public func appendSanctumHashChainRecord(chamber: String, operation: String, serial: String, detail: String) {
+        let chainDir = (NSHomeDirectory() as NSString).appendingPathComponent(".bobfwtools/logs")
+        try? FileManager.default.createDirectory(atPath: chainDir, withIntermediateDirectories: true)
+        let chainFile = (chainDir as NSString).appendingPathComponent("sanctum-chain.jsonl")
+
+        var lastSeq = 0
+        var prevHash = String(repeating: "0", count: 64)
+
+        if let existing = try? String(contentsOfFile: chainFile, encoding: .utf8) {
+            let lines = existing.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            lastSeq = lines.count
+            if let lastLine = lines.last,
+               let data = lastLine.data(using: .utf8),
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let eh = obj["entryHash"] as? String {
+                prevHash = eh
+            }
+        }
+
+        let nextSeq = lastSeq + 1
+        let ts = Int64(Date().timeIntervalSince1970 * 1000)
+        let canonical = "\(nextSeq)|\(ts)|\(chamber)|\(operation)|\(serial)|\(detail)|\(prevHash)"
+        let digest = SHA256.hash(data: Data(canonical.utf8)).map { String(format: "%02x", $0) }.joined()
+
+        let entryDict: [String: Any] = [
+            "sequence": nextSeq,
+            "timestampUnixMs": ts,
+            "chamber": chamber,
+            "operation": operation,
+            "serial": serial,
+            "status": "completed",
+            "detail": detail,
+            "prevHash": prevHash,
+            "entryHash": digest
+        ]
+
+        if let jsonData = try? JSONSerialization.data(withJSONObject: entryDict),
+           let jsonLine = String(data: jsonData, encoding: .utf8) {
+            let lineWithNewline = jsonLine + "\n"
+            if FileManager.default.fileExists(atPath: chainFile),
+               let handle = FileHandle(forWritingAtPath: chainFile) {
+                handle.seekToEndOfFile()
+                handle.write(Data(lineWithNewline.utf8))
+                try? handle.close()
+            } else {
+                try? lineWithNewline.write(toFile: chainFile, atomically: true, encoding: .utf8)
+            }
+        }
+
+        sanctumChainHeadHash = digest
+        sanctumChainCount = nextSeq
     }
 }
 

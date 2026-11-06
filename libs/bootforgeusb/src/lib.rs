@@ -17,6 +17,7 @@ pub mod transport;
 pub mod transfer_preflight;
 pub mod stream_schedule;
 pub mod read_benchmark;
+pub mod phoenix_sanctum;
 pub mod trapdoor;
 pub mod workflow_catalog;
 

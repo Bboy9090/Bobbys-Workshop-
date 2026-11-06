@@ -2456,3 +2456,179 @@ export async function compareFirmwareManifest(
 ): Promise<FirmwareCompatibilityReport> {
   return invoke<FirmwareCompatibilityReport>('firmware_manifest_compare', { path, device });
 }
+
+// ============================================================================
+// Phoenix Sanctum — Hardware-Rooted Secret Chambers & Cryptographic Vault
+// ============================================================================
+
+export type SanctumChamberId = 'root-vault' | 'silicon-fuse' | 'baseband-crucible' | 'all';
+
+export type SanctumChamberGrant = {
+  grantId: string;
+  chamber: string;
+  boundSerial?: string | null;
+  operatorPhraseVerified: boolean;
+  issuedAtUnixSecs: number;
+  expiresAtUnixSecs: number;
+  workstationFingerprint: string;
+  hmacSignature: string;
+};
+
+export type RootPrivilegeAuditReport = {
+  serial: string;
+  timestampUnixMs: number;
+  rooted: boolean;
+  privilegeTier: string;
+  adbdUid: string;
+  suBinaryPaths: string[];
+  magiskVersion?: string | null;
+  kernelsuVersion?: string | null;
+  apatchDetected: boolean;
+  xposedLsposedDetected: boolean;
+  selinuxMode: string;
+  bootloaderUnlocked: boolean;
+  verifiedBootState: string;
+  vbmetaDigest?: string | null;
+  activeSlot?: string | null;
+  dmVerityState: string;
+  evidence: string[];
+  reportSha256: string;
+};
+
+export type SiliconFusePostureReport = {
+  serial: string;
+  timestampUnixMs: number;
+  socVendor: string;
+  socPlatform: string;
+  hardwareSku: string;
+  bootloaderVersion: string;
+  flashLockedState: string;
+  oemUnlockSupported: boolean;
+  warrantyBitOrFuse: string;
+  antiRollbackIndex: string;
+  avbVersion: string;
+  securityPatchLevel: string;
+  usbRecoveryCapable: string[];
+  rawSecurityProperties: Record<string, string>;
+  reportSha256: string;
+};
+
+export type CalibrationPartitionProbe = {
+  partition: string;
+  allowlisted: boolean;
+  candidateNode: string;
+  resolvedBlockPath?: string | null;
+  sizeBytes?: number | null;
+  readableWithCurrentPrivilege: boolean;
+  status: string;
+};
+
+export type BasebandCrucibleReport = {
+  serial: string;
+  timestampUnixMs: number;
+  basebandVersion: string;
+  rilImpl: string;
+  simOperatorAlpha: string;
+  simState: string;
+  rootBlockAccessAvailable: boolean;
+  partitions: CalibrationPartitionProbe[];
+  reportSha256: string;
+};
+
+export type SanctumArtifactStageReceipt = {
+  serial: string;
+  method: string;
+  localArtifactPath: string;
+  artifactBytes: number;
+  artifactSha256: string;
+  deviceStagingPath: string;
+  actionTaken: string;
+  verified: boolean;
+  evidence: string[];
+  timestampUnixMs: number;
+};
+
+export type SanctumChainEntry = {
+  sequence: number;
+  timestampUnixMs: number;
+  chamber: string;
+  operation: string;
+  serial?: string | null;
+  status: string;
+  detail: string;
+  artifactSha256?: string | null;
+  prevHash: string;
+  entryHash: string;
+};
+
+export type SanctumChainVerification = {
+  chainPath: string;
+  totalEntries: number;
+  intact: boolean;
+  genesisHash: string;
+  headHash: string;
+  brokenAtSequence?: number | null;
+  entries: SanctumChainEntry[];
+};
+
+export async function issueSanctumChamberGrant(
+  chamber: SanctumChamberId,
+  serial: string | null,
+  confirmationPhrase: string,
+): Promise<SanctumChamberGrant> {
+  return invoke<SanctumChamberGrant>('sanctum_issue_chamber_grant', {
+    chamber,
+    serial: serial?.trim() || null,
+    confirmationPhrase,
+  });
+}
+
+export async function auditSanctumRootPrivilege(
+  serial: string,
+  grant: SanctumChamberGrant,
+): Promise<RootPrivilegeAuditReport> {
+  return invoke<RootPrivilegeAuditReport>('sanctum_audit_root_privilege', { serial, grant });
+}
+
+export async function auditSanctumSiliconFuses(
+  serial: string,
+  grant: SanctumChamberGrant,
+): Promise<SiliconFusePostureReport> {
+  return invoke<SiliconFusePostureReport>('sanctum_audit_silicon_fuses', { serial, grant });
+}
+
+export async function probeSanctumBasebandCrucible(
+  serial: string,
+  grant: SanctumChamberGrant,
+): Promise<BasebandCrucibleReport> {
+  return invoke<BasebandCrucibleReport>('sanctum_probe_baseband_crucible', { serial, grant });
+}
+
+export async function chooseSanctumRootArtifact(): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: 'Choose root manager APK or patched boot image (.apk, .img, .zip)',
+    filters: [{ name: 'Root & Boot Artifacts', extensions: ['apk', 'img', 'zip', 'tar'] }],
+  });
+  return typeof selected === 'string' ? selected : null;
+}
+
+export async function stageSanctumRootArtifact(
+  serial: string,
+  method: 'magisk' | 'kernelsu' | 'apatch' | 'custom',
+  artifactPath: string,
+  grant: SanctumChamberGrant,
+): Promise<SanctumArtifactStageReceipt> {
+  return invoke<SanctumArtifactStageReceipt>('sanctum_stage_root_artifact', {
+    serial,
+    method,
+    artifactPath,
+    grant,
+  });
+}
+
+export async function verifySanctumShadowChain(limit = 40): Promise<SanctumChainVerification> {
+  return invoke<SanctumChainVerification>('sanctum_verify_shadow_chain', { limit });
+}

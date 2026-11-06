@@ -10,6 +10,7 @@ import RecoverySafetyTools from './components/RecoverySafetyTools';
 import FirehoseDryRun from './components/FirehoseDryRun';
 import QualificationDossier from './components/QualificationDossier';
 import QualifiedFlashConsole from './components/QualifiedFlashConsole';
+import PhoenixSanctumDeck from './components/PhoenixSanctumDeck';
 import { DeviceModeGuide } from './components/DeviceModeGuide';
 import {
   chooseDownloadDestination,
@@ -1470,6 +1471,11 @@ export default function App() {
             } : null} />
           </div>
           <RepairCommandCenter />
+          <PhoenixSanctumDeck
+            adbDevices={adbDevices}
+            selectedAdbSerial={adbSelectedSerial}
+            onSelectAdbSerial={(serial) => setAdbSelectedSerial(serial || null)}
+          />
           <OperatorTimeline />
           <AuditLedger />
           <RecoverySafetyTools />

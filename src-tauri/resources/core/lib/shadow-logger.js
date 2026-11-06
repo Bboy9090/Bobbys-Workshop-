@@ -280,8 +280,15 @@ class ShadowLogger {
     
     try {
       const logs = [];
-      const startDateStr = startDate ? startDate.toISOString().split('T')[0] : null;
-      const endDateStr = endDate ? endDate.toISOString().split('T')[0] : null;
+      const normalizeDateStr = (val) => {
+        if (!val) return null;
+        if (typeof val === 'string') return val.split('T')[0];
+        if (val instanceof Date && !Number.isNaN(val.getTime())) return val.toISOString().split('T')[0];
+        const parsed = new Date(val);
+        return !Number.isNaN(parsed.getTime()) ? parsed.toISOString().split('T')[0] : null;
+      };
+      const startDateStr = normalizeDateStr(startDate);
+      const endDateStr = normalizeDateStr(endDate);
       
       // Determine date range to search
       const datesToSearch = [];
@@ -316,10 +323,12 @@ class ShadowLogger {
         filtered = filtered.filter(log => log.operation === operation);
       }
       if (startDate) {
-        filtered = filtered.filter(log => new Date(log.timestamp) >= startDate);
+        const startBound = new Date(startDateStr ? `${startDateStr}T00:00:00.000Z` : startDate);
+        filtered = filtered.filter(log => new Date(log.timestamp) >= startBound);
       }
       if (endDate) {
-        filtered = filtered.filter(log => new Date(log.timestamp) <= endDate);
+        const endBound = new Date(endDateStr ? `${endDateStr}T23:59:59.999Z` : endDate);
+        filtered = filtered.filter(log => new Date(log.timestamp) <= endBound);
       }
       
       // Sort by timestamp (newest first) and limit
@@ -372,8 +381,9 @@ class ShadowLogger {
         }
         
         // Extract execution time from metadata if available
-        if (log.metadata && log.metadata.duration) {
-          totalExecutionTime += log.metadata.duration;
+        const execTime = log.metadata?.executionTimeMs ?? log.metadata?.duration ?? log.duration_ms;
+        if (typeof execTime === 'number' && execTime >= 0) {
+          totalExecutionTime += execTime;
         }
       });
       
@@ -397,4 +407,15 @@ class ShadowLogger {
   }
 }
 
+const defaultShadowLogger = new ShadowLogger();
+
+export async function logShadow(entry) {
+  return defaultShadowLogger.logShadow(entry);
+}
+
+export async function logPublic(entry) {
+  return defaultShadowLogger.logPublic(entry);
+}
+
+export { ShadowLogger };
 export default ShadowLogger;

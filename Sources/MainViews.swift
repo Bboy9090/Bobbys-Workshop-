@@ -1447,6 +1447,41 @@ struct OwnerProVaultView: View {
                 .padding(8)
             }
 
+            // Section 3.5: Phoenix Sanctum — Root Privilege, Silicon Fuse & Hash-Chained Shadow Ledger
+            GroupBox(label: Label("Phoenix Sanctum — Root Privilege, Silicon Fuse & Hash-Chained Shadow Ledger", systemImage: "lock.trianglebadge.exclamationmark.fill")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Live privilege vector detection (Magisk / KernelSU / APatch / SELinux / AVB vbmeta), silicon fuse posture, and SHA-256 tamper-evident hash chain:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    HStack(spacing: 12) {
+                        Button {
+                            Task { await engine.runPhoenixSanctumRootAndSiliconAudit() }
+                        } label: {
+                            Label("Run Phoenix Sanctum Privilege & Silicon Audit", systemImage: "cpu.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.purple)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Shadow Chain Entries: \(engine.sanctumChainCount)")
+                                .font(.caption.monospaced())
+                            Text("Chain Head SHA-256: \(String(engine.sanctumChainHeadHash.prefix(24)))...")
+                                .font(.caption2.monospaced())
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    Text(engine.sanctumPrivilegeSummary)
+                        .font(.system(.caption, design: .monospaced))
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.black.opacity(0.25))
+                        .cornerRadius(6)
+                }
+                .padding(8)
+            }
+
             // Section 4: Master Supported Hardware & Chipset Coverage Matrix
             GroupBox(label: Label("Master Hardware & Chipset Coverage Matrix (\(engine.platformCatalog.count) Device & SoC Families)", systemImage: "list.bullet.rectangle.portrait.fill")) {
                 VStack(alignment: .leading, spacing: 6) {
