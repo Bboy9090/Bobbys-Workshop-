@@ -1,4 +1,4 @@
-use bootforgeusb::{firmware, planner, recovery, scan, transport};
+use bootforgeusb::{firmware, phoenix_sanctum, planner, recovery, scan, trapdoor, transport};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -63,6 +63,22 @@ enum Commands {
         #[arg(required = true)]
         artifacts: Vec<PathBuf>,
     },
+    /// Issue a hardware-bound HMAC-SHA256 Phoenix Sanctum chamber grant and append to the shadow hash chain.
+    SanctumGrant {
+        #[arg(long, default_value = "all")]
+        chamber: String,
+        #[arg(long)]
+        serial: Option<String>,
+        #[arg(long, default_value = "SANCTUM")]
+        phrase: String,
+    },
+    /// Verify the tamper-evident SHA-256 hash-chained Phoenix Sanctum shadow ledger.
+    SanctumVerifyChain {
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+    },
+    /// List native Trapdoor / Bobby's Workshop tool classifications and availability.
+    TrapdoorTools,
 }
 
 fn json<T: serde::Serialize>(value: &T) {
@@ -137,6 +153,28 @@ fn main() {
                 bootforgeusb::recovery_job::build_job(&candidate, &plan).map_err(|e| e.to_string())
             })();
             parsed.map(|job| json(&job))
+        }
+        Commands::SanctumGrant {
+            chamber,
+            serial,
+            phrase,
+        } => phoenix_sanctum::issue_chamber_grant(&chamber, serial, &phrase).map(|grant| {
+            let _ = phoenix_sanctum::append_sanctum_chain_entry(
+                &chamber,
+                "cli-issue-chamber-grant",
+                grant.bound_serial.clone(),
+                "granted",
+                &format!("Issued HMAC-SHA256 hardware-bound grant {}", grant.grant_id),
+                None,
+            );
+            json(&grant);
+        }),
+        Commands::SanctumVerifyChain { limit } => {
+            phoenix_sanctum::verify_sanctum_chain(Some(limit)).map(|report| json(&report))
+        }
+        Commands::TrapdoorTools => {
+            let runner = trapdoor::TrapdoorRunner::new();
+            Ok(json(&runner.list_available_tools()))
         }
     };
     if let Err(err) = result {
