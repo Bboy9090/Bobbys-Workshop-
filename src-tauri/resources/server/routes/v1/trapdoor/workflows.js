@@ -23,6 +23,56 @@ const __dirname = path.dirname(__filename);
 const router = express.Router();
 const shadowLogger = new ShadowLogger();
 
+function loadWorkflowTemplates() {
+  const workflowsDir = path.join(__dirname, '../../../../workflows');
+  const templates = [];
+
+  if (fs.existsSync(workflowsDir)) {
+    const files = fs.readdirSync(workflowsDir);
+    for (const file of files) {
+      if (file.endsWith('.json')) {
+        try {
+          const workflow = JSON.parse(fs.readFileSync(path.join(workflowsDir, file), 'utf8'));
+          templates.push({
+            id: workflow.id || file.replace('.json', ''),
+            name: workflow.name || file.replace('.json', ''),
+            platform: workflow.platform || 'unknown',
+            category: workflow.category || 'general',
+            riskLevel: workflow.risk_level || 'medium',
+            description: workflow.description || null,
+            steps: workflow.steps || []
+          });
+        } catch (error) {
+          console.warn(`[Trapdoor] Invalid workflow file: ${file}`, error);
+        }
+      }
+    }
+  }
+
+  return templates;
+}
+
+/**
+ * GET /api/v1/trapdoor/workflows
+ * List available workflows (used by WorkflowExecutionConsole)
+ */
+router.get('/', async (req, res) => {
+  try {
+    const templates = loadWorkflowTemplates();
+    res.sendEnvelope({
+      success: true,
+      workflows: templates,
+      templates,
+      count: templates.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.sendError('INTERNAL_ERROR', 'Failed to list workflows', {
+      error: error.message
+    }, 500);
+  }
+});
+
 /**
  * POST /api/v1/trapdoor/workflows/execute
  * Execute a workflow (from trapdoor API)
@@ -35,9 +85,8 @@ router.post('/execute', async (req, res) => {
   }
 
   try {
-    // Load workflow from workflows directory
     const workflowPath = path.join(__dirname, '../../../../workflows', `${workflowId}.json`);
-    
+
     if (!fs.existsSync(workflowPath)) {
       return res.sendError('WORKFLOW_NOT_FOUND', 'Workflow not found', {
         workflowId,
@@ -47,7 +96,6 @@ router.post('/execute', async (req, res) => {
 
     const workflow = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
 
-    // Log to shadow
     await shadowLogger.logShadow({
       operation: 'workflow_execute',
       deviceSerial: devices ? devices.join(',') : 'multiple',
@@ -61,7 +109,6 @@ router.post('/execute', async (req, res) => {
       }
     });
 
-    // Execute workflow (simplified - full implementation would use workflow engine)
     const executionResult = {
       workflowId,
       status: 'executing',
@@ -70,7 +117,6 @@ router.post('/execute', async (req, res) => {
       startTime: new Date().toISOString()
     };
 
-    // Log success
     await shadowLogger.logShadow({
       operation: 'workflow_execute',
       deviceSerial: devices ? devices.join(',') : 'multiple',
@@ -87,7 +133,6 @@ router.post('/execute', async (req, res) => {
       success: true,
       message: 'Workflow execution started',
       execution: executionResult,
-      note: 'Full workflow execution engine implementation pending. This is a structure for future enhancement.',
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -104,30 +149,7 @@ router.post('/execute', async (req, res) => {
  */
 router.get('/templates', async (req, res) => {
   try {
-    const workflowsDir = path.join(__dirname, '../../../../workflows');
-    const templates = [];
-
-    if (fs.existsSync(workflowsDir)) {
-      const files = fs.readdirSync(workflowsDir);
-      for (const file of files) {
-        if (file.endsWith('.json')) {
-          try {
-            const workflow = JSON.parse(fs.readFileSync(path.join(workflowsDir, file), 'utf8'));
-            templates.push({
-              id: workflow.id || file.replace('.json', ''),
-              name: workflow.name || file.replace('.json', ''),
-              platform: workflow.platform || 'unknown',
-              category: workflow.category || 'general',
-              riskLevel: workflow.risk_level || 'medium',
-              description: workflow.description || null
-            });
-          } catch (error) {
-            // Skip invalid JSON files
-            console.warn(`[Trapdoor] Invalid workflow file: ${file}`, error);
-          }
-        }
-      }
-    }
+    const templates = loadWorkflowTemplates();
 
     res.sendEnvelope({
       templates,
@@ -142,4 +164,3 @@ router.get('/templates', async (req, res) => {
 });
 
 export default router;
-

@@ -37,7 +37,6 @@ router.post('/bootloader', async (req, res) => {
     });
   }
 
-  // Check policy
   if (process.env.ALLOW_BOOTLOADER_UNLOCK !== '1') {
     return res.sendPolicyBlocked('Bootloader unlock is disabled. Set ALLOW_BOOTLOADER_UNLOCK=1 to enable.', {
       operation: 'bootloader_unlock',
@@ -45,7 +44,6 @@ router.post('/bootloader', async (req, res) => {
     });
   }
 
-  // Acquire device lock
   const lockResult = acquireDeviceLock(deviceSerial, 'trapdoor_bootloader_unlock');
   if (!lockResult.acquired) {
     return res.sendDeviceLocked(lockResult.reason, {
@@ -54,13 +52,12 @@ router.post('/bootloader', async (req, res) => {
   }
 
   try {
-    // Log to shadow
     await shadowLogger.logShadow({
       operation: 'bootloader_unlock',
       deviceSerial,
       userId: req.ip,
       authorization: 'TRAPDOOR',
-      success: false, // Will update on completion
+      success: false,
       metadata: {
         method: req.method,
         path: req.path,
@@ -68,15 +65,12 @@ router.post('/bootloader', async (req, res) => {
       }
     });
 
-    // Verify device is in Fastboot mode
     if (!(await commandExistsSafe('fastboot'))) {
-      releaseDeviceLock(deviceSerial);
       return res.sendError('TOOL_NOT_AVAILABLE', 'Fastboot is not installed', null, 503);
     }
 
     const fastbootDevices = await safeSpawn('fastboot', ['devices'], { timeout: 5000 });
     if (!fastbootDevices.success || !fastbootDevices.stdout.includes(deviceSerial)) {
-      releaseDeviceLock(deviceSerial);
       return res.sendError('DEVICE_NOT_FOUND', 'Device not found in Fastboot mode', {
         serial: deviceSerial,
         instructions: [
@@ -87,12 +81,9 @@ router.post('/bootloader', async (req, res) => {
       }, 404);
     }
 
-    // Execute unlock
     const unlockResult = await safeSpawn('fastboot', ['-s', deviceSerial, 'oem', 'unlock'], {
       timeout: 60000
     });
-
-    releaseDeviceLock(deviceSerial);
 
     if (!unlockResult.success) {
       await shadowLogger.logShadow({
@@ -114,7 +105,6 @@ router.post('/bootloader', async (req, res) => {
       }, 500);
     }
 
-    // Log success
     await shadowLogger.logShadow({
       operation: 'bootloader_unlock',
       deviceSerial,
@@ -128,7 +118,7 @@ router.post('/bootloader', async (req, res) => {
       }
     });
 
-    res.sendEnvelope({
+    return res.sendEnvelope({
       success: true,
       message: 'Bootloader unlock initiated',
       deviceSerial,
@@ -137,11 +127,12 @@ router.post('/bootloader', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    releaseDeviceLock(deviceSerial);
-    res.sendError('INTERNAL_ERROR', 'Failed to unlock bootloader', {
+    return res.sendError('INTERNAL_ERROR', 'Failed to unlock bootloader', {
       error: error.message,
       deviceSerial
     }, 500);
+  } finally {
+    releaseDeviceLock(deviceSerial);
   }
 });
 
@@ -163,7 +154,6 @@ router.post('/frp', async (req, res) => {
     });
   }
 
-  // Acquire device lock
   const lockResult = acquireDeviceLock(deviceSerial, 'trapdoor_frp_bypass');
   if (!lockResult.acquired) {
     return res.sendDeviceLocked(lockResult.reason, {
@@ -172,7 +162,6 @@ router.post('/frp', async (req, res) => {
   }
 
   try {
-    // Log to shadow
     await shadowLogger.logShadow({
       operation: 'frp_bypass',
       deviceSerial,
@@ -186,28 +175,19 @@ router.post('/frp', async (req, res) => {
       }
     });
 
-    // FRP bypass methods vary by device and Android version
-    // This is a simplified example - real implementation would be device-specific
     const adbInstalled = await ADBLibrary.isInstalled();
     if (!adbInstalled) {
-      releaseDeviceLock(deviceSerial);
       return res.sendError('TOOL_NOT_AVAILABLE', 'ADB is required for FRP bypass', null, 503);
     }
 
-    // Check device state
     const devicesResult = await ADBLibrary.listDevices();
     const device = devicesResult.devices?.find(d => d.serial === deviceSerial);
-    
+
     if (!device) {
-      releaseDeviceLock(deviceSerial);
       return res.sendError('DEVICE_NOT_FOUND', 'Device not found', {
         serial: deviceSerial
       }, 404);
     }
-
-    // FRP bypass implementation would go here
-    // This is a placeholder - actual implementation requires device-specific methods
-    releaseDeviceLock(deviceSerial);
 
     return res.sendNotImplemented(
       'FRP bypass automation is device-specific and requires detailed implementation per device model. Use manual ADB methods for now.',
@@ -218,13 +198,13 @@ router.post('/frp', async (req, res) => {
       }
     );
   } catch (error) {
-    releaseDeviceLock(deviceSerial);
-    res.sendError('INTERNAL_ERROR', 'Failed to bypass FRP', {
+    return res.sendError('INTERNAL_ERROR', 'Failed to bypass FRP', {
       error: error.message,
       deviceSerial
     }, 500);
+  } finally {
+    releaseDeviceLock(deviceSerial);
   }
 });
 
 export default router;
-

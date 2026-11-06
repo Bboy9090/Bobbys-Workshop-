@@ -1,10 +1,79 @@
 // ADB Library - Android Debug Bridge operations
 // Provides safe wrappers around ADB commands
 
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
+
+const SERIAL_REGEX = /^[A-Za-z0-9._:-]{3,64}$/;
+
+/**
+ * Validate device serial number format
+ * @param {string} serial - Device serial number
+ * @returns {boolean} True if valid
+ */
+export function validateDeviceSerial(serial) {
+  if (!serial || typeof serial !== 'string') {
+    throw new Error('Device serial is required and must be a string');
+  }
+  if (!SERIAL_REGEX.test(serial)) {
+    throw new Error(`Invalid device serial format: ${serial}`);
+  }
+  return true;
+}
+
+/**
+ * Execute ADB command safely using spawn (no shell)
+ * @param {string} serial - Device serial number
+ * @param {string} command - ADB command (shell, pull, push, etc.)
+ * @param {Array<string>} args - Command arguments
+ * @param {Object} options - Execution options
+ * @returns {Promise<string>} Command stdout
+ */
+export async function executeAdbCommand(serial, command, args = [], options = {}) {
+  const { timeout = 30000 } = options;
+  validateDeviceSerial(serial);
+
+  const adbArgs = ['-s', serial, command, ...args];
+
+  return new Promise((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+
+    const adb = spawn('adb', adbArgs, {
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    adb.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    adb.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    const timeoutId = setTimeout(() => {
+      adb.kill();
+      reject(new Error(`ADB command timeout after ${timeout}ms`));
+    }, timeout);
+
+    adb.on('close', (code) => {
+      clearTimeout(timeoutId);
+      if (code === 0) {
+        resolve(stdout);
+      } else {
+        reject(new Error(`ADB command failed with code ${code}: ${stderr || stdout}`));
+      }
+    });
+
+    adb.on('error', (error) => {
+      clearTimeout(timeoutId);
+      reject(new Error(`ADB process error: ${error.message}`));
+    });
+  });
+}
 
 async function safeExec(cmd, options = {}) {
   try {
@@ -73,18 +142,18 @@ const ADBLibrary = {
     const lines = result.stdout.split('\n').slice(1).filter((line) => line.trim());
     const devices = lines
       .map((line) => {
-      const parts = line.trim().split(/\s+/);
-      const serial = parts[0];
-      const state = parts[1];
-      const infoStr = parts.slice(2).join(' ');
-      
-      return {
-        serial,
-        state,
-        product: infoStr.match(/product:(\S+)/)?.[1] || null,
-        model: infoStr.match(/model:(\S+)/)?.[1] || null,
-        device: infoStr.match(/device:(\S+)/)?.[1] || null
-      };
+        const parts = line.trim().split(/\s+/);
+        const serial = parts[0];
+        const state = parts[1];
+        const infoStr = parts.slice(2).join(' ');
+
+        return {
+          serial,
+          state,
+          product: infoStr.match(/product:(\S+)/)?.[1] || null,
+          model: infoStr.match(/model:(\S+)/)?.[1] || null,
+          device: infoStr.match(/device:(\S+)/)?.[1] || null
+        };
       })
       .filter((d) => d.serial && d.state);
 
@@ -124,7 +193,7 @@ const ADBLibrary = {
     if (!result.success) {
       return result;
     }
-    
+
     const props = {};
     const lines = result.stdout.split('\n');
     lines.forEach(line => {
@@ -133,7 +202,7 @@ const ADBLibrary = {
         props[match[1]] = match[2];
       }
     });
-    
+
     return { success: true, properties: props };
   },
 
@@ -146,12 +215,12 @@ const ADBLibrary = {
     if (!devices.success) {
       return devices;
     }
-    
+
     const device = devices.devices.find(d => d.serial === serial);
     if (!device) {
       return { success: false, error: 'Device not found' };
     }
-    
+
     let mode = 'unknown';
     switch (device.state) {
       case 'device':
@@ -170,7 +239,7 @@ const ADBLibrary = {
         mode = 'offline';
         break;
     }
-    
+
     return { success: true, mode, state: device.state };
   },
 
@@ -184,7 +253,7 @@ const ADBLibrary = {
     if (!validModes.includes(mode)) {
       return { success: false, error: `Invalid mode. Must be one of: ${validModes.join(', ')}` };
     }
-    
+
     const command = mode === 'system' ? 'reboot' : `reboot ${mode}`;
     return await this.executeCommand(serial, command);
   },

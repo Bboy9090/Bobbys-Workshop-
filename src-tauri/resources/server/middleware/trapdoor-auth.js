@@ -25,7 +25,12 @@ const failedAttempts = new Map();
  * Get trapdoor passcode from environment
  */
 function getTrapdoorPasscode() {
-  return process.env.SECRET_ROOM_PASSCODE || process.env.TRAPDOOR_PASSCODE || null;
+  return (
+    process.env.SECRET_ROOM_PASSCODE ||
+    process.env.TRAPDOOR_PASSCODE ||
+    process.env.ADMIN_API_KEY ||
+    null
+  );
 }
 
 /**
@@ -206,6 +211,7 @@ export function requireTrapdoorPasscode(req, res, next) {
   const provided =
     req.get('X-Secret-Room-Passcode') ||
     req.get('X-Trapdoor-Passcode') ||
+    req.get('X-API-Key') ||
     (typeof req.query?.passcode === 'string' ? req.query.passcode : null);
 
   if (!provided || provided !== required) {

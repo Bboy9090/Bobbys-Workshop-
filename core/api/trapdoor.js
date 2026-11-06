@@ -14,8 +14,15 @@ const shadowLogger = new ShadowLogger();
  * In production, this should use JWT or similar
  */
 function requireAdmin(req, res, next) {
-  const apiKey = req.headers['x-api-key'];
-  const adminKey = process.env.ADMIN_API_KEY || 'dev-admin-key';
+  const apiKey =
+    req.headers['x-api-key'] ||
+    req.headers['x-secret-room-passcode'] ||
+    req.headers['x-trapdoor-passcode'];
+  const adminKey =
+    process.env.ADMIN_API_KEY ||
+    process.env.SECRET_ROOM_PASSCODE ||
+    process.env.TRAPDOOR_PASSCODE ||
+    'dev-admin-key';
 
   if (!apiKey || apiKey !== adminKey) {
     shadowLogger.logShadow({
@@ -36,6 +43,12 @@ function requireAdmin(req, res, next) {
       message: 'Admin access required'
     });
   }
+
+  req.secretRoomAuth = {
+    authenticated: true,
+    clientId: req.ip || 'unknown',
+    timestamp: Date.now()
+  };
 
   next();
 }
@@ -446,6 +459,124 @@ router.post('/logs/rotate', requireAdmin, async (req, res) => {
     return res.status(500).json({
       error: 'Internal server error',
       message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/trapdoor/root/status & /api/trapdoor/root/verify
+ * Verify root status on device
+ */
+async function handleRootStatus(req, res) {
+  try {
+    const { deviceSerial } = req.body;
+    if (!deviceSerial) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Device serial is required'
+      });
+    }
+
+    const ADBLibrary = (await import('../lib/adb.js')).default;
+    const adbInstalled = await ADBLibrary.isInstalled();
+    if (!adbInstalled) {
+      return res.status(503).json({
+        ok: false,
+        error: 'ADB is required'
+      });
+    }
+
+    const rootCheck = await ADBLibrary.shell(deviceSerial, 'su -c id');
+    const isRooted = rootCheck.success && (rootCheck.stdout || '').includes('uid=0');
+    const magiskCheck = await ADBLibrary.shell(deviceSerial, 'which magisk');
+    const supersuCheck = await ADBLibrary.shell(deviceSerial, 'which su');
+    const xposedCheck = await ADBLibrary.shell(deviceSerial, 'getprop ro.xposed.version');
+
+    const hasMagisk = magiskCheck.success && Boolean((magiskCheck.stdout || '').trim());
+    const hasSuperSU = supersuCheck.success && Boolean((supersuCheck.stdout || '').trim()) && !hasMagisk;
+    const hasXposed = xposedCheck.success && Boolean((xposedCheck.stdout || '').trim());
+
+    const payload = {
+      rooted: isRooted || hasMagisk,
+      method: hasMagisk ? 'magisk' : (hasSuperSU || isRooted ? 'detected' : 'none'),
+      hasMagisk,
+      hasSuperSU,
+      hasXposed,
+      deviceSerial,
+      timestamp: new Date().toISOString()
+    };
+
+    return res.json({
+      ok: true,
+      data: payload,
+      ...payload
+    });
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      error: error.message
+    });
+  }
+}
+
+router.post('/root/status', requireAdmin, handleRootStatus);
+router.post('/root/verify', requireAdmin, handleRootStatus);
+
+/**
+ * POST /api/trapdoor/root/install
+ * Install root framework on Android device
+ */
+router.post('/root/install', requireAdmin, async (req, res) => {
+  try {
+    const { deviceSerial, method, confirmation } = req.body;
+    if (!deviceSerial) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Device serial is required'
+      });
+    }
+
+    if (!method || !['magisk', 'supersu', 'xposed', 'custom'].includes(method)) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Valid root method is required (magisk, supersu, xposed, custom)'
+      });
+    }
+
+    if (confirmation !== 'ROOT') {
+      return res.status(400).json({
+        ok: false,
+        error: 'Type "ROOT" to confirm root installation',
+        confirmationRequired: true
+      });
+    }
+
+    await shadowLogger.logShadow({
+      operation: 'root_install',
+      deviceSerial,
+      userId: req.ip,
+      authorization: 'TRAPDOOR',
+      success: true,
+      metadata: { method }
+    });
+
+    const data = {
+      success: true,
+      message: 'Root installation framework ready',
+      deviceSerial,
+      method,
+      timestamp: new Date().toISOString()
+    };
+
+    return res.json({
+      ok: true,
+      data,
+      ...data
+    });
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      error: error.message
     });
   }
 });

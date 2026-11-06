@@ -172,6 +172,117 @@ class ShadowLogger {
   }
 
   /**
+   * Query shadow logs across dates with filters
+   * @param {Object} options - Query filters ({ deviceSerial, startDate, endDate, operation, limit })
+   * @returns {Promise<Array>} Filtered decrypted shadow log entries
+   */
+  async getShadowLogs(options = {}) {
+    const { deviceSerial, startDate, endDate, operation, limit = 100 } = options;
+    try {
+      if (!existsSync(this.logsDir)) {
+        return [];
+      }
+
+      const files = (await fs.readdir(this.logsDir))
+        .filter(f => f.startsWith('shadow-') && f.endsWith('.log'))
+        .sort()
+        .reverse();
+
+      const results = [];
+      for (const file of files) {
+        const match = file.match(/shadow-(\d{4}-\d{2}-\d{2})\.log/);
+        if (match) {
+          const fileDate = new Date(match[1]);
+          if (startDate && fileDate < new Date(startDate)) continue;
+          if (endDate && fileDate > new Date(endDate)) continue;
+        }
+
+        const content = await fs.readFile(path.join(this.logsDir, file), 'utf8');
+        const lines = content.trim().split('\n').filter(Boolean).reverse();
+
+        for (const line of lines) {
+          try {
+            const entry = JSON.parse(this.decrypt(line));
+            if (deviceSerial && entry.deviceSerial !== deviceSerial) continue;
+            if (operation && entry.operation !== operation) continue;
+            if (startDate && entry.timestamp && new Date(entry.timestamp) < new Date(startDate)) continue;
+            if (endDate && entry.timestamp && new Date(entry.timestamp) > new Date(endDate)) continue;
+            results.push(entry);
+            if (results.length >= limit) {
+              return results;
+            }
+          } catch {
+            // Skip corrupted lines
+          }
+        }
+      }
+
+      return results;
+    } catch (error) {
+      console.error('getShadowLogs error:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Compute aggregated analytics over shadow logs
+   * @param {Object} options - Period filter ({ startDate, endDate })
+   * @returns {Promise<Object>} Analytics summary
+   */
+  async getAnalytics(options = {}) {
+    try {
+      const entries = await this.getShadowLogs({
+        startDate: options.startDate,
+        endDate: options.endDate,
+        limit: 5000
+      });
+
+      const operationsByType = {};
+      const devicesSet = new Set();
+      let successCount = 0;
+      let totalDuration = 0;
+      let durationSamples = 0;
+
+      for (const entry of entries) {
+        const op = entry.operation || 'unknown';
+        operationsByType[op] = (operationsByType[op] || 0) + 1;
+
+        if (entry.deviceSerial && entry.deviceSerial !== 'N/A' && entry.deviceSerial !== 'unknown') {
+          devicesSet.add(entry.deviceSerial);
+        }
+
+        if (entry.success === true) {
+          successCount++;
+        }
+
+        const execTime = entry.metadata?.executionTimeMs ?? entry.duration_ms;
+        if (typeof execTime === 'number' && execTime >= 0) {
+          totalDuration += execTime;
+          durationSamples++;
+        }
+      }
+
+      const totalOperations = entries.length;
+      return {
+        totalOperations,
+        operationsByType,
+        devicesProcessed: devicesSet.size,
+        successRate: totalOperations > 0 ? Math.round((successCount / totalOperations) * 10000) / 100 : 0,
+        averageExecutionTime: durationSamples > 0 ? Math.round(totalDuration / durationSamples) : 0
+      };
+    } catch (error) {
+      console.error('getAnalytics error:', error);
+      return {
+        totalOperations: 0,
+        operationsByType: {},
+        devicesProcessed: 0,
+        successRate: 0,
+        averageExecutionTime: 0
+      };
+    }
+  }
+
+  /**
    * Get log statistics
    */
   async getLogStats() {
@@ -197,6 +308,13 @@ class ShadowLogger {
     } catch (error) {
       return { success: false, error: error.message };
     }
+  }
+
+  /**
+   * Alias for getLogStats() used by /api/trapdoor/logs/stats
+   */
+  async getStats() {
+    return this.getLogStats();
   }
 
   /**
@@ -248,6 +366,24 @@ class ShadowLogger {
       return { success: false, error: error.message };
     }
   }
+
+  /**
+   * Alias for cleanupOldLogs() used by /api/trapdoor/logs/rotate
+   */
+  async rotateLogs() {
+    return this.cleanupOldLogs();
+  }
 }
 
+const defaultShadowLogger = new ShadowLogger();
+
+export async function logShadow(entry) {
+  return defaultShadowLogger.logShadow(entry);
+}
+
+export async function logPublic(entry) {
+  return defaultShadowLogger.logPublic(entry);
+}
+
+export { ShadowLogger };
 export default ShadowLogger;

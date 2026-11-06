@@ -17,6 +17,7 @@ pub mod transport;
 pub mod transfer_preflight;
 pub mod stream_schedule;
 pub mod read_benchmark;
+pub mod trapdoor;
 pub mod workflow_catalog;
 
 use model::DeviceRecord;
@@ -29,6 +30,8 @@ pub enum BootForgeUsbError {
     Context(String),
     #[error("failed to enumerate USB devices: {0}")]
     Enumeration(String),
+    #[error("trapdoor operation error: {0}")]
+    Trapdoor(String),
 }
 
 pub type Result<T> = std::result::Result<T, BootForgeUsbError>;

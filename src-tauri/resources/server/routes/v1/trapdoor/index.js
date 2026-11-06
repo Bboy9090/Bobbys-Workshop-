@@ -8,9 +8,18 @@
  */
 
 import express from 'express';
+import { requireTrapdoorPasscode } from '../../../middleware/trapdoor-auth.js';
 import unlockRouter from './unlock.js';
+import flashRouter from './flash.js';
+import iosRouter from './ios.js';
+import rootRouter from './root.js';
+import bypassRouter from './bypass.js';
 import workflowsRouter from './workflows.js';
 import logsRouter from './logs.js';
+import sonicRouter from './sonic.js';
+import ghostRouter from './ghost.js';
+import pandoraRouter from './pandora.js';
+import { executeHandler, simulateHandler, listOperationsHandler } from './operations.js';
 
 const router = express.Router({ mergeParams: true });
 
@@ -26,6 +35,7 @@ router.get('/', (req, res) => {
       required: true,
       methods: [
         'X-Secret-Room-Passcode header',
+        'X-Trapdoor-Passcode header',
         'X-API-Key header'
       ],
       note: 'All operations require Trapdoor passcode authentication'
@@ -113,6 +123,40 @@ router.get('/', (req, res) => {
           'Analytics dashboard',
           'Export capabilities'
         ]
+      },
+      sonic: {
+        name: 'Sonic Codex',
+        description: 'Audio capture, enhancement, transcription, and export',
+        endpoint: '/api/v1/trapdoor/sonic',
+        features: [
+          'Audio capture (Live/File/URL)',
+          'Forensic enhancement',
+          'Whisper transcription',
+          'Speaker diarization',
+          'Export package'
+        ]
+      },
+      ghost: {
+        name: 'Ghost Codex',
+        description: 'Metadata shredding, canary tokens, burner personas',
+        endpoint: '/api/v1/trapdoor/ghost',
+        features: [
+          'Metadata shredder',
+          'Canary tokens',
+          'Burner personas',
+          'Hidden partitions'
+        ]
+      },
+      pandora: {
+        name: 'Pandora Codex',
+        description: 'Hardware manipulation and Chain-Breaker',
+        endpoint: '/api/v1/trapdoor/pandora',
+        features: [
+          'Chain-Breaker UI',
+          'DFU detection',
+          'Hardware manipulation',
+          'Jailbreak automation'
+        ]
       }
     },
     security: {
@@ -124,7 +168,7 @@ router.get('/', (req, res) => {
     },
     legal: {
       note: 'All operations are for owner devices only. Use responsibly and in compliance with applicable laws.',
-      disclaimer: 'Bobby\'s Workshop is a tool for device management. Users are responsible for ensuring all operations comply with local laws and regulations.'
+      disclaimer: "Bobby's Workshop is a tool for device management. Users are responsible for ensuring all operations comply with local laws and regulations."
     },
     timestamp: new Date().toISOString()
   });
@@ -137,7 +181,7 @@ router.get('/', (req, res) => {
 router.get('/status', (req, res) => {
   res.sendEnvelope({
     accessible: true,
-    authenticated: !!req.headers['x-secret-room-passcode'] || !!req.headers['x-api-key'],
+    authenticated: !!req.headers['x-secret-room-passcode'] || !!req.headers['x-trapdoor-passcode'] || !!req.headers['x-api-key'],
     secretRooms: {
       unlock: { available: true, requiresAuth: true },
       flash: { available: true, requiresAuth: true },
@@ -145,16 +189,30 @@ router.get('/status', (req, res) => {
       root: { available: true, requiresAuth: true },
       bypass: { available: true, requiresAuth: true },
       workflows: { available: true, requiresAuth: true },
-      logs: { available: true, requiresAuth: true }
+      logs: { available: true, requiresAuth: true },
+      sonic: { available: true, requiresAuth: true },
+      ghost: { available: true, requiresAuth: true },
+      pandora: { available: true, requiresAuth: true }
     },
     timestamp: new Date().toISOString()
   });
 });
 
+// Trapdoor Admin Architecture operation endpoints
+router.post('/execute', requireTrapdoorPasscode, executeHandler);
+router.post('/simulate', requireTrapdoorPasscode, simulateHandler);
+router.get('/operations', requireTrapdoorPasscode, listOperationsHandler);
+
 // Mount Secret Room routers
 router.use('/unlock', unlockRouter);
+router.use('/flash', flashRouter);
+router.use('/ios', iosRouter);
+router.use('/root', rootRouter);
+router.use('/bypass', bypassRouter);
 router.use('/workflows', workflowsRouter);
 router.use('/logs', logsRouter);
+router.use('/sonic', sonicRouter);
+router.use('/ghost', ghostRouter);
+router.use('/pandora', pandoraRouter);
 
 export default router;
-

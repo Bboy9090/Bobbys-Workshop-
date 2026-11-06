@@ -171,14 +171,14 @@ async function backupPartition(deviceSerial, partition, outputPath) {
     const device = devicesResult.devices?.find(d => d.serial === deviceSerial);
 
     if (device && device.state === 'device') {
-      // Device is in normal mode - use ADB dd command
-      // Note: This requires root access on the device
-      return res.sendNotImplemented(
-        'Partition backup via ADB requires root access and is not yet implemented. Use Fastboot mode instead.',
-        {
-          alternative: 'Reboot device to Fastboot mode and use Fastboot backup'
-        }
-      );
+      // Device is in normal mode - ADB partition dump requires root block-device access
+      return {
+        success: false,
+        error: 'Partition backup via ADB requires root access and is not supported in standard mode. Use Fastboot mode instead.',
+        note: 'Reboot device to Fastboot mode and use Fastboot backup',
+        partition,
+        partitionSize
+      };
     } else {
       // Device is in Fastboot mode - use fastboot
       // Note: fastboot doesn't have a direct dump command, would need platform-specific tools
