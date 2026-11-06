@@ -38,6 +38,16 @@ import {
   validateEnvelope,
   createAuditLogFromEnvelope
 } from '../core/lib/operation-envelope.js';
+import {
+  executeHandler,
+  simulateHandler,
+  listOperationsHandler
+} from '../src-tauri/resources/server/routes/v1/trapdoor/operations.js';
+import {
+  createSession,
+  validateSession,
+  revokeSession
+} from '../src-tauri/resources/server/middleware/trapdoor-auth.js';
 
 test('ShadowLogger encrypts, reads, computes real analytics, and rotates AES-256-GCM logs', async () => {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bobfw-shadow-test-'));
@@ -214,3 +224,84 @@ test('OperationEnvelope constructs schema-valid inspect, execute, simulate, poli
   assert.equal(auditRecord.success, true);
   assert.equal(auditRecord.metadata.role, 'owner');
 });
+
+test('Trapdoor HTTP handlers (listOperationsHandler, simulateHandler, executeHandler) and session tokens work end-to-end', async () => {
+  // 1. Session token lifecycle
+  const session = createSession('workstation-test-client');
+  assert.ok(session.token);
+  assert.equal(validateSession(session.token).valid, true);
+  assert.equal(revokeSession(session.token), true);
+  assert.equal(validateSession(session.token).valid, false);
+
+  // Helper mock response object (includes api-envelope helpers)
+  function createMockRes() {
+    return {
+      statusCode: 200,
+      body: null,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        return this;
+      },
+      sendEnvelope(data, status = 200) {
+        this.statusCode = status;
+        this.body = { ok: true, data };
+        return this;
+      },
+      sendError(code, message, details = null, status = 400) {
+        this.statusCode = status;
+        this.body = { ok: false, error: { code, message, details } };
+        return this;
+      }
+    };
+  }
+
+  // 2. listOperationsHandler as authenticated admin
+  const listReq = {
+    secretRoomAuth: { authenticated: true, clientId: 'test-admin' },
+    ip: '127.0.0.1'
+  };
+  const listRes = createMockRes();
+  await listOperationsHandler(listReq, listRes);
+  assert.equal(listRes.statusCode, 200);
+  const opsList = listRes.body?.data?.operations || listRes.body?.data?.result?.operations;
+  assert.ok(Array.isArray(opsList));
+  assert.ok(opsList.length >= 9);
+
+  // 3. simulateHandler dry-run for reboot_device with valid parameters
+  const simReq = {
+    secretRoomAuth: { authenticated: true, clientId: 'test-admin' },
+    ip: '127.0.0.1',
+    body: {
+      operation: 'reboot_device',
+      params: { deviceSerial: 'R58M999111', mode: 'recovery' },
+      correlationId: 'corr-sim-1'
+    }
+  };
+  const simRes = createMockRes();
+  await simulateHandler(simReq, simRes);
+  assert.equal(simRes.statusCode, 200);
+  assert.equal(simRes.body.envelope.type, 'simulate');
+  assert.equal(simRes.body.data.wouldSucceed, true);
+  assert.equal(simRes.body.data.dryRun, true);
+
+  // 4. executeHandler policy denial when unauthenticated viewer requests factory_reset
+  const denyReq = {
+    secretRoomAuth: { authenticated: false },
+    ip: '127.0.0.1',
+    body: {
+      operation: 'factory_reset',
+      params: { deviceSerial: 'R58M999111' },
+      correlationId: 'corr-deny-1'
+    }
+  };
+  const denyRes = createMockRes();
+  await executeHandler(denyReq, denyRes);
+  assert.equal(denyRes.statusCode, 403);
+  assert.equal(denyRes.body.envelope.type, 'policy-deny');
+  assert.equal(denyRes.body.operation.status, 'denied');
+});
+

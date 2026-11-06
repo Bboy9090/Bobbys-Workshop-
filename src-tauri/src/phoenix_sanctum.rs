@@ -11,9 +11,11 @@
 
 pub use bootforgeusb::phoenix_sanctum::{
     append_sanctum_chain_entry as core_append_sanctum_chain_entry, issue_chamber_grant,
-    verify_sanctum_chain, verify_sanctum_grant, workstation_fingerprint, SanctumChamberGrant,
-    SanctumChainEntry, SanctumChainVerification,
+    verify_sanctum_chain, verify_sanctum_grant, SanctumChamberGrant, SanctumChainEntry,
+    SanctumChainVerification,
 };
+#[cfg(test)]
+pub use bootforgeusb::phoenix_sanctum::{append_sanctum_chain_entry_at, verify_sanctum_chain_at};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -688,10 +690,10 @@ pub fn sanctum_stage_root_artifact(
                 let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
                 return Err(format!("ADB artifact staging push failed: {stderr}"));
             }
-            let size_Verify = run_adb_shell(&serial, &format!("wc -c < '{remote_path}' 2>/dev/null || true"))
+            let size_verify = run_adb_shell(&serial, &format!("wc -c < '{remote_path}' 2>/dev/null || true"))
                 .unwrap_or_default();
             evidence.push(format!("adb:pushed={remote_path}"));
-            evidence.push(format!("adb:remote-bytes={}", size_Verify.trim()));
+            evidence.push(format!("adb:remote-bytes={}", size_verify.trim()));
             (
                 remote_path.clone(),
                 format!(
@@ -810,9 +812,9 @@ mod tests {
         let temp_dir = std::env::temp_dir().join(format!("bobfw-sanctum-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
         let chain_file = temp_dir.join("sanctum-chain.jsonl");
-        std::env::set_var("BOBFW_SANCTUM_CHAIN_PATH", &chain_file);
 
-        let e1 = append_sanctum_chain_entry(
+        let e1 = append_sanctum_chain_entry_at(
+            &chain_file,
             "root-vault",
             "test-op-1",
             Some("SER_A".to_string()),
@@ -821,7 +823,8 @@ mod tests {
             Some("abc123".to_string()),
         )
         .expect("append entry 1");
-        let e2 = append_sanctum_chain_entry(
+        let e2 = append_sanctum_chain_entry_at(
+            &chain_file,
             "silicon-fuse",
             "test-op-2",
             Some("SER_A".to_string()),
@@ -835,7 +838,7 @@ mod tests {
         assert_eq!(e2.sequence, 2);
         assert_eq!(e2.prev_hash, e1.entry_hash);
 
-        let verified = verify_sanctum_chain(Some(10)).expect("verify chain");
+        let verified = verify_sanctum_chain_at(&chain_file, Some(10)).expect("verify chain");
         assert!(verified.intact);
         assert_eq!(verified.total_entries, 2);
         assert_eq!(verified.head_hash, e2.entry_hash);
@@ -845,7 +848,7 @@ mod tests {
         let tampered = content.replace("First entry", "Tampered entry");
         std::fs::write(&chain_file, tampered).unwrap();
 
-        let after_tamper = verify_sanctum_chain(Some(10)).expect("verify tampered chain");
+        let after_tamper = verify_sanctum_chain_at(&chain_file, Some(10)).expect("verify tampered chain");
         assert!(!after_tamper.intact);
         assert_eq!(after_tamper.broken_at_sequence, Some(1));
 

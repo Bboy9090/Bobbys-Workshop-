@@ -279,12 +279,31 @@ pub fn append_sanctum_chain_entry(
     detail: &str,
     artifact_sha256: Option<String>,
 ) -> Result<SanctumChainEntry, String> {
+    append_sanctum_chain_entry_at(
+        &sanctum_chain_path(),
+        chamber,
+        operation,
+        serial,
+        status,
+        detail,
+        artifact_sha256,
+    )
+}
+
+pub fn append_sanctum_chain_entry_at(
+    path: &std::path::Path,
+    chamber: &str,
+    operation: &str,
+    serial: Option<String>,
+    status: &str,
+    detail: &str,
+    artifact_sha256: Option<String>,
+) -> Result<SanctumChainEntry, String> {
     let _guard = SANCTUM_CHAIN_LOCK
         .get_or_init(|| Mutex::new(()))
         .lock()
         .map_err(|_| "Failed to acquire Sanctum chain lock".to_string())?;
 
-    let path = sanctum_chain_path();
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create Sanctum log directory: {e}"))?;
@@ -294,7 +313,7 @@ pub fn append_sanctum_chain_entry(
     let mut prev_hash = "0".repeat(64);
 
     if path.exists() {
-        let file = fs::File::open(&path)
+        let file = fs::File::open(path)
             .map_err(|e| format!("Failed to read Sanctum chain ledger: {e}"))?;
         let reader = BufReader::new(file);
         for line in reader.lines().map_while(Result::ok) {
@@ -338,7 +357,7 @@ pub fn append_sanctum_chain_entry(
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
-        .open(&path)
+        .open(path)
         .map_err(|e| format!("Failed to open Sanctum chain ledger for append: {e}"))?;
     let serialized = serde_json::to_string(&entry)
         .map_err(|e| format!("Failed to serialize Sanctum chain entry: {e}"))?;
@@ -349,7 +368,13 @@ pub fn append_sanctum_chain_entry(
 }
 
 pub fn verify_sanctum_chain(limit: Option<usize>) -> Result<SanctumChainVerification, String> {
-    let path = sanctum_chain_path();
+    verify_sanctum_chain_at(&sanctum_chain_path(), limit)
+}
+
+pub fn verify_sanctum_chain_at(
+    path: &std::path::Path,
+    limit: Option<usize>,
+) -> Result<SanctumChainVerification, String> {
     let genesis = "0".repeat(64);
     if !path.exists() {
         return Ok(SanctumChainVerification {
@@ -363,7 +388,7 @@ pub fn verify_sanctum_chain(limit: Option<usize>) -> Result<SanctumChainVerifica
         });
     }
 
-    let file = fs::File::open(&path)
+    let file = fs::File::open(path)
         .map_err(|e| format!("Failed to open Sanctum chain ledger: {e}"))?;
     let reader = BufReader::new(file);
 
@@ -481,9 +506,9 @@ mod tests {
     fn shadow_chain_ledger_detects_tampering_and_verifies_hash_links() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let chain_file = temp_dir.path().join("sanctum-chain.jsonl");
-        std::env::set_var("BOBFW_SANCTUM_CHAIN_PATH", &chain_file);
 
-        let e1 = append_sanctum_chain_entry(
+        let e1 = append_sanctum_chain_entry_at(
+            &chain_file,
             "root-vault",
             "test-op-1",
             Some("SER_A".to_string()),
@@ -492,7 +517,8 @@ mod tests {
             Some("abc123".to_string()),
         )
         .expect("append entry 1");
-        let e2 = append_sanctum_chain_entry(
+        let e2 = append_sanctum_chain_entry_at(
+            &chain_file,
             "silicon-fuse",
             "test-op-2",
             Some("SER_A".to_string()),
@@ -506,7 +532,7 @@ mod tests {
         assert_eq!(e2.sequence, 2);
         assert_eq!(e2.prev_hash, e1.entry_hash);
 
-        let verified = verify_sanctum_chain(Some(10)).expect("verify chain");
+        let verified = verify_sanctum_chain_at(&chain_file, Some(10)).expect("verify chain");
         assert!(verified.intact);
         assert_eq!(verified.total_entries, 2);
         assert_eq!(verified.head_hash, e2.entry_hash);
@@ -516,7 +542,7 @@ mod tests {
         let tampered = content.replace("First entry", "Tampered entry");
         std::fs::write(&chain_file, tampered).unwrap();
 
-        let after_tamper = verify_sanctum_chain(Some(10)).expect("verify tampered chain");
+        let after_tamper = verify_sanctum_chain_at(&chain_file, Some(10)).expect("verify tampered chain");
         assert!(!after_tamper.intact);
         assert_eq!(after_tamper.broken_at_sequence, Some(1));
     }
