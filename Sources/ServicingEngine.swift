@@ -5232,6 +5232,107 @@ final class ServicingEngine: ObservableObject {
         sanctumChainHeadHash = digest
         sanctumChainCount = nextSeq
     }
+
+    public func runPhoenixSanctumSiliconProbe() async {
+        isBusy = true
+        defer { isBusy = false }
+        log(.info, "▶ [Phoenix Sanctum] Probing Bare-Metal Silicon Interfaces (Qualcomm EDL 9008 Sahara & MediaTek BROM 0e8d:0003)...")
+
+        let bfPath = toolPaths["bootforgeusb"] ?? "/usr/local/bin/bootforgeusb"
+        var edlSummary = "EDL 9008: Not detected"
+        var mtkSummary = "MTK BROM: Not detected"
+
+        if FileManager.default.isExecutableFile(atPath: bfPath) {
+            let edlRes = await runProcess(executable: bfPath, arguments: ["edl-probe"], logCommand: false)
+            if let data = edlRes.stdout.data(using: .utf8),
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let connected = (obj["connected"] as? Bool) ?? false
+                let detail = (obj["statusDetail"] as? String) ?? "Idle"
+                edlSummary = connected ? "EDL 9008: ACTIVE (\(detail))" : "EDL 9008: \(detail)"
+            }
+
+            let mtkRes = await runProcess(executable: bfPath, arguments: ["mtk-brom-probe"], logCommand: false)
+            if let data = mtkRes.stdout.data(using: .utf8),
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let connected = (obj["connected"] as? Bool) ?? false
+                let detail = (obj["statusDetail"] as? String) ?? "Idle"
+                mtkSummary = connected ? "MTK BROM: ACTIVE (\(detail))" : "MTK BROM: \(detail)"
+            }
+        }
+
+        let combined = "\(edlSummary) | \(mtkSummary)"
+        sanctumPrivilegeSummary = combined
+        let serial = selectedDevice?.serial ?? samsungModemInfo?.serialNumber ?? "USB-BARE-METAL"
+        appendSanctumHashChainRecord(
+            chamber: "silicon-edl-brom-chamber",
+            operation: "probe-edl-sahara-and-mtk-brom",
+            serial: serial,
+            detail: combined
+        )
+        log(.info, "✔ [Phoenix Sanctum] \(combined)")
+    }
+
+    public func runPhoenixSanctumEfsBackup() async {
+        isBusy = true
+        defer { isBusy = false }
+        log(.info, "▶ [Phoenix Sanctum] Executing Chamber III Baseband & EFS Calibration Preservation Backup...")
+
+        let adbPath = toolPaths["adb"] ?? "/usr/local/bin/adb"
+        let hasAdb = devices.contains { $0.transport == .adb }
+        guard hasAdb && FileManager.default.isExecutableFile(atPath: adbPath) else {
+            log(.warning, "⚠ [Phoenix Sanctum] Connect an authorized ADB device with root access to extract raw EFS/NVRAM block partitions.")
+            return
+        }
+
+        let serial = selectedDevice?.serial ?? "ANDROID-DEVICE"
+        let cleanSerial = serial.replacingOccurrences(of: "/", with: "_")
+        let vaultDir = (NSHomeDirectory() as NSString).appendingPathComponent(".bobfwtools/vault/efs-backups/\(cleanSerial)")
+        try? FileManager.default.createDirectory(atPath: vaultDir, withIntermediateDirectories: true)
+
+        let allowlist = ["efs", "sec_efs", "modemst1", "modemst2", "fsg", "fsc", "persist", "nvram", "nvdata", "nvcfg"]
+        var backedUp: [String] = []
+
+        for part in allowlist {
+            let findCmd = "for d in /dev/block/by-name /dev/block/platform/*/by-name /dev/block/bootdevice/by-name; do [ -e \"$d/\(part)\" ] && readlink -f \"$d/\(part)\" && break; done"
+            let nodeRes = await runProcess(executable: adbPath, arguments: adbArgs(["shell", findCmd]), logCommand: false)
+            let resolvedNode = nodeRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !resolvedNode.isEmpty, resolvedNode.hasPrefix("/dev/block/") else { continue }
+
+            let outImg = (vaultDir as NSString).appendingPathComponent("\(part).img")
+            let dumpCmd = "su -c 'dd if=\(resolvedNode) bs=4096 2>/dev/null'"
+            let dumpRes = await runProcess(executable: adbPath, arguments: adbArgs(["exec-out", dumpCmd]), logCommand: false)
+            let rawData = Data(dumpRes.stdout.utf8)
+            guard !rawData.isEmpty else { continue }
+
+            try? rawData.write(to: URL(fileURLWithPath: outImg))
+            let sha256Hex = SHA256.hash(data: rawData).map { String(format: "%02x", $0) }.joined()
+            let manifestPath = (vaultDir as NSString).appendingPathComponent("\(part).img.manifest.json")
+            let manifest: [String: Any] = [
+                "deviceSerial": serial,
+                "partitionName": part,
+                "resolvedBlockPath": resolvedNode,
+                "byteLength": rawData.count,
+                "sha256": sha256Hex,
+                "createdAtUnixSecs": Int64(Date().timeIntervalSince1970)
+            ]
+            if let mData = try? JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted]) {
+                try? mData.write(to: URL(fileURLWithPath: manifestPath))
+            }
+            backedUp.append("\(part)(\(String(sha256Hex.prefix(8))))")
+        }
+
+        let summary = backedUp.isEmpty
+            ? "EFS Vault: 0 raw partitions dumped (requires root su + /dev/block/by-name nodes)"
+            : "EFS Vault Saved (\(backedUp.count)): \(backedUp.joined(separator: ", ")) -> \(vaultDir)"
+        sanctumPrivilegeSummary = summary
+        appendSanctumHashChainRecord(
+            chamber: "baseband-efs-vault",
+            operation: "backup-calibration-partitions",
+            serial: serial,
+            detail: summary
+        )
+        log(.success, "✔ [Phoenix Sanctum] \(summary)")
+    }
 }
 
 // MARK: - App Installer & Package Inspector Pipeline

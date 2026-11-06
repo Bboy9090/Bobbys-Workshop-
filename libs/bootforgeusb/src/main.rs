@@ -1,4 +1,4 @@
-use bootforgeusb::{firmware, phoenix_sanctum, planner, recovery, scan, trapdoor, transport};
+use bootforgeusb::{edl, firmware, mtk_brom, phoenix_sanctum, planner, recovery, scan, trapdoor, transport};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -79,6 +79,23 @@ enum Commands {
     },
     /// List native Trapdoor / Bobby's Workshop tool classifications and availability.
     TrapdoorTools,
+    /// Live USB probe of a connected Qualcomm EDL (05c6:9008) device to read its Sahara HELLO packet.
+    EdlProbe {
+        #[arg(long, default_value_t = 2000)]
+        timeout_ms: u64,
+    },
+    /// Live USB handshake and GET_HW_CODE silicon identification on a MediaTek BROM (0e8d:0003) or Preloader (0e8d:2000) device.
+    MtkBromProbe {
+        #[arg(long, default_value_t = 2000)]
+        timeout_ms: u64,
+    },
+    /// Parse a binary Primary GPT image (LBA 0..6) and output all partition entries as JSON.
+    ParseGpt {
+        #[arg(required = true)]
+        gpt_file: PathBuf,
+        #[arg(long, default_value_t = 4096)]
+        sector_size: usize,
+    },
 }
 
 fn json<T: serde::Serialize>(value: &T) {
@@ -176,6 +193,41 @@ fn main() {
             let runner = trapdoor::TrapdoorRunner::new();
             Ok(json(&runner.list_available_tools()))
         }
+        Commands::EdlProbe { timeout_ms } => {
+            match edl::probe_edl_sahara_live(timeout_ms) {
+                Ok(res) => Ok(json(&serde_json::json!({
+                    "connected": true,
+                    "statusDetail": format!("Sahara v{} on Bus {} Addr {} (Mode: {:?})", res.hello.version, res.bus, res.address, res.hello.mode),
+                    "probe": res
+                }))),
+                Err(reason) => Ok(json(&serde_json::json!({
+                    "connected": false,
+                    "statusDetail": reason,
+                    "probe": serde_json::Value::Null
+                }))),
+            }
+        }
+        Commands::MtkBromProbe { timeout_ms } => {
+            match mtk_brom::probe_mtk_brom_live(timeout_ms) {
+                Ok(res) => Ok(json(&serde_json::json!({
+                    "connected": true,
+                    "statusDetail": format!("{} ({}) on Bus {} Addr {}", res.identity.chip_name, res.identity.hw_code_hex, res.bus, res.address),
+                    "probe": res
+                }))),
+                Err(reason) => Ok(json(&serde_json::json!({
+                    "connected": false,
+                    "statusDetail": reason,
+                    "probe": serde_json::Value::Null
+                }))),
+            }
+        }
+        Commands::ParseGpt {
+            gpt_file,
+            sector_size,
+        } => std::fs::read(&gpt_file)
+            .map_err(|e| format!("failed reading GPT file {}: {e}", gpt_file.display()))
+            .and_then(|bytes| edl::parse_gpt_entries(&bytes, sector_size))
+            .map(|entries| json(&entries)),
     };
     if let Err(err) = result {
         eprintln!("ERROR: {err}");

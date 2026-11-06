@@ -1463,6 +1463,20 @@ struct OwnerProVaultView: View {
                         .buttonStyle(.borderedProminent)
                         .tint(.purple)
 
+                        Button {
+                            Task { await engine.runPhoenixSanctumSiliconProbe() }
+                        } label: {
+                            Label("Live Probe EDL 9008 / MTK BROM", systemImage: "bolt.horizontal.circle.fill")
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button {
+                            Task { await engine.runPhoenixSanctumEfsBackup() }
+                        } label: {
+                            Label("Backup EFS / NVRAM to Sanctum Vault", systemImage: "externaldrive.fill.badge.checkmark")
+                        }
+                        .buttonStyle(.bordered)
+
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Shadow Chain Entries: \(engine.sanctumChainCount)")
                                 .font(.caption.monospaced())

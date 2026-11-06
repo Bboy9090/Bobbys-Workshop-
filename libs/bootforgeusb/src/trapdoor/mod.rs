@@ -30,6 +30,13 @@ pub enum TrapdoorTool {
     Magisk,
     Twrp,
     ApkHelpers,
+    Adb,
+    Fastboot,
+    Heimdall,
+    BootForgeUsb,
+
+    // iOS Inspection Tools
+    IdeviceInfo,
 
     // System Tools
     EfiUnlocker,
@@ -53,6 +60,11 @@ impl TrapdoorTool {
             TrapdoorTool::Magisk => "magisk",
             TrapdoorTool::Twrp => "twrp",
             TrapdoorTool::ApkHelpers => "apk_helpers",
+            TrapdoorTool::Adb => "adb",
+            TrapdoorTool::Fastboot => "fastboot",
+            TrapdoorTool::Heimdall => "heimdall",
+            TrapdoorTool::BootForgeUsb => "bootforgeusb",
+            TrapdoorTool::IdeviceInfo => "ideviceinfo",
             TrapdoorTool::EfiUnlocker => "efi_unlocker",
             TrapdoorTool::Custom(name) => name,
         }
@@ -71,7 +83,12 @@ impl TrapdoorTool {
             TrapdoorTool::FrpHelper
             | TrapdoorTool::Magisk
             | TrapdoorTool::Twrp
-            | TrapdoorTool::ApkHelpers => "android",
+            | TrapdoorTool::ApkHelpers
+            | TrapdoorTool::Adb
+            | TrapdoorTool::Fastboot
+            | TrapdoorTool::Heimdall
+            | TrapdoorTool::BootForgeUsb => "android",
+            TrapdoorTool::IdeviceInfo => "ios_new",
             TrapdoorTool::EfiUnlocker => "system",
             TrapdoorTool::Custom(_) => "custom",
         }
@@ -180,10 +197,55 @@ impl TrapdoorRunner {
             return path.to_path_buf();
         }
 
-        self.config
+        let category_path = self
+            .config
             .tools_dir
             .join(tool.category())
-            .join(tool.name())
+            .join(tool.name());
+        if category_path.is_file() {
+            return category_path;
+        }
+
+        let direct_path = self.config.tools_dir.join(tool.name());
+        if direct_path.is_file() {
+            return direct_path;
+        }
+
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(exe_dir) = exe.parent() {
+                let sibling = exe_dir.join(tool.name());
+                if sibling.is_file() {
+                    return sibling;
+                }
+            }
+        }
+
+        if let Ok(home) = std::env::var("HOME") {
+            let managed = PathBuf::from(&home)
+                .join(".bobfwtools")
+                .join("tools")
+                .join(tool.name());
+            if managed.is_file() {
+                return managed;
+            }
+            let managed_cat = PathBuf::from(&home)
+                .join(".bobfwtools")
+                .join("tools")
+                .join(tool.category())
+                .join(tool.name());
+            if managed_cat.is_file() {
+                return managed_cat;
+            }
+        }
+
+        for sys_dir in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"] {
+            let candidate = PathBuf::from(sys_dir).join(tool.name());
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+
+        category_path
     }
 
     /// Get tool information and usage guide
@@ -199,6 +261,11 @@ impl TrapdoorRunner {
     /// List all available tools
     pub fn list_available_tools(&self) -> Vec<TrapdoorTool> {
         let all_tools = vec![
+            TrapdoorTool::Adb,
+            TrapdoorTool::Fastboot,
+            TrapdoorTool::Heimdall,
+            TrapdoorTool::BootForgeUsb,
+            TrapdoorTool::IdeviceInfo,
             TrapdoorTool::Palera1n,
             TrapdoorTool::Checkra1n,
             TrapdoorTool::Lockra1n,

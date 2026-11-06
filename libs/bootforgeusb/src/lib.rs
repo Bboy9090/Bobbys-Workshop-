@@ -7,6 +7,7 @@ pub mod firmware_catalog;
 pub mod firmware_manifest;
 pub mod hardware_service;
 pub mod model;
+pub mod mtk_brom;
 pub mod planner;
 pub mod preflight;
 pub mod recovery;

@@ -3,14 +3,20 @@ import {
   auditSanctumRootPrivilege,
   auditSanctumSiliconFuses,
   chooseSanctumRootArtifact,
+  executeSanctumBasebandBackup,
   issueSanctumChamberGrant,
   isTauriRuntime,
   probeSanctumBasebandCrucible,
+  probeSanctumEdlSahara,
+  probeSanctumMtkBrom,
   stageSanctumRootArtifact,
   verifySanctumShadowChain,
   type AdbDeviceRecord,
   type BasebandCrucibleReport,
+  type CalibrationBackupResult,
+  type MtkBromLiveProbeResult,
   type RootPrivilegeAuditReport,
+  type SaharaLiveProbeResult,
   type SanctumArtifactStageReceipt,
   type SanctumChamberGrant,
   type SanctumChainVerification,
@@ -56,6 +62,9 @@ export default function PhoenixSanctumDeck({
   const [rootMethod, setRootMethod] = useState<'magisk' | 'kernelsu' | 'apatch' | 'custom'>('magisk');
   const [artifactPath, setArtifactPath] = useState('');
   const [stageReceipt, setStageReceipt] = useState<SanctumArtifactStageReceipt | null>(null);
+  const [edlProbeResult, setEdlProbeResult] = useState<SaharaLiveProbeResult | null>(null);
+  const [mtkProbeResult, setMtkProbeResult] = useState<MtkBromLiveProbeResult | null>(null);
+  const [backupReceipts, setBackupReceipts] = useState<Record<string, CalibrationBackupResult>>({});
 
   const nativeRuntime = isTauriRuntime();
   const activeDevice = adbDevices.find((d) => d.serial === selectedAdbSerial) || null;
@@ -150,6 +159,57 @@ export default function PhoenixSanctumDeck({
     try {
       const report = await probeSanctumBasebandCrucible(selectedAdbSerial, grant);
       setBasebandReport(report);
+      await refreshChain();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleProbeEdlSahara = async () => {
+    if (!grant) {
+      setError('Unlock Phoenix Sanctum with an HMAC-SHA256 chamber grant first.');
+      return;
+    }
+    setBusy('edl-probe');
+    setError(null);
+    try {
+      const res = await probeSanctumEdlSahara(grant, 2500);
+      setEdlProbeResult(res);
+      await refreshChain();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleProbeMtkBrom = async () => {
+    if (!grant) {
+      setError('Unlock Phoenix Sanctum with an HMAC-SHA256 chamber grant first.');
+      return;
+    }
+    setBusy('mtk-probe');
+    setError(null);
+    try {
+      const res = await probeSanctumMtkBrom(grant, 2500);
+      setMtkProbeResult(res);
+      await refreshChain();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleBackupPartition = async (partition: string) => {
+    if (!selectedAdbSerial || !grant) return;
+    setBusy(`backup-${partition}`);
+    setError(null);
+    try {
+      const receipt = await executeSanctumBasebandBackup(selectedAdbSerial, partition, grant);
+      setBackupReceipts((prev) => ({ ...prev, [partition]: receipt }));
       await refreshChain();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -511,15 +571,58 @@ export default function PhoenixSanctumDeck({
                 boot recovery protocols.
               </p>
             </div>
-            <button
-              type="button"
-              disabled={!nativeRuntime || !grant || !activeDevice?.authorized || busy === 'silicon-audit'}
-              onClick={() => void handleRunSiliconAudit()}
-              className="rounded bg-cyan-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-600 disabled:opacity-40"
-            >
-              {busy === 'silicon-audit' ? 'Probing Silicon…' : 'Probe Silicon & Fuses'}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={!nativeRuntime || !grant || busy === 'edl-probe'}
+                onClick={() => void handleProbeEdlSahara()}
+                className="rounded border border-cyan-700 bg-cyan-950/60 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-900/60 disabled:opacity-40"
+              >
+                {busy === 'edl-probe' ? 'Probing 9008…' : 'Live Probe Qualcomm 9008 Sahara'}
+              </button>
+              <button
+                type="button"
+                disabled={!nativeRuntime || !grant || busy === 'mtk-probe'}
+                onClick={() => void handleProbeMtkBrom()}
+                className="rounded border border-purple-700 bg-purple-950/60 px-3 py-1.5 text-xs font-semibold text-purple-200 hover:bg-purple-900/60 disabled:opacity-40"
+              >
+                {busy === 'mtk-probe' ? 'Syncing BROM…' : 'Live Handshake MediaTek BROM'}
+              </button>
+              <button
+                type="button"
+                disabled={!nativeRuntime || !grant || !activeDevice?.authorized || busy === 'silicon-audit'}
+                onClick={() => void handleRunSiliconAudit()}
+                className="rounded bg-cyan-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-600 disabled:opacity-40"
+              >
+                {busy === 'silicon-audit' ? 'Probing Silicon…' : 'Probe Silicon & Fuses'}
+              </button>
+            </div>
           </div>
+
+          {(edlProbeResult || mtkProbeResult) && (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {edlProbeResult && (
+                <div className="rounded border border-cyan-800/80 bg-cyan-950/20 p-3 font-mono text-xs text-cyan-200">
+                  <div className="font-bold">Qualcomm EDL 9008 Sahara HELLO Received</div>
+                  <div className="mt-1 text-[11px] text-slate-300">
+                    Bus {edlProbeResult.bus} Addr {edlProbeResult.address} · IN 0x
+                    {edlProbeResult.inEndpoint.toString(16)} / OUT 0x{edlProbeResult.outEndpoint.toString(16)} · Sahara
+                    v{edlProbeResult.hello.version} (Mode {edlProbeResult.hello.mode})
+                  </div>
+                </div>
+              )}
+              {mtkProbeResult && (
+                <div className="rounded border border-purple-800/80 bg-purple-950/20 p-3 font-mono text-xs text-purple-200">
+                  <div className="font-bold">
+                    MediaTek BROM Synced: {mtkProbeResult.identity.chipName} ({mtkProbeResult.identity.hwCodeHex})
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-300">
+                    Bus {mtkProbeResult.bus} Addr {mtkProbeResult.address} · Mode {mtkProbeResult.mode}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {!siliconReport ? (
             <div className="mt-4 rounded border border-slate-800/80 bg-black/20 p-3 text-xs text-slate-500">
@@ -645,32 +748,53 @@ export default function PhoenixSanctumDeck({
                       <th className="px-3 py-2">Resolved Block Path</th>
                       <th className="px-3 py-2">Size</th>
                       <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2 text-right">Preservation Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/70 bg-black/20 font-mono text-[11px]">
-                    {basebandReport.partitions.map((p) => (
-                      <tr key={p.partition}>
-                        <td className="px-3 py-1.5 font-semibold text-white">{p.partition}</td>
-                        <td className="px-3 py-1.5 text-slate-400">{p.candidateNode}</td>
-                        <td className="px-3 py-1.5 text-cyan-300">{p.resolvedBlockPath || '—'}</td>
-                        <td className="px-3 py-1.5 text-slate-300">
-                          {p.sizeBytes != null ? formatBytes(p.sizeBytes) : '—'}
-                        </td>
-                        <td className="px-3 py-1.5">
-                          <span
-                            className={
-                              p.readableWithCurrentPrivilege
-                                ? 'text-emerald-300'
-                                : p.resolvedBlockPath
-                                  ? 'text-amber-300'
-                                  : 'text-slate-500'
-                            }
-                          >
-                            {p.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {basebandReport.partitions.map((p) => {
+                      const receipt = backupReceipts[p.partition];
+                      return (
+                        <tr key={p.partition}>
+                          <td className="px-3 py-1.5 font-semibold text-white">{p.partition}</td>
+                          <td className="px-3 py-1.5 text-slate-400">{p.candidateNode}</td>
+                          <td className="px-3 py-1.5 text-cyan-300">{p.resolvedBlockPath || '—'}</td>
+                          <td className="px-3 py-1.5 text-slate-300">
+                            {p.sizeBytes != null ? formatBytes(p.sizeBytes) : '—'}
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <span
+                              className={
+                                p.readableWithCurrentPrivilege
+                                  ? 'text-emerald-300'
+                                  : p.resolvedBlockPath
+                                    ? 'text-amber-300'
+                                    : 'text-slate-500'
+                              }
+                            >
+                              {receipt ? `SAVED (${receipt.sha256.slice(0, 10)}…)` : p.status}
+                            </span>
+                          </td>
+                          <td className="px-3 py-1.5 text-right">
+                            <button
+                              type="button"
+                              disabled={
+                                !p.readableWithCurrentPrivilege ||
+                                busy === `backup-${p.partition}`
+                              }
+                              onClick={() => void handleBackupPartition(p.partition)}
+                              className="rounded border border-emerald-700/80 bg-emerald-950/50 px-2 py-0.5 text-[10px] font-semibold text-emerald-200 hover:bg-emerald-900/60 disabled:opacity-30"
+                            >
+                              {busy === `backup-${p.partition}`
+                                ? 'Extracting…'
+                                : receipt
+                                  ? 'Re-Extract .img'
+                                  : 'Backup .img + SHA256'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

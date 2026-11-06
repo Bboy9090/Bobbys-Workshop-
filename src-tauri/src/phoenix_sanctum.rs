@@ -759,6 +759,90 @@ pub fn sanctum_stage_root_artifact(
 }
 
 #[tauri::command]
+pub fn sanctum_execute_baseband_backup(
+    serial: String,
+    partition: String,
+    grant: SanctumChamberGrant,
+) -> Result<crate::calibration_backup_exec::CalibrationBackupResult, String> {
+    verify_sanctum_grant(&grant, Some(&serial))?;
+    if ! matches!(grant.chamber.as_str(), "baseband-crucible" | "all") {
+        return Err(format!(
+            "Grant is scoped to chamber '{}', but 'baseband-crucible' or 'all' is required for raw calibration partition extraction.",
+            grant.chamber
+        ));
+    }
+
+    let vault_dir = dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".bobfwtools")
+        .join("vault")
+        .join("efs-backups")
+        .join(&serial);
+
+    let result = crate::calibration_backup_exec::backup_calibration_partition(
+        serial.clone(),
+        partition.clone(),
+        vault_dir.display().to_string(),
+    )?;
+
+    let _ = append_sanctum_chain_entry(
+        "baseband-crucible",
+        "execute-baseband-backup",
+        Some(serial),
+        "completed",
+        &format!(
+            "Extracted partition '{}' ({} bytes) -> {} [manifest: {}]",
+            result.partition, result.actual_bytes, result.backup_path, result.manifest_path
+        ),
+        Some(result.sha256.clone()),
+    );
+
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn sanctum_probe_edl_sahara(
+    timeout_ms: Option<u64>,
+    grant: SanctumChamberGrant,
+) -> Result<bootforgeusb::edl::SaharaLiveProbeResult, String> {
+    verify_sanctum_grant(&grant, None)?;
+    let probe = bootforgeusb::edl::probe_edl_sahara_live(timeout_ms.unwrap_or(2000))?;
+    let _ = append_sanctum_chain_entry(
+        "silicon-fuse",
+        "probe-edl-sahara-live",
+        None,
+        "completed",
+        &format!(
+            "Qualcomm 9008 Sahara HELLO read on bus={} addr={} (v{}, mode={})",
+            probe.bus, probe.address, probe.hello.version, probe.hello.mode
+        ),
+        None,
+    );
+    Ok(probe)
+}
+
+#[tauri::command]
+pub fn sanctum_probe_mtk_brom(
+    timeout_ms: Option<u64>,
+    grant: SanctumChamberGrant,
+) -> Result<bootforgeusb::mtk_brom::MtkBromLiveProbeResult, String> {
+    verify_sanctum_grant(&grant, None)?;
+    let probe = bootforgeusb::mtk_brom::probe_mtk_brom_live(timeout_ms.unwrap_or(2000))?;
+    let _ = append_sanctum_chain_entry(
+        "silicon-fuse",
+        "probe-mtk-brom-live",
+        None,
+        "completed",
+        &format!(
+            "MediaTek BROM handshake & GET_HW_CODE on bus={} addr={} -> {} ({})",
+            probe.bus, probe.address, probe.identity.hw_code_hex, probe.identity.chip_name
+        ),
+        None,
+    );
+    Ok(probe)
+}
+
+#[tauri::command]
 pub fn sanctum_verify_shadow_chain(limit: Option<usize>) -> Result<SanctumChainVerification, String> {
     verify_sanctum_chain(limit)
 }

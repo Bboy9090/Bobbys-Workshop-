@@ -2629,6 +2629,72 @@ export async function stageSanctumRootArtifact(
   });
 }
 
+export type SaharaLiveProbeResult = {
+  bus: number;
+  address: number;
+  interface: number;
+  inEndpoint: number;
+  outEndpoint: number;
+  hello: {
+    command: number;
+    packetLength: number;
+    version: number;
+    compatibleVersion: number;
+    commandPacketLength: number;
+    mode: number;
+  };
+};
+
+export type MtkBromLiveProbeResult = {
+  bus: number;
+  address: number;
+  productId: number;
+  mode: string;
+  interface: number;
+  inEndpoint: number;
+  outEndpoint: number;
+  identity: {
+    hwCode: number;
+    hwCodeHex: string;
+    chipName: string;
+    hwSubCode?: number | null;
+    hwVersion?: number | null;
+    swVersion?: number | null;
+  };
+};
+
+export async function executeSanctumBasebandBackup(
+  serial: string,
+  partition: string,
+  grant: SanctumChamberGrant,
+): Promise<CalibrationBackupResult> {
+  return invoke<CalibrationBackupResult>('sanctum_execute_baseband_backup', {
+    serial,
+    partition,
+    grant,
+  });
+}
+
+export async function probeSanctumEdlSahara(
+  grant: SanctumChamberGrant,
+  timeoutMs = 2000,
+): Promise<SaharaLiveProbeResult> {
+  return invoke<SaharaLiveProbeResult>('sanctum_probe_edl_sahara', {
+    timeoutMs,
+    grant,
+  });
+}
+
+export async function probeSanctumMtkBrom(
+  grant: SanctumChamberGrant,
+  timeoutMs = 2000,
+): Promise<MtkBromLiveProbeResult> {
+  return invoke<MtkBromLiveProbeResult>('sanctum_probe_mtk_brom', {
+    timeoutMs,
+    grant,
+  });
+}
+
 export async function verifySanctumShadowChain(limit = 40): Promise<SanctumChainVerification> {
   return invoke<SanctumChainVerification>('sanctum_verify_shadow_chain', { limit });
 }
