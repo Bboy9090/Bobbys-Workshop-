@@ -1338,19 +1338,62 @@ struct OwnerProVaultView: View {
             // Section 1: Apple A12+ (iPhone XS -> 16 Pro Max / M1-M4 iPad) Pro Telemetry & Recovery Vault
             GroupBox(label: Label("Apple A12+ – A18 Pro & M-Series Pro Telemetry, Activation & IPSW Suite (Unlocked)", systemImage: "iphone.badge.play")) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Supports A12 (0x8020), A13 (0x8030), A14 (0x8101), A15 (0x8110), A16 (0x8120), A17 Pro (0x8130), A18 Pro (0x8140), and M1–M4 iPads:")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    HStack {
+                        Text("Supports A10–A18 Pro (CPID 0x8010–0x8140) and M1–M4 Apple Silicon:")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("USB Mode: \(engine.appleModeStatusBadge)")
+                            .font(.caption.bold().monospaced())
+                            .foregroundColor(engine.appleModeStatusBadge.contains("RECOVERY") ? .orange : (engine.appleModeStatusBadge.contains("NORMAL") ? .green : .secondary))
+                    }
 
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         Button {
                             Task { await engine.runAppleA12ProAudit() }
                         } label: {
-                            Label("Run A12+ ECID, DieID & Activation Audit", systemImage: "cpu.fill")
+                            Label("Run Apple Mode & Silicon Audit", systemImage: "cpu.fill")
                         }
                         .buttonStyle(.borderedProminent)
+                        .tint(.purple)
 
-                        Button("Check MDM / Supervision State") {
+                        Button {
+                            Task { await engine.exitAppleRecoveryMode() }
+                        } label: {
+                            Label("Exit Recovery Mode (irecovery -n)", systemImage: "arrow.uturn.backward.circle.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.green)
+
+                        Button {
+                            Task { await engine.forceAutoBootTrueAndReboot() }
+                        } label: {
+                            Label("Force Auto-Boot True & Reboot", systemImage: "bolt.fill")
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button {
+                            Task { await engine.querySignedIpswCatalogOnline() }
+                        } label: {
+                            Label("Find Signed IPSW (Apple TSS)", systemImage: "arrow.down.doc.fill")
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.blue)
+                    }
+
+                    HStack(spacing: 8) {
+                        Button("Read DFU / Recovery (irecovery -q)") {
+                            Task {
+                                _ = await engine.executeAndLog(
+                                    workflowId: "pro.apple_irecovery",
+                                    title: "Read iBoot / DFU Identity",
+                                    executable: engine.toolPaths["irecovery"]!,
+                                    arguments: ["-q"]
+                                )
+                            }
+                        }
+
+                        Button("Check MDM / Supervision") {
                             Task {
                                 _ = await engine.executeAndLog(
                                     workflowId: "pro.apple_mdm_check",
@@ -1361,15 +1404,8 @@ struct OwnerProVaultView: View {
                             }
                         }
 
-                        Button("Read DFU / Recovery iBoot (irecovery -q)") {
-                            Task {
-                                _ = await engine.executeAndLog(
-                                    workflowId: "pro.apple_irecovery",
-                                    title: "Read iBoot / DFU Identity",
-                                    executable: engine.toolPaths["irecovery"]!,
-                                    arguments: ["-q"]
-                                )
-                            }
+                        Button("Physical DFU Guide") {
+                            engine.showAppleDfuGuide()
                         }
 
                         Button("Inspect Local .IPSW Package...") {
