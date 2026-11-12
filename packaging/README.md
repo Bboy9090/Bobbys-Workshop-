@@ -1,10 +1,10 @@
 # Packaging Guide
 
-## Bobby's Workshop - Windows, MSIX, and Blue Phoenix OS Integration
+## BobFWTools Studio (Bobby's Workshop — Phoenix Forge v5.0.0)
 
-**Purpose:** Guide for packaging Bobby's Workshop for Windows (MSI/NSIS/MSIX) and integration with Blue Phoenix OS.
+**Purpose:** Guide for packaging BobFWTools Studio across **macOS (12.0 Monterey+ Universal 2)**, **Windows 10/11 (MSI/NSIS/MSIX/WinGet)**, **Linux (AppDir/DEB/RPM/Snap/Flatpak + udev)**, and **Blue Phoenix OS**.
 
-**Last Updated:** 2026-05-23
+**Last Updated:** 2026-11-12
 
 ---
 
@@ -20,19 +20,19 @@
 
 ## Overview
 
-Bobby's Workshop supports multiple packaging formats for different distribution channels:
+BobFWTools Studio supports multiple packaging formats for different distribution channels:
 
 | Format | Platform | Use Case | Distribution |
 |--------|----------|----------|--------------|
-| **MSI** | Windows 10+ | Enterprise deployment | Direct download, SCCM |
-| **NSIS** | Windows 10+ | Standard user installation | Direct download |
-| **MSIX** | Windows 10+ | Microsoft Store | Microsoft Store (future) |
-| **DMG** | macOS 10.13+ | macOS installation | Direct download |
-| **App** | macOS 10.13+ | macOS bundle | Direct download |
-| **AppImage** | Linux | Portable Linux app | Direct download |
-| **DEB** | Debian/Ubuntu | Linux package manager | apt repository (future) |
+| **Native `.app` + `.zip`** | macOS 12.0+ (`arm64` + `x86_64`) | Owner Standalone & Mac App Store (`-DSTORE_EDITION`) | `./build_app.sh` (`/Applications/BobFWTools.app` & `dist/`) |
+| **MSI** | Windows 10 (1809+) / 11 | Enterprise deployment | Direct download, SCCM, WinGet (`BobbyBlanco.BobFWToolsStudio.yaml`) |
+| **NSIS** | Windows 10 / 11 | Standard user installation | Direct download (`npm run tauri:build:windows`) |
+| **MSIX** | Windows 10 / 11 | Microsoft Store | `store_packaging/windows/AppxManifest.xml` (`usb` + `serialcommunication`) |
+| **DMG / App** | macOS 12.0+ | Tauri cross-platform bundle | `npm run tauri:build:macos` |
+| **AppDir / AppImage** | Linux (`x86_64` / `aarch64`) | Portable Linux bundle + `udev` rules | `store_packaging/linux/build_linux_package.sh` |
+| **DEB / RPM / Snap / Flatpak** | Debian / Ubuntu / Fedora / Flathub | Linux software stores | `snapcraft.yaml` & `com.bobbyblanco.bobfwtools.metainfo.xml` |
 
-This document focuses on **Windows (MSI/NSIS/MSIX)** and **Blue Phoenix OS** integration.
+This document covers **macOS**, **Windows (MSI/NSIS/MSIX)**, **Linux (`udev` + Store packages)**, and **Blue Phoenix OS** integration.
 
 ---
 

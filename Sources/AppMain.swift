@@ -7,18 +7,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        NSApp.appearance = NSAppearance(named: .darkAqua)
+
+        if let iconUrl = Bundle.main.url(forResource: "AppIcon_1024", withExtension: "png"),
+           let iconImage = NSImage(contentsOf: iconUrl) {
+            NSApp.applicationIconImage = iconImage
+        }
 
         let contentView = MainStudioView()
         let hostingView = NSHostingView(rootView: contentView)
 
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1260, height: 800),
+            contentRect: NSRect(x: 0, y: 0, width: 1320, height: 840),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "BobFWTools — Bobby's Workshop Native macOS Studio"
-        window.minSize = NSSize(width: 1120, height: 720)
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.backgroundColor = NSColor(red: 0.039, green: 0.051, blue: 0.078, alpha: 1.0)
+        window.minSize = NSSize(width: 1180, height: 740)
         window.contentView = hostingView
         window.center()
         window.isReleasedWhenClosed = false

@@ -1,165 +1,70 @@
-# BobFWTools
+# BobFWTools Studio — Bobby's Workshop (Phoenix Forge v5.0.0)
 
-BobFWTools is a macOS-first Android connectivity and device-support application focused on the gap between Apple hardware and Android phones, especially Samsung and MediaTek-based devices.
+BobFWTools Studio is a local-first, cross-platform mobile hardware diagnostics, USB descriptor telemetry, and firmware servicing workbench for **macOS (12.0 Monterey+)**, **Windows (10/11)**, and **Linux**.
 
-The product is local-first. Core USB enumeration, MTP browsing, ADB/Fastboot detection, and device evidence are intended to work without a cloud dependency.
+---
 
-## Current production foundation
+## 🏛️ Architecture & Editions
 
-The active macOS core is:
+1. **Native macOS Studio (`Sources/*.swift` + `build_app.sh`)**:
+   - Compiled as a **Universal 2 (`arm64` + `x86_64`)** native AppKit/SwiftUI application supporting **macOS 12.0 Monterey and newer**.
+   - **Owner Standalone Edition**: Full hardware servicing, direct serial/modem/USB/Fastboot/Heimdall/libimobiledevice execution, installed to `/Applications/BobFWTools.app`.
+   - **Public Store Submission Edition (`-DSTORE_EDITION`)**: Strict Mac App Store sandbox (`entitlements.store.plist`), bundled helper tools (`entitlements.helper.plist`), `PrivacyInfo.xcprivacy`, and Store-compliant UI strings.
+2. **Native Rust `bootforgeusb` USB Engine (`libs/bootforgeusb`)**:
+   - Inspects USB device descriptors AND active USB configuration interface descriptors (`ff/42/01` ADB, `ff/42/03` Fastboot, `06/01/01` MTP/PTP, `02/02` CDC ACM) via `rusb`/`libusb`.
+   - Distinguishes internal Mac host USB controllers (`apple-host-internal`) from external Apple iOS/iPadOS devices (`Normal`, `Recovery 05ac:1281`, `DFU 05ac:1227`, `WTF 05ac:1222`).
+3. **Cross-Platform Tauri v2 + Rust + React Workbench (`src-tauri/` + `src/`)**:
+   - Targets **Windows 10/11 (`msi`, `nsis`, Microsoft Store `MSIX`)**, **Linux (`deb`, `rpm`, `appimage`, `Snap`, `Flatpak`)**, and **macOS (`app`, `dmg`)**.
 
-- **Tauri 2 + Rust** for the desktop application and native commands
-- **BootForge USB** for real USB descriptor enumeration
-- **mtp-rs** for real Media Transfer Protocol sessions
-- **React + TypeScript** for the desktop UI
-- **Android Platform Tools** for ADB/Fastboot workflows where Android explicitly exposes those transports
+---
 
-The Mac App Store build is sandboxed and requests only the hardware/file entitlements required for USB and user-selected file access.
+## 🔒 Strict Zero-Simulation Truth Boundary
 
-Legacy Node, Python, FastAPI, demo flash services, and historical repair modules are not part of the default BobFWTools App Store bundle.
+1. **No synthetic or fallback devices**: Never fabricates device models, serial numbers, battery percentages, or firmware URLs.
+2. **Live hardware verification**: Every command (`irecovery`, `idevicediagnostics`, `cfgutil`, `adb`, `fastboot`, `heimdall`) verifies process exit status and real USB bus presence before reporting success.
+3. **Cross-platform IPSW safety guard**: Refuses to flash an `iPhone*` IPSW onto an `iPad*` target (or vice-versa).
 
-## Product rules
+---
 
-BobFWTools has a strict truth boundary:
+## 📱 Supported Hardware Matrix
 
-1. No synthetic production devices.
-2. No random or hard-coded hardware telemetry.
-3. No fake flash or transfer success.
-4. Missing device data stays unavailable or null.
-5. Read-only inspection must never silently modify the phone.
-6. Destructive operations stay disabled until a real executor, preflight, verification path, rollback policy, and physical-device qualification exist.
-7. Test fixtures may simulate hardware only inside test-only code and must never ship as runtime device evidence.
+- **Apple (`05ac`)**: 150+ models mapped by `ProductType` and `CPID`+`BDID` — iPhone 2G through iPhone 16 Pro Max & iPhone 16e, iPad (1st Gen through iPad Pro M4 11"/13", iPad Air M3, iPad A16, iPad mini A17 Pro), and iPod touch (5th–7th Gen).
+- **Android OEMs & Silicon Boot Modes**:
+  - Samsung (`04e8`), Google Pixel (`18d1`), Motorola (`22b8`), Xiaomi/Redmi/POCO (`2717`), OnePlus/OPPO/Realme (`22d9`/`2a70`), Nothing (`2b4c`), Sony (`0fce`), ASUS (`0b05`), LG (`1004`), HTC (`0bb4`), Huawei/Honor (`12d1`), ZTE/Nubia/RedMagic (`19d2`), Lenovo (`17ef`), TCL / Alcatel / T-Mobile REVVL (`1bbb`), Fairphone (`2ae5`).
+  - Silicon Recovery/BootROM: Qualcomm EDL 9008 (`05c6`), MediaTek BROM/Preloader (`0e8d`), Unisoc/Spreadtrum FDL (`1782`).
 
-The CI production-reality gate enforces these rules against shipping source.
+---
 
-## Native USB
+## 🛠️ Build & Verification Commands
 
-BootForge USB enumerates actual host USB devices and records:
+### macOS Native Universal 2 Studio (macOS 12.0+)
+```bash
+rm -rf /tmp/swift-module-cache && ./build_app.sh
+```
+Produces:
+- `/Applications/BobFWTools.app`
+- `dist/Owner-Private-Only/BobFWTools-Owner-Private-macOS.zip`
+- `dist/Store-Submission/BobFWTools-Store-Submission-macOS.zip`
 
-- vendor ID
-- product ID
-- manufacturer string when exposed
-- product string when exposed
-- serial string when exposed
-- device class/subclass/protocol
-- bus/address
-- platform hint
-- connection/mode hint
-- evidence source
+### Rust `bootforgeusb` Engine
+```bash
+cd libs/bootforgeusb
+cargo test
+cargo build --release --bin bootforgeusb
+```
 
-Known vendor families include Samsung, MediaTek, Google, Motorola, Xiaomi, OnePlus, and Apple.
-
-## MTP
-
-BobFWTools uses a real MTP session rather than treating ADB as a substitute for file transfer.
-
-The current native MTP surface supports:
-
-- device information
-- manufacturer/model/serial evidence
-- storage discovery
-- free-space reporting
-- root object listing
-
-The underlying MTP library supports transfer and file-management operations; BobFWTools exposes new write operations only after the read-only transport and failure handling are qualified.
-
-For ordinary Android file browsing, USB debugging is not required. The phone must be unlocked and placed in **File transfer / Android Auto** USB mode when Android prompts for the connection purpose.
-
-## App Store boundary
-
-The default macOS package:
-
-- uses App Sandbox
-- enables USB device access
-- allows user-selected read/write file access
-- excludes legacy Node/Python server payloads
-- builds the native Rust/Tauri core only
-
-Bundle identifier:
-
-`com.bobbyblanco.bobfwtools`
-
-## Development
-
-Requirements:
-
-- Node.js 20+
-- Rust stable
-- Apple Command Line Tools / Xcode toolchain on macOS
-
-Install dependencies:
-
+### Cross-Platform Tauri / Node Qualification
 ```bash
 npm install
-```
-
-Run the production-reality gate:
-
-```bash
 npm run verify:reality
-```
-
-Run the complete BobFWTools source qualification:
-
-```bash
 npm run bobfw:check
-```
-
-Run tests:
-
-```bash
 npm run bobfw:test
-```
-
-Run the desktop app:
-
-```bash
-npm run tauri:dev
-```
-
-Build a universal macOS application:
-
-```bash
 npm run tauri:build:macos
+npm run tauri:build:windows
 ```
 
-The universal target covers Apple Silicon and Intel.
-
-## CI
-
-`.github/workflows/bobfwtools-macos.yml` qualifies the macOS core on a macOS runner. It checks:
-
-- production-reality rules
-- frontend compilation
-- BootForge USB compilation
-- BobFWTools Rust/Tauri compilation
-- BootForge USB tests
-- macOS entitlements
-- universal `BobFWTools.app` creation
-- absence of legacy server/Python payloads from the produced app bundle
-
-The workflow uploads the real `BobFWTools.app` bundle as a CI artifact only after those gates pass.
-
-## Cloud services
-
-Cloud services are support infrastructure, not a requirement for plugging a phone into a Mac.
-
-Planned cloud uses must remain narrowly scoped to things such as signed compatibility catalogs, release metadata, opt-in crash diagnostics, support bundles, enterprise policy, and account/licensing services. Device file browsing and core USB/MTP operation remain local.
-
-## Security and ownership
-
-BobFWTools is for legitimate device management, diagnostics, transfer, backup, and authorized repair workflows.
-
-The production core does not include account-lock circumvention, credential bypass, hidden security-control removal, IMEI alteration, or synthetic claims that an operation succeeded.
-
-## Branch authority
-
-Current foundation work is developed on:
-
-`feat/bobfwtools-macos-foundation`
-
-Draft PR:
-
-`#194 — BobFWTools macOS foundation: real-device production baseline`
-
-The PR stays draft until native macOS CI and physical-device qualification justify promotion.
+### Store Packaging Assets (`store_packaging/`)
+- `store_packaging/macos/AppIcon.icns` — Multi-resolution macOS icon (`16x16` to `512x512@2x`)
+- `Resources/AppIcon_1024.png` & `Resources/SplashHero.png` — Studio launch splash & hero assets
+- `store_packaging/windows/AppxManifest.xml` & `BobbyBlanco.BobFWToolsStudio.yaml` — Microsoft Store MSIX & WinGet manifests
+- `store_packaging/linux/99-bobfwtools-devices.rules`, `snapcraft.yaml`, `com.bobbyblanco.bobfwtools.metainfo.xml`, `build_linux_package.sh` — Linux store & `udev` packaging
