@@ -1,70 +1,86 @@
-# BobFWTools Studio — Bobby's Workshop (Phoenix Forge v5.0.0)
+# Phoenix Core & BobFWTools Studio (Bobby's Workshop v5.0.0)
 
-BobFWTools Studio is a local-first, cross-platform mobile hardware diagnostics, USB descriptor telemetry, and firmware servicing workbench for **macOS (12.0 Monterey+)**, **Windows (10/11)**, and **Linux**.
-
----
-
-## 🏛️ Architecture & Editions
-
-1. **Native macOS Studio (`Sources/*.swift` + `build_app.sh`)**:
-   - Compiled as a **Universal 2 (`arm64` + `x86_64`)** native AppKit/SwiftUI application supporting **macOS 12.0 Monterey and newer**.
-   - **Owner Standalone Edition**: Full hardware servicing, direct serial/modem/USB/Fastboot/Heimdall/libimobiledevice execution, installed to `/Applications/BobFWTools.app`.
-   - **Public Store Submission Edition (`-DSTORE_EDITION`)**: Strict Mac App Store sandbox (`entitlements.store.plist`), bundled helper tools (`entitlements.helper.plist`), `PrivacyInfo.xcprivacy`, and Store-compliant UI strings.
-2. **Native Rust `bootforgeusb` USB Engine (`libs/bootforgeusb`)**:
-   - Inspects USB device descriptors AND active USB configuration interface descriptors (`ff/42/01` ADB, `ff/42/03` Fastboot, `06/01/01` MTP/PTP, `02/02` CDC ACM) via `rusb`/`libusb`.
-   - Distinguishes internal Mac host USB controllers (`apple-host-internal`) from external Apple iOS/iPadOS devices (`Normal`, `Recovery 05ac:1281`, `DFU 05ac:1227`, `WTF 05ac:1222`).
-3. **Cross-Platform Tauri v2 + Rust + React Workbench (`src-tauri/` + `src/`)**:
-   - Targets **Windows 10/11 (`msi`, `nsis`, Microsoft Store `MSIX`)**, **Linux (`deb`, `rpm`, `appimage`, `Snap`, `Flatpak`)**, and **macOS (`app`, `dmg`)**.
+Phoenix Core is a cross-platform mobile hardware diagnostics, USB descriptor telemetry, OS deployment, and firmware servicing platform spanning **macOS (12.0 Monterey through Tahoe)**, **Windows (10/11)**, and **Linux**.
 
 ---
 
-## 🔒 Strict Zero-Simulation Truth Boundary
+## 🚀 Primary Workbenches & Modules
 
-1. **No synthetic or fallback devices**: Never fabricates device models, serial numbers, battery percentages, or firmware URLs.
-2. **Live hardware verification**: Every command (`irecovery`, `idevicediagnostics`, `cfgutil`, `adb`, `fastboot`, `heimdall`) verifies process exit status and real USB bus presence before reporting success.
-3. **Cross-platform IPSW safety guard**: Refuses to flash an `iPhone*` IPSW onto an `iPad*` target (or vice-versa).
-
----
-
-## 📱 Supported Hardware Matrix
-
-- **Apple (`05ac`)**: 150+ models mapped by `ProductType` and `CPID`+`BDID` — iPhone 2G through iPhone 16 Pro Max & iPhone 16e, iPad (1st Gen through iPad Pro M4 11"/13", iPad Air M3, iPad A16, iPad mini A17 Pro), and iPod touch (5th–7th Gen).
-- **Android OEMs & Silicon Boot Modes**:
-  - Samsung (`04e8`), Google Pixel (`18d1`), Motorola (`22b8`), Xiaomi/Redmi/POCO (`2717`), OnePlus/OPPO/Realme (`22d9`/`2a70`), Nothing (`2b4c`), Sony (`0fce`), ASUS (`0b05`), LG (`1004`), HTC (`0bb4`), Huawei/Honor (`12d1`), ZTE/Nubia/RedMagic (`19d2`), Lenovo (`17ef`), TCL / Alcatel / T-Mobile REVVL (`1bbb`), Fairphone (`2ae5`).
-  - Silicon Recovery/BootROM: Qualcomm EDL 9008 (`05c6`), MediaTek BROM/Preloader (`0e8d`), Unisoc/Spreadtrum FDL (`1782`).
+- **[`bobbys-workshop/`](bobbys-workshop/)**: **BobFWTools Studio (Bobby's Workshop)** — Native macOS Universal 2 (`arm64` + `x86_64`) SwiftUI/AppKit Studio + cross-platform Tauri v2/Rust desktop suite powered by `bootforgeusb`.
+- **[`store_packaging/`](store_packaging/)**: Official Store & Distribution manifests for **Mac App Store / Notarized DMG** (`macos/`), **Microsoft Store MSIX & WinGet** (`windows/`), and **Linux AppDir / Snap / Flatpak / udev** (`linux/`).
+- **[`backend/`](backend/)**: Central FastAPI hardware discovery and imaging orchestration service.
+- **[`src/`](src/)**: Python CLI & PyQt6 desktop recovery/imaging engine.
+- **[`crates/`](crates/)**: Rust workspace crates (`phoenix-core`, `phoenix-safety`, `phoenix-fs-fat32`, `phoenix-host-linux`, `phoenix-host-macos`, `phoenix-bootloader-core`, `phoenix-wim`).
 
 ---
 
-## 🛠️ Build & Verification Commands
+## 🛠️ Key Capabilities (v5.0.0)
 
-### macOS Native Universal 2 Studio (macOS 12.0+)
+- **Zero-Simulation Truth Boundary**: All device identities, serials, CPIDs/BDIDs, battery health telemetry, and firmware URLs come strictly from live USB hardware descriptors, `irecovery`/`libimobiledevice`, `adb`/`fastboot`, Samsung `AT+DEVCONINFO`, and live Apple IPSW.me APIs — never mocked or fabricated.
+- **150+ Apple Devices Mapped**: Full `CPID` + `BDID` hardware matrix from iPhone 2G through iPhone 16 Pro Max / iPhone 16e, iPad (1st Gen through iPad Pro M4, iPad Air M3, iPad A16, iPad mini A17 Pro), and iPod touch (5th–7th Gen) across Normal, Recovery (`05ac:1281`), and DFU (`05ac:1227`) modes.
+- **20+ Android OEMs & Bare-Metal Bootloaders**: Deep USB interface descriptor inspection (`ff/42/01` ADB, `ff/42/03` Fastboot, `06/01/01` MTP/PTP, `02/02` CDC ACM) supporting Samsung (`04e8`), Google Pixel (`18d1`), Motorola (`22b8`), Xiaomi/POCO (`2717`), OnePlus/OPPO/Realme (`22d9`/`2a70`), Nothing (`2b4c`), Sony (`0fce`), ASUS (`0b05`), LG (`1004`), HTC (`0bb4`), Huawei/Honor (`12d1`), ZTE/RedMagic (`19d2`), Lenovo (`17ef`), TCL / Alcatel / T-Mobile REVVL (`1bbb`), Fairphone (`2ae5`), Qualcomm EDL 9008 (`05c6`), MediaTek BROM/Preloader (`0e8d`), and Unisoc/Spreadtrum FDL (`1782`).
+- **Broad OS Compatibility**:
+  - **macOS**: Universal 2 (`arm64` + `x86_64`) native app supporting **macOS 12.0 Monterey and newer** (`LSMinimumSystemVersion = 12.0`).
+  - **Windows**: Windows 10 (1809+) & Windows 11 (`x64`) via MSI, NSIS, WinGet, and Microsoft Store MSIX (`AppxManifest.xml` with `usb` and `serialcommunication` capabilities).
+  - **Linux**: Universal `AppDir`/tarball, Debian `.deb`, RPM, Flatpak/AppStream (`com.bobbyblanco.bobfwtools.metainfo.xml`), Snap (`snapcraft.yaml`), and `99-bobfwtools-devices.rules` `udev` rules.
+
+---
+
+## ⚡ Quick Start & Build Commands
+
+### 1. Native macOS Studio (`BobFWTools.app` — macOS 12.0+)
 ```bash
-rm -rf /tmp/swift-module-cache && ./build_app.sh
+# Build Universal 2 (x86_64 + arm64) Owner & Store Submission bundles
+rm -rf /tmp/swift-module-cache && cd bobbys-workshop && ./build_app.sh
+
+# Launch installed app
+open /Applications/BobFWTools.app
 ```
-Produces:
-- `/Applications/BobFWTools.app`
-- `dist/Owner-Private-Only/BobFWTools-Owner-Private-macOS.zip`
-- `dist/Store-Submission/BobFWTools-Store-Submission-macOS.zip`
+Outputs:
+- Installed Runtime: `/Applications/BobFWTools.app`
+- Owner Standalone Archive: `bobbys-workshop/dist/Owner-Private-Only/BobFWTools-Owner-Private-macOS.zip`
+- Mac App Store Submission Archive (`-DSTORE_EDITION`): `bobbys-workshop/dist/Store-Submission/BobFWTools-Store-Submission-macOS.zip`
 
-### Rust `bootforgeusb` Engine
+### 2. Native Rust `bootforgeusb` CLI Scanner
 ```bash
-cd libs/bootforgeusb
-cargo test
+cd bobbys-workshop/libs/bootforgeusb
 cargo build --release --bin bootforgeusb
+./target/release/bootforgeusb scan
 ```
 
-### Cross-Platform Tauri / Node Qualification
+### 3. Cross-Platform Tauri Desktop Build (Windows / Linux / macOS)
 ```bash
+cd bobbys-workshop
 npm install
-npm run verify:reality
-npm run bobfw:check
 npm run bobfw:test
-npm run tauri:build:macos
-npm run tauri:build:windows
+npm run tauri:build:windows   # Windows MSI + NSIS
+npm run tauri:build:macos     # macOS Universal
 ```
 
-### Store Packaging Assets (`store_packaging/`)
-- `store_packaging/macos/AppIcon.icns` — Multi-resolution macOS icon (`16x16` to `512x512@2x`)
-- `Resources/AppIcon_1024.png` & `Resources/SplashHero.png` — Studio launch splash & hero assets
-- `store_packaging/windows/AppxManifest.xml` & `BobbyBlanco.BobFWToolsStudio.yaml` — Microsoft Store MSIX & WinGet manifests
-- `store_packaging/linux/99-bobfwtools-devices.rules`, `snapcraft.yaml`, `com.bobbyblanco.bobfwtools.metainfo.xml`, `build_linux_package.sh` — Linux store & `udev` packaging
+### 4. Linux Package & `udev` Hardware Rules Installation
+```bash
+# Build Linux Universal AppDir bundle
+./store_packaging/linux/build_linux_package.sh
+
+# Install udev rules for non-root USB/Fastboot/EDL/BROM/Recovery access
+sudo cp store_packaging/linux/99-bobfwtools-devices.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+### 5. Python CLI / GUI & Rust Core Workspace
+```bash
+# Python CLI & Tests
+python3 main.py --help
+python3 -m pytest tests/
+
+# Rust Phoenix Core Crates
+cargo build -p phoenix-core -p phoenix-safety -p phoenix-fs-fat32 -p phoenix-host-linux -p phoenix-host-macos -p phoenix-bootloader-core -p phoenix-wim
+cargo test -p phoenix-core -p phoenix-safety -p phoenix-fs-fat32 -p phoenix-host-linux -p phoenix-host-macos -p phoenix-bootloader-core -p phoenix-wim
+```
+
+---
+
+## 📄 License
+
+- **Phoenix Core & BobFWTools Studio** — Licensed under the MIT License (© 2026 Bobby Blanco — Bobby's Workshop).
+- **OpenCore Legacy Patcher** — BSD 2-Clause.

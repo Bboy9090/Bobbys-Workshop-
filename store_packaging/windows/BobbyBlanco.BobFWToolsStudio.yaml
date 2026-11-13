@@ -7,7 +7,7 @@ PublisherUrl: https://github.com/Bboy9090/PhoenixCore-
 PackageName: BobFWTools Studio
 License: MIT
 ShortDescription: Cross-platform mobile hardware diagnostics, USB telemetry, and firmware workbench for Windows, macOS, and Linux.
-Description: BobFWTools Studio (Phoenix Forge) provides native BootForge USB descriptor enumeration, Apple iPhone/iPad (Normal/Recovery/DFU) and 20+ Android OEM hardware diagnostics, MTP file transfer, and ADB/Fastboot/Heimdall servicing.
+Description: BobFWTools Studio (Bobby's Workshop) provides native BootForge USB descriptor enumeration, Apple iPhone/iPad (Normal/Recovery/DFU) and 20+ Android OEM hardware diagnostics, MTP file transfer, and ADB/Fastboot/Heimdall servicing.
 Tags:
   - usb
   - diagnostics

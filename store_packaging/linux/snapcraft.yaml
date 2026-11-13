@@ -1,7 +1,7 @@
 name: bobfwtools
 base: core22
 version: '5.0.0'
-summary: Phoenix Forge Mobile Hardware, USB Telemetry & Firmware Workbench
+summary: Bobby's Workshop Mobile Hardware, USB Telemetry & Firmware Workbench
 description: |
   BobFWTools Studio provides native USB descriptor enumeration (BootForge USB),
   Apple iOS/iPadOS (Normal, Recovery, DFU) and 20+ Android OEM hardware diagnostics,
