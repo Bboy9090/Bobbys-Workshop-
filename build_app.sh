@@ -76,13 +76,13 @@ cat > "${CONTENTS_DIR}/Info.plist" <<PLIST_EOF
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.utilities</string>
     <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
+    <string>12.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
     <key>NSHumanReadableCopyright</key>
-    <string>Copyright © 2026 Bobby's Workshop — Phoenix Forge. All rights reserved.</string>
+    <string>Copyright © 2026 BobFWTools Studio — Bobby's Workshop. All rights reserved.</string>
     <key>NSUSBUsageDescription</key>
     <string>BobFWTools communicates with connected USB mobile devices for hardware diagnostics, telemetry verification, and authorized firmware servicing.</string>
     <key>NSDownloadsFolderUsageDescription</key>
@@ -189,6 +189,12 @@ echo "[2/5] Installing AppIcon.icns & Bundled Resources..."
 if [ -f "${PROJECT_DIR}/store_packaging/macos/AppIcon.icns" ]; then
     cp "${PROJECT_DIR}/store_packaging/macos/AppIcon.icns" "${RESOURCES_DIR}/AppIcon.icns"
 fi
+if [ -f "${PROJECT_DIR}/Resources/AppIcon_1024.png" ]; then
+    cp "${PROJECT_DIR}/Resources/AppIcon_1024.png" "${RESOURCES_DIR}/AppIcon_1024.png"
+fi
+if [ -f "${PROJECT_DIR}/Resources/SplashHero.png" ]; then
+    cp "${PROJECT_DIR}/Resources/SplashHero.png" "${RESOURCES_DIR}/SplashHero.png"
+fi
 if [ -f "${PROJECT_DIR}/Resources/chipset_signatures.json" ]; then
     cp "${PROJECT_DIR}/Resources/chipset_signatures.json" "${RESOURCES_DIR}/chipset_signatures.json"
 fi
@@ -215,7 +221,7 @@ if [ -f "${FRAMEWORKS_DIR}/libusb-1.0.0.dylib" ] && [ -f "${MACOS_DIR}/bootforge
     install_name_tool -change "/usr/local/opt/libusb/lib/libusb-1.0.0.dylib" "@executable_path/../Frameworks/libusb-1.0.0.dylib" "${MACOS_DIR}/bootforgeusb" 2>/dev/null || true
 fi
 
-for TOOL in adb fastboot heimdall; do
+for TOOL in adb fastboot heimdall samloader; do
     if [ -f "${PROJECT_DIR}/tools/${TOOL}" ]; then
         cp "${PROJECT_DIR}/tools/${TOOL}" "${MACOS_DIR}/${TOOL}"
         chmod +x "${MACOS_DIR}/${TOOL}"
@@ -225,26 +231,44 @@ for TOOL in adb fastboot heimdall; do
     fi
 done
 
+if [ -f "${PROJECT_DIR}/tools/payload_dumper.py" ]; then
+    cp "${PROJECT_DIR}/tools/payload_dumper.py" "${RESOURCES_DIR}/payload_dumper.py"
+    chmod +x "${RESOURCES_DIR}/payload_dumper.py"
+fi
+
 echo "[4/5] Compiling Swift sources into Universal 2 (x86_64 + arm64) native macOS binary..."
+rm -rf "${BUILD_ROOT}/Sources"
+cp -R -X "${PROJECT_DIR}/Sources" "${BUILD_ROOT}/Sources"
 swiftc \
     -O \
-    -module-cache-path /tmp/swift-module-cache \
-    -target x86_64-apple-macos14.0 \
+    -j 4 \
+    -module-cache-path /tmp/swift-module-cache-x86_64 \
+    -target x86_64-apple-macos12.0 \
     -parse-as-library \
-    "${PROJECT_DIR}/Sources/ServicingEngine.swift" \
-    "${PROJECT_DIR}/Sources/MainViews.swift" \
-    "${PROJECT_DIR}/Sources/AppMain.swift" \
-    -o "${MACOS_DIR}/${EXEC_NAME}_x86_64"
+    "${BUILD_ROOT}/Sources/DeviceMasterRegistry.swift" \
+    "${BUILD_ROOT}/Sources/ServicingEngine.swift" \
+    "${BUILD_ROOT}/Sources/RivalWorkflowsViews.swift" \
+    "${BUILD_ROOT}/Sources/MainViews.swift" \
+    "${BUILD_ROOT}/Sources/AppMain.swift" \
+    -o "${MACOS_DIR}/${EXEC_NAME}_x86_64" &
+PID_OWNER_X86=$!
 
 swiftc \
     -O \
-    -module-cache-path /tmp/swift-module-cache \
-    -target arm64-apple-macos14.0 \
+    -j 4 \
+    -module-cache-path /tmp/swift-module-cache-arm64 \
+    -target arm64-apple-macos12.0 \
     -parse-as-library \
-    "${PROJECT_DIR}/Sources/ServicingEngine.swift" \
-    "${PROJECT_DIR}/Sources/MainViews.swift" \
-    "${PROJECT_DIR}/Sources/AppMain.swift" \
-    -o "${MACOS_DIR}/${EXEC_NAME}_arm64"
+    "${BUILD_ROOT}/Sources/DeviceMasterRegistry.swift" \
+    "${BUILD_ROOT}/Sources/ServicingEngine.swift" \
+    "${BUILD_ROOT}/Sources/RivalWorkflowsViews.swift" \
+    "${BUILD_ROOT}/Sources/MainViews.swift" \
+    "${BUILD_ROOT}/Sources/AppMain.swift" \
+    -o "${MACOS_DIR}/${EXEC_NAME}_arm64" &
+PID_OWNER_ARM=$!
+
+wait "${PID_OWNER_X86}"
+wait "${PID_OWNER_ARM}"
 
 lipo -create -output "${MACOS_DIR}/${EXEC_NAME}" "${MACOS_DIR}/${EXEC_NAME}_x86_64" "${MACOS_DIR}/${EXEC_NAME}_arm64"
 rm -f "${MACOS_DIR}/${EXEC_NAME}_x86_64" "${MACOS_DIR}/${EXEC_NAME}_arm64"
@@ -258,7 +282,7 @@ xattr -d com.apple.fileprovider.fpfs#P "${APP_BUNDLE}" 2>/dev/null || true
 if [ -f "${FRAMEWORKS_DIR}/libusb-1.0.0.dylib" ]; then
     codesign --force --sign - --options runtime "${FRAMEWORKS_DIR}/libusb-1.0.0.dylib"
 fi
-for TOOL in bootforgeusb adb fastboot heimdall; do
+for TOOL in bootforgeusb adb fastboot heimdall samloader; do
     if [ -f "${MACOS_DIR}/${TOOL}" ]; then
         codesign --force --sign - --options runtime "${MACOS_DIR}/${TOOL}"
     fi
@@ -304,25 +328,36 @@ cp -R "${APP_BUNDLE}" "${STORE_BUNDLE}"
 
 swiftc \
     -O \
-    -module-cache-path /tmp/swift-module-cache \
+    -j 4 \
+    -module-cache-path /tmp/swift-module-cache-x86_64 \
     -DSTORE_EDITION \
-    -target x86_64-apple-macos14.0 \
+    -target x86_64-apple-macos12.0 \
     -parse-as-library \
-    "${PROJECT_DIR}/Sources/ServicingEngine.swift" \
-    "${PROJECT_DIR}/Sources/MainViews.swift" \
-    "${PROJECT_DIR}/Sources/AppMain.swift" \
-    -o "${STORE_BUNDLE}/Contents/MacOS/${EXEC_NAME}_x86_64"
+    "${BUILD_ROOT}/Sources/DeviceMasterRegistry.swift" \
+    "${BUILD_ROOT}/Sources/ServicingEngine.swift" \
+    "${BUILD_ROOT}/Sources/RivalWorkflowsViews.swift" \
+    "${BUILD_ROOT}/Sources/MainViews.swift" \
+    "${BUILD_ROOT}/Sources/AppMain.swift" \
+    -o "${STORE_BUNDLE}/Contents/MacOS/${EXEC_NAME}_x86_64" &
+PID_STORE_X86=$!
 
 swiftc \
     -O \
-    -module-cache-path /tmp/swift-module-cache \
+    -j 4 \
+    -module-cache-path /tmp/swift-module-cache-arm64 \
     -DSTORE_EDITION \
-    -target arm64-apple-macos14.0 \
+    -target arm64-apple-macos12.0 \
     -parse-as-library \
-    "${PROJECT_DIR}/Sources/ServicingEngine.swift" \
-    "${PROJECT_DIR}/Sources/MainViews.swift" \
-    "${PROJECT_DIR}/Sources/AppMain.swift" \
-    -o "${STORE_BUNDLE}/Contents/MacOS/${EXEC_NAME}_arm64"
+    "${BUILD_ROOT}/Sources/DeviceMasterRegistry.swift" \
+    "${BUILD_ROOT}/Sources/ServicingEngine.swift" \
+    "${BUILD_ROOT}/Sources/RivalWorkflowsViews.swift" \
+    "${BUILD_ROOT}/Sources/MainViews.swift" \
+    "${BUILD_ROOT}/Sources/AppMain.swift" \
+    -o "${STORE_BUNDLE}/Contents/MacOS/${EXEC_NAME}_arm64" &
+PID_STORE_ARM=$!
+
+wait "${PID_STORE_X86}"
+wait "${PID_STORE_ARM}"
 
 lipo -create -output "${STORE_BUNDLE}/Contents/MacOS/${EXEC_NAME}" "${STORE_BUNDLE}/Contents/MacOS/${EXEC_NAME}_x86_64" "${STORE_BUNDLE}/Contents/MacOS/${EXEC_NAME}_arm64"
 rm -f "${STORE_BUNDLE}/Contents/MacOS/${EXEC_NAME}_x86_64" "${STORE_BUNDLE}/Contents/MacOS/${EXEC_NAME}_arm64"
@@ -332,7 +367,7 @@ xattr -c "${STORE_BUNDLE}" 2>/dev/null || true
 xattr -cr "${STORE_BUNDLE}" 2>/dev/null || true
 xattr -d com.apple.FinderInfo "${STORE_BUNDLE}" 2>/dev/null || true
 xattr -d com.apple.fileprovider.fpfs#P "${STORE_BUNDLE}" 2>/dev/null || true
-for TOOL in bootforgeusb adb fastboot heimdall; do
+for TOOL in bootforgeusb adb fastboot heimdall samloader; do
     if [ -f "${STORE_BUNDLE}/Contents/MacOS/${TOOL}" ]; then
         codesign --force --sign - --options runtime --entitlements "${ENTITLEMENTS_HELPER_PLIST}" "${STORE_BUNDLE}/Contents/MacOS/${TOOL}"
     fi

@@ -13,8 +13,6 @@ enum StudioModule: String, CaseIterable, Identifiable {
     case multiBrandRecovery = "MTK / SPD / EDL & Multi-Brand"
     case fastboot = "Fastboot & Partitions"
     case developerWorkbench = "Developer Workbench & Logcat"
-    case dualPlatform = "Dual-Platform Workbench"
-    case splitPaneDashboard = "Hardware Split-Pane Console"
     case firmware = "Firmware & Inventory Ledger"
     case apple = "Apple / iDevice Recovery"
     case jobsAndBridge = "Audit Jobs, Notes & VM Bridge"
@@ -29,12 +27,24 @@ enum StudioModule: String, CaseIterable, Identifiable {
         case .multiBrandRecovery: return "wrench.and.screwdriver.fill"
         case .fastboot: return "bolt.horizontal.circle.fill"
         case .developerWorkbench: return "terminal.fill"
-        case .dualPlatform: return "rectangle.split.2x1.fill"
-        case .splitPaneDashboard: return "play.terminal.fill"
         case .firmware: return "shippingbox.fill"
         case .apple: return "iphone"
         case .jobsAndBridge: return "checkmark.shield.fill"
         }
+    }
+}
+
+enum StudioTheme {
+    static let turboBlue = Color(red: 0.0, green: 0.40, blue: 1.0)             // #0066FF
+    static let skyCyan = Color(red: 0.0, green: 0.72, blue: 1.0)               // #00B8FF
+    static let voltGold = Color(red: 1.0, green: 0.62, blue: 0.04)             // #FF9F0A
+    static let signalGreen = Color(red: 0.06, green: 0.73, blue: 0.51)         // #10B981
+
+    static func bundleImage(_ resourceName: String) -> NSImage? {
+        if let url = Bundle.main.url(forResource: resourceName, withExtension: "png") {
+            return NSImage(contentsOf: url)
+        }
+        return nil
     }
 }
 
@@ -46,8 +56,13 @@ struct MainStudioView: View {
     var body: some View {
         VStack(spacing: 0) {
             TopHardwareBar(engine: engine)
+            LiveOperationTrackerBanner(engine: engine)
             if let modemInfo = engine.samsungModemInfo {
                 SamsungLiveIdentityBanner(info: modemInfo)
+            } else if engine.activePlatform == .appleIos || engine.detectedAppleMode != .none {
+                AppleLiveIdentityBanner(engine: engine) {
+                    selectedModule = .apple
+                }
             }
             Divider()
 
@@ -55,11 +70,18 @@ struct MainStudioView: View {
                 // Left Navigation + Active Module Workspace
                 HStack(spacing: 0) {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("BOBFWTOOLS WORKSPACE")
-                            .font(.caption2.weight(.bold))
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 12)
-                            .padding(.top, 10)
+                        HStack(spacing: 6) {
+                            Image(systemName: "bolt.fill")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(StudioTheme.voltGold)
+                            Text("BOBFWTOOLS WORKSPACE")
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .tracking(0.9)
+                                .foregroundColor(StudioTheme.turboBlue)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.top, 12)
+                        .padding(.bottom, 2)
 
                         ForEach(StudioModule.allCases) { module in
                             let isTargetMatched: Bool = {
@@ -71,38 +93,47 @@ struct MainStudioView: View {
                                 default: return true
                                 }
                             }()
+                            let isSelected = selectedModule == module
 
                             Button {
                                 selectedModule = module
                             } label: {
                                 HStack(spacing: 8) {
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(isSelected ? StudioTheme.turboBlue : Color.clear)
+                                        .frame(width: 3.5, height: 18)
+
                                     Image(systemName: module.icon)
                                         .frame(width: 18)
-                                        .foregroundColor(isTargetMatched ? (selectedModule == module ? .accentColor : .primary) : .secondary.opacity(0.6))
+                                        .foregroundColor(isSelected ? StudioTheme.turboBlue : (isTargetMatched ? .primary : .secondary.opacity(0.6)))
                                     Text(module.rawValue)
-                                        .font(.system(size: 12.5, weight: selectedModule == module ? .semibold : .regular))
+                                        .font(.system(size: 12.5, weight: isSelected ? .semibold : .regular))
                                         .lineLimit(1)
                                     Spacer()
                                     if isTargetMatched && engine.activePlatform != .none && [.samsung, .apple, .fastboot].contains(module) {
-                                        Text("ACTIVE")
+                                        Text("LIVE")
                                             .font(.system(size: 8.5, weight: .bold, design: .monospaced))
                                             .padding(.horizontal, 5)
                                             .padding(.vertical, 1.5)
-                                            .background(RoundedRectangle(cornerRadius: 3).fill(Color.green.opacity(0.2)))
-                                            .foregroundColor(.green)
+                                            .background(RoundedRectangle(cornerRadius: 4).fill(StudioTheme.signalGreen.opacity(0.18)))
+                                            .foregroundColor(StudioTheme.signalGreen)
                                     } else if !isTargetMatched && [.samsung, .apple].contains(module) {
-                                        Text("INACTIVE")
+                                        Text("READY")
                                             .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                                            .foregroundColor(.secondary.opacity(0.6))
+                                            .foregroundColor(.secondary.opacity(0.55))
                                     }
                                 }
-                                .padding(.horizontal, 10)
+                                .padding(.horizontal, 8)
                                 .padding(.vertical, 7)
                                 .background(
                                     RoundedRectangle(cornerRadius: 8)
-                                        .fill(selectedModule == module ? Color.accentColor.opacity(0.18) : Color.clear)
+                                        .fill(isSelected ? StudioTheme.turboBlue.opacity(0.14) : Color.clear)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(isSelected ? StudioTheme.turboBlue.opacity(0.32) : Color.clear, lineWidth: 1)
+                                        )
                                 )
-                                .foregroundColor(selectedModule == module ? .accentColor : (isTargetMatched ? .primary : .secondary.opacity(0.75)))
+                                .foregroundColor(isSelected ? StudioTheme.turboBlue : (isTargetMatched ? .primary : .secondary.opacity(0.75)))
                             }
                             .buttonStyle(.plain)
                         }
@@ -110,9 +141,15 @@ struct MainStudioView: View {
                         Spacer()
 
                         VStack(alignment: .leading, spacing: 5) {
-                            Text("NATIVE ENGINE STATUS")
-                                .font(.caption2.weight(.bold))
-                                .foregroundColor(.secondary)
+                            HStack(spacing: 5) {
+                                Circle()
+                                    .fill(StudioTheme.signalGreen)
+                                    .frame(width: 6, height: 6)
+                                Text("NATIVE HARDWARE ENGINES")
+                                    .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                                    .tracking(0.6)
+                                    .foregroundColor(.secondary)
+                            }
                             BackendBadge(name: "BootForge USB (rusb)", path: engine.bootforgeBinaryPath)
                             BackendBadge(name: "Samsung Modem (AT)", path: engine.selectedSerialPort.isEmpty ? "/dev/cu.SAMSUNG_MDM" : engine.selectedSerialPort, isDeviceNode: true)
                             BackendBadge(name: "Android ADB", path: engine.toolPaths["adb"]!)
@@ -121,10 +158,14 @@ struct MainStudioView: View {
                             BackendBadge(name: "libimobiledevice", path: engine.toolPaths["ideviceinfo"]!)
                         }
                         .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color(NSColor.controlBackgroundColor)))
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color(NSColor.controlBackgroundColor))
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.08), lineWidth: 1))
+                        )
                     }
                     .padding(10)
-                    .frame(width: 245)
+                    .frame(width: 254)
                     .background(Color(NSColor.windowBackgroundColor))
 
                     Divider()
@@ -145,10 +186,6 @@ struct MainStudioView: View {
                                 FastbootWorkshopView(engine: engine)
                             case .developerWorkbench:
                                 DeveloperWorkbenchView(engine: engine)
-                            case .dualPlatform:
-                                DualPlatformWorkbenchView(engine: engine)
-                            case .splitPaneDashboard:
-                                UniversalSplitPaneDashboardView(engine: engine)
                             case .firmware:
                                 FirmwareInspectorView(engine: engine)
                             case .apple:
@@ -167,7 +204,10 @@ struct MainStudioView: View {
                     .frame(minWidth: 360, idealWidth: 430)
             }
         }
-        .frame(minWidth: 1180, minHeight: 760)
+        .frame(minWidth: 1180, minHeight: 740)
+        .sheet(isPresented: $engine.showAppleDfuHelperSheet) {
+            AppleDfuHelperSheet(engine: engine)
+        }
     }
 }
 
@@ -178,25 +218,35 @@ struct TopHardwareBar: View {
 
     var gradeColor: Color {
         switch engine.connectionGrade {
-        case "EXCELLENT": return .green
-        case "USABLE": return .blue
-        case "NONE": return .orange
+        case "EXCELLENT": return StudioTheme.signalGreen
+        case "USABLE": return StudioTheme.turboBlue
+        case "NONE": return StudioTheme.voltGold
         default: return .secondary
         }
     }
 
     var body: some View {
         HStack(spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "flame.circle.fill")
-                    .font(.system(size: 22))
-                    .foregroundColor(.accentColor)
+            HStack(spacing: 10) {
+                if let icon = StudioTheme.bundleImage("AppIcon_1024") {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 32, height: 32)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .shadow(color: StudioTheme.turboBlue.opacity(0.25), radius: 4, y: 1)
+                } else {
+                    Image(systemName: "bolt.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(StudioTheme.turboBlue)
+                }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("BobFWTools")
-                        .font(.system(size: 14, weight: .bold))
-                    Text("Bobby's Workshop — Phoenix Forge (macOS Native)")
-                        .font(.system(size: 10.5))
-                        .foregroundColor(.secondary)
+                    Text("BobFWTools Studio — Bobby's Workshop")
+                        .font(.system(size: 13.5, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary)
+                    Text("Mobile Diagnostics & Firmware Utility")
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundColor(StudioTheme.turboBlue)
                 }
             }
 
@@ -255,15 +305,15 @@ struct TopHardwareBar: View {
             if let match = engine.universalMatch {
                 HStack(spacing: 6) {
                     Image(systemName: match.platform.badgeIcon)
-                        .foregroundColor(.green)
+                        .foregroundColor(StudioTheme.signalGreen)
                     Text("MATCH: \(match.modelNumber) · \(match.securityBitOrIosVer) · Stock: \(match.stockFirmwareBuild) · CSC: \(match.carrierCscOrRegion.components(separatedBy: " ").first ?? "OPEN")")
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundColor(.green)
+                        .foregroundColor(StudioTheme.signalGreen)
                         .lineLimit(1)
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color.green.opacity(0.12)))
+                .background(RoundedRectangle(cornerRadius: 6).fill(StudioTheme.signalGreen.opacity(0.14)))
             }
 
             #if STORE_EDITION
@@ -271,22 +321,22 @@ struct TopHardwareBar: View {
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 6).fill((engine.isProUnlocked ? Color.purple : Color.orange).opacity(0.18)))
-                .foregroundColor(engine.isProUnlocked ? .purple : .orange)
+                .background(RoundedRectangle(cornerRadius: 6).fill((engine.isProUnlocked ? StudioTheme.turboBlue : StudioTheme.voltGold).opacity(0.16)))
+                .foregroundColor(engine.isProUnlocked ? StudioTheme.turboBlue : StudioTheme.voltGold)
             #else
-            Text("OWNER PRIVATE COPY · ALL UNLOCKED")
+            Text("BOBBY'S WORKSHOP · PRO UNLOCKED")
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color.purple.opacity(0.18)))
-                .foregroundColor(.purple)
+                .background(RoundedRectangle(cornerRadius: 6).fill(StudioTheme.turboBlue.opacity(0.16)))
+                .foregroundColor(StudioTheme.turboBlue)
             #endif
 
             Text("LINK: \(engine.connectionGrade)")
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 6).fill(gradeColor.opacity(0.18)))
+                .background(RoundedRectangle(cornerRadius: 6).fill(gradeColor.opacity(0.16)))
                 .foregroundColor(gradeColor)
 
             if engine.isBusy {
@@ -320,6 +370,55 @@ struct SamsungLiveIdentityBanner: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 6)
         .background(Color.green.opacity(0.08))
+    }
+}
+
+struct AppleLiveIdentityBanner: View {
+    @ObservedObject var engine: ServicingEngine
+    var onSelectAppleModule: (() -> Void)? = nil
+
+    private var targetTitle: String {
+        let dev = engine.devices.first { $0.transport == .ios }
+        if let name = dev?.name, !name.isEmpty { return name }
+        if !engine.lastObservedRecoveryProduct.isEmpty { return "Apple \(engine.lastObservedRecoveryProduct)" }
+        return "Apple iDevice"
+    }
+
+    private var targetSerial: String {
+        let dev = engine.devices.first { $0.transport == .ios }
+        return dev?.serial ?? (engine.deviceProperties["SerialNumber"] ?? "USB Serial Standby")
+    }
+
+    private var modeString: String {
+        engine.detectedAppleMode.rawValue
+    }
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Label("VERIFIED APPLE TARGET", systemImage: "applelogo")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(.indigo)
+
+            BannerPair(label: "Device", value: targetTitle)
+            BannerPair(label: "Mode", value: modeString)
+            BannerPair(label: "Identifier", value: engine.lastObservedRecoveryProduct.isEmpty ? (engine.deviceProperties["ProductType"] ?? "Apple iDevice") : engine.lastObservedRecoveryProduct)
+            BannerPair(label: "Serial/ECID", value: targetSerial)
+
+            Spacer()
+
+            if let onSelect = onSelectAppleModule {
+                Button("Open Apple Restorer") {
+                    onSelect()
+                }
+                .font(.system(size: 10.5, weight: .bold))
+                .buttonStyle(.borderedProminent)
+                .tint(.indigo)
+                .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .background(Color.indigo.opacity(0.08))
     }
 }
 
@@ -520,18 +619,104 @@ struct GuidedWorkflowWizardCard: View {
 
 // MARK: - Module 1: BobFWTools Connection Matrix & USB Cable Doctor
 
+struct StudioWorkbenchHeroBanner: View {
+    @ObservedObject var engine: ServicingEngine
+
+    var body: some View {
+        HStack(spacing: 14) {
+            if let icon = StudioTheme.bundleImage("AppIcon_1024") {
+                Image(nsImage: icon)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .shadow(color: StudioTheme.turboBlue.opacity(0.28), radius: 6, y: 2)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    Text("BobFWTools Studio — Bobby's Workshop")
+                        .font(.system(size: 13.5, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary)
+                    Text("HIGH-SPEED USB BENCH")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(StudioTheme.turboBlue.opacity(0.15)))
+                        .foregroundColor(StudioTheme.turboBlue)
+                }
+
+                HStack(spacing: 12) {
+                    Label(
+                        "\(engine.devices.count) Connected Device\(engine.devices.count == 1 ? "" : "s")",
+                        systemImage: engine.devices.isEmpty ? "cable.connector" : "checkmark.circle.fill"
+                    )
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(engine.devices.isEmpty ? StudioTheme.voltGold : StudioTheme.signalGreen)
+
+                    Text("·").foregroundColor(.secondary)
+
+                    Label("Link: \(engine.connectionGrade)", systemImage: "bolt.horizontal.fill")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundColor(StudioTheme.turboBlue)
+
+                    Text("·").foregroundColor(.secondary)
+
+                    Label("IOKit Hotplug Active", systemImage: "antenna.radiowaves.left.and.right")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer()
+
+            Button {
+                Task { await engine.refreshDevicesAndTelemetry() }
+            } label: {
+                Label("Quick Scan", systemImage: "bolt.fill")
+                    .font(.system(size: 11.5, weight: .semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(StudioTheme.turboBlue)
+            .controlSize(.small)
+            .disabled(engine.isBusy)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            StudioTheme.turboBlue.opacity(0.10),
+                            StudioTheme.skyCyan.opacity(0.05),
+                            Color(NSColor.controlBackgroundColor)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(StudioTheme.turboBlue.opacity(0.25), lineWidth: 1)
+        )
+    }
+}
+
 struct ConnectionMatrixAndDoctorView: View {
     @ObservedObject var engine: ServicingEngine
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
+            StudioWorkbenchHeroBanner(engine: engine)
+
             ModuleHeader(
                 title: "BobFWTools Connection Matrix & USB Cable Doctor",
                 subtitle: "Real-time BootForge USB descriptor enumeration, Device Intake Hub, 1/2/3-click autonomous workflows, and hardware diagnostics"
             )
 
             // High-Vibe Clean Shop Dashboard: Device Intake Hub (Conditional Connected vs. Line Empty UI + AES-GCM Encrypted History)
-// High-Vibe Clean Shop Dashboard: Device Intake Hub (Conditional Connected vs. Line Empty UI + AES-GCM Encrypted History)
             DeviceIntakeHubCard(engine: engine)
 
             // Universal Multi-Platform Firmware & Carrier Match Card
@@ -579,13 +764,53 @@ struct ConnectionMatrixAndDoctorView: View {
                             }
                         }
 
-                        Text("Partition Table / PIT: \(match.partitionTableOrPit) · Match Status: \(match.isAntiRollbackSafe ? "Anti-Rollback Verified (Safe)" : "Review Required") [\(match.isFallbackSynthesized ? "Fallback Matrix Synthesized" : "Local Disk Mapped")]")
+                        Text("Partition Table / PIT: \(match.partitionTableOrPit) · Match Status: \(match.isAntiRollbackSafe ? "Anti-Rollback Verified (Safe)" : "Review Required") [\(match.isFallbackSynthesized ? "Registry Profile Matched" : "Local Disk Mapped")]")
                             .font(.system(size: 10.5, design: .monospaced))
                             .foregroundColor(.secondary)
+
+                        if !match.hardwareTestCode.isEmpty || match.fastbootdSupported || !match.controlCapabilities.isEmpty {
+                            Divider()
+                            HStack(spacing: 8) {
+                                if !match.hardwareTestCode.isEmpty {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "number.circle.fill")
+                                            .foregroundColor(.cyan)
+                                        Text("DIAG: \(match.hardwareTestCode)")
+                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                            .foregroundColor(.cyan)
+                                    }
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.cyan.opacity(0.12)))
+                                }
+                                if match.fastbootdSupported {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "cube.transparent.fill")
+                                            .foregroundColor(.purple)
+                                        Text("FASTBOOTD READY")
+                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                            .foregroundColor(.purple)
+                                    }
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.purple.opacity(0.12)))
+                                }
+                                Spacer()
+                            }
+                        }
                     }
                     .padding(8)
                 }
             }
+
+            // Universal Multi-Brand Device Control Hub
+            UniversalDeviceControlHubCard(engine: engine)
+
+            // ReiBoot-Style 3-Track Bootloop & Recovery Rescue Center
+            UnifiedBootloopRescueCenterCard(engine: engine)
+
+            // Interactive Rival Workflows Directory & Portal Hub
+            RivalWorkflowsDirectoryCard(engine: engine)
 
             // 1 / 2 / 3-Click Autonomous Workflows Card
             GroupBox(label: Label("1 / 2 / 3-Click Autonomous Diagnostic & Preflight Workflows", systemImage: "sparkles.rectangle.stack.fill")) {
@@ -1345,7 +1570,7 @@ struct OwnerProVaultView: View {
                         Spacer()
                         Text("USB Mode: \(engine.appleModeStatusBadge)")
                             .font(.caption.bold().monospaced())
-                            .foregroundColor(engine.appleModeStatusBadge.contains("RECOVERY") ? .orange : (engine.appleModeStatusBadge.contains("NORMAL") ? .green : .secondary))
+                            .foregroundColor(engine.appleModeStatusBadge.contains("RESTORE") ? .cyan : (engine.appleModeStatusBadge.contains("RECOVERY") ? .orange : (engine.appleModeStatusBadge.contains("NORMAL") ? .green : .secondary)))
                     }
 
                     HStack(spacing: 8) {
@@ -1382,6 +1607,16 @@ struct OwnerProVaultView: View {
                     }
 
                     HStack(spacing: 8) {
+                        Button {
+                            if let path = pickFile(allowedExtensions: ["ipsw"]) {
+                                Task { await engine.restoreAppleDeviceWithIpsw(path: path, keepData: false) }
+                            }
+                        } label: {
+                            Label("1-Click IPSW Restore...", systemImage: "play.circle.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.indigo)
+
                         Button("Read DFU / Recovery (irecovery -q)") {
                             Task {
                                 _ = await engine.executeAndLog(
@@ -1391,6 +1626,10 @@ struct OwnerProVaultView: View {
                                     arguments: ["-q"]
                                 )
                             }
+                        }
+
+                        Button("Reboot Target") {
+                            Task { await engine.rebootAppleRestoreDevice() }
                         }
 
                         Button("Check MDM / Supervision") {
@@ -1408,11 +1647,12 @@ struct OwnerProVaultView: View {
                             engine.showAppleDfuGuide()
                         }
 
-                        Button("Inspect Local .IPSW Package...") {
-                            if let path = pickFile(allowedExtensions: ["ipsw", "zip"]) {
-                                Task { _ = await engine.inspectFirmwareFile(at: path) }
-                            }
+                        Button {
+                            engine.exportCustomerRepairReceipt()
+                        } label: {
+                            Label("Intake Certificate", systemImage: "doc.badge.arrow.up.fill")
                         }
+                        .buttonStyle(.bordered)
                     }
                 }
                 .padding(8)
@@ -1484,7 +1724,7 @@ struct OwnerProVaultView: View {
             }
 
             // Section 3.5: Phoenix Sanctum — Root Privilege, Silicon Fuse & Hash-Chained Shadow Ledger
-            GroupBox(label: Label("Phoenix Sanctum — Root Privilege, Silicon Fuse & Hash-Chained Shadow Ledger", systemImage: "lock.trianglebadge.exclamationmark.fill")) {
+            GroupBox(label: Label("BobFWTools Security & Silicon Audit — Root, Fuse & Shadow Ledger", systemImage: "lock.trianglebadge.exclamationmark.fill")) {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Live privilege vector detection (Magisk / KernelSU / APatch / SELinux / AVB vbmeta), silicon fuse posture, and SHA-256 tamper-evident hash chain:")
                         .font(.caption)
@@ -1494,7 +1734,7 @@ struct OwnerProVaultView: View {
                         Button {
                             Task { await engine.runPhoenixSanctumRootAndSiliconAudit() }
                         } label: {
-                            Label("Run Phoenix Sanctum Privilege & Silicon Audit", systemImage: "cpu.fill")
+                            Label("Run Privilege & Silicon Fuse Audit", systemImage: "cpu.fill")
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.purple)
@@ -1566,6 +1806,1595 @@ struct OwnerProVaultView: View {
 
 // MARK: - Module 2: BobFWTools Samsung Servicing & Odin Planner
 
+struct SamsungCloudFirmwareHubCard: View {
+    @ObservedObject var engine: ServicingEngine
+
+    var body: some View {
+        GroupBox(label: Label("Autonomous 1-Click Samsung Cloud Firmware & Odin Flasher", systemImage: "bolt.shield.fill")) {
+            VStack(alignment: .leading, spacing: 14) {
+                // Header & Hardware Identity
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(targetModelTitle)
+                                .font(.system(size: 13, weight: .bold))
+                            Text(deviceModeBadge)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .background(RoundedRectangle(cornerRadius: 4).fill(Color.blue.opacity(0.18)))
+                                .foregroundColor(.blue)
+                        }
+                        Text("Serial: \(targetSerial) · Current Binary: \(targetPda) · \(targetBit)")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Button {
+                        Task { await engine.querySamsungCloudFirmwares() }
+                    } label: {
+                        if engine.isFirmwareQuerying {
+                            ProgressView()
+                                .controlSize(.small)
+                                .padding(.trailing, 2)
+                        }
+                        Label("Auto-Detect & Query Cloud Firmwares", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(engine.isFirmwareQuerying || engine.isFirmwareDownloading || engine.isFirmwareFlashing)
+                }
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.accentColor.opacity(0.06)))
+
+                // Manual Samsung Model & CSC Lookup Bar (Works Without Attached Device)
+                HStack(spacing: 8) {
+                    Text("Manual Lookup:")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                    TextField("Model (e.g. SM-S928U)", text: $engine.manualSamsungModelLookupInput)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11, design: .monospaced))
+                        .frame(width: 170)
+                    TextField("CSC (XAA)", text: $engine.manualSamsungCscLookupInput)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11, design: .monospaced))
+                        .frame(width: 90)
+                    Button("Lookup Cloud FUS") {
+                        Task { await engine.querySamsungCloudFirmwares() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(engine.isFirmwareQuerying)
+                    Spacer()
+                }
+
+                // Firmware Recommendations & Selection Panel
+                if engine.samsungCloudFirmwares.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("No cloud firmwares queried yet.")
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundColor(.secondary)
+                        Text("Click 'Auto-Detect & Query Cloud Firmwares' to search Samsung Official FUS servers across all compatible carriers (TFN, VZW, XAA, etc.) and check local downloads.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(8)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Official Stock Firmware Candidates (User Selectable — Recommended Pre-Selected):")
+                                .font(.system(size: 11.5, weight: .bold))
+                            Spacer()
+                            Text("\(engine.samsungCloudFirmwares.count) options found")
+                                .font(.system(size: 10.5, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+
+                        ScrollView(.vertical, showsIndicators: true) {
+                            VStack(spacing: 8) {
+                                ForEach(engine.samsungCloudFirmwares) { cand in
+                                    let isSelected = engine.selectedCloudFirmware?.id == cand.id
+                                    Button {
+                                        engine.selectedCloudFirmware = cand
+                                    } label: {
+                                        HStack(alignment: .top, spacing: 10) {
+                                            Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                                                .font(.system(size: 14))
+                                                .foregroundColor(isSelected ? .accentColor : .secondary)
+                                                .padding(.top, 2)
+
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                HStack(spacing: 8) {
+                                                    Text(cand.pda)
+                                                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                                        .foregroundColor(.primary)
+
+                                                    Text(cand.region)
+                                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                                        .padding(.horizontal, 5)
+                                                        .padding(.vertical, 1)
+                                                        .background(RoundedRectangle(cornerRadius: 3).fill(Color.orange.opacity(0.18)))
+                                                        .foregroundColor(.orange)
+
+                                                    if cand.isRecommended {
+                                                        Text("★ RECOMMENDED (Bit U:1 Safe)")
+                                                            .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                                                            .padding(.horizontal, 6)
+                                                            .padding(.vertical, 1)
+                                                            .background(RoundedRectangle(cornerRadius: 3).fill(Color.green.opacity(0.2)))
+                                                            .foregroundColor(.green)
+                                                    }
+
+                                                    Spacer()
+
+                                                    if cand.localFilesExist {
+                                                        Label("Verified on Mac", systemImage: "checkmark.seal.fill")
+                                                            .font(.system(size: 10, weight: .bold))
+                                                            .foregroundColor(.green)
+                                                    } else {
+                                                        Label("Samsung Cloud (~6.4 GB)", systemImage: "icloud.and.arrow.down")
+                                                            .font(.system(size: 10))
+                                                            .foregroundColor(.secondary)
+                                                    }
+                                                }
+
+                                                Text("\(cand.regionLabel) · CSC: \(cand.csc) · Target: \(cand.androidTarget)")
+                                                    .font(.system(size: 11))
+                                                    .foregroundColor(.secondary)
+
+                                                if cand.localFilesExist {
+                                                    Text("Location: \(cand.localFolderPath)")
+                                                        .font(.system(size: 9.5, design: .monospaced))
+                                                        .foregroundColor(.secondary.opacity(0.8))
+                                                        .lineLimit(1)
+                                                }
+                                            }
+                                        }
+                                        .padding(10)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .fill(isSelected ? Color.accentColor.opacity(0.08) : Color(NSColor.controlBackgroundColor))
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 8)
+                                                        .stroke(isSelected ? Color.accentColor : Color.secondary.opacity(0.2), lineWidth: isSelected ? 1.5 : 1)
+                                                )
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                        .frame(maxHeight: 220)
+                    }
+                }
+
+                Divider()
+
+                // 1-Click Action & Live Progress
+                if let selected = engine.selectedCloudFirmware {
+                    VStack(alignment: .leading, spacing: 10) {
+                        // Data-Preserving Bootloop Recovery & Baseband EFS Guard
+                        HStack(spacing: 14) {
+                            Toggle(isOn: $engine.preserveUserDataBootloopFix) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 6) {
+                                        Text("Non-Destructive Bootloop Recovery (HOME_CSC)")
+                                            .font(.system(size: 11, weight: .bold))
+                                        Text(engine.preserveUserDataBootloopFix ? "PRESERVE 100% PHOTOS & APPS" : "FACTORY DATA WIPE (CSC)")
+                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1)
+                                            .background(RoundedRectangle(cornerRadius: 3).fill(engine.preserveUserDataBootloopFix ? Color.green.opacity(0.2) : Color.red.opacity(0.2)))
+                                            .foregroundColor(engine.preserveUserDataBootloopFix ? .green : .red)
+                                    }
+                                    Text(engine.preserveUserDataBootloopFix ? "Reinstalls corrupted system partitions without touching user pictures, contacts, or apps." : "Full factory clean install: wipes all userdata and re-partitions device.")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .toggleStyle(.checkbox)
+
+                            Spacer()
+
+                            Button {
+                                Task { _ = await engine.backupSamsungEfsAndCalibration() }
+                            } label: {
+                                Label("🛡️ EFS & Radio Snapshot", systemImage: "shield.lefthalf.filled")
+                                    .font(.system(size: 10.5, weight: .semibold))
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.03)))
+
+                        HStack(spacing: 12) {
+                            Button {
+                                Task { await engine.downloadAndFlashSelectedSamsungFirmware(candidate: selected) }
+                            } label: {
+                                if engine.isFirmwareDownloading || engine.isFirmwareFlashing {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                        .padding(.trailing, 4)
+                                }
+                                Label(
+                                    selected.localFilesExist ? "⚡ 1-Click Flash to Device (\(selected.pda))" : "⚡ 1-Click Download & Flash to Device (\(selected.pda))",
+                                    systemImage: selected.localFilesExist ? "flame.fill" : "arrow.down.circle.fill"
+                                )
+                                .font(.system(size: 12, weight: .bold))
+                                .padding(.vertical, 4)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(selected.localFilesExist ? .green : .blue)
+                            .disabled(engine.isFirmwareDownloading || engine.isFirmwareFlashing)
+
+                            Button {
+                                Task { _ = await engine.exitSamsungDownloadMode() }
+                            } label: {
+                                if engine.isExitingDownloadMode {
+                                    ProgressView().controlSize(.small).padding(.trailing, 2)
+                                }
+                                Label("Exit Download Mode (Reboot)", systemImage: "arrow.uturn.backward.circle.fill")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.orange)
+                            .disabled(engine.isExitingDownloadMode || engine.isFirmwareFlashing)
+
+                            if !engine.firmwareOperationStep.isEmpty {
+                                Text(engine.firmwareOperationStep)
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(.accentColor)
+                            }
+
+                            Spacer()
+
+                            if engine.isFirmwareDownloading || engine.isFirmwareFlashing {
+                                Button("Interrupt / Cancel") {
+                                    engine.isFirmwareDownloading = false
+                                    engine.isFirmwareFlashing = false
+                                }
+                                .controlSize(.small)
+                            }
+                        }
+
+                        // Progress Bar
+                        if engine.isFirmwareDownloading || engine.isFirmwareFlashing {
+                            let prog = engine.firmwareFlashProgress > 0 ? engine.firmwareFlashProgress : engine.firmwareDownloadProgress
+                            VStack(alignment: .leading, spacing: 3) {
+                                ProgressView(value: prog > 0 ? prog : nil)
+                                HStack {
+                                    Text(engine.firmwareStatusMessage)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    if prog > 0 {
+                                        Text("\(Int(prog * 100))%")
+                                            .font(.caption2.bold().monospacedDigit())
+                                            .foregroundColor(.accentColor)
+                                    }
+                                }
+                            }
+                        }
+
+                        // Live Terminal Stream Log
+                        if !engine.activeFirmwareLog.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Label("Live Flash Execution Terminal", systemImage: "terminal.fill")
+                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Button("Copy Log") {
+                                        let text = engine.activeFirmwareLog.joined(separator: "\n")
+                                        NSPasteboard.general.clearContents()
+                                        NSPasteboard.general.setString(text, forType: .string)
+                                    }
+                                    .controlSize(.mini)
+                                    Button("Clear") {
+                                        engine.activeFirmwareLog.removeAll()
+                                    }
+                                    .controlSize(.mini)
+                                }
+
+                                ScrollView {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        ForEach(engine.activeFirmwareLog.suffix(15), id: \.self) { line in
+                                            Text(line)
+                                                .font(.system(size: 10, design: .monospaced))
+                                                .foregroundColor(line.contains("[SUCCESS]") ? .green : (line.contains("[ERROR]") || line.contains("ERROR") ? .red : (line.contains("[NOTICE]") ? .orange : .white)))
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                    }
+                                    .padding(8)
+                                }
+                                .frame(height: 110)
+                                .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.85)))
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(10)
+        }
+        .onAppear {
+            if engine.activePlatform == .samsung && engine.samsungCloudFirmwares.isEmpty {
+                Task { await engine.querySamsungCloudFirmwares() }
+            }
+        }
+    }
+
+    private var targetModelTitle: String {
+        if let m = engine.samsungModemInfo?.model, !m.isEmpty { return m }
+        if engine.activePlatform == .samsung, let um = engine.universalMatch?.modelNumber, !um.isEmpty { return um }
+        return "No Samsung Device Connected"
+    }
+    private var deviceModeBadge: String {
+        let hasOdin = engine.usbDevices.contains { $0.vendorId == 0x04e8 && ($0.productId == 0x685d || $0.productId == 0x6601) }
+        if hasOdin { return "Odin Download Mode" }
+        if engine.samsungModemInfo != nil { return "Samsung Modem / MTP" }
+        return "Standby"
+    }
+    private var targetSerial: String {
+        if let s = engine.samsungModemInfo?.serialNumber, !s.isEmpty { return s }
+        if engine.activePlatform == .samsung, let us = engine.universalMatch?.serialOrUdid, us != "Unknown Serial" { return us }
+        return "—"
+    }
+    private var targetPda: String {
+        if let p = engine.samsungModemInfo?.pdaVersion, !p.isEmpty { return p }
+        if engine.activePlatform == .samsung, let sp = engine.universalMatch?.stockFirmwareBuild, !sp.isEmpty { return sp }
+        return "—"
+    }
+    private var targetBit: String {
+        if let p = engine.samsungModemInfo?.pdaVersion, let bit = ServicingEngine.extractBootloaderBit(from: p) {
+            return "Binary U:\(bit)"
+        }
+        return "Unverified"
+    }
+}
+
+struct SamFwEmulationWorkbenchCard: View {
+    @ObservedObject var engine: ServicingEngine
+    @State private var selectedTab: Int = 0
+    @State private var targetCarrierCsc: String = "XAA"
+    @State private var showResetConfirmation: Bool = false
+
+    let cscPresets = [
+        ("XAA", "US Unlocked Retail"),
+        ("TFN", "TracFone / Straight Talk / Verizon MVNO"),
+        ("VZW", "Verizon Wireless"),
+        ("TMB", "T-Mobile USA"),
+        ("ATT", "AT&T USA"),
+        ("EUX", "European Union Open"),
+        ("XAR", "USA Wi-Fi Open")
+    ]
+
+    var body: some View {
+        GroupBox(label: Label("Samsung Professional Servicing Workbench (SamFw Architecture)", systemImage: "wrench.and.screwdriver.fill")) {
+            VStack(alignment: .leading, spacing: 12) {
+                // Segmented Picker
+                Picker("", selection: $selectedTab) {
+                    Text("Test Mode AT Bridge (*#0*#)").tag(0)
+                    Text("Carrier CSC Switch").tag(1)
+                    Text("Factory Master Reset").tag(2)
+                    Text("Diagnostic Codes & Reboot").tag(3)
+                }
+                .pickerStyle(.segmented)
+
+                // Tab 0: Test Mode AT Diagnostic Bridge
+                if selectedTab == 0 {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "bolt.badge.clock.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(.orange)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Emergency Test Mode AT Diagnostic Bridge")
+                                    .font(.system(size: 12.5, weight: .bold))
+                                Text("Sends automated baseband AT sequences (AT+SWATD=0, AT+ACTIVATE, AT+DUMPENABLE, AT+KSTRINGB) over the USB modem port to enable high-speed USB debugging.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.08)))
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Instructions:")
+                                .font(.caption.weight(.bold))
+                            Text("1. On the phone, go to the Emergency Call screen and dial *#0*# (or #*#88#*# on newer software).")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text("2. Click 'Execute Test Mode AT Sequence' below.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text("3. Look at the phone screen: When 'Allow USB debugging?' appears, tap 'Always allow' and OK.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        HStack(spacing: 10) {
+                            Button {
+                                Task { await engine.runSamsungTestModeAdbEnableSequence() }
+                            } label: {
+                                Label("Execute Test Mode AT Sequence (Enable ADB)", systemImage: "play.fill")
+                                    .font(.system(size: 11.5, weight: .bold))
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.orange)
+                            .disabled(engine.isBusy)
+
+                            Button("Dial *#0*# Intent") {
+                                Task {
+                                    await engine.launchTargetIntent(
+                                        title: "Open Hardware Test Menu",
+                                        adbShellArgs: ["am start -a android.intent.action.DIAL -d 'tel:*%230*%23'"]
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    .padding(6)
+                }
+
+                // Tab 1: Carrier CSC Firmware Switcher
+                else if selectedTab == 1 {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "globe.americas.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(.blue)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Carrier CSC Profile & Firmware Transition")
+                                    .font(.system(size: 12.5, weight: .bold))
+                                Text("Changes carrier CSC sales code and dispatches Samsung CID Manager Preconfig without wiping userdata when supported by the multi-CSC container.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.blue.opacity(0.08)))
+
+                        HStack(spacing: 8) {
+                            Text("Quick Presets:")
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.secondary)
+                            ForEach(cscPresets.prefix(5), id: \.0) { item in
+                                Button(item.0) {
+                                    targetCarrierCsc = item.0
+                                }
+                                .controlSize(.small)
+                            }
+                        }
+
+                        HStack(spacing: 10) {
+                            Text("Target 3-Letter CSC:")
+                                .font(.caption.weight(.semibold))
+                            TextField("e.g. XAA, TFN, VZW", text: $targetCarrierCsc)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 12, design: .monospaced))
+                                .frame(width: 120)
+
+                            Button {
+                                Task { await engine.executeCscCarrierSwitch(targetCsc: targetCarrierCsc) }
+                            } label: {
+                                Label("Execute Carrier CSC Switch (\(targetCarrierCsc))", systemImage: "arrow.triangle.2.circlepath")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(engine.isBusy)
+
+                            Button("Open Preconfig (*#272*)") {
+                                Task {
+                                    await engine.launchTargetIntent(
+                                        title: "Open Preconfig Activity",
+                                        adbShellArgs: ["am start -n com.samsung.android.cidmanager/.modules.preconfig.PreconfigActivity"]
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    .padding(6)
+                }
+
+                // Tab 2: Factory Master Reset & Provisioner
+                else if selectedTab == 2 {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "trash.circle.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(.red)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Authorized Factory Reset & Setup Provisioner")
+                                    .font(.system(size: 12.5, weight: .bold))
+                                Text("Executes standard MASTER_CLEAR system broadcast or baseband AT factory initialization, wiping cache and user partitions and resetting setup state.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.red.opacity(0.08)))
+
+                        HStack(spacing: 12) {
+                            Button {
+                                showResetConfirmation = true
+                            } label: {
+                                Label("1-Click Master Clear & Factory Reset", systemImage: "trash.fill")
+                                    .font(.system(size: 11.5, weight: .bold))
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.red)
+                            .disabled(engine.isBusy)
+
+                            Button("Initialize Provisioning Flags (Setup Complete = 1)") {
+                                Task {
+                                    _ = await engine.executeAndLog(
+                                        workflowId: "samsung.provision_flags",
+                                        title: "Initialize Setup & Provisioning Flags",
+                                        executable: engine.toolPaths["adb"]!,
+                                        arguments: engine.adbArgs(["shell", "settings put global device_provisioned 1; settings put secure user_setup_complete 1"])
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    .padding(6)
+                    .alert("Confirm Factory Reset", isPresented: $showResetConfirmation) {
+                        Button("Cancel", role: .cancel) { }
+                        Button("Wipe & Reset", role: .destructive) {
+                            Task { await engine.executeFactoryProvisioningReset() }
+                        }
+                    } message: {
+                        Text("This will send an authorized Master Clear to the connected Samsung device. All user storage and installed applications will be wiped.")
+                    }
+                }
+
+                // Tab 3: Diagnostic Codes & Reboots
+                else if selectedTab == 3 {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Samsung Hardware Diagnostic Codes (MTP / ADB Intent):")
+                            .font(.caption.weight(.bold))
+
+                        HStack(spacing: 8) {
+                            Button("Test Mode (*#0*#)") {
+                                Task { await engine.launchTargetIntent(title: "Hardware Test Mode", adbShellArgs: ["am start -a android.intent.action.DIAL -d 'tel:*%230*%23'"]) }
+                            }
+                            Button("USB Config (*#0808#)") {
+                                Task { await engine.launchTargetIntent(title: "USB Settings", adbShellArgs: ["am start -a android.intent.action.DIAL -d 'tel:*%230808%23'"]) }
+                            }
+                            Button("SysDump Log (*#9900#)") {
+                                Task { await engine.launchTargetIntent(title: "SysDump Logcat", adbShellArgs: ["am start -a android.intent.action.DIAL -d 'tel:*%239900%23'"]) }
+                            }
+                            Button("Battery Gauge (*#0228#)") {
+                                Task { await engine.launchTargetIntent(title: "Battery Fuel Gauge", adbShellArgs: ["am start -a android.intent.action.DIAL -d 'tel:*%230228%23'"]) }
+                            }
+                            Button("ServiceMode (*#0011#)") {
+                                Task { await engine.launchTargetIntent(title: "ServiceMode RIL", adbShellArgs: ["am start -a android.intent.action.DIAL -d 'tel:*%230011%23'"]) }
+                            }
+                        }
+
+                        Divider()
+
+                        Text("Device Reboot Controls:")
+                            .font(.caption.weight(.bold))
+
+                        HStack(spacing: 10) {
+                            Button("Reboot Normal") {
+                                Task { await engine.rebootSamsungTargetToMode("normal") }
+                            }
+                            Button("Reboot Download Mode (Odin)") {
+                                Task { await engine.rebootSamsungTargetToMode("download") }
+                            }
+                            Button("Reboot Recovery Mode") {
+                                Task { await engine.rebootSamsungTargetToMode("recovery") }
+                            }
+                        }
+
+                        Divider()
+
+                        HStack(spacing: 10) {
+                            Button("Disable Samsung OTA Updates") {
+                                Task {
+                                    _ = await engine.executeAndLog(
+                                        workflowId: "samsung.disable_ota",
+                                        title: "Disable Samsung OTA",
+                                        executable: engine.toolPaths["adb"]!,
+                                        arguments: engine.adbArgs(["shell", "pm disable-user --user 0 com.wssyncmldm; pm disable-user --user 0 com.sec.android.soagent"])
+                                    )
+                                }
+                            }
+                            Button("Enable Samsung OTA Updates") {
+                                Task {
+                                    _ = await engine.executeAndLog(
+                                        workflowId: "samsung.enable_ota",
+                                        title: "Enable Samsung OTA",
+                                        executable: engine.toolPaths["adb"]!,
+                                        arguments: engine.adbArgs(["shell", "pm enable com.wssyncmldm; pm enable com.sec.android.soagent"])
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    .padding(6)
+                }
+            }
+            .padding(10)
+        }
+    }
+}
+
+// MARK: - Apple Component Verification & Battery Telemetry Studio Card (3uTools alternative on macOS)
+
+struct AppleHardwareAuditStudioCard: View {
+    @ObservedObject var engine: ServicingEngine
+
+    var body: some View {
+        GroupBox(label: Label("Apple Component Verification & Battery Telemetry Studio (3uTools Engine)", systemImage: "stethoscope")) {
+            VStack(alignment: .leading, spacing: 12) {
+                // Action Header Bar
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Comprehensive Hardware Audit & Anti-Tampering Inspection")
+                            .font(.system(size: 12, weight: .bold))
+                        Text("Queries authentic IORegistry AppleSmartBattery (serial, voltage, cycles, mAh) + Lockdownd MLB/DieID/Baseband & panic logs.")
+                            .font(.system(size: 10.5))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Button {
+                            engine.exportAppleHardwareCertificate()
+                        } label: {
+                            Label("Export HTML Certificate", systemImage: "doc.richtext.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(engine.appleHardwareAudit == nil)
+
+                        Button {
+                            Task { _ = await engine.queryAppleHardwareAudit() }
+                        } label: {
+                            if engine.isAuditingAppleHardware {
+                                ProgressView().controlSize(.small).padding(.trailing, 2)
+                            }
+                            Label("Run 3uTools-Grade Hardware Audit", systemImage: "sparkles")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.indigo)
+                        .disabled(engine.isAuditingAppleHardware)
+                    }
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.indigo.opacity(0.07)))
+
+                if let audit = engine.appleHardwareAudit {
+                    // Battery & Device Health Telemetry Metrics
+                    HStack(spacing: 12) {
+                        // Metric 1: Battery Health %
+                        VStack(spacing: 3) {
+                            Text("\(audit.batteryHealthPercentage)%")
+                                .font(.system(size: 24, weight: .bold, design: .rounded))
+                                .foregroundColor(audit.batteryHealthPercentage >= 80 ? .green : .red)
+                            Text("Battery Health")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(minWidth: 100)
+                        .padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.controlBackgroundColor)))
+
+                        // Metric 2: Cycle Count
+                        VStack(spacing: 3) {
+                            Text("\(audit.batteryCycleCount)")
+                                .font(.system(size: 24, weight: .bold, design: .rounded))
+                                .foregroundColor(.primary)
+                            Text("Charge Cycles")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(minWidth: 100)
+                        .padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.controlBackgroundColor)))
+
+                        // Metric 3: Capacity
+                        VStack(spacing: 3) {
+                            Text("\(audit.batteryCurrentCapacityMah) / \(audit.batteryDesignCapacityMah) mAh")
+                                .font(.system(size: 15, weight: .bold, design: .monospaced))
+                                .foregroundColor(.blue)
+                                .padding(.top, 4)
+                            Text("Current / Design Capacity")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.controlBackgroundColor)))
+
+                        // Metric 4: Panic Logs
+                        VStack(spacing: 3) {
+                            Text("\(audit.panicLogsCount)")
+                                .font(.system(size: 24, weight: .bold, design: .rounded))
+                                .foregroundColor(audit.panicLogsCount == 0 ? .green : .orange)
+                            Text(audit.panicLogsCount == 0 ? "Panics: 0" : "\(audit.panicLogsCount) Panics")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(minWidth: 100)
+                        .padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.controlBackgroundColor)))
+                    }
+
+                    // Component Serial Matching Table
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("OEM Factory Component Serial Verification:")
+                            .font(.system(size: 11, weight: .bold))
+
+                        VStack(spacing: 4) {
+                            ForEach(audit.components) { comp in
+                                HStack {
+                                    Image(systemName: comp.isMatch ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                                        .foregroundColor(comp.isMatch ? .green : .orange)
+                                        .font(.system(size: 12))
+
+                                    Text(comp.componentName)
+                                        .font(.system(size: 11, weight: .medium))
+                                        .frame(width: 170, alignment: .leading)
+
+                                    Text("Factory: \(comp.factorySerial)")
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+
+                                    Spacer()
+
+                                    Text(comp.status)
+                                        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 1.5)
+                                        .background(RoundedRectangle(cornerRadius: 3).fill(comp.isMatch ? Color.green.opacity(0.18) : Color.orange.opacity(0.18)))
+                                        .foregroundColor(comp.isMatch ? .green : .orange)
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(RoundedRectangle(cornerRadius: 4).fill(Color.primary.opacity(0.02)))
+                            }
+                        }
+                    }
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.controlBackgroundColor)))
+
+                    // Apple Kernel Panic Log Hardware Fault Diagnosis (3uTools Killer)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Apple Kernel Panic Log Hardware Fault Diagnosis:")
+                                .font(.system(size: 11, weight: .bold))
+                            Spacer()
+                            Text("\(audit.panicFaults.count) diagnosis item(s)")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+
+                        VStack(spacing: 6) {
+                            ForEach(audit.panicFaults) { fault in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: fault.severity.contains("PASS") ? "checkmark.circle.fill" : "exclamationmark.octagon.fill")
+                                                .foregroundColor(fault.severity.contains("PASS") ? .green : (fault.severity.contains("CRITICAL") ? .red : .orange))
+                                                .font(.system(size: 12))
+                                            Text(fault.suspectHardware)
+                                                .font(.system(size: 11, weight: .bold))
+                                                .foregroundColor(.primary)
+                                        }
+
+                                        Spacer()
+
+                                        Text(fault.severity)
+                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 1.5)
+                                            .background(RoundedRectangle(cornerRadius: 3).fill(fault.severity.contains("PASS") ? Color.green.opacity(0.18) : Color.red.opacity(0.18)))
+                                            .foregroundColor(fault.severity.contains("PASS") ? .green : .red)
+                                    }
+
+                                    Text("Crash Signature: \(fault.panicReasonSnippet)")
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(.secondary)
+
+                                    HStack(alignment: .top, spacing: 4) {
+                                        Image(systemName: "wrench.and.screwdriver")
+                                            .font(.system(size: 9.5))
+                                            .foregroundColor(.blue)
+                                            .padding(.top, 1)
+                                        Text("Actionable Repair: \(fault.actionableRepairGuide)")
+                                            .font(.system(size: 10.5))
+                                            .foregroundColor(.blue)
+                                    }
+                                }
+                                .padding(8)
+                                .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.02)))
+                            }
+                        }
+                    }
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.controlBackgroundColor)))
+                } else {
+                    HStack(spacing: 10) {
+                        Image(systemName: "info.circle")
+                            .foregroundColor(.secondary)
+                        Text("Connect an iPhone or iPad via USB and click 'Run 3uTools-Grade Hardware Audit' to analyze battery wear, inspect OEM serials, and decrypt panic logs.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(8)
+                }
+            }
+            .padding(6)
+        }
+    }
+}
+
+// MARK: - Hardware Test-Point Pinout & Motherboard Schematic Database Card
+
+struct HardwareTestPointPinoutCard: View {
+    @ObservedObject var engine: ServicingEngine
+    @State private var selectedTestPointId: String = "tp_a16_5g"
+
+    var activeEntry: HardwareTestPointEntry {
+        HardwareTestPointEntry.standardTestPoints.first(where: { $0.id == selectedTestPointId }) ?? HardwareTestPointEntry.standardTestPoints[0]
+    }
+
+    var body: some View {
+        GroupBox(label: Label("Hardware Test-Point & Motherboard Schematic Database (BROM / EDL 9008)", systemImage: "point.filled.topleft.down.curvedto.point.bottomright.up")) {
+            VStack(alignment: .leading, spacing: 12) {
+                // Header & Model Selector
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Emergency CPU Bootrom Pinout & Test-Point Locator")
+                            .font(.system(size: 12, weight: .bold))
+                        Text("Physical PCB GND test points to recover completely hard-bricked Snapdragon, MediaTek, and Exynos devices.")
+                            .font(.system(size: 10.5))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Picker("Device Model:", selection: $selectedTestPointId) {
+                        ForEach(HardwareTestPointEntry.standardTestPoints) { tp in
+                            Text("\(tp.marketName) (\(tp.modelName))").tag(tp.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 310)
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.06)))
+
+                // Schematic & Pinout Details Display
+                HStack(alignment: .top, spacing: 16) {
+                    // Left: Motherboard Schematic Visual Diagram
+                    VStack(spacing: 8) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color(red: 0.08, green: 0.16, blue: 0.12)) // PCB Green
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color.green.opacity(0.3), lineWidth: 1.5)
+                                )
+
+                            VStack(spacing: 10) {
+                                HStack {
+                                    Text("PCB REV 1.0")
+                                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.green.opacity(0.6))
+                                    Spacer()
+                                    Text("CHIP: \(activeEntry.chipset)")
+                                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.yellow.opacity(0.8))
+                                        .lineLimit(1)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.top, 6)
+
+                                // Schematic chips
+                                HStack(spacing: 14) {
+                                    // SoC Metal Shield
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Color.gray.opacity(0.35))
+                                            .frame(width: 78, height: 65)
+                                        Text("CPU / RAM")
+                                            .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                                            .foregroundColor(.white.opacity(0.8))
+                                    }
+
+                                    // Flash UFS / eMMC
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Color.gray.opacity(0.25))
+                                            .frame(width: 65, height: 58)
+                                        Text("UFS 2.2")
+                                            .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                                            .foregroundColor(.white.opacity(0.7))
+                                    }
+
+                                    // Labeled Test Point Pad with indicator
+                                    VStack(spacing: 3) {
+                                        Circle()
+                                            .fill(Color.yellow)
+                                            .frame(width: 14, height: 14)
+                                            .overlay(
+                                                Circle()
+                                                    .stroke(Color.red, lineWidth: 2)
+                                            )
+                                        Text("TEST POINT")
+                                            .font(.system(size: 7.5, weight: .heavy, design: .monospaced))
+                                            .foregroundColor(.yellow)
+                                        Text("SHORT TO GND")
+                                            .font(.system(size: 7, design: .monospaced))
+                                            .foregroundColor(.white.opacity(0.7))
+                                    }
+                                }
+                                .padding(.vertical, 4)
+
+                                HStack {
+                                    Text("GND SHIELD FRAME")
+                                        .font(.system(size: 7.5, weight: .semibold, design: .monospaced))
+                                        .foregroundColor(.white.opacity(0.5))
+                                    Spacer()
+                                    Text(activeEntry.forceMode)
+                                        .font(.system(size: 7.5, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.cyan)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.bottom, 6)
+                            }
+                        }
+                        .frame(width: 320, height: 135)
+
+                        HStack(spacing: 6) {
+                            Image(systemName: "pin.fill")
+                                .foregroundColor(.yellow)
+                                .font(.system(size: 11))
+                            Text("Target: \(activeEntry.testPointGndShortTarget)")
+                                .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                                .foregroundColor(.primary)
+                        }
+                    }
+
+                    // Right: Instructions & Steps
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(activeEntry.marketName)
+                                .font(.system(size: 13, weight: .bold))
+                            Spacer()
+                            Text(activeEntry.forceMode)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1.5)
+                                .background(RoundedRectangle(cornerRadius: 3).fill(Color.blue.opacity(0.18)))
+                                .foregroundColor(.blue)
+                        }
+
+                        Text("Chipset: \(activeEntry.chipset) · Engine: \(activeEntry.referenceOemTools)")
+                            .font(.system(size: 10.5, design: .monospaced))
+                            .foregroundColor(.secondary)
+
+                        Divider()
+
+                        Text("Tweezer Short & USB Plug-In Sequence:")
+                            .font(.system(size: 11, weight: .bold))
+
+                        Text(activeEntry.pinoutInstructions)
+                            .font(.system(size: 10.5))
+                            .foregroundColor(.primary)
+                            .lineSpacing(3)
+                    }
+                }
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.controlBackgroundColor)))
+            }
+            .padding(6)
+        }
+    }
+}
+
+// MARK: - Universal Android OTA payload.bin Dumper & Partition Extractor Card
+
+struct PayloadBinExtractorStudioCard: View {
+    @ObservedObject var engine: ServicingEngine
+    @State private var inputFilePath: String = ""
+    @State private var selectedPartitions: Set<String> = ["boot", "init_boot", "vendor_boot", "vbmeta"]
+
+    var body: some View {
+        GroupBox(label: Label("Universal Android OTA payload.bin Dumper & Partition Extractor", systemImage: "shippingbox.and.arrow.backward.fill")) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Ingests OTA zip archives or uncompressed payload.bin files from Google Pixel, OnePlus, Motorola, Xiaomi, and generic Android updates. Extracts raw partition images without requiring external Python packages.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+
+                HStack(spacing: 10) {
+                    TextField("Select payload.bin or OTA update .zip archive...", text: $inputFilePath)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .monospaced))
+
+                    Button("Browse Archive...") {
+                        if let path = pickFile(allowedExtensions: ["bin", "zip"]) {
+                            inputFilePath = path
+                            Task { await engine.inspectPayloadArchive(path: path) }
+                        }
+                    }
+
+                    Button("Inspect Manifest") {
+                        guard !inputFilePath.isEmpty else { return }
+                        Task { await engine.inspectPayloadArchive(path: inputFilePath) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(inputFilePath.isEmpty || engine.isDumpingPayload)
+                }
+
+                if !engine.discoveredPayloadPartitions.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Partitions Discovered in Manifest (\(engine.discoveredPayloadPartitions.count)):")
+                                .font(.system(size: 11.5, weight: .bold))
+                            Spacer()
+                            Button("Select Boot Only") {
+                                selectedPartitions = Set(engine.discoveredPayloadPartitions.filter { $0.isCriticalBoot }.map { $0.name })
+                            }
+                            .controlSize(.small)
+                            Button("Select All") {
+                                selectedPartitions = Set(engine.discoveredPayloadPartitions.map { $0.name })
+                            }
+                            .controlSize(.small)
+                        }
+
+                        ScrollView(.vertical, showsIndicators: true) {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 6) {
+                                ForEach(engine.discoveredPayloadPartitions) { part in
+                                    let isChecked = selectedPartitions.contains(part.name)
+                                    Button {
+                                        if isChecked {
+                                            selectedPartitions.remove(part.name)
+                                        } else {
+                                            selectedPartitions.insert(part.name)
+                                        }
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: isChecked ? "checkmark.square.fill" : "square")
+                                                .foregroundColor(isChecked ? .accentColor : .secondary)
+                                            VStack(alignment: .leading, spacing: 1) {
+                                                Text(part.name)
+                                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                                    .foregroundColor(.primary)
+                                                Text(part.formattedSize)
+                                                    .font(.system(size: 9.5))
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            Spacer()
+                                        }
+                                        .padding(6)
+                                        .background(RoundedRectangle(cornerRadius: 4).fill(isChecked ? Color.accentColor.opacity(0.08) : Color(NSColor.controlBackgroundColor)))
+                                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(isChecked ? Color.accentColor : Color.secondary.opacity(0.2), lineWidth: 1))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                        .frame(maxHeight: 140)
+
+                        if engine.isDumpingPayload {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    ProgressView(value: engine.payloadDumpProgress)
+                                        .progressViewStyle(.linear)
+                                    Text("\(Int(engine.payloadDumpProgress * 100))%")
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.accentColor)
+                                }
+                                if !engine.payloadStatusMessage.isEmpty {
+                                    Text(engine.payloadStatusMessage)
+                                        .font(.system(size: 10.5, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(8)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.accentColor.opacity(0.08)))
+                        }
+
+                        HStack(spacing: 12) {
+                            Button {
+                                Task {
+                                    await engine.extractPayloadPartitions(path: inputFilePath, selectedPartitionNames: Array(selectedPartitions))
+                                }
+                            } label: {
+                                Label("⚡ Extract Selected Partitions (\(selectedPartitions.count))", systemImage: "arrow.down.doc.fill")
+                                    .font(.system(size: 11.5, weight: .bold))
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(selectedPartitions.isEmpty || engine.isDumpingPayload)
+
+                            Button {
+                                let bootTargets = engine.discoveredPayloadPartitions.filter { $0.isCriticalBoot }.map { $0.name }
+                                Task {
+                                    await engine.extractPayloadPartitions(path: inputFilePath, selectedPartitionNames: bootTargets)
+                                }
+                            } label: {
+                                Label("⚡ 1-Click Extract Boot & Init_Boot (KernelSU / Root Patch)", systemImage: "flame.fill")
+                                    .font(.system(size: 11.5, weight: .bold))
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.orange)
+                            .disabled(engine.isDumpingPayload)
+
+                            Spacer()
+
+                            Button("Open Extracted Folder in Finder") {
+                                let dir = "\(NSHomeDirectory())/Downloads/BobFWTools_Extracted"
+                                try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+                                NSWorkspace.shared.open(URL(fileURLWithPath: dir))
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.controlBackgroundColor)))
+                }
+            }
+            .padding(8)
+        }
+    }
+}
+
+// MARK: - Fastbootd Dynamic Partition & Slot A/B Manager Card
+
+struct FastbootdLogicalPartitionManagerCard: View {
+    @ObservedObject var engine: ServicingEngine
+
+    var body: some View {
+        GroupBox(label: Label("Fastbootd Dynamic Partition & Slot A/B Manager (Android 10 - 16)", systemImage: "slider.horizontal.2.square.badge.arrow.down")) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Manage Virtual A/B active boot slots and transition between standard Bootloader (ABOOT) and Userspace Fastbootd to access dynamic logical partitions (system, vendor, product, odm).")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+
+                HStack(spacing: 16) {
+                    // Active Slot Indicator & Switcher
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("ACTIVE BOOT SLOT:")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
+
+                        HStack(spacing: 8) {
+                            Text("Slot: \(engine.fastbootCurrentSlot.uppercased())")
+                                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(RoundedRectangle(cornerRadius: 4).fill(Color.blue.opacity(0.18)))
+                                .foregroundColor(.blue)
+
+                            Button("Switch to Slot _a") {
+                                Task { _ = await engine.switchFastbootActiveSlot(targetSlot: "a") }
+                            }
+                            .disabled(engine.fastbootCurrentSlot == "a" || engine.isSwitchingFastbootSlot)
+
+                            Button("Switch to Slot _b") {
+                                Task { _ = await engine.switchFastbootActiveSlot(targetSlot: "b") }
+                            }
+                            .disabled(engine.fastbootCurrentSlot == "b" || engine.isSwitchingFastbootSlot)
+
+                            Button("Query Slot") {
+                                Task { await engine.queryFastbootSlotAndPartitions() }
+                            }
+                        }
+                    }
+
+                    Spacer()
+
+                    // Fastbootd Transition Engine
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("DYNAMIC PARTITION BRIDGE:")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
+
+                        Button {
+                            Task { _ = await engine.rebootToFastbootd() }
+                        } label: {
+                            Label("⚡ Reboot to Userspace Fastbootd", systemImage: "arrow.triangle.2.circlepath.circle.fill")
+                                .font(.system(size: 11.5, weight: .bold))
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.indigo)
+                    }
+                }
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.controlBackgroundColor)))
+            }
+            .padding(6)
+        }
+    }
+}
+
+// MARK: - Multi-Brand Hardware Diagnostic Codes & Secret Menu Hub Card
+
+struct MultiBrandHardwareDiagnosticHubCard: View {
+    @ObservedObject var engine: ServicingEngine
+    @State private var selectedBrand: String = "Google Pixel"
+
+    let brands = ["Google Pixel", "Xiaomi / POCO", "Motorola", "Qualcomm Diag"]
+
+    var filteredCodes: [MultiBrandSecretCode] {
+        engine.multiBrandCodes.filter { $0.brand == selectedBrand }
+    }
+
+    var body: some View {
+        GroupBox(label: Label("Multi-Brand Hardware Diagnostic Codes & Secret Menu Launcher", systemImage: "asterisk.circle.fill")) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Standardized dialer codes and hardware test intents across all major non-Samsung OEMs. Launch directly over ADB or trigger manually on device.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+
+                Picker("OEM Brand:", selection: $selectedBrand) {
+                    ForEach(brands, id: \.self) { b in
+                        Text(b).tag(b)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                VStack(spacing: 8) {
+                    ForEach(filteredCodes) { item in
+                        HStack(alignment: .top, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(spacing: 8) {
+                                    Text(item.title)
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(.primary)
+
+                                    Text(item.code)
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 1)
+                                        .background(RoundedRectangle(cornerRadius: 3).fill(Color.orange.opacity(0.18)))
+                                        .foregroundColor(.orange)
+
+                                    Text(item.targetSubsystem)
+                                        .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1)
+                                        .background(RoundedRectangle(cornerRadius: 3).fill(Color.blue.opacity(0.14)))
+                                        .foregroundColor(.blue)
+                                }
+
+                                Text(item.description)
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer()
+
+                            Button {
+                                Task { _ = await engine.dispatchSecretCodeOverAdb(code: item.code) }
+                            } label: {
+                                Label("⚡ Launch (ADB)", systemImage: "play.circle.fill")
+                                    .font(.system(size: 10.5, weight: .bold))
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.accentColor)
+                            .controlSize(.small)
+                            .disabled(!engine.devices.contains { $0.transport == .adb })
+
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(item.code, forType: .string)
+                                engine.log(.info, "Copied '\(item.code)' to clipboard.")
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                            }
+                            .controlSize(.small)
+                            .help("Copy code to clipboard")
+                        }
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.controlBackgroundColor)))
+                    }
+                }
+            }
+            .padding(6)
+        }
+    }
+}
+
+// MARK: - Samsung Download Mode Screen Telemetry & Preflight Decrypter Card
+
+struct SamsungDownloadScreenTelemetryCard: View {
+    @ObservedObject var engine: ServicingEngine
+    @State private var isExpanded: Bool = false
+
+    var body: some View {
+        GroupBox(label: Label("Samsung Download Mode Screen Telemetry & Preflight Decrypter", systemImage: "text.magnifyingglass")) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Live Decoder for On-Screen Knox, Rollback & Lock Security Counters")
+                            .font(.system(size: 11.5, weight: .bold))
+                        Text("Explains on-screen flags (KG STATUS, RP SWREV, WARRANTY VOID) to avoid flash failure before writing to NAND.")
+                            .font(.system(size: 10.5))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Button(isExpanded ? "Collapse Guide" : "Expand All Flags (6)") {
+                        isExpanded.toggle()
+                    }
+                    .controlSize(.small)
+                }
+
+                if isExpanded {
+                    VStack(spacing: 6) {
+                        ForEach(engine.samsungScreenFlags) { flag in
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(spacing: 8) {
+                                    Text(flag.flagName)
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.primary)
+
+                                    Text(flag.valuesExplained)
+                                        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1)
+                                        .background(RoundedRectangle(cornerRadius: 3).fill(Color.orange.opacity(0.18)))
+                                        .foregroundColor(.orange)
+
+                                    Spacer()
+                                }
+
+                                Text(flag.diagnosticMeaning)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+
+                                HStack(alignment: .top, spacing: 4) {
+                                    Image(systemName: "lightbulb.fill")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(.green)
+                                        .padding(.top, 1)
+                                    Text("Technician Advice: \(flag.repairShopAdvice)")
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundColor(.green)
+                                }
+                            }
+                            .padding(8)
+                            .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.02)))
+                        }
+                    }
+                    .padding(4)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.controlBackgroundColor)))
+                }
+            }
+            .padding(6)
+        }
+    }
+}
+
+// MARK: - Universal Recovery Mode ADB Sideload Flasher Card
+
+struct AdbRecoverySideloadCard: View {
+    @ObservedObject var engine: ServicingEngine
+    @State private var otaPackagePath: String = ""
+
+    var body: some View {
+        GroupBox(label: Label("Universal Recovery Mode ADB Sideload Flasher (Android Recovery 3e)", systemImage: "arrow.up.bin.fill")) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Flash official rescue OTA update packages (.zip) to any Android device bootlooping in stock Recovery. On phone, select 'Apply update from ADB' prior to dispatching.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+
+                HStack(spacing: 10) {
+                    TextField("Select official recovery update .zip package...", text: $otaPackagePath)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .monospaced))
+
+                    Button("Browse OTA ZIP...") {
+                        if let path = pickFile(allowedExtensions: ["zip"]) {
+                            otaPackagePath = path
+                        }
+                    }
+
+                    Button {
+                        guard !otaPackagePath.isEmpty else { return }
+                        Task { _ = await engine.executeAdbSideload(otaZipPath: otaPackagePath) }
+                    } label: {
+                        if engine.isSideloading {
+                            ProgressView().controlSize(.small).padding(.trailing, 2)
+                        }
+                        Label("⚡ 1-Click ADB Sideload", systemImage: "bolt.fill")
+                            .font(.system(size: 12, weight: .bold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.indigo)
+                    .disabled(otaPackagePath.isEmpty || engine.isSideloading)
+                }
+
+                if engine.isSideloading {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            ProgressView(value: engine.sideloadProgress)
+                                .progressViewStyle(.linear)
+                            Text("\(Int(engine.sideloadProgress * 100))%")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(.indigo)
+                        }
+                        if !engine.sideloadStatusText.isEmpty {
+                            Text(engine.sideloadStatusText)
+                                .font(.system(size: 10.5, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.indigo.opacity(0.08)))
+                }
+            }
+            .padding(6)
+        }
+    }
+}
+
+// MARK: - Wireless ADB Pair & Connect Card (Android 11 - 16)
+
+struct WirelessAdbBridgeCard: View {
+    @ObservedObject var engine: ServicingEngine
+    @State private var hostIp: String = "192.168.1."
+    @State private var pairingPort: String = "37451"
+    @State private var pairingCode: String = ""
+    @State private var connectPort: String = "5555"
+
+    var body: some View {
+        GroupBox(label: Label("Wireless ADB Pair & Connect Bridge (Android 11 - 16)", systemImage: "wifi.circle.fill")) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Bypasses damaged, loose, or liquid-damaged USB-C ports by pairing directly over shop Wi-Fi network. On phone: Settings ➔ Developer Options ➔ Wireless Debugging ➔ Pair device with pairing code.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Device IP Address:")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
+                        TextField("e.g. 192.168.1.150", text: $hostIp)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11, design: .monospaced))
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Pairing Port:")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
+                        TextField("Port", text: $pairingPort)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11, design: .monospaced))
+                            .frame(width: 80)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("6-Digit Pairing Code:")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
+                        TextField("Code", text: $pairingCode)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11, design: .monospaced))
+                            .frame(width: 100)
+                    }
+
+                    Button {
+                        guard let p = Int(pairingPort), !hostIp.isEmpty, !pairingCode.isEmpty else { return }
+                        Task { _ = await engine.pairWirelessAdb(host: hostIp, port: p, code: pairingCode) }
+                    } label: {
+                        Label("⚡ Pair (adb pair)", systemImage: "link.badge.plus")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.blue)
+                    .disabled(engine.isWirelessAdbBusy || pairingCode.isEmpty)
+                }
+
+                Divider()
+
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Connect Port (Default 5555 or dynamic):")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
+                        TextField("5555", text: $connectPort)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11, design: .monospaced))
+                            .frame(width: 100)
+                    }
+
+                    Button {
+                        guard let cp = Int(connectPort), !hostIp.isEmpty else { return }
+                        Task { _ = await engine.connectWirelessAdb(host: hostIp, port: cp) }
+                    } label: {
+                        Label("🔗 Connect (adb connect)", systemImage: "antenna.radiowaves.left.and.right")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(engine.isWirelessAdbBusy || hostIp.isEmpty)
+
+                    Spacer()
+
+                    if !engine.wirelessAdbStatusText.isEmpty {
+                        Text(engine.wirelessAdbStatusText)
+                            .font(.system(size: 10.5, design: .monospaced))
+                            .foregroundColor(.blue)
+                    }
+                }
+            }
+            .padding(6)
+        }
+    }
+}
+
+// MARK: - Apple Enterprise MDM & Supervision Clearance Preflight Card
+
+struct AppleMdmClearanceCard: View {
+    @ObservedObject var engine: ServicingEngine
+
+    var body: some View {
+        GroupBox(label: Label("Enterprise MDM & Apple Business Manager Clearance Preflight", systemImage: "building.2.crop.circle.fill")) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Intake Preflight: Apple School Manager & Corporate MDM Profile Inspection")
+                            .font(.system(size: 11.5, weight: .bold))
+                        Text("Queries com.apple.mobile.chaperone and CloudConfiguration to detect remote corporate management before customer intake.")
+                            .font(.system(size: 10.5))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Button {
+                        Task { _ = await engine.queryAppleMdmSupervision() }
+                    } label: {
+                        if engine.isCheckingAppleMdm {
+                            ProgressView().controlSize(.small).padding(.trailing, 2)
+                        }
+                        Label("Run MDM Clearance Audit", systemImage: "checkmark.shield")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.indigo)
+                    .disabled(engine.isCheckingAppleMdm)
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.indigo.opacity(0.06)))
+
+                if let report = engine.appleMdmReport {
+                    HStack(spacing: 14) {
+                        VStack(spacing: 2) {
+                            Text(report.isSupervised ? "SUPERVISED" : "CLEAN")
+                                .font(.system(size: 16, weight: .bold, design: .monospaced))
+                                .foregroundColor(report.isSupervised ? .red : .green)
+                            Text("Supervision Status")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(minWidth: 120)
+                        .padding(6)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(Color(NSColor.controlBackgroundColor)))
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Organization: \(report.organizationName)")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text(report.summaryText)
+                                .font(.system(size: 10))
+                                .foregroundColor(report.isSupervised ? .red : .secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(report.isSupervised ? Color.red.opacity(0.08) : Color.green.opacity(0.08)))
+                }
+            }
+            .padding(6)
+        }
+    }
+}
+
 struct SamsungSuiteView: View {
     @ObservedObject var engine: ServicingEngine
     @State private var customATCommand: String = "AT+DEVCONINFO"
@@ -1620,6 +3449,21 @@ struct SamsungSuiteView: View {
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
             }
 
+            // Section 0: Autonomous 1-Click Samsung Cloud Firmware Hub & Odin Flasher
+            SamsungCloudFirmwareHubCard(engine: engine)
+
+            // Section 0.5: Deep Knox Guard, FRP, Bootloader & Radio Calibration Security Suite
+            AndroidDeepSecurityAndFrpAuditCard(engine: engine)
+
+            // Section 0A: Download Mode Screen Telemetry & Security Counter Decoder
+            SamsungDownloadScreenTelemetryCard(engine: engine)
+
+            // Section 0B: Samsung Professional Servicing Workbench (SamFw Architecture)
+            SamFwEmulationWorkbenchCard(engine: engine)
+
+            // Section 0C: Hardware Test-Point Pinout & Schematics Database
+            HardwareTestPointPinoutCard(engine: engine)
+
             // Guided Step-by-Step Servicing Pipeline Wizard
             GuidedWorkflowWizardCard(
                 title: "Samsung Guided Carrier & Servicing Wizard",
@@ -1633,303 +3477,6 @@ struct SamsungSuiteView: View {
                     engine.resetSamsungWizard()
                 }
             )
-
-            // Section 1: MTP / USB Modem Mode (AT Commands)
-            GroupBox(label: Label("Samsung USB Modem AT Operations (\(engine.selectedSerialPort.isEmpty ? "No Modem Port" : (engine.selectedSerialPort as NSString).lastPathComponent))", systemImage: "cable.connector")) {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 10) {
-                        Button("Read Device Info (AT+DEVCONINFO)") {
-                            Task { await engine.sendATCommand(portPath: engine.selectedSerialPort, command: "AT+DEVCONINFO") }
-                        }
-                        .buttonStyle(.borderedProminent)
-
-                        Button("Read Software Version (AT+VERSNAME)") {
-                            Task { await engine.sendATCommand(portPath: engine.selectedSerialPort, command: "AT+VERSNAME=1,0,0") }
-                        }
-                        Button("Read Serial / IMEI (AT+GSN)") {
-                            Task { await engine.sendATCommand(portPath: engine.selectedSerialPort, command: "AT+GSN") }
-                        }
-                        Button("Reboot to Download Mode (AT+FUS?)") {
-                            Task { await engine.sendATCommand(portPath: engine.selectedSerialPort, command: "AT+FUS?") }
-                        }
-                    }
-
-                    HStack(spacing: 8) {
-                        TextField("Custom AT Command (e.g. AT+DEVCONINFO)", text: $customATCommand)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(.body, design: .monospaced))
-                        Button("Send AT") {
-                            Task { await engine.sendATCommand(portPath: engine.selectedSerialPort, command: customATCommand) }
-                        }
-                    }
-                }
-                .padding(8)
-            }
-
-            // Section 1B: Autonomous 3-Stage Carrier / CSC Transition Studio + Background Auto-Binary Matcher
-            GroupBox(label: Label("Autonomous 3-Stage Carrier / CSC Transition Studio + Background Auto-Binary Matcher", systemImage: "arrow.triangle.2.circlepath.circle.fill")) {
-                VStack(alignment: .leading, spacing: 12) {
-                    // Background Auto-Binary Chooser Status Panel
-                    if let bundle = engine.autoMatchedBundle {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Label(bundle.isSynthesizedFallback ? "AUTO-BINARY MATCHER: FALLBACK MATRIX VERIFIED" : "AUTO-BINARY MATCHER: VERIFIED LOCAL BUNDLE", systemImage: bundle.isSynthesizedFallback ? "bolt.shield.fill" : "checkmark.seal.fill")
-                                    .font(.system(size: 11.5, weight: .bold))
-                                    .foregroundColor(bundle.isSynthesizedFallback ? .blue : .green)
-                                Spacer()
-                                Text("Model: \(bundle.model) · Device Bit: \(bundle.bootloaderBit) [\(bundle.bitMatchesDevice ? "ANTI-ROLLBACK OK" : "BIT MISMATCH")]")
-                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                    .foregroundColor(bundle.bitMatchesDevice ? .green : .red)
-                            }
-
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("STOCK FIRMWARE BUILD:")
-                                        .font(.system(size: 9.5, weight: .bold))
-                                        .foregroundColor(.secondary)
-                                    Text(bundle.stockBuild)
-                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                        .foregroundColor(.primary)
-                                }
-                                Divider().frame(height: 24)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("COMBINATION FACTORY BUILD:")
-                                        .font(.system(size: 9.5, weight: .bold))
-                                        .foregroundColor(.secondary)
-                                    Text(bundle.combinationBuild)
-                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                        .foregroundColor(.accentColor)
-                                }
-                                Divider().frame(height: 24)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("PIT / CONTAINER:")
-                                        .font(.system(size: 9.5, weight: .bold))
-                                        .foregroundColor(.secondary)
-                                    Text("\(bundle.fallbackPitName) · \(bundle.cscContainerVersion)")
-                                        .font(.system(size: 10.5, design: .monospaced))
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-
-                            if !bundle.verifiedOpticsCscs.isEmpty {
-                                Text("Verified Fallback CSCs (\(bundle.verifiedOpticsCscs.count)): \(bundle.verifiedOpticsCscs.prefix(12).joined(separator: " · ")) (+\(bundle.verifiedOpticsCscs.count - 12) more)")
-                                    .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
-                                    .foregroundColor(.accentColor)
-                                    .lineLimit(1)
-                            }
-                        }
-                        .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 8).fill((bundle.isSynthesizedFallback ? Color.blue : Color.green).opacity(0.08)))
-                    } else {
-                        HStack {
-                            Text("Background Auto-Binary Matcher: Scanning local firmware directories...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Button("Re-Scan Local Binaries") {
-                                Task { await engine.autoDiscoverAndMatchBinaries() }
-                            }
-                            .controlSize(.small)
-                        }
-                    }
-
-                    // Quick Preset Buttons
-                    HStack(spacing: 8) {
-                        Text("Presets:")
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(.secondary)
-
-                        Button("Global Wi-Fi: EUX → XAR → EUX") {
-                            stage1Carrier = "EUX (European Union Open)"
-                            stage2Carrier = "XAR (USA Wi-Fi Open)"
-                            stage3Carrier = "EUX (European Union Open)"
-                        }
-                        .controlSize(.small)
-
-                        Button("North America: EUX → XAC → XAR") {
-                            stage1Carrier = "EUX (European Union Open)"
-                            stage2Carrier = "XAC (Canada Open)"
-                            stage3Carrier = "XAR (USA Wi-Fi Open)"
-                        }
-                        .controlSize(.small)
-
-                        Button("TMB → VZW → TMB") {
-                            stage1Carrier = "TMB (T-Mobile)"
-                            stage2Carrier = "VZW (Verizon)"
-                            stage3Carrier = "TMB (T-Mobile)"
-                        }
-                        .controlSize(.small)
-
-                        Button("ATT → XAA → TMB") {
-                            stage1Carrier = "ATT (AT&T)"
-                            stage2Carrier = "XAA (US Unlocked)"
-                            stage3Carrier = "TMB (T-Mobile)"
-                        }
-                        .controlSize(.small)
-
-                        Button("Auto-Load Matched Binaries into Odin Table") {
-                            if !engine.autoSelectedFlashItems.isEmpty {
-                                flashItems = engine.autoSelectedFlashItems
-                                let model = engine.autoMatchedBundle?.model ?? "target"
-                                let bit = engine.autoMatchedBundle?.bootloaderBit ?? 0
-                                engine.log(.success, "Auto-loaded \(flashItems.count) matched \(model) Bit \(bit) partition binaries into Heimdall/Odin flash table.")
-                            } else {
-                                engine.log(.warning, "No local partition binaries found to load into Odin table.")
-                            }
-                        }
-                        .controlSize(.small)
-                    }
-
-                    // 3 Stage Pickers
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("STAGE 1 / 3")
-                                .font(.caption2.weight(.bold))
-                                .foregroundColor(.secondary)
-                            Picker("", selection: $stage1Carrier) {
-                                ForEach(carrierOptions, id: \.self) { opt in
-                                    Text(opt).tag(opt)
-                                }
-                            }
-                            .labelsHidden()
-                        }
-
-                        Image(systemName: "arrow.right")
-                            .foregroundColor(.accentColor)
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("STAGE 2 / 3")
-                                .font(.caption2.weight(.bold))
-                                .foregroundColor(.secondary)
-                            Picker("", selection: $stage2Carrier) {
-                                ForEach(carrierOptions, id: \.self) { opt in
-                                    Text(opt).tag(opt)
-                                }
-                            }
-                            .labelsHidden()
-                        }
-
-                        Image(systemName: "arrow.right")
-                            .foregroundColor(.accentColor)
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("STAGE 3 / 3")
-                                .font(.caption2.weight(.bold))
-                                .foregroundColor(.secondary)
-                            Picker("", selection: $stage3Carrier) {
-                                ForEach(carrierOptions, id: \.self) { opt in
-                                    Text(opt).tag(opt)
-                                }
-                            }
-                            .labelsHidden()
-                        }
-                    }
-
-                    // Optional Firmware Attachment + 1-Click Autonomous Run Button
-                    HStack(spacing: 10) {
-                        Button {
-                            Task {
-                                await engine.runMultiStageCscPipeline(
-                                    stages: [stage1Carrier, stage2Carrier, stage3Carrier],
-                                    firmwarePath: trialFirmwarePath.isEmpty ? nil : trialFirmwarePath
-                                )
-                            }
-                        } label: {
-                            Label("Run 1-Click Autonomous 3-Stage CSC Pipeline (\(stage1Carrier.prefix(3)) → \(stage2Carrier.prefix(3)) → \(stage3Carrier.prefix(3)))", systemImage: "bolt.circle.fill")
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(engine.isBusy)
-
-                        Button("Attach Firmware Package (Optional)...") {
-                            if let path = pickFile(allowedExtensions: ["tar", "md5", "zip"]) {
-                                trialFirmwarePath = path
-                            }
-                        }
-
-                        if !trialFirmwarePath.isEmpty {
-                            Text((trialFirmwarePath as NSString).lastPathComponent)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
-
-                    // Live 3-Stage Report Card
-                    if let report = engine.multiStageCscReport {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("3-Stage Pipeline Result — Target: \(report.targetModel) (SN: \(report.targetSerial))")
-                                    .font(.system(size: 12, weight: .bold))
-                                Spacer()
-                                Text("Active CSC: \(report.currentCsc) · Container: \(report.multiCscContainer)")
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundColor(.secondary)
-                            }
-                            if let fw = report.attachedFirmware {
-                                Text("Attached Firmware: \(fw)")
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundColor(.accentColor)
-                            }
-                            ForEach(report.stages) { st in
-                                HStack(alignment: .top, spacing: 8) {
-                                    Text("Stage \(st.stageNumber)")
-                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                        .frame(width: 58, alignment: .leading)
-                                    Text(st.status)
-                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 1)
-                                        .background(RoundedRectangle(cornerRadius: 4).fill(Color.green.opacity(0.18)))
-                                        .foregroundColor(.green)
-                                    Text(st.detail)
-                                        .font(.system(size: 11.5))
-                                        .foregroundColor(.primary)
-                                }
-                            }
-                        }
-                        .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color(NSColor.controlBackgroundColor)))
-                    }
-
-                    Divider()
-
-                    // Direct Source -> Target CSC Change Studio
-                    HStack(spacing: 12) {
-                        Text("Direct CSC Comparison:")
-                            .font(.caption.weight(.semibold))
-                        Picker("Source CSC", selection: $cscFrom) {
-                            ForEach(cscShortCodes, id: \.self) { code in
-                                Text(code).tag(code)
-                            }
-                        }
-                        .frame(width: 150)
-
-                        Image(systemName: "arrow.right")
-
-                        Picker("Target CSC", selection: $targetCscCode) {
-                            ForEach(cscShortCodes, id: \.self) { code in
-                                Text(code).tag(code)
-                            }
-                        }
-                        .frame(width: 150)
-
-                        Button("Qualify \(cscFrom) → \(targetCscCode)") {
-                            let notes = engine.qualifySingleCscChange(from: cscFrom, to: targetCscCode)
-                            engine.log(.info, "CSC Qualification (\(cscFrom) → \(targetCscCode)):\n" + notes.map { "• \($0)" }.joined(separator: "\n"))
-                        }
-
-                        Button("Open On-Device CSC Selector (*#272*)") {
-                            Task {
-                                await engine.launchTargetIntent(
-                                    title: "Open Samsung Preconfig / CSC Selector",
-                                    adbShellArgs: ["am start -n com.samsung.android.cidmanager/.modules.preconfig.PreconfigActivity || am start -a android.intent.action.DIAL -d 'tel:*%23272*719434266344%23'"]
-                                )
-                            }
-                        }
-                    }
-                }
-                .padding(8)
-            }
 
             // Section 2: Samsung ADB, CSC Preflight & Service Functions
             GroupBox(label: Label("Samsung ADB, CSC Qualification & Service Functions", systemImage: "gearshape.2.fill")) {
@@ -2183,15 +3730,16 @@ struct SamsungSuiteView: View {
                                 )
                             }
                         }
-                        Button("Print Device PIT Table") {
-                            Task {
-                                _ = await engine.executeAndLog(
-                                    workflowId: "heimdall.print_pit",
-                                    title: "Read Partition Information Table (PIT)",
-                                    executable: engine.toolPaths["heimdall"]!,
-                                    arguments: ["print-pit", "--no-reboot"]
-                                )
-                            }
+                        Button {
+                            Task { await engine.runSamsungPrintPit() }
+                        } label: {
+                            Label("1-Click PIT Dump & Parse", systemImage: "tablecells.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.blue)
+
+                        Button("Exit / Resume Download") {
+                            Task { await engine.rebootSamsungTarget(resume: true) }
                         }
                     }
 
@@ -2231,7 +3779,7 @@ struct SamsungSuiteView: View {
                         flashItems = engine.autoSelectedFlashItems
                     }
                 }
-                .onChange(of: engine.autoSelectedFlashItems.count) { _, _ in
+                .onChange(of: engine.autoSelectedFlashItems.count) { _ in
                     if !engine.autoSelectedFlashItems.isEmpty && flashItems.allSatisfy({ $0.filePath.isEmpty }) {
                         flashItems = engine.autoSelectedFlashItems
                     }
@@ -2291,6 +3839,15 @@ struct MultiBrandRecoveryView: View {
                 subtitle: "Qualcomm EDL 9008 & MediaTek BROM/Preloader recovery planning, universal ADB servicing, and package control"
             )
 
+            // Universal Multi-Brand Device Control & Reboot Hub
+            UniversalDeviceControlHubCard(engine: engine)
+
+            // Deep Android Knox / KG / FRP / AVB Security & Radio Calibration Backup
+            AndroidDeepSecurityAndFrpAuditCard(engine: engine)
+
+            // Hardware Test-Point Pinout & Schematics Database
+            HardwareTestPointPinoutCard(engine: engine)
+
             // BootForge EDL & MediaTek Recovery Scanner
             GroupBox(label: Label("BootForge Qualcomm EDL (9008) & MediaTek Preloader Recovery", systemImage: "lifepreserver.fill")) {
                 VStack(alignment: .leading, spacing: 10) {
@@ -2304,6 +3861,18 @@ struct MultiBrandRecoveryView: View {
                                     arguments: ["recovery-scan"]
                                 )
                             }
+                        }
+
+                        Button {
+                            Task { await engine.runQualcommEdlProbe() }
+                        } label: {
+                            Label("Direct EDL 9008 Sahara Probe", systemImage: "cpu.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
+
+                        Button("EDL Target Reboot") {
+                            Task { await engine.rebootQualcommEdlTarget() }
                         }
 
                         Picker("Workflow:", selection: $recoveryKind) {
@@ -2707,6 +4276,9 @@ struct FastbootWorkshopView: View {
                 }
             )
 
+            // Fastbootd Dynamic Partition & Slot A/B Manager
+            FastbootdLogicalPartitionManagerCard(engine: engine)
+
             GroupBox(label: Label("Fastboot Telemetry & Slot Control", systemImage: "cpu")) {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 10) {
@@ -2851,6 +4423,9 @@ struct FastbootWorkshopView: View {
                 }
                 .padding(8)
             }
+
+            // Universal Android Recovery Mode OTA Sideload Flasher
+            AdbRecoverySideloadCard(engine: engine)
         }
     }
 }
@@ -3005,6 +4580,315 @@ struct FirmwareInspectorView: View {
                 }
                 .padding(8)
             }
+
+            // Universal Android OTA payload.bin Dumper & Partition Extractor
+            PayloadBinExtractorStudioCard(engine: engine)
+        }
+    }
+}
+
+// MARK: - Autonomous 1-Click Apple Cloud Firmware Hub & IPSW Restorer Card
+
+struct AppleCloudFirmwareHubCard: View {
+    @ObservedObject var engine: ServicingEngine
+
+    private var targetModelTitle: String {
+        let dev = engine.devices.first { $0.transport == .ios }
+        if let name = dev?.name, !name.isEmpty { return name }
+        if !engine.lastObservedRecoveryProduct.isEmpty {
+            return "Apple \(engine.lastObservedRecoveryProduct)"
+        }
+        return "Apple iDevice Target"
+    }
+
+    private var deviceModeBadge: String {
+        switch engine.detectedAppleMode {
+        case .recovery: return "RECOVERY MODE (iBoot)"
+        case .dfu: return "DFU MODE (BootROM)"
+        case .restoreOS: return "RESTORE OS (RAMDISK)"
+        case .normal: return "NORMAL (lockdownd)"
+        case .none: return "NOT DETECTED"
+        }
+    }
+
+    private var targetSerial: String {
+        let dev = engine.devices.first { $0.transport == .ios }
+        return dev?.serial ?? (engine.deviceProperties["SerialNumber"] ?? "USB Serial Standby")
+    }
+
+    var body: some View {
+        GroupBox(label: Label("Autonomous 1-Click Apple Cloud Firmware & IPSW Restorer", systemImage: "sparkles.rectangle.stack.fill")) {
+            VStack(alignment: .leading, spacing: 14) {
+                // Header & Hardware Identity
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(targetModelTitle)
+                                .font(.system(size: 13, weight: .bold))
+                            Text(deviceModeBadge)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .background(RoundedRectangle(cornerRadius: 4).fill(engine.detectedAppleMode == .recovery ? Color.orange.opacity(0.18) : Color.indigo.opacity(0.18)))
+                                .foregroundColor(engine.detectedAppleMode == .recovery ? .orange : .indigo)
+                        }
+                        Text("Serial/ECID: \(targetSerial) · Product ID: \(engine.resolvedAppleProductType.isEmpty ? (engine.manualAppleModelLookupInput.isEmpty ? "Standby" : engine.manualAppleModelLookupInput) : engine.resolvedAppleProductType) · Apple TSS Online")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Button {
+                        Task { await engine.queryAppleFirmwaresOnline() }
+                    } label: {
+                        if engine.isQueryingAppleFirmwares {
+                            ProgressView()
+                                .controlSize(.small)
+                                .padding(.trailing, 2)
+                        }
+                        Label("Auto-Detect & Query Apple Cloud", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(engine.isQueryingAppleFirmwares || engine.isDownloadingAppleFirmware || engine.isBusy)
+                }
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.indigo.opacity(0.06)))
+
+                // Manual Apple Model Lookup & Quick Presets Bar
+                HStack(spacing: 8) {
+                    Text("Manual Model Lookup:")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                    TextField("e.g. iPad6,7 or iPhone15,2", text: $engine.manualAppleModelLookupInput)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11, design: .monospaced))
+                        .frame(width: 190)
+                    Button("Query IPSW.me") {
+                        Task { await engine.queryAppleFirmwaresOnline() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.indigo)
+                    .controlSize(.small)
+                    .disabled(engine.isQueryingAppleFirmwares)
+
+                    Button("iPad6,7") {
+                        engine.manualAppleModelLookupInput = "iPad6,7"
+                        Task { await engine.queryAppleFirmwaresOnline() }
+                    }
+                    .controlSize(.small)
+
+                    Button("Clear") {
+                        engine.manualAppleModelLookupInput = ""
+                    }
+                    .controlSize(.small)
+                    Spacer()
+                }
+
+                if !engine.appleTssStatusSummary.isEmpty {
+                    HStack(spacing: 8) {
+                        Image(systemName: engine.appleTssStatusSummary.contains("OPEN") ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                            .foregroundColor(engine.appleTssStatusSummary.contains("OPEN") ? .green : .orange)
+                        Text(engine.appleTssStatusSummary)
+                            .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                        Spacer()
+                        if !engine.appleLastSavedShshPath.isEmpty {
+                            Button("Reveal SHSH2") {
+                                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: engine.appleLastSavedShshPath)])
+                            }
+                            .controlSize(.mini)
+                        }
+                    }
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.green.opacity(0.10)))
+                }
+
+                // Firmware Recommendations & Selection Panel
+                if engine.appleFirmwareCandidates.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("No Apple firmware queried yet.")
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundColor(.secondary)
+                        Text("Click 'Auto-Detect & Query Apple Cloud' to check live Apple TSS signing status and discover official IPSW packages.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(8)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Official Signed Apple Firmware Packages (Recommended Pre-Selected):")
+                                .font(.system(size: 11.5, weight: .bold))
+                            Spacer()
+                            Text("\(engine.appleFirmwareCandidates.count) signed build(s)")
+                                .font(.system(size: 10.5, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+
+                        ScrollView(.vertical, showsIndicators: true) {
+                            VStack(spacing: 8) {
+                                ForEach(engine.appleFirmwareCandidates) { cand in
+                                    let isSelected = engine.selectedAppleFirmware?.id == cand.id
+                                    HStack(spacing: 8) {
+                                        Button {
+                                            engine.selectedAppleFirmware = cand
+                                        } label: {
+                                            HStack(alignment: .top, spacing: 10) {
+                                                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                                                    .font(.system(size: 14))
+                                                    .foregroundColor(isSelected ? .indigo : .secondary)
+                                                    .padding(.top, 2)
+
+                                                VStack(alignment: .leading, spacing: 4) {
+                                                    HStack(spacing: 8) {
+                                                        Text("iOS \(cand.version)")
+                                                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                                            .foregroundColor(.primary)
+
+                                                        Text("Build \(cand.buildId)")
+                                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                                            .padding(.horizontal, 5)
+                                                            .padding(.vertical, 1)
+                                                            .background(RoundedRectangle(cornerRadius: 3).fill(Color.indigo.opacity(0.18)))
+                                                            .foregroundColor(.indigo)
+
+                                                        if cand.isRecommended {
+                                                            Text("★ RECOMMENDED (TSS SIGNED)")
+                                                                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                                                                .padding(.horizontal, 6)
+                                                                .padding(.vertical, 1)
+                                                                .background(RoundedRectangle(cornerRadius: 3).fill(Color.green.opacity(0.2)))
+                                                                .foregroundColor(.green)
+                                                        }
+
+                                                        Spacer()
+
+                                                        if cand.localFileExists {
+                                                            Label("Verified on Mac", systemImage: "checkmark.seal.fill")
+                                                                .font(.system(size: 10, weight: .bold))
+                                                                .foregroundColor(.green)
+                                                        } else {
+                                                            Label("Apple CDN (\(cand.formattedFileSize))", systemImage: "icloud.and.arrow.down")
+                                                                .font(.system(size: 10))
+                                                                .foregroundColor(.secondary)
+                                                        }
+                                                    }
+
+                                                    Text("\(cand.deviceName) · Released: \(cand.releaseDate) · Authorized for Restore by Apple TSS")
+                                                        .font(.system(size: 11))
+                                                        .foregroundColor(.secondary)
+
+                                                    if let path = cand.localFilePath, cand.localFileExists {
+                                                        Text("Location: \(path)")
+                                                            .font(.system(size: 9.5, design: .monospaced))
+                                                            .foregroundColor(.secondary.opacity(0.8))
+                                                            .lineLimit(1)
+                                                    }
+                                                }
+                                            }
+                                            .padding(10)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 8)
+                                                    .fill(isSelected ? Color.indigo.opacity(0.08) : Color(NSColor.controlBackgroundColor))
+                                                    .overlay(
+                                                        RoundedRectangle(cornerRadius: 8)
+                                                            .stroke(isSelected ? Color.indigo : Color.secondary.opacity(0.2), lineWidth: isSelected ? 1.5 : 1)
+                                                    )
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
+
+                                        Button("Verify TSS\n& SHSH2") {
+                                            Task { await engine.verifyAppleTssAndSaveShshBlob(firm: cand) }
+                                        }
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .buttonStyle(.bordered)
+                                        .tint(.teal)
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                        .frame(maxHeight: 180)
+                    }
+                }
+
+                Divider()
+
+                // 1-Click Action & Options
+                if let selected = engine.selectedAppleFirmware {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 14) {
+                            Toggle(isOn: $engine.applePreserveUserData) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 6) {
+                                        Text("Non-Destructive Bootloop Recovery (Update Mode)")
+                                            .font(.system(size: 11, weight: .bold))
+                                        Text(engine.applePreserveUserData ? "PRESERVE 100% PHOTOS & DATA" : "CLEAN FACTORY RESTORE (ERASE)")
+                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1)
+                                            .background(RoundedRectangle(cornerRadius: 3).fill(engine.applePreserveUserData ? Color.green.opacity(0.2) : Color.red.opacity(0.2)))
+                                            .foregroundColor(engine.applePreserveUserData ? .green : .red)
+                                    }
+                                    Text(engine.applePreserveUserData ? "Reinstalls iOS system partitions without touching customer photos, contacts, or apps." : "Full factory clean wipe: erases all userdata and installs clean iOS image.")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .toggleStyle(.checkbox)
+
+                            Spacer()
+
+                            Button("Choose Local IPSW File...") {
+                                if let path = pickFile(allowedExtensions: ["ipsw"]) {
+                                    Task { await engine.restoreAppleDeviceWithIpsw(path: path, keepData: engine.applePreserveUserData) }
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                        }
+
+                        if engine.isDownloadingAppleFirmware {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    ProgressView(value: engine.appleDownloadProgress)
+                                        .progressViewStyle(.linear)
+                                    Text("\(Int(engine.appleDownloadProgress * 100))%")
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.indigo)
+                                }
+                                if !engine.appleDownloadStatusText.isEmpty {
+                                    Text(engine.appleDownloadStatusText)
+                                        .font(.system(size: 10.5, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(8)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.indigo.opacity(0.08)))
+                        }
+
+                        Button {
+                            Task { await engine.downloadAndRestoreSelectedAppleFirmware(candidate: selected) }
+                        } label: {
+                            HStack {
+                                Spacer()
+                                if engine.isDownloadingAppleFirmware {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                        .padding(.trailing, 4)
+                                }
+                                Image(systemName: "bolt.fill")
+                                Text("⚡ 1-Click Flash & Restore to Device (iOS \(selected.version) - \(selected.buildId))")
+                                    .font(.system(size: 13, weight: .bold))
+                                Spacer()
+                            }
+                            .padding(.vertical, 5)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.indigo)
+                        .disabled(engine.isDownloadingAppleFirmware || engine.isBusy)
+                    }
+                }
+            }
+            .padding(12)
         }
     }
 }
@@ -3013,6 +4897,11 @@ struct FirmwareInspectorView: View {
 
 struct AppleServicingView: View {
     @ObservedObject var engine: ServicingEngine
+    @State private var recoveryKickStatus: String = ""
+
+    private var stagedIpswUrl: URL? {
+        engine.findLatestStagedIpsw(forProduct: engine.resolvedAppleProductType.isEmpty ? engine.lastObservedRecoveryProduct : engine.resolvedAppleProductType)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -3021,7 +4910,7 @@ struct AppleServicingView: View {
                 subtitle: "BobFWTools Apple recovery inspection, libimobiledevice telemetry, pairing verification, and Finder Restore Assistant"
             )
 
-            if engine.activePlatform != .appleIos {
+            if engine.activePlatform != .appleIos && engine.detectedAppleMode == .none {
                 HStack(spacing: 10) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
@@ -3039,6 +4928,94 @@ struct AppleServicingView: View {
                 .padding(10)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
             }
+
+            // ReiBoot-Style 3-Track System Rescue + Recovery-First DFU Staging
+            UnifiedBootloopRescueCenterCard(engine: engine)
+
+            // Section 0: Autonomous 1-Click Apple Cloud Firmware Hub & IPSW Restorer
+            AppleCloudFirmwareHubCard(engine: engine)
+
+            // DFU & Recovery Master Switcher Card
+            GroupBox(label: Label("DFU & Recovery Mode Master Switcher", systemImage: "bolt.badge.automatic.fill")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Interactive hardware countdown cadence timer, automatic DFU/iBoot driver capture & 1-click kick/revive triggers.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+
+                    HStack(spacing: 12) {
+                        Button {
+                            engine.showAppleDfuHelperSheet = true
+                        } label: {
+                            Label("⚡ Open Interactive DFU Mode Helper", systemImage: "sparkles")
+                                .font(.system(size: 12, weight: .bold))
+                                .padding(.horizontal, 6)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.indigo)
+
+                        Button("Stage Recovery-First -> DFU") {
+                            Task { await engine.stageRecoveryThenDfuPipeline() }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(engine.detectedAppleMode == .dfu)
+
+                        Button("Exit Recovery / Normal Reboot") {
+                            Task {
+                                let res = await engine.exitAppleRecoveryMode()
+                                recoveryKickStatus = res.1
+                            }
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button("Revive (Keep Data)") {
+                            Task {
+                                let res = await engine.reviveAppleDevice()
+                                recoveryKickStatus = res.1
+                            }
+                        }
+                        .buttonStyle(.bordered)
+
+                        Spacer()
+
+                        if let ipsw = stagedIpswUrl {
+                            Button {
+                                Task {
+                                    await engine.restoreAppleDeviceWithIpsw(path: ipsw.path, keepData: false)
+                                }
+                            } label: {
+                                Label("⚡ Flash Staged IPSW", systemImage: "bolt.fill")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.green)
+                        }
+                    }
+
+                    if !recoveryKickStatus.isEmpty {
+                        Text(recoveryKickStatus)
+                            .font(.system(size: 10.5, design: .monospaced))
+                            .foregroundColor(.blue)
+                    }
+                }
+                .padding(8)
+            }
+
+            // UnlockTool / Palera1n Checkm8 BootROM & Charger Power Inspector
+            AppleSiliconSecurityAndCheckm8Card(engine: engine)
+
+            // Apple Component Verification & Battery Telemetry Studio (3uTools Engine)
+            AppleHardwareAuditStudioCard(engine: engine)
+
+            // 3uTools / Apple Configurator Live iOS Syslog Streamer & Bootloop Trap
+            AppleLiveSyslogWorkbenchCard(engine: engine)
+
+            // iMazing Local Backup, Crash/Panic Log Puller & Lockdown Pairing Vault
+            AppleBackupAndPairingVaultCard(engine: engine)
+
+            // Apple Enterprise Supervision & Enrollment Clearance Preflight
+            AppleMdmClearanceCard(engine: engine)
+
+            // Rival Workflows Quick Launch & Portals Directory
+            RivalWorkflowsDirectoryCard(engine: engine)
 
             // Guided Step-by-Step State Machine Wizard
             GuidedWorkflowWizardCard(
@@ -3113,6 +5090,618 @@ struct AppleServicingView: View {
                 .padding(8)
             }
         }
+    }
+}
+
+// MARK: - Apple DFU & Recovery Interactive Helper Sheet
+
+struct AppleDfuHelperSheet: View {
+    @ObservedObject var engine: ServicingEngine
+    @Environment(\.dismiss) var dismiss
+
+    enum DeviceFamily: String, CaseIterable, Identifiable {
+        case modernFaceId = "iPhone 8, X, 11, 12, 13, 14, 15, 16 & SE (2nd/3rd)"
+        case ipadFaceId = "USB-C / Face ID / Top Touch ID iPads"
+        case iphone7 = "iPhone 7 / 7 Plus"
+        case homeButton = "Home Button iPads & iPhone 6s / SE 1st Gen"
+
+        var id: String { rawValue }
+
+        var shortName: String {
+            switch self {
+            case .modernFaceId: return "Face ID iPhone"
+            case .ipadFaceId: return "Face ID iPad"
+            case .iphone7: return "iPhone 7/7+"
+            case .homeButton: return "Home Button (iPad / 6s)"
+            }
+        }
+    }
+
+    enum TimingPhase: Equatable {
+        case ready
+        case preparing(seconds: Int)
+        case holdingCombo(seconds: Int)
+        case holdingSecond(seconds: Int)
+        case captured(mode: ServicingEngine.AppleUsbMode)
+        case timedOut
+    }
+
+    @State private var selectedFamily: DeviceFamily = .modernFaceId
+    @State private var phase: TimingPhase = .ready
+    @State private var countdownTask: Task<Void, Never>? = nil
+    @State private var snifferTask: Task<Void, Never>? = nil
+    @State private var actionStatus: String = ""
+
+    private var currentMode: ServicingEngine.AppleUsbMode {
+        engine.detectedAppleMode
+    }
+
+    private var stagedIpswUrl: URL? {
+        engine.findLatestStagedIpsw(forProduct: engine.resolvedAppleProductType.isEmpty ? engine.lastObservedRecoveryProduct : engine.resolvedAppleProductType)
+    }
+
+    private var modelDisplayName: String {
+        let prod = engine.resolvedAppleProductType
+        return prod.isEmpty ? "Apple iDevice (Awaiting USB)" : prod
+    }
+
+    private var ecidDisplay: String {
+        let ecid = engine.resolvedAppleEcid
+        return ecid.isEmpty ? "Awaiting USB Handshake" : ecid
+    }
+
+    private var cpidDisplay: String {
+        let cpid = engine.resolvedAppleCpId
+        return cpid.isEmpty ? "Awaiting USB Handshake" : cpid
+    }
+
+    private var comboSeconds: Int {
+        (selectedFamily == .modernFaceId || selectedFamily == .ipadFaceId) ? 5 : 8
+    }
+
+    private var isCountingDown: Bool {
+        switch phase {
+        case .preparing, .holdingCombo, .holdingSecond:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Modal Top Header
+            HStack {
+                Image(systemName: "bolt.badge.automatic.fill")
+                    .font(.title2)
+                    .foregroundColor(.indigo)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Apple DFU & Recovery Master Helper")
+                        .font(.headline.weight(.bold))
+                    Text("Interactive hardware cadence timer, real-time USB endpoint grabber & 1-click software triggers")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Button("Done") {
+                    cancelTimers()
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+            .padding(16)
+            .background(Color(NSColor.windowBackgroundColor))
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // 1. Live Hardware Mode & Driver Status
+                    hardwareStatusCard
+
+                    // 2. 1-Click Software Triggers
+                    softwareTriggersCard
+
+                    // 3. Interactive Guided DFU Sequence
+                    guidedCountdownCard
+                }
+                .padding(16)
+            }
+        }
+        .frame(width: 680, height: 600)
+        .onAppear {
+            autoSelectFamily()
+            startSniffer()
+        }
+        .onDisappear {
+            cancelTimers()
+        }
+    }
+
+    @ViewBuilder
+    private var hardwareStatusCard: some View {
+        GroupBox(label: Label("Live USB Bus Link & Driver Binding", systemImage: "cable.connector.horizontal")) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("DETECTED STATE")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.secondary)
+                        Text(currentMode.rawValue)
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .foregroundColor(badgeColor(for: currentMode))
+                    }
+
+                    Spacer()
+
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text("TARGET HARDWARE")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.secondary)
+                        Text("\(modelDisplayName) · CPID \(cpidDisplay)")
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    }
+                }
+
+                HStack {
+                    Text("ECID: \(ecidDisplay)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text("Driver: Rusb Native IOKit")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+
+                if currentMode == .dfu {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .foregroundColor(.green)
+                        Text("DFU MODE BOUND: Device is communicating directly with Apple BootROM (PID 0x1227).")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.green)
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.green.opacity(0.12)))
+                } else if currentMode == .recovery {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundColor(.orange)
+                        Text("RECOVERY MODE ACTIVE: Device is running iBoot (PID 0x1281). Ready for DFU transition or Restore.")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.orange)
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.12)))
+                }
+
+                if engine.isA9OrA9XUsbDevice || engine.resolvedAppleProductType.isEmpty {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "cable.connector.slash")
+                            .foregroundColor(.yellow)
+                        Text(engine.isA9OrA9XUsbDevice
+                            ? "A9/A9X USB-C PD Cable Trap Guard (\(modelDisplayName)): Many USB-C to Lightning PD cables reset VBUS during DFU handoff and boot back to iOS. Use a USB-A to Lightning cable OR click 'Force Recovery Mode First' below before holding Power + Home."
+                            : "Tip for older iPads & A9/A9X hardware (e.g. iPad Pro 12.9\" 1st Gen): USB-A to Lightning + Recovery-First staging dramatically improves DFU lock rate.")
+                            .font(.system(size: 10.5))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.yellow.opacity(0.10)))
+                }
+            }
+            .padding(8)
+        }
+    }
+
+    @ViewBuilder
+    private var softwareTriggersCard: some View {
+        GroupBox(label: Label("1-Click Software Triggers (Recovery-First Staging & Loop Exit)", systemImage: "sparkles")) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("For maximum DFU reliability, stage Recovery Mode first (05ac:1281) so iOS doesn't cold-boot while counting:")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+
+                HStack(spacing: 10) {
+                    Button {
+                        Task {
+                            actionStatus = "Staging Recovery Mode first..."
+                            await engine.stageRecoveryThenDfuPipeline()
+                            actionStatus = "Staged Recovery pipeline check complete."
+                        }
+                    } label: {
+                        Label("Force Recovery Mode First (05ac:1281 -> DFU)", systemImage: "arrow.down.to.line.circle.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.indigo)
+                    .disabled(currentMode == .dfu)
+
+                    Button {
+                        Task {
+                            actionStatus = "Dispatching normal reboot..."
+                            let res = await engine.exitAppleRecoveryMode()
+                            actionStatus = res.1
+                        }
+                    } label: {
+                        Label("Exit Recovery / Normal Reboot", systemImage: "arrow.counterclockwise.circle.fill")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        Task {
+                            actionStatus = "Dispatching revive..."
+                            let res = await engine.reviveAppleDevice()
+                            actionStatus = res.1
+                        }
+                    } label: {
+                        Label("Revive (Retain Data)", systemImage: "heart.text.square.fill")
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                if !actionStatus.isEmpty {
+                    Text(actionStatus)
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundColor(.blue)
+                        .padding(.top, 2)
+                }
+            }
+            .padding(8)
+        }
+    }
+
+    @ViewBuilder
+    private var guidedCountdownCard: some View {
+        GroupBox(label: Label("Guided Physical DFU Mode Countdown Wizard", systemImage: "timer")) {
+            VStack(alignment: .leading, spacing: 12) {
+                // Device Family Selector
+                Picker("Device Family", selection: $selectedFamily) {
+                    ForEach(DeviceFamily.allCases) { fam in
+                        Text(fam.shortName).tag(fam)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                // Instruction Checklist
+                VStack(alignment: .leading, spacing: 4) {
+                    instructionsView
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.controlBackgroundColor)))
+
+                // Active Stage Display
+                stageInteractiveView
+
+                // Action Controls Bar
+                HStack(spacing: 12) {
+                    if isCountingDown {
+                        Button("Cancel Countdown") {
+                            cancelCountdown()
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                    } else {
+                        Button {
+                            startCountdown()
+                        } label: {
+                            Label("▶ Start Guided DFU Countdown", systemImage: "play.circle.fill")
+                                .font(.system(size: 12, weight: .bold))
+                                .padding(.horizontal, 6)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.indigo)
+
+                        if let ipsw = stagedIpswUrl, currentMode == .dfu || currentMode == .recovery {
+                            Button {
+                                Task {
+                                    await engine.restoreAppleDeviceWithIpsw(path: ipsw.path, keepData: false)
+                                }
+                            } label: {
+                                Label("⚡ Flash Staged IPSW (\(String(ipsw.lastPathComponent.prefix(18)))...)", systemImage: "bolt.fill")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.green)
+                        }
+                    }
+
+                    Spacer()
+
+                    Text("Auto-Sniffer: ACTIVE (500ms)")
+                        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(8)
+        }
+    }
+
+    @ViewBuilder
+    private var instructionsView: some View {
+        switch selectedFamily {
+        case .modernFaceId:
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "1.circle.fill").foregroundColor(.blue)
+                Text("Quickly press & release **Volume Up**, then quickly press & release **Volume Down**.")
+                    .font(.system(size: 11))
+            }
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "2.circle.fill").foregroundColor(.blue)
+                Text("Press and hold the **Side (Power) button** until the screen goes completely black.")
+                    .font(.system(size: 11))
+            }
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "3.circle.fill").foregroundColor(.blue)
+                Text("Immediately hold **Side + Volume Down** for 5s, then release Side while keeping Volume Down held for 10s.")
+                    .font(.system(size: 11))
+            }
+        case .ipadFaceId:
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "1.circle.fill").foregroundColor(.blue)
+                Text("Quickly press & release **Volume Up** (closest to Top button), then quickly press & release **Volume Down**.")
+                    .font(.system(size: 11))
+            }
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "2.circle.fill").foregroundColor(.blue)
+                Text("Hold **Top Power** until black, then hold **Top Power + Volume Down** for 5s.")
+                    .font(.system(size: 11))
+            }
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "3.circle.fill").foregroundColor(.blue)
+                Text("Release **Top Power**, KEEP HOLDING **Volume Down** for 10s until DFU (05ac:1227) binds.")
+                    .font(.system(size: 11))
+            }
+        case .iphone7:
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "1.circle.fill").foregroundColor(.blue)
+                Text("Connect cable. Press and hold both **Side (Power) + Volume Down** buttons for 8 seconds.")
+                    .font(.system(size: 11))
+            }
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "2.circle.fill").foregroundColor(.blue)
+                Text("Release **Side (Power)**, but **KEEP HOLDING Volume Down** for 10 seconds.")
+                    .font(.system(size: 11))
+            }
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "3.circle.fill").foregroundColor(.blue)
+                Text("Screen stays black; computer grabs Apple DFU USB endpoint (PID 0x1227).")
+                    .font(.system(size: 11))
+            }
+        case .homeButton:
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "1.circle.fill").foregroundColor(.blue)
+                Text("Plug cable (prefer USB-A to Lightning for A9/A9X iPads). Hold **Power (Top/Side) + Home button** together for 8s.")
+                    .font(.system(size: 11))
+            }
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "2.circle.fill").foregroundColor(.blue)
+                Text("Release **Power**, and **KEEP HOLDING ONLY Home button** for 10 seconds.")
+                    .font(.system(size: 11))
+            }
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "3.circle.fill").foregroundColor(.blue)
+                Text("Screen MUST stay completely black; macOS grabs Apple DFU USB endpoint (05ac:1227).")
+                    .font(.system(size: 11))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var stageInteractiveView: some View {
+        switch phase {
+        case .ready:
+            HStack {
+                Image(systemName: "hand.tap.fill")
+                    .font(.title3)
+                    .foregroundColor(.secondary)
+                Text("Ready to begin. Place your fingers comfortably on the device buttons, then click 'Start Guided DFU Countdown'.")
+                    .font(.system(size: 11.5))
+                    .foregroundColor(.secondary)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2)))
+
+        case .preparing(let sec):
+            HStack(spacing: 12) {
+                Text("\(sec)")
+                    .font(.system(size: 32, weight: .heavy, design: .monospaced))
+                    .foregroundColor(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("GET READY...")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.orange)
+                    Text("Hands on buttons! Countdown begins in \(sec) seconds...")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.12)))
+
+        case .holdingCombo(let sec):
+            HStack(spacing: 12) {
+                Text("\(sec)s")
+                    .font(.system(size: 32, weight: .heavy, design: .monospaced))
+                    .foregroundColor(.blue)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(selectedFamily == .homeButton ? "HOLD POWER + HOME BUTTON TOGETHER!" : "HOLD SIDE + VOLUME DOWN TOGETHER!")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.blue)
+                    Text("Keep holding both buttons firmly! (\(sec)s remaining)")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.blue.opacity(0.12)))
+
+        case .holdingSecond(let sec):
+            HStack(spacing: 12) {
+                Text("\(sec)s")
+                    .font(.system(size: 32, weight: .heavy, design: .monospaced))
+                    .foregroundColor(.red)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("⚠️ RELEASE POWER BUTTON NOW!")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.red)
+                    Text(selectedFamily == .homeButton ? "KEEP HOLDING HOME BUTTON! Do not let go! (\(sec)s left)" : "KEEP HOLDING VOLUME DOWN! Do not let go! (\(sec)s left)")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.red.opacity(0.12)))
+
+        case .captured(let mode):
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.title)
+                    .foregroundColor(.green)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("🎉 HARDWARE CAPTURED & BOUND: \(mode.rawValue)")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.green)
+                    Text("The USB endpoint has successfully transitioned. BobFWTools Studio has locked the target interface.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.green.opacity(0.15)))
+
+        case .timedOut:
+            HStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.title3)
+                    .foregroundColor(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Device Did Not Transition to DFU Mode")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.orange)
+                    Text("If the device booted into normal iOS or Recovery, ensure the cable is firmly connected and try again.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.12)))
+        }
+    }
+
+    private func badgeColor(for mode: ServicingEngine.AppleUsbMode) -> Color {
+        switch mode {
+        case .dfu: return .green
+        case .recovery: return .orange
+        case .restoreOS: return .purple
+        case .normal: return .blue
+        case .none: return .secondary
+        }
+    }
+
+    private func autoSelectFamily() {
+        let prod = engine.resolvedAppleProductType
+        let cpid = engine.resolvedAppleCpId.lowercased()
+        let homeButtonIpadPrefixes = [
+            "iPad4,", "iPad5,", "iPad6,", "iPad7,",
+            "iPad11,1", "iPad11,2", "iPad11,3", "iPad11,4", "iPad11,6", "iPad11,7",
+            "iPad12,"
+        ]
+        let faceIdIpadPrefixes = ["iPad8,", "iPad13,", "iPad14,", "iPad16,"]
+        let homeButtonCpids = ["8000", "8001", "8003", "8010", "8011", "8960", "7000", "7001"]
+
+        if prod.contains("iPhone9,") {
+            selectedFamily = .iphone7
+        } else if prod.contains("iPhone8,") || prod.contains("iPhone7,") || prod.contains("iPhone6,") || prod.contains("iPhone5,") ||
+                    homeButtonIpadPrefixes.contains(where: { prod.hasPrefix($0) }) ||
+                    homeButtonCpids.contains(where: { cpid.contains($0) }) {
+            selectedFamily = .homeButton
+        } else if faceIdIpadPrefixes.contains(where: { prod.hasPrefix($0) }) {
+            selectedFamily = .ipadFaceId
+        } else {
+            selectedFamily = .modernFaceId
+        }
+    }
+
+    private func startSniffer() {
+        snifferTask?.cancel()
+        snifferTask = Task {
+            while !Task.isCancelled {
+                await engine.refreshDevicesAndTelemetry()
+                let mode = engine.detectedAppleMode
+                if mode == .dfu || mode == .recovery {
+                    await MainActor.run {
+                        if case .captured = phase {
+                            // already captured
+                        } else if isCountingDown {
+                            cancelCountdown()
+                            NSSound.beep()
+                            phase = .captured(mode: mode)
+                        } else if mode == .dfu {
+                            phase = .captured(mode: mode)
+                        }
+                    }
+                }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
+    }
+
+    private func startCountdown() {
+        cancelCountdown()
+        phase = .preparing(seconds: 3)
+
+        countdownTask = Task {
+            for s in stride(from: 3, through: 1, by: -1) {
+                if Task.isCancelled { return }
+                await MainActor.run { phase = .preparing(seconds: s) }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+
+            let holdDuration = comboSeconds
+            for s in stride(from: holdDuration, through: 1, by: -1) {
+                if Task.isCancelled { return }
+                await MainActor.run { phase = .holdingCombo(seconds: s) }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+
+            NSSound.beep()
+            for s in stride(from: 10, through: 1, by: -1) {
+                if Task.isCancelled { return }
+                await MainActor.run { phase = .holdingSecond(seconds: s) }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+
+            if !Task.isCancelled {
+                await MainActor.run {
+                    let mode = engine.detectedAppleMode
+                    if mode == .dfu || mode == .recovery {
+                        phase = .captured(mode: mode)
+                    } else {
+                        phase = .timedOut
+                    }
+                }
+            }
+        }
+    }
+
+    private func cancelCountdown() {
+        countdownTask?.cancel()
+        countdownTask = nil
+    }
+
+    private func cancelTimers() {
+        countdownTask?.cancel()
+        countdownTask = nil
+        snifferTask?.cancel()
+        snifferTask = nil
     }
 }
 
@@ -3322,7 +5911,7 @@ struct JobsNotesAndBridgeView: View {
         guard savePanel.runModal() == .OK, let url = savePanel.url else { return }
 
         let payload: [String: Any] = [
-            "application": "BobFWTools — Bobby's Workshop (Phoenix Forge)",
+            "application": "BobFWTools Studio — Bobby's Workshop",
             "exportedAt": ISO8601DateFormatter().string(from: Date()),
             "connectionGrade": engine.connectionGrade,
             "samsungModemTarget": [
@@ -3581,7 +6170,7 @@ struct BobFWTelemetryConsoleView: View {
                     .padding(.vertical, 2)
                     .id(record.id)
                 }
-                .onChange(of: telemetry.historicalLedger.count) { _, _ in
+                .onChange(of: telemetry.historicalLedger.count) { _ in
                     if autoScrollToBottom, let lastRecord = filteredLogs.last {
                         withAnimation { proxy.scrollTo(lastRecord.id, anchor: .bottom) }
                     }
@@ -3681,7 +6270,7 @@ struct ConsoleLogPanel: View {
                         .padding(12)
                     }
                     .background(Color(NSColor.textBackgroundColor))
-                    .onChange(of: engine.logs.count) { _, _ in
+                    .onChange(of: engine.logs.count) { _ in
                         if let last = engine.logs.last {
                             proxy.scrollTo(last.id, anchor: .bottom)
                         }
@@ -3799,6 +6388,12 @@ struct DeveloperWorkbenchView: View {
                 title: "Developer Workbench & Live Staging Suite",
                 subtitle: "Automated JSON debloat management, bulk APK sideload siphon, live regex-filtered logcat streaming, and locale stager"
             )
+
+            // Multi-Brand Hardware Diagnostic Codes & Secret Menu Hub
+            MultiBrandHardwareDiagnosticHubCard(engine: engine)
+
+            // Wireless ADB Pairing & Connection Bridge
+            WirelessAdbBridgeCard(engine: engine)
 
             // Section 1: 1-Click System Locale Staging Engine
             GroupBox(label: Label("System Localization & Locale Stager (Authorized ADB)", systemImage: "globe")) {
@@ -4104,7 +6699,7 @@ struct DeveloperWorkbenchView: View {
                         TextField("Live regex filter (e.g. fatal|crash|anr|exception|activity)...", text: $searchPattern)
                             .textFieldStyle(.roundedBorder)
                             .font(.system(size: 11.5, design: .monospaced))
-                            .onChange(of: searchPattern) { _, newVal in
+                            .onChange(of: searchPattern) { newVal in
                                 engine.logcatSubsystem.applyFilter(newVal)
                             }
                     }
@@ -4138,7 +6733,7 @@ struct DeveloperWorkbenchView: View {
                         .background(Color(NSColor.textBackgroundColor))
                         .cornerRadius(6)
                         .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.2), lineWidth: 1))
-                        .onChange(of: engine.logcatSubsystem.filteredEntries.count) { _, _ in
+                        .onChange(of: engine.logcatSubsystem.filteredEntries.count) { _ in
                             if let last = engine.logcatSubsystem.filteredEntries.last {
                                 proxy.scrollTo(last.id, anchor: .bottom)
                             }
@@ -4191,538 +6786,6 @@ struct DeveloperWorkbenchView: View {
     }
 }
 
-// MARK: - Dual-Platform Bench Monitor & Staging Dashboard
-
-struct DualPlatformWorkbenchView: View {
-    @ObservedObject var engine: ServicingEngine
-    @State private var ticketId: String = "TKT-\(Int.random(in: 10000...99999))"
-    @State private var customerName: String = ""
-    @State private var technician: String = "Bobby Blanco"
-
-    // Android Controls
-    @State private var selectedLocale: String = "es_ES"
-    @State private var localeStatus: String = ""
-    @State private var cscStatus: String = ""
-    @State private var showMasterClearAlert: Bool = false
-    @State private var resetStatus: String = ""
-
-    // Apple Controls
-    @State private var iosResetStatus: String = ""
-
-    let commonLocales = [
-        ("en_US", "🇺🇸 English (US)"),
-        ("es_ES", "🇪🇸 Español (ES)"),
-        ("es_US", "🇲🇽 Español (MX)"),
-        ("fr_FR", "🇫🇷 Français (FR)"),
-        ("de_DE", "🇩🇪 Deutsch (DE)"),
-        ("zh_CN", "🇨🇳 中文 (CN)"),
-        ("ja_JP", "🇯🇵 日本語 (JP)"),
-        ("ar_AE", "🇦🇪 العربية (AR)")
-    ]
-
-    @State private var showBrandingConfig: Bool = false
-    @State private var brandingSavedMessage: String = ""
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                ModuleHeader(
-                    title: "Dual-Platform Bench Monitor & Diagnostics Switcher",
-                    subtitle: "Concurrent side-by-side bench management for Android and Apple hardware: automated language staging, multi-CSC preconfig, and printable intake sheets."
-                )
-
-                // Top Bench Intake & PDF Generation Bar
-                GroupBox(label: Label("Bench Intake Ticket & Printable Report Dispatcher", systemImage: "printer.filled.and.paper")) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("INTAKE TICKET ID")
-                                    .font(.system(size: 9.5, weight: .bold))
-                                    .foregroundColor(.secondary)
-                                TextField("Ticket ID", text: $ticketId)
-                                    .textFieldStyle(.roundedBorder)
-                                    .font(.system(size: 12, design: .monospaced))
-                                    .frame(width: 140)
-                            }
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("CUSTOMER / ASSET NAME")
-                                    .font(.system(size: 9.5, weight: .bold))
-                                    .foregroundColor(.secondary)
-                                TextField("Customer Name", text: $customerName)
-                                    .textFieldStyle(.roundedBorder)
-                                    .font(.system(size: 12))
-                                    .frame(minWidth: 160)
-                            }
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("BENCH TECHNICIAN")
-                                    .font(.system(size: 9.5, weight: .bold))
-                                    .foregroundColor(.secondary)
-                                TextField("Technician Name", text: $technician)
-                                    .textFieldStyle(.roundedBorder)
-                                    .font(.system(size: 12))
-                                    .frame(width: 150)
-                            }
-
-                            Spacer()
-
-                            Button {
-                                exportIntakeSheet()
-                            } label: {
-                                Label("Generate Customer Intake Sheet (.pdf)", systemImage: "doc.richtext.fill")
-                                    .padding(.vertical, 3)
-                            }
-                            .buttonStyle(.borderedProminent)
-
-                            Button {
-                                showBrandingConfig.toggle()
-                            } label: {
-                                Image(systemName: "gearshape.fill")
-                                    .foregroundColor(showBrandingConfig ? .accentColor : .secondary)
-                            }
-                            .help("Custom Bench Branding & Intake Disclaimer Settings")
-                        }
-
-                        if showBrandingConfig {
-                            Divider()
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("BENCH & SHOP INTAKE BRANDING PREFERENCES")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.secondary)
-
-                                HStack(spacing: 12) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Shop / Company Name")
-                                            .font(.caption2)
-                                        TextField("Shop Name", text: $engine.brandingConfig.shopName)
-                                            .textFieldStyle(.roundedBorder)
-                                    }
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Report Subtitle")
-                                            .font(.caption2)
-                                        TextField("Report Subtitle", text: $engine.brandingConfig.documentSubtitle)
-                                            .textFieldStyle(.roundedBorder)
-                                    }
-                                }
-
-                                HStack(spacing: 12) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Shop Contact / Support Line")
-                                            .font(.caption2)
-                                        TextField("Contact", text: $engine.brandingConfig.shopContact)
-                                            .textFieldStyle(.roundedBorder)
-                                    }
-                                }
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Intake Sign-off Disclaimer & Warranty Terms")
-                                        .font(.caption2)
-                                    TextEditor(text: $engine.brandingConfig.warrantyTerms)
-                                        .font(.system(size: 11))
-                                        .frame(height: 50)
-                                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2)))
-                                }
-
-                                HStack {
-                                    Button("Save Branding Preferences") {
-                                        engine.saveBrandingConfig()
-                                        brandingSavedMessage = "✔ Branding saved"
-                                    }
-                                    .buttonStyle(.bordered)
-
-                                    if !brandingSavedMessage.isEmpty {
-                                        Text(brandingSavedMessage)
-                                            .font(.caption)
-                                            .foregroundColor(.green)
-                                    }
-                                }
-                            }
-                            .padding(8)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.controlBackgroundColor)))
-                        }
-                    }
-                    .padding(8)
-                }
-
-                // Dual-Column Split Workstation
-                HStack(alignment: .top, spacing: 16) {
-                    // LEFT COLUMN: Android Workstation
-                    VStack(alignment: .leading, spacing: 14) {
-                        // Android Header Banner
-                        HStack(spacing: 8) {
-                            Image(systemName: "candybarphone")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(.green)
-                            Text("ANDROID WORKSTATION")
-                                .font(.system(size: 12, weight: .bold))
-                            Spacer()
-                            let hasAdb = engine.devices.contains { $0.transport == .adb }
-                            let hasModem = !engine.selectedSerialPort.isEmpty || engine.samsungModemInfo != nil
-                            if hasAdb {
-                                Text("ADB AUTHORIZED")
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.green.opacity(0.2)))
-                                    .foregroundColor(.green)
-                            } else if hasModem {
-                                Text("AT MODEM ONLY")
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.orange.opacity(0.2)))
-                                    .foregroundColor(.orange)
-                            } else {
-                                Text("DISCONNECTED")
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.green.opacity(0.08)))
-
-                        // Android Device Identity
-                        GroupBox(label: Label("Android Device Identity", systemImage: "info.circle")) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                let model = engine.universalMatch?.modelNumber ?? (engine.samsungModemInfo?.model ?? "Android Device")
-                                let sn = engine.universalMatch?.serialOrUdid ?? (engine.samsungModemInfo?.serialNumber ?? "N/A")
-                                let pda = engine.universalMatch?.stockFirmwareBuild ?? (engine.samsungModemInfo?.pdaVersion ?? "N/A")
-                                let csc = engine.universalMatch?.carrierCscOrRegion ?? (engine.samsungModemInfo?.activeCsc ?? "Universal")
-
-                                HStack {
-                                    Text("Model:")
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundColor(.secondary)
-                                    Text(model)
-                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                    Spacer()
-                                    Text("CSC: \(csc)")
-                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 1)
-                                        .background(RoundedRectangle(cornerRadius: 3).fill(Color.blue.opacity(0.15)))
-                                        .foregroundColor(.blue)
-                                }
-
-                                HStack {
-                                    Text("Serial:")
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundColor(.secondary)
-                                    Text(sn)
-                                        .font(.system(size: 11, design: .monospaced))
-                                }
-
-                                HStack {
-                                    Text("Build PDA:")
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundColor(.secondary)
-                                    Text(pda)
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .lineLimit(1)
-                                }
-                            }
-                            .padding(6)
-                        }
-
-                        // 1. Language Staging Card
-                        GroupBox(label: Label("1. Automated Language Stager", systemImage: "character.book.closed.fill")) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Applies system locales via Content Provider, persist.sys.locale & LOCALE_CHANGED broadcast.")
-                                    .font(.system(size: 10.5))
-                                    .foregroundColor(.secondary)
-
-                                Picker("Target Locale", selection: $selectedLocale) {
-                                    ForEach(commonLocales, id: \.0) { item in
-                                        Text(item.1).tag(item.0)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-
-                                HStack {
-                                    Button("Apply System Locale") {
-                                        stageLanguage()
-                                    }
-                                    .buttonStyle(.borderedProminent)
-
-                                    if !localeStatus.isEmpty {
-                                        Text(localeStatus)
-                                            .font(.system(size: 10.5, design: .monospaced))
-                                            .lineLimit(1)
-                                    }
-                                }
-                            }
-                            .padding(6)
-                        }
-
-                        // 2. Samsung Multi-CSC Switcher Card
-                        GroupBox(label: Label("2. Multi-CSC Preconfig Switcher", systemImage: "arrow.triangle.swap")) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Pops on-screen carrier configuration activity on target display for unified multi-CSC containers (OXM).")
-                                    .font(.system(size: 10.5))
-                                    .foregroundColor(.secondary)
-
-                                let multiGroup = CscFallbackRegistry.getGroup(forCsc: engine.samsungModemInfo?.activeCsc ?? "EUX")
-                                let compatibleList = CscFallbackRegistry.getOpticsCscs(forGroup: multiGroup)
-
-                                HStack {
-                                    Text("Container:")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundColor(.secondary)
-                                    Text(multiGroup)
-                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                        .padding(.horizontal, 4)
-                                        .padding(.vertical, 1)
-                                        .background(RoundedRectangle(cornerRadius: 3).fill(Color.purple.opacity(0.15)))
-                                        .foregroundColor(.purple)
-
-                                    Text("Candidates: \(compatibleList.prefix(6).joined(separator: ", "))")
-                                        .font(.system(size: 9.5, design: .monospaced))
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(1)
-                                }
-
-                                HStack {
-                                    Button("Launch On-Device Preconfig Menu") {
-                                        launchPreconfig()
-                                    }
-                                    .buttonStyle(.borderedProminent)
-
-                                    if !cscStatus.isEmpty {
-                                        Text(cscStatus)
-                                            .font(.system(size: 10.5, design: .monospaced))
-                                            .lineLimit(1)
-                                    }
-                                }
-                            }
-                            .padding(6)
-                        }
-
-                        // 3. Android Sandbox Master Clear Card
-                        GroupBox(label: Label("3. Android Master Clear (Factory Reset)", systemImage: "trash.fill")) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Broadcasts android.intent.action.MASTER_CLEAR to initiate clean recovery formatting.")
-                                    .font(.system(size: 10.5))
-                                    .foregroundColor(.secondary)
-
-                                HStack {
-                                    Button("Execute Factory Master Clear") {
-                                        showMasterClearAlert = true
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .foregroundColor(.red)
-
-                                    if !resetStatus.isEmpty {
-                                        Text(resetStatus)
-                                            .font(.system(size: 10.5, design: .monospaced))
-                                            .lineLimit(1)
-                                    }
-                                }
-                            }
-                            .padding(6)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-
-                    // RIGHT COLUMN: Apple iOS Workstation
-                    VStack(alignment: .leading, spacing: 14) {
-                        // Apple Header Banner
-                        HStack(spacing: 8) {
-                            Image(systemName: "applelogo")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(.primary)
-                            Text("APPLE IDEVICE WORKSTATION")
-                                .font(.system(size: 12, weight: .bold))
-                            Spacer()
-                            if engine.activePlatform == .appleIos {
-                                Text("IDEVICE CONNECTED")
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.blue.opacity(0.2)))
-                                    .foregroundColor(.blue)
-                            } else {
-                                Text("NO IDEVICE")
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.blue.opacity(0.08)))
-
-                        // Apple Device Identity
-                        GroupBox(label: Label("Apple Device Identity & Lockdownd", systemImage: "iphone.gen3")) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                let appleDev = engine.devices.first { $0.transport == .ios }
-                                let udid = appleDev?.serial ?? "N/A"
-
-                                HStack {
-                                    Text("UDID:")
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundColor(.secondary)
-                                    Text(udid)
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .lineLimit(1)
-                                }
-
-                                HStack {
-                                    Text("Lockdownd Service:")
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundColor(.secondary)
-                                    Text(engine.activePlatform == .appleIos ? "Online (VID 05ac)" : "Offline")
-                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                        .foregroundColor(engine.activePlatform == .appleIos ? .green : .secondary)
-                                }
-                            }
-                            .padding(6)
-                        }
-
-                        // Apple Diagnostics & Operations
-                        GroupBox(label: Label("Apple Diagnostic Operations", systemImage: "wrench.and.screwdriver")) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack(spacing: 8) {
-                                    Button("Query Full Info (ideviceinfo)") {
-                                        Task {
-                                            _ = await engine.executeAndLog(
-                                                workflowId: "apple.ideviceinfo",
-                                                title: "ideviceinfo",
-                                                executable: engine.toolPaths["ideviceinfo"]!,
-                                                arguments: []
-                                            )
-                                        }
-                                    }
-                                    Button("Pair & Trust (idevicepair)") {
-                                        Task {
-                                            _ = await engine.executeAndLog(
-                                                workflowId: "apple.pair",
-                                                title: "idevicepair pair",
-                                                executable: engine.toolPaths["idevicepair"]!,
-                                                arguments: ["pair"]
-                                            )
-                                        }
-                                    }
-                                }
-
-                                HStack(spacing: 8) {
-                                    Button("Reset Pairing & Restart Diagnostics") {
-                                        resetIosDiagnostics()
-                                    }
-                                    .buttonStyle(.borderedProminent)
-
-                                    if !iosResetStatus.isEmpty {
-                                        Text(iosResetStatus)
-                                            .font(.system(size: 10.5, design: .monospaced))
-                                            .lineLimit(1)
-                                    }
-                                }
-                            }
-                            .padding(6)
-                        }
-
-                        // Apple Staging & System Restores
-                        GroupBox(label: Label("Apple Staging & Configuration Profiles", systemImage: "doc.badge.gearshape")) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("iOS language preferences & sandbox restrictions require signed Apple Configurator MDM payloads or supervised enrollment profiles.")
-                                    .font(.system(size: 10.5))
-                                    .foregroundColor(.secondary)
-
-                                HStack(spacing: 8) {
-                                    Button("Open Apple Configurator.app") {
-                                        NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/Apple Configurator.app"))
-                                        engine.log(.info, "Launched /Applications/Apple Configurator.app")
-                                    }
-
-                                    Button("Open Finder Restore Assistant") {
-                                        NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app"))
-                                        engine.log(.info, "Opened macOS Finder Restore Assistant.")
-                                    }
-                                }
-                            }
-                            .padding(6)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-            }
-            .padding(20)
-        }
-        .alert("Confirm Android Master Clear (Factory Reset)", isPresented: $showMasterClearAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Wipe & Reset Device", role: .destructive) {
-                performMasterClear()
-            }
-        } message: {
-            Text("This will send android.intent.action.MASTER_CLEAR to the target Android device over ADB. All user data will be wiped cleanly and the device will restart into standard setup.")
-        }
-    }
-
-    private func stageLanguage() {
-        localeStatus = "Applying \(selectedLocale)..."
-        Task {
-            let (ok, msg) = await engine.setDeviceLocale(selectedLocale)
-            localeStatus = ok ? "✔ Done" : "✖ Failed"
-            if !ok {
-                engine.log(.error, "Locale staging error: \(msg)")
-            }
-        }
-    }
-
-    private func launchPreconfig() {
-        cscStatus = "Launching Preconfig..."
-        Task {
-            let (ok, msg) = await engine.launchSamsungPreconfig()
-            cscStatus = ok ? "✔ Dispatched" : "✖ Failed"
-            if !ok {
-                engine.log(.error, "Preconfig trigger error: \(msg)")
-            }
-        }
-    }
-
-    private func performMasterClear() {
-        resetStatus = "Dispatching MASTER_CLEAR..."
-        Task {
-            let (ok, msg) = await engine.executeMasterClear()
-            resetStatus = ok ? "✔ Wipe Triggered" : "✖ Failed"
-            if !ok {
-                engine.log(.error, "Master Clear error: \(msg)")
-            }
-        }
-    }
-
-    private func resetIosDiagnostics() {
-        iosResetStatus = "Resetting iOS..."
-        Task {
-            let (ok, msg) = await engine.executeAppleDiagnosticsReset()
-            iosResetStatus = ok ? "✔ Reset Triggered" : "✖ Failed"
-            if !ok {
-                engine.log(.error, "iOS reset error: \(msg)")
-            }
-        }
-    }
-
-    private func exportIntakeSheet() {
-        let savePanel = NSSavePanel()
-        savePanel.allowedContentTypes = [.pdf]
-        savePanel.nameFieldStringValue = "bobfwtools-intake-\(ticketId)-\(Int(Date().timeIntervalSince1970)).pdf"
-        guard savePanel.runModal() == .OK, let url = savePanel.url else { return }
-
-        if let pdfData = engine.generateCustomerIntakePdf(
-            ticketId: ticketId,
-            customerName: customerName,
-            technician: technician
-        ) {
-            do {
-                try pdfData.write(to: url)
-                engine.log(.success, "✔ Generated printable Customer Intake PDF: \(url.path)")
-                NSWorkspace.shared.open(url)
-            } catch {
-                engine.log(.error, "✖ Failed to write PDF report: \(error.localizedDescription)")
-            }
-        } else {
-            engine.log(.error, "✖ Failed to compile Customer Intake PDF.")
-        }
-    }
-}
 
 // MARK: - Pillar 9: High-Density Sidebar Metrics Viewport (ChipsetMetricsSidebarCard)
 
@@ -4824,401 +6887,265 @@ public struct ChipsetMetricsSidebarCard: View {
     }
 }
 
-// MARK: - Pillar 10: Studio Split-Pane Workspace Console GUI (UniversalSplitPaneDashboardView)
+// MARK: - Universal Multi-Brand Device Control & Power Hub Card
 
-public struct UniversalSplitPaneDashboardView: View {
+struct UniversalDeviceControlHubCard: View {
     @ObservedObject var engine: ServicingEngine
-    @StateObject private var siphonCoordinator = LiveSiphonSiphonCoordinator()
-    @State private var activeChip: ChipsetSignatureDefinition? = nil
-    @State private var liveThermalTemp: Double = 0.0
-    @State private var traceFilter: String = ""
-    @State private var isProbing: Bool = false
-    @State private var statusNote: String = ""
+    @State private var controlActionStatus: String = ""
 
-    public init() {
-        self.engine = ServicingEngine()
-    }
-
-    init(engine: ServicingEngine) {
-        self.engine = engine
-    }
-
-    private var filteredLogs: [LogEntry] {
-        if traceFilter.trimmingCharacters(in: .whitespaces).isEmpty {
-            return engine.logs
+    private var activeBrandName: String {
+        if let brand = engine.activeAndroidBrandProfile {
+            return brand.brand.rawValue
+        } else if let apple = engine.activeAppleProfile {
+            return "Apple (\(apple.marketingName))"
+        } else if let match = engine.universalMatch {
+            return match.targetName
         }
-        return engine.logs.filter { $0.message.localizedCaseInsensitiveContains(traceFilter) }
+        return "Standby"
     }
 
-    public var body: some View {
-        HSplitView {
-            // LEFT PANE: Active Component Control Pane
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Image(systemName: "play.terminal.fill").foregroundColor(.green)
-                    Text("ACTIVE COMPONENT CONTROL PANE").font(.headline)
-                    Spacer()
-                    if isProbing {
-                        ProgressView().controlSize(.small)
-                    }
-                }
-                .padding([.top, .horizontal])
+    private var hasAdb: Bool {
+        engine.devices.contains { $0.transport == .adb }
+    }
 
-                ScrollView {
-                    VStack(spacing: 16) {
-                        // Siphon Folder Drop Watcher Status
-                        GroupBox(label: Label("Watched Siphon Drop Pipeline", systemImage: "arrow.down.doc.fill")) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Watched Directory: ~/Downloads/BobFWTools_SiphonDrop")
+    private var hasFastboot: Bool {
+        engine.devices.contains { $0.transport == .fastboot }
+    }
+
+    private var hasModemPort: Bool {
+        !engine.serialPorts.isEmpty || engine.samsungModemInfo != nil
+    }
+
+    private var hasEdl: Bool {
+        engine.usbDevices.contains { $0.vendorId == 0x05c6 && $0.productId == 0x9008 }
+    }
+
+    private var hasAndroidControlTransport: Bool {
+        hasAdb || hasFastboot || hasModemPort || hasEdl
+    }
+
+    private var transportBadgeText: String {
+        if engine.activePlatform == .appleIos {
+            return "APPLE: \(engine.detectedAppleMode.rawValue.uppercased())"
+        }
+        var active: [String] = []
+        if hasAdb { active.append("ADB AUTHORIZED") }
+        if hasFastboot { active.append("FASTBOOT") }
+        if hasModemPort { active.append("MODEM AT") }
+        if hasEdl { active.append("EDL 9008") }
+        if active.isEmpty {
+            return engine.matrixRows.isEmpty ? "NO DEVICE" : "USB MTP / CHARGING (ADB OFF)"
+        }
+        return active.joined(separator: " · ")
+    }
+
+    var body: some View {
+        GroupBox(label: Label("Universal Multi-Brand Device Control Hub (\(activeBrandName))", systemImage: "slider.horizontal.3")) {
+            VStack(alignment: .leading, spacing: 10) {
+                if engine.activePlatform == .none && engine.matrixRows.isEmpty {
+                    HStack(spacing: 8) {
+                        Image(systemName: "cable.connector")
+                            .foregroundColor(.secondary)
+                        Text("Connect any Android (ADB / Fastboot / MTP / EDL / BROM) or Apple (Normal / Recovery / DFU) device to unlock live hardware controls.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                } else if engine.activePlatform == .appleIos {
+                    HStack(spacing: 10) {
+                        Text(transportBadgeText)
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(RoundedRectangle(cornerRadius: 4).fill(Color.blue.opacity(0.16)))
+                            .foregroundColor(.blue)
+
+                        Button("Enter Recovery") {
+                            Task {
+                                let res = await engine.universalRebootTarget(toMode: "recovery")
+                                controlActionStatus = res.message
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(engine.isBusy || engine.detectedAppleMode == .recovery || engine.detectedAppleMode == .dfu)
+
+                        Button("Exit Recovery / Normal Reboot") {
+                            Task {
+                                let res = await engine.universalRebootTarget(toMode: "normal")
+                                controlActionStatus = res.message
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(engine.isBusy)
+
+                        Button("Query Live Signed IPSWs") {
+                            Task { await engine.queryAppleFirmwaresOnline() }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(engine.isBusy || engine.isQueryingAppleFirmwares)
+
+                        Spacer()
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        Text("TRANSPORT:")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
+                        Text(transportBadgeText)
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(RoundedRectangle(cornerRadius: 4).fill((hasAndroidControlTransport ? Color.green : Color.orange).opacity(0.16)))
+                            .foregroundColor(hasAndroidControlTransport ? .green : .orange)
+                        Spacer()
+                    }
+
+                    if !hasAndroidControlTransport, let brand = engine.activeAndroidBrandProfile {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "info.circle.fill")
+                                .foregroundColor(.orange)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("USB Connected Only (ADB & Fastboot Inactive) — Enable Control Mode:")
+                                    .font(.system(size: 10.5, weight: .bold))
+                                    .foregroundColor(.orange)
+                                Text("• USB Debugging: Settings → About Device → Tap Build Number 7× → Developer Options → USB Debugging ON.\n• Hardware Key Boot: \(brand.hardwareBootGuide)")
                                     .font(.system(size: 10, design: .monospaced))
                                     .foregroundColor(.secondary)
-                                HStack {
-                                    Text("Active Package:")
-                                        .font(.caption).foregroundColor(.secondary)
-                                    Text(siphonCoordinator.activeStagedFile)
-                                        .font(.subheadline).bold()
-                                }
-                                Text("Resolved Layout: \(siphonCoordinator.detectedFormat)")
-                                    .font(.caption).foregroundColor(.blue)
-
-                                Button {
-                                    inspectStagedSiphonPayload()
-                                } label: {
-                                    Label("Inspect Staged Siphon Headers", systemImage: "doc.viewfinder")
-                                }
-                                .controlSize(.small)
                             }
-                            .padding(4)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.10)))
+                    }
 
-                        // Silicon Microarchitecture & Thermal Card
-                        ChipsetMetricsSidebarCard(definition: activeChip, liveTemperature: liveThermalTemp)
+                    HStack(spacing: 10) {
+                        Text("1-CLICK REBOOT:")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
 
-                        // Hardware Interrogation & Execution Controls
-                        VStack(spacing: 10) {
-                            Button {
-                                Task { await probeConnectedHardware() }
-                            } label: {
-                                HStack {
-                                    Image(systemName: "cpu.fill")
-                                    Text("Probe Connected Silicon & Thermal Sensors")
-                                }
-                                .frame(maxWidth: .infinity)
+                        Button("Normal OS") {
+                            Task {
+                                let res = await engine.universalRebootTarget(toMode: "normal")
+                                controlActionStatus = res.message
                             }
-                            .buttonStyle(.borderedProminent)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(engine.isBusy || !hasAndroidControlTransport)
 
-                            Button {
-                                Task { await executeDiagnosticManifest() }
-                            } label: {
-                                HStack {
-                                    Image(systemName: "waveform.path.ecg")
-                                    Text("Run Chipset Diagnostic Manifest Queries")
+                        Button("Recovery") {
+                            Task {
+                                let res = await engine.universalRebootTarget(toMode: "recovery")
+                                controlActionStatus = res.message
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(engine.isBusy || (!hasAdb && !hasFastboot && !hasModemPort))
+
+                        Button("Bootloader / Fastboot") {
+                            Task {
+                                let res = await engine.universalRebootTarget(toMode: "bootloader")
+                                controlActionStatus = res.message
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(engine.isBusy || (!hasAdb && !hasFastboot && !hasModemPort))
+
+                        if engine.activeAndroidBrandProfile?.fastbootdSupported ?? true {
+                            Button("Fastbootd (Userspace)") {
+                                Task {
+                                    let res = await engine.universalRebootTarget(toMode: "fastbootd")
+                                    controlActionStatus = res.message
                                 }
-                                .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered)
-                            .disabled(activeChip == nil)
+                            .controlSize(.small)
+                            .disabled(engine.isBusy || (!hasAdb && !hasFastboot))
+                        }
 
-                            Button {
-                                Task { await commitAuditLedgerSnapshot() }
-                            } label: {
-                                HStack {
-                                    Image(systemName: "cylinder.split.1x2.fill")
-                                    Text("Commit Session Snapshot to SQLite Ledger")
+                        if engine.activePlatform == .samsung {
+                            Button("Download Mode") {
+                                Task {
+                                    let res = await engine.universalRebootTarget(toMode: "download")
+                                    controlActionStatus = res.message
                                 }
-                                .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(engine.isBusy || (!hasAdb && !hasModemPort))
+                        }
 
-                            if !statusNote.isEmpty {
-                                Text(statusNote)
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundColor(.accentColor)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                        Button("EDL 9008 Mode") {
+                            Task {
+                                let res = await engine.universalRebootTarget(toMode: "edl")
+                                controlActionStatus = res.message
                             }
                         }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(engine.isBusy || (!hasAdb && !hasFastboot))
+
+                        Spacer()
                     }
-                    .padding()
-                }
-            }
-            .frame(minWidth: 380, maxWidth: .infinity)
 
-            // RIGHT PANE: Real-Time Revenue-Safe Transaction Trace
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 10) {
-                    Image(systemName: "terminal.fill")
-                        .foregroundColor(.green)
-                    Text("REAL-TIME REVENUE-SAFE TRANSACTION TRACE")
-                        .font(.system(.caption, design: .monospaced)).bold()
+                    HStack(spacing: 10) {
+                        Text("BRAND ACTIONS:")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
 
-                    Spacer()
-
-                    TextField("Filter trace logs...", text: $traceFilter)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 11, design: .monospaced))
-                        .frame(maxWidth: 180)
-
-                    Button("Copy") {
-                        let fullText = filteredLogs.map { "[\($0.timestamp.formatted(date: .omitted, time: .standard))] \($0.message)" }.joined(separator: "\n")
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(fullText, forType: .string)
-                    }
-                    .font(.caption).buttonStyle(.borderless)
-
-                    Button("Flush Console") {
-                        engine.clearLogs()
-                    }
-                    .font(.caption).buttonStyle(.borderless)
-                }
-                .padding()
-                .background(Color.black.opacity(0.04))
-
-                Divider()
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 4) {
-                        if filteredLogs.isEmpty {
-                            Text("Trace log standby. Attach a device and execute commands to inspect hardware streaming.")
-                                .font(.system(.footnote, design: .monospaced))
-                                .foregroundColor(.secondary)
-                                .padding()
-                        } else {
-                            ForEach(filteredLogs) { entry in
-                                HStack(alignment: .top, spacing: 6) {
-                                    Text(entry.timestamp.formatted(date: .omitted, time: .standard))
-                                        .font(.system(size: 10.5, design: .monospaced))
-                                        .foregroundColor(.secondary)
-                                        .frame(width: 65, alignment: .leading)
-
-                                    Text(badgeText(for: entry.level))
-                                        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                                        .foregroundColor(color(for: entry.level))
-                                        .frame(width: 45, alignment: .leading)
-
-                                    Text(entry.message)
-                                        .font(.system(size: 11, design: .monospaced))
-                                        .foregroundColor(color(for: entry.level))
-                                        .textSelection(.enabled)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 2)
+                        Button {
+                            Task {
+                                let res = await engine.launchBrandDiagnosticTestMenu()
+                                controlActionStatus = res.message
                             }
+                        } label: {
+                            Label("Dial Hardware Test Menu", systemImage: "phone.fill")
                         }
-                    }
-                    .padding(.vertical, 8)
-                }
-                .background(Color.black.opacity(0.05))
-            }
-            .frame(minWidth: 440, maxWidth: .infinity)
-        }
-        .frame(minWidth: 880, minHeight: 560)
-        .onAppear {
-            Task { await probeConnectedHardware() }
-        }
-    }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.cyan)
+                        .controlSize(.small)
+                        .disabled(engine.isBusy || !hasAdb)
 
-    private func badgeText(for level: LogEntry.Level) -> String {
-        switch level {
-        case .info: return "[INFO]"
-        case .success: return "[OK]"
-        case .warning: return "[WARN]"
-        case .error: return "[ERR]"
-        case .command: return "[CMD]"
-        }
-    }
+                        Button {
+                            Task {
+                                let res = await engine.fastbootSwitchActiveSlot()
+                                controlActionStatus = res.message
+                            }
+                        } label: {
+                            Label("Toggle A/B Slot", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(engine.isBusy || !hasFastboot)
 
-    private func color(for level: LogEntry.Level) -> Color {
-        switch level {
-        case .info: return .primary
-        case .success: return .green
-        case .warning: return .orange
-        case .error: return .red
-        case .command: return .blue
-        }
-    }
+                        Button {
+                            Task {
+                                let res = await engine.fastbootWipeUserData()
+                                controlActionStatus = res.message
+                            }
+                        } label: {
+                            Label("Fastboot Wipe (-w)", systemImage: "trash")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(engine.isBusy || !hasFastboot)
 
-    private func probeConnectedHardware() async {
-        isProbing = true
-        statusNote = "Interrogating USB bus & device identity..."
-        defer { isProbing = false }
-
-        await engine.refreshDevicesAndTelemetry()
-
-        var query: HardwareIdentityQuery? = nil
-        var thermal: Double = 0.0
-
-        if let modem = engine.samsungModemInfo {
-            query = HardwareIdentityQuery(
-                hvid: modem.hvidSummary,
-                basebandToken: modem.basebandVersion,
-                vendorId: 0x04e8,
-                devconSummary: modem.rawResponse
-            )
-        } else if engine.devices.contains(where: { $0.transport == .adb }) {
-            let adbPath = engine.toolPaths["adb"] ?? "/usr/local/bin/adb"
-            let propRes = await engine.runProcess(
-                executable: adbPath,
-                arguments: engine.adbArgs(["shell", "getprop ro.board.platform; getprop ro.soc.model; getprop ro.mediatek.platform; getprop ro.hardware.chipname; getprop ro.hardware; getprop ro.boot.hardware"])
-            )
-            let plat = propRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-            query = HardwareIdentityQuery(hvid: plat, basebandToken: plat, devconSummary: plat)
-
-            let batRes = await engine.runProcess(executable: adbPath, arguments: engine.adbArgs(["shell", "dumpsys", "battery"]))
-            for line in batRes.stdout.components(separatedBy: .newlines) {
-                if line.contains("temperature:") {
-                    let parts = line.components(separatedBy: ":")
-                    if parts.count > 1, let deciC = Double(parts[1].trimmingCharacters(in: .whitespaces)) {
-                        thermal = deciC / 10.0
+                        Spacer()
                     }
                 }
-            }
-            if thermal == 0.0 {
-                let thermRes = await engine.runProcess(executable: adbPath, arguments: engine.adbArgs(["shell", "cat", "/sys/class/thermal/thermal_zone0/temp"]))
-                if let rawMilli = Double(thermRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines)), rawMilli > 0 {
-                    thermal = rawMilli > 1000 ? (rawMilli / 1000.0) : rawMilli
+
+                if !controlActionStatus.isEmpty {
+                    Text(controlActionStatus)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.accentColor)
                 }
             }
-        } else if let appleDev = engine.devices.first(where: { $0.transport == .ios }) {
-            query = HardwareIdentityQuery(vendorId: 0x05ac, productId: 0x1227, devconSummary: appleDev.details)
-        } else if engine.devices.contains(where: { $0.transport == .fastboot }) {
-            let fbPath = engine.toolPaths["fastboot"] ?? "/usr/local/bin/fastboot"
-            let fbRes = await engine.runProcess(executable: fbPath, arguments: ["getvar", "product"])
-            let desc = (fbRes.stdout.isEmpty ? fbRes.stderr : fbRes.stdout).trimmingCharacters(in: .whitespacesAndNewlines)
-            query = HardwareIdentityQuery(hvid: desc, basebandToken: desc, devconSummary: desc)
-        } else if let usb = engine.usbDevices.first(where: { $0.vendorId != 0x0000 }) {
-            query = HardwareIdentityQuery(vendorId: usb.vendorId, productId: usb.productId, devconSummary: usb.productName)
-        }
-
-        if let q = query, let resolved = ChipsetSignatureRegistry.shared.resolve(query: q) {
-            activeChip = resolved
-            liveThermalTemp = thermal // Strictly genuine reading; 0.0 indicates Sensor Standby
-            statusNote = "✔ Mapped silicon: \(resolved.marketingName)"
-            engine.log(.success, "✔ Hardware Silicon Interrogation: Identified \(resolved.marketingName) (\(resolved.architecture)) [\(resolved.bitness)-Bit].")
-        } else {
-            activeChip = nil
-            liveThermalTemp = 0.0
-            statusNote = "No mobile servicing target detected on USB bus."
-            engine.log(.warning, "✖ Hardware Interrogation: No active servicing target detected on USB bus. Connect an Android/Samsung/iOS device to probe.")
-        }
-    }
-
-    private func executeDiagnosticManifest() async {
-        guard let chip = activeChip else { return }
-        let queries = HardwareDiagnosticManifest.getQueries(for: chip.chipsetId)
-        engine.log(.info, "🔬 Executing Diagnostic Manifest for \(chip.marketingName) (\(queries.count) registered hardware queries)...")
-
-        let adbPath = engine.toolPaths["adb"] ?? "/usr/local/bin/adb"
-        let hasAdb = engine.devices.contains { $0.transport == .adb }
-        let hasFastboot = engine.devices.contains { $0.transport == .fastboot }
-        let hasOdin = engine.devices.contains { $0.transport == .odin }
-        let isApple = chip.chipsetId.hasPrefix("APPLE_") || engine.devices.contains { $0.transport == .ios }
-        let activeModem = engine.selectedSerialPort
-
-        for q in queries {
-            engine.log(.info, "▶ [\(q.transactionToken)] \(q.logExplanation)")
-            if hasAdb {
-                let args = q.shellCommand.split(separator: " ").map(String.init)
-                let res = await engine.runProcess(executable: adbPath, arguments: engine.adbArgs(["shell"] + args))
-                let out = res.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !out.isEmpty {
-                    engine.log(.success, "  └─ [ADB Result]: \(out)")
-                } else if !res.stderr.isEmpty {
-                    engine.log(.warning, "  └─ [ADB Output]: \(res.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
-                }
-            } else if isApple {
-                let res = await engine.runProcess(executable: "/bin/sh", arguments: ["-c", q.shellCommand])
-                let out = res.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !out.isEmpty {
-                    engine.log(.success, "  └─ [Apple Tool Result]: \(out)")
-                } else if !res.stderr.isEmpty {
-                    engine.log(.warning, "  └─ [Apple Tool Output]: \(res.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
-                } else {
-                    engine.log(.warning, "  └─ ideviceinfo / libimobiledevice returned no output. Verify pairing trust.")
-                }
-            } else if hasFastboot {
-                let fbPath = engine.toolPaths["fastboot"] ?? "/usr/local/bin/fastboot"
-                let res = await engine.runProcess(executable: fbPath, arguments: ["getvar", "all"])
-                let out = (res.stdout.isEmpty ? res.stderr : res.stdout).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !out.isEmpty {
-                    engine.log(.success, "  └─ [Fastboot Telemetry]: \(out.prefix(120))...")
-                }
-            } else if hasOdin {
-                let heimPath = engine.toolPaths["heimdall"] ?? "/usr/local/bin/heimdall"
-                let res = await engine.runProcess(executable: heimPath, arguments: ["detect"])
-                let out = (res.stdout.isEmpty ? res.stderr : res.stdout).trimmingCharacters(in: .whitespacesAndNewlines)
-                engine.log(.success, "  └─ [Odin Protocol Handshake]: \(out)")
-            } else if !activeModem.isEmpty, let atCmd = q.alternativeAtCommand {
-                let (ok, raw) = await engine.querySerialAT(portPath: activeModem, command: atCmd, logOutput: false)
-                engine.log(ok ? .success : .warning, "  └─ [AT Modem Result]: \(raw.trimmingCharacters(in: .whitespacesAndNewlines))")
-            } else {
-                engine.log(.warning, "  └─ Transport offline for query: requires authorized ADB, Apple usbmuxd, Fastboot, or Modem AT port.")
-            }
-        }
-    }
-
-    private func inspectStagedSiphonPayload() {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let siphonDir = home.appendingPathComponent("Downloads/BobFWTools_SiphonDrop")
-        guard let files = try? FileManager.default.contentsOfDirectory(at: siphonDir, includingPropertiesForKeys: [.contentModificationDateKey], options: .skipsHiddenFiles),
-              !files.isEmpty else {
-            engine.log(.info, "Siphon Folder: Drop a firmware package (.tar, .apk, .img, .bin, .pit, .pac) into ~/Downloads/BobFWTools_SiphonDrop to analyze.")
-            return
-        }
-
-        let sortedFiles = files.sorted { u1, u2 in
-            let d1 = (try? u1.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? Date.distantPast
-            let d2 = (try? u2.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? Date.distantPast
-            return d1 > d2
-        }
-
-        guard let latest = sortedFiles.first else { return }
-
-        if let desc = UncompressedLayoutHeaderInspector.inspectFileHeader(at: latest) {
-            engine.log(.success, "✔ Zero-Copy Siphon Inspector: Matched \(desc.description) [\(desc.formatId)] for partition '\(desc.targetPartition)' at offset \(desc.byteOffset).")
-            if let handle = try? FileHandle(forReadingFrom: latest) {
-                let sample = handle.readData(ofLength: 512)
-                let router = PayloadRouter()
-                router.routeDataChunk(sample)
-                engine.log(.info, "  └─ Dispatched \(sample.count) header bytes across PayloadRouter matrix.")
-                try? handle.close()
-            }
-        } else {
-            engine.log(.info, "ℹ Siphon Package: \(latest.lastPathComponent) (Standard container format: \(latest.pathExtension.uppercased()))")
-        }
-    }
-
-    private func commitAuditLedgerSnapshot() async {
-        do {
-            let ledger = try SQLiteAuditLedger()
-            let serial = engine.samsungModemInfo?.serialNumber ?? (engine.selectedDevice?.serial ?? "UNATTACHED_BENCH_SESSION")
-            let model = engine.samsungModemInfo?.model ?? (engine.selectedDevice?.name ?? "UNKNOWN_MODEL")
-            let platform = engine.activePlatform.rawValue
-            let chip = activeChip?.chipsetId ?? "UNKNOWN_CHIP"
-
-            try await ledger.upsertDevice(serial: serial, model: model, platform: platform, csc: engine.samsungModemInfo?.activeCsc, buildPda: engine.samsungModemInfo?.pdaVersion, chipsetId: chip)
-
-            try await ledger.logWorkflowEvent(
-                serial: serial,
-                platform: platform,
-                model: model,
-                workflowId: "workbench.split_pane_interrogation",
-                title: "Hardware Silicon Interrogation & Thermal Audit",
-                verified: activeChip != nil,
-                summary: "Chip: \(activeChip?.marketingName ?? "Unresolved") · Temp: \(String(format: "%.1f°C", liveThermalTemp))"
-            )
-
-            if let doc = engine.cableDoctorReport {
-                try await ledger.logCableDiagnostic(serial: serial, impedance: 0.18, packetLoss: Double(doc.reconnectEvents) * 0.05, grade: doc.grade)
-            }
-
-            engine.log(.success, "✔ Committed atomic audit session to ~/Library/Application Support/BobFWTools/records/workspace.db")
-            statusNote = "✔ Session committed to SQLite ledger"
-        } catch {
-            engine.log(.error, "✖ SQLite Audit Ledger Error: \(error.localizedDescription)")
-            statusNote = "✖ Ledger commit error: \(error.localizedDescription)"
+            .padding(8)
         }
     }
 }
+
 
