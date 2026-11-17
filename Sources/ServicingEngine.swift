@@ -2269,6 +2269,22 @@ final class ServicingEngine: ObservableObject {
     @Published var appleCrashReportsPulledPath: String = ""
     @Published var appleBackupDestinationPath: String = ""
     @Published var androidDeepSecurityAudit: [String: String] = [:]
+    @Published var appleActivationAndMdmAudit: [String: String] = [:]
+
+    #if !STORE_EDITION
+    @Published var ownerHardwareTelemetry: OwnerHardwareTelemetry? = nil
+    @Published var ownerPanicAuditReport: PanicAuditReport? = nil
+    @Published var ownerAndroidBenchTelemetry: AndroidBenchTelemetry? = nil
+    @Published var ownerLatestReportDir: String = ""
+    @Published var ownerIrecoveryStatus: [String: String] = [:]
+    @Published var ownerSyslogFilterSeverity: String = "All"
+    @Published var ownerSyslogProcessFilter: String = ""
+    @Published var ownerSyslogLines: [String] = []
+    @Published var isOwnerSyslogStreaming: Bool = false
+    @Published var isOwnerBenchRunning: Bool = false
+    private var ownerSyslogProcess: Process? = nil
+    private var activeOwnerSubprocess: Process? = nil
+    #endif
 
     // Real-Time Operation Status ("What / When / Where / Progress / Result" HUD)
     @Published var liveTaskState: String = "IDLE" // IDLE, RUNNING, COMPLETED, FAILED
@@ -11595,5 +11611,1193 @@ extension ServicingEngine {
             wherePath: hasTar ? tarDest.path : mapFile.path
         )
     }
+
+    // MARK: - Authorized Apple Passcode Restore, Activation State & Supervision Inspection (Store + Owner Pro)
+
+    public func queryAppleActivationAndMdmState() async {
+        let infoPath = toolPaths["ideviceinfo"] ?? "/usr/local/bin/ideviceinfo"
+        guard FileManager.default.isExecutableFile(atPath: infoPath) else {
+            log(.error, "ideviceinfo binary not found at \(infoPath)")
+            finishLiveTask(success: false, summary: "Missing ideviceinfo binary at \(infoPath).")
+            return
+        }
+        beginLiveTask(
+            title: "Apple Activation, SIM & MDM Supervision Check",
+            what: "Reading live ActivationState, SIMStatus, DeviceClass, and CloudConfiguration/Chaperone supervision flags via lockdownd.",
+            wherePath: NSHomeDirectory() + "/Downloads",
+            initialStage: "Querying ideviceinfo general & supervision domains..."
+        )
+
+        let genRes = await runProcess(executable: infoPath, arguments: [], logCommand: false)
+        var infoMap: [String: String] = [:]
+        for line in genRes.stdout.components(separatedBy: .newlines) {
+            let parts = line.components(separatedBy: ":")
+            guard parts.count >= 2 else { continue }
+            let k = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
+            let v = parts.dropFirst().joined(separator: ":").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !k.isEmpty && !v.isEmpty { infoMap[k] = v }
+        }
+
+        guard !infoMap.isEmpty, let prod = infoMap["ProductType"] else {
+            let emptyMsg = detectedAppleMode == .recovery || detectedAppleMode == .dfu
+                ? "Device is currently in \(detectedAppleMode.rawValue) mode — boot to Normal mode or use Finder / Apple Configurator to restore."
+                : "No Normal-mode Apple iDevice detected. Connect via USB and tap Trust if unlocked."
+            await MainActor.run {
+                self.appleActivationAndMdmAudit = ["Status": emptyMsg]
+            }
+            finishLiveTask(success: false, summary: emptyMsg)
+            return
+        }
+
+        updateLiveTaskProgress(stage: "Checking MDM CloudConfiguration & Supervision domain...", progress: 0.65)
+        let cloudRes = await runProcess(executable: infoPath, arguments: ["-q", "com.apple.mobile.cloud_configuration"], logCommand: false)
+        let chapRes = await runProcess(executable: infoPath, arguments: ["-q", "com.apple.mobile.chaperone"], logCommand: false)
+
+        let cloudText = cloudRes.stdout + "\n" + chapRes.stdout
+        let isSupervised = cloudText.localizedCaseInsensitiveContains("IsSupervised: true")
+            || cloudText.localizedCaseInsensitiveContains("DeviceIsSupervised: true")
+        let mdmUnremovable = cloudText.localizedCaseInsensitiveContains("IsMDMUnremovable: true")
+
+        let activationState = infoMap["ActivationState"] ?? "Unknown"
+        let iosVer = infoMap["ProductVersion"] ?? "Unknown"
+        let buildVer = infoMap["BuildVersion"] ?? "Unknown"
+        let simStatus = infoMap["SIMStatus"] ?? "N/A"
+        let marketing = AppleDeviceMasterRegistry.resolve(productType: prod)?.marketingName ?? prod
+
+        let report: [String: String] = [
+            "Device": "\(marketing) (\(prod))",
+            "iOS / Build": "iOS \(iosVer) (\(buildVer))",
+            "Activation State": activationState,
+            "SIM / Cellular": simStatus,
+            "Supervision Status": isSupervised ? "Supervised (Organization / Configurator)" : "Unsupervised (Consumer Device)",
+            "MDM Profile Lock": mdmUnremovable ? "Unremovable MDM Enrolled" : "No Unremovable MDM Reported",
+            "Serial Number": infoMap["SerialNumber"] ?? "Unknown"
+        ]
+
+        await MainActor.run {
+            self.appleActivationAndMdmAudit = report
+        }
+        let summary = "\(marketing): Activation=\(activationState) · \(isSupervised ? "Supervised" : "Consumer")"
+        log(.success, "🔐 \(summary)")
+        finishLiveTask(success: true, summary: summary)
+    }
+
+    public func launchAppleFinderRestoreFlow() async {
+        beginLiveTask(
+            title: "Official Apple Passcode / Recovery Restore Flow",
+            what: "Staging Recovery mode (if in Normal mode) and opening Finder so you can perform an official Apple Restore or Update.",
+            wherePath: NSHomeDirectory() + "/Downloads",
+            initialStage: "Opening Finder and checking connected iDevice transport..."
+        )
+        NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app"))
+        if detectedAppleMode == .normal {
+            await stageRecoveryThenDfuPipeline()
+        } else if detectedAppleMode == .recovery || detectedAppleMode == .dfu {
+            finishLiveTask(
+                success: true,
+                summary: "Device is already in \(detectedAppleMode.rawValue) mode. Select it in Finder sidebar and click Restore (or Update to keep data)."
+            )
+        } else {
+            finishLiveTask(
+                success: false,
+                summary: "Finder opened, but no iPhone/iPad is detected over USB. Connect cable and enter Recovery/DFU mode."
+            )
+        }
+    }
+
+    #if !STORE_EDITION
+    // MARK: - Owner Pro Edition Bench Diagnostics, Panic Analyzer, cfgutil, Shop Prepare, Android & PDF/CSV Suite
+
+    public func resolveOwnerCli(_ binaryName: String) -> String? {
+        var candidates: [String] = []
+        if let mapped = toolPaths[binaryName], !mapped.isEmpty {
+            candidates.append(mapped)
+        }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        candidates.append(contentsOf: [
+            "/opt/homebrew/bin/\(binaryName)",
+            "/usr/local/bin/\(binaryName)",
+            "/Applications/Apple Configurator.app/Contents/MacOS/\(binaryName)",
+            "\(home)/Library/Android/sdk/platform-tools/\(binaryName)",
+            "\(home)/Android/Sdk/platform-tools/\(binaryName)"
+        ])
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    public func cancelActiveOwnerBenchTask() {
+        if let proc = activeOwnerSubprocess, proc.isRunning {
+            proc.terminate()
+        }
+        activeOwnerSubprocess = nil
+        isOwnerBenchRunning = false
+        finishLiveTask(success: false, summary: "Cancelled active Owner Pro bench operation.")
+    }
+
+    private func runOwnerCliWithTimeout(
+        executable: String,
+        arguments: [String],
+        timeoutSeconds: TimeInterval = 25.0
+    ) async throws -> (exitCode: Int32, stdout: String, stderr: String) {
+        try Task.checkCancellation()
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: executable)
+        proc.arguments = arguments
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        proc.standardOutput = outPipe
+        proc.standardError = errPipe
+
+        await MainActor.run { self.activeOwnerSubprocess = proc }
+
+        return try await withTaskCancellationHandler {
+            try await Task.detached(priority: .userInitiated) {
+                try proc.run()
+                let deadline = Date().addingTimeInterval(timeoutSeconds)
+                while proc.isRunning {
+                    if Task.isCancelled || Date() >= deadline {
+                        proc.terminate()
+                        break
+                    }
+                    try await Task.sleep(nanoseconds: 100_000_000)
+                }
+                proc.waitUntilExit()
+                let outData = outPipe.fileHandleForReading.readDataToEndOfFile()
+                let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+                let stdoutStr = String(data: outData, encoding: .utf8) ?? ""
+                let stderrStr = String(data: errData, encoding: .utf8) ?? ""
+                await MainActor.run {
+                    if self.activeOwnerSubprocess === proc {
+                        self.activeOwnerSubprocess = nil
+                    }
+                }
+                return (proc.terminationStatus, stdoutStr, stderrStr)
+            }.value
+        } onCancel: {
+            if proc.isRunning { proc.terminate() }
+        }
+    }
+
+    private static func parseKeyValueLines(_ raw: String) -> [String: String] {
+        var map: [String: String] = [:]
+        for line in raw.components(separatedBy: .newlines) {
+            let parts = line.components(separatedBy: ":")
+            guard parts.count >= 2 else { continue }
+            let k = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
+            let v = parts.dropFirst().joined(separator: ":").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !k.isEmpty && !v.isEmpty { map[k] = v }
+        }
+        return map
+    }
+
+    // 1. Deep Hardware & Battery Telemetry
+    public func fetchOwnerHardwareTelemetry() async -> OwnerHardwareTelemetry? {
+        guard let infoPath = resolveOwnerCli("ideviceinfo") else {
+            finishLiveTask(success: false, summary: "ideviceinfo not found in /opt/homebrew/bin or /usr/local/bin.")
+            return nil
+        }
+        isOwnerBenchRunning = true
+        defer { isOwnerBenchRunning = false }
+
+        beginLiveTask(
+            title: "Owner Pro: Deep Hardware & Battery Telemetry",
+            what: "Querying ideviceinfo battery, disk_usage, hardware identifiers, and idevicediagnostics All.",
+            wherePath: NSHomeDirectory() + "/Downloads",
+            initialStage: "Reading general device identifiers via ideviceinfo..."
+        )
+
+        do {
+            let genRes = try await runOwnerCliWithTimeout(executable: infoPath, arguments: [], timeoutSeconds: 15)
+            let infoMap = Self.parseKeyValueLines(genRes.stdout)
+            guard !infoMap.isEmpty, let prod = infoMap["ProductType"] else {
+                finishLiveTask(success: false, summary: "No trusted Normal-mode Apple device responded to ideviceinfo.")
+                return nil
+            }
+
+            updateLiveTaskProgress(stage: "Querying com.apple.mobile.battery & com.apple.disk_usage...", progress: 0.4)
+            let battRes = try await runOwnerCliWithTimeout(executable: infoPath, arguments: ["-q", "com.apple.mobile.battery"], timeoutSeconds: 15)
+            let battMap = Self.parseKeyValueLines(battRes.stdout)
+
+            let diskRes = try await runOwnerCliWithTimeout(executable: infoPath, arguments: ["-q", "com.apple.disk_usage"], timeoutSeconds: 15)
+            let diskMap = Self.parseKeyValueLines(diskRes.stdout)
+
+            let cycleCount = Int(battMap["CycleCount"] ?? "") ?? 0
+            let designCap = Int(battMap["DesignCapacity"] ?? "") ?? 0
+            let nominalCap = Int(battMap["NominalChargeCapacity"] ?? battMap["FullChargeCapacity"] ?? battMap["AbsoluteCapacity"] ?? "") ?? 0
+            let healthPct = (designCap > 0 && nominalCap > 0) ? min(100, max(1, Int((Double(nominalCap) / Double(designCap)) * 100.0))) : 0
+            let instantAmp = Int(battMap["InstantAmperage"] ?? "") ?? 0
+            let tempC: Double? = Double(battMap["Temperature"] ?? "").map { $0 > 200 ? $0 / 100.0 : $0 }
+            let isCharging = (battMap["BatteryIsCharging"] ?? battMap["IsCharging"] ?? "").lowercased() == "true"
+            let extConn = (battMap["ExternalConnected"] ?? "").lowercased() == "true"
+            let chargingState = isCharging ? "Charging (\(instantAmp) mA)" : (extConn ? "External Power (Not Charging)" : "Discharging (\(instantAmp) mA)")
+
+            var diagFlags: [String: String] = [:]
+            if let diagPath = resolveOwnerCli("idevicediagnostics") {
+                updateLiveTaskProgress(stage: "Running idevicediagnostics diagnostics All...", progress: 0.75)
+                if let diagRes = try? await runOwnerCliWithTimeout(executable: diagPath, arguments: ["diagnostics", "All"], timeoutSeconds: 20) {
+                    let combined = diagRes.stdout + "\n" + diagRes.stderr
+                    if combined.localizedCaseInsensitiveContains("fail") || combined.localizedCaseInsensitiveContains("error") {
+                        diagFlags["Subsystem Alert"] = String(combined.prefix(180))
+                    } else if diagRes.exitCode == 0 && !diagRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        diagFlags["Board & Sensor Check"] = "All queried subsystems responded OK"
+                    } else {
+                        diagFlags["Diagnostics Notice"] = "Device must be unlocked & paired for diagnostics All"
+                    }
+                }
+            }
+
+            let telemetry = OwnerHardwareTelemetry(
+                cycleCount: cycleCount,
+                designCapacityMah: designCap,
+                nominalCapacityMah: nominalCap,
+                batteryHealthPct: healthPct,
+                instantAmperageMa: instantAmp,
+                temperatureCelsius: tempC,
+                chargingState: chargingState,
+                totalDiskBytes: Int64(diskMap["TotalDiskCapacity"] ?? "") ?? 0,
+                totalDataAvailableBytes: Int64(diskMap["TotalDataAvailable"] ?? "") ?? 0,
+                totalSystemBytes: Int64(diskMap["TotalSystemCapacity"] ?? "") ?? 0,
+                hardwareModel: infoMap["HardwareModel"] ?? "Unknown",
+                productType: prod,
+                chipId: infoMap["ChipID"] ?? "Unknown",
+                dieId: infoMap["DieID"] ?? "Unknown",
+                basebandVersion: infoMap["BasebandVersion"] ?? "Wi-Fi / No Baseband",
+                serialNumber: infoMap["SerialNumber"] ?? "Unknown",
+                udid: infoMap["UniqueDeviceID"] ?? "Unknown",
+                diagnosticsFlags: diagFlags
+            )
+
+            self.ownerHardwareTelemetry = telemetry
+            let summary = "\(prod) · Battery \(healthPct)% (\(cycleCount) cycles) · \(nominalCap)/\(designCap) mAh"
+            log(.success, "🔋 Owner Telemetry: \(summary)")
+            finishLiveTask(success: true, summary: summary)
+            return telemetry
+        } catch {
+            finishLiveTask(success: false, summary: "Telemetry scan interrupted: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    // 2. Sysdiagnose & Panic Log Analyzer
+    public func extractAndAnalyzePanicLogs(snapshotDir: URL? = nil) async -> PanicAuditReport {
+        let stamp = Int(Date().timeIntervalSince1970)
+        let targetDir = snapshotDir ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads/BobFWTools_Snapshot_\(stamp)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)
+
+        guard let crashPath = resolveOwnerCli("idevicecrashreport") else {
+            let empty = PanicAuditReport(snapshotDirectory: targetDir.path, scannedFilesCount: 0, findings: [], scannedAt: Date())
+            finishLiveTask(success: false, summary: "idevicecrashreport not found in /opt/homebrew/bin or /usr/local/bin.", wherePath: targetDir.path)
+            return empty
+        }
+
+        isOwnerBenchRunning = true
+        defer { isOwnerBenchRunning = false }
+
+        beginLiveTask(
+            title: "Owner Pro: Panic & Crash Log Analyzer",
+            what: "Extracting crash/panic logs via idevicecrashreport -e and scanning .ips files for hardware fault signatures.",
+            wherePath: targetDir.path,
+            initialStage: "Pulling crash logs into \(targetDir.lastPathComponent)..."
+        )
+
+        _ = try? await runOwnerCliWithTimeout(executable: crashPath, arguments: ["-e", targetDir.path], timeoutSeconds: 40)
+
+        updateLiveTaskProgress(stage: "Scanning extracted .ips and panic-full-*.ips files...", progress: 0.7, wherePath: targetDir.path)
+
+        let scanResult: (Int, [PanicAuditFinding]) = await Task.detached(priority: .userInitiated) {
+            let fm = FileManager.default
+            guard let enumerator = fm.enumerator(at: targetDir, includingPropertiesForKeys: [.creationDateKey], options: [.skipsHiddenFiles]) else {
+                return (0, [])
+            }
+            let signatures: [(pattern: String, label: String, hint: String)] = [
+                ("userspace watchdog timeout", "userspace watchdog timeout", "Daemon/Sensor stall (check front/dock flex I2C or thermal reboot cycle)"),
+                ("smc panic", "SMC PANIC", "System Management Controller / PMU power rail or thermistor fault"),
+                ("aop panic", "AOP PANIC", "Always-On Processor / Proximity & Ambient Light Sensor flex fault"),
+                ("i2c", "I2C Bus Fault", "I2C serial bus pull-up / Tristar / Hydra / Audio / Sensor IC fault"),
+                ("nand", "NAND Fault", "NAND flash storage controller or filesystem corruption"),
+                ("baseband", "Baseband Panic", "Cellular modem / RF PMIC / Baseband power rail issue"),
+                ("thermalmonitord", "thermalmonitord", "Thermal monitor pressure or battery NTC thermistor disconnect"),
+                ("tristar", "Tristar / Hydra", "USB-C / Lightning Tristar/Hydra charging IC fault"),
+                ("hydra", "Tristar / Hydra", "USB-C / Lightning Hydra charging controller fault")
+            ]
+
+            var scanned = 0
+            var findings: [PanicAuditFinding] = []
+            let iso = ISO8601DateFormatter()
+
+            while let fileUrl = enumerator.nextObject() as? URL {
+                let name = fileUrl.lastPathComponent
+                let ext = fileUrl.pathExtension.lowercased()
+                guard ext == "ips" || ext == "panic" || name.lowercased().contains("panic") else { continue }
+                scanned += 1
+                guard let content = try? String(contentsOf: fileUrl, encoding: .utf8) else { continue }
+                let lower = content.lowercased()
+                let ts = (try? fileUrl.resourceValues(forKeys: [.creationDateKey]).creationDate).map { iso.string(from: $0) } ?? "Unknown"
+
+                for sig in signatures where lower.contains(sig.pattern) {
+                    let snippetLine = content.components(separatedBy: .newlines).first(where: { $0.lowercased().contains(sig.pattern) }) ?? sig.label
+                    findings.append(PanicAuditFinding(
+                        fileName: name,
+                        timestamp: ts,
+                        matchedSignature: sig.label,
+                        subsystemHint: sig.hint,
+                        snippet: String(snippetLine.prefix(160))
+                    ))
+                    break
+                }
+            }
+            return (scanned, findings)
+        }.value
+
+        let report = PanicAuditReport(
+            snapshotDirectory: targetDir.path,
+            scannedFilesCount: scanResult.0,
+            findings: scanResult.1,
+            scannedAt: Date()
+        )
+        self.ownerPanicAuditReport = report
+        let summary = "Scanned \(report.scannedFilesCount) crash/panic file(s); found \(report.findings.count) hardware signature match(es)."
+        log(report.findings.isEmpty ? .info : .warning, "🩺 Panic Audit: \(summary)")
+        finishLiveTask(success: true, summary: summary, wherePath: targetDir.path)
+        return report
+    }
+
+    public func prepareSafeAuthorizedRestoreSnapshot() async {
+        beginLiveTask(
+            title: "Owner Pro: Pre-Restore Snapshot & DFU Staging",
+            what: "Captures Activation/Supervision readout and extracts/analyzes crash logs before staging Recovery-First DFU restore.",
+            wherePath: NSHomeDirectory() + "/Downloads",
+            initialStage: "Step 1/3: Auditing Activation & Supervision state..."
+        )
+        if detectedAppleMode == .normal {
+            await queryAppleActivationAndMdmState()
+            updateLiveTaskProgress(stage: "Step 2/3: Extracting & scanning .ips/.panic crash logs...", progress: 0.45)
+            _ = await extractAndAnalyzePanicLogs()
+            updateLiveTaskProgress(stage: "Step 2b/3: Auditing /var/db/lockdown pairing records...", progress: 0.65)
+            await inspectHostLockdownPairing()
+        }
+        updateLiveTaskProgress(stage: "Step 3/3: Staging Recovery-First DFU pipeline...", progress: 0.85)
+        await stageRecoveryThenDfuPipeline()
+    }
+
+    // 3. Automated cfgutil Bench Provisioning & Supervision
+    public func runCfgutilBenchWorkflow(_ workflow: CfgutilBenchWorkflow) async {
+        if case .clearActivationLockMdmEscrow(let bypassCode, let serialOrImei, let mdmUrlStr) = workflow {
+            let cleanSerial = serialOrImei.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !cleanSerial.isEmpty {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(cleanSerial, forType: .string)
+            }
+            let cleanCode = bypassCode.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleanCode.isEmpty else {
+                finishLiveTask(success: false, summary: "Enter an official MDM-escrowed Activation Lock Bypass Code (or open Apple Business Manager / Apple Support).")
+                return
+            }
+            beginLiveTask(
+                title: "Owner Pro: Authorized MDM Activation Lock Clear",
+                what: "Preparing official Apple MDM ClearActivationLock payload using escrowed bypass code.",
+                wherePath: NSHomeDirectory() + "/Downloads",
+                initialStage: "Validating MDM server endpoint & bypass code..."
+            )
+            if let urlStr = mdmUrlStr?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !urlStr.isEmpty,
+               let url = URL(string: urlStr) {
+                var req = URLRequest(url: url)
+                req.httpMethod = "POST"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                let body: [String: String] = [
+                    "RequestType": "ClearActivationLock",
+                    "SerialNumber": cleanSerial,
+                    "UnlockToken": cleanCode
+                ]
+                req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+                do {
+                    let (_, resp) = try await URLSession.shared.data(for: req)
+                    let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                    let ok = (200..<300).contains(code)
+                    finishLiveTask(
+                        success: ok,
+                        summary: ok ? "MDM ClearActivationLock accepted (HTTP \(code))." : "MDM endpoint returned HTTP \(code) — verify MDM auth token or use Apple Business Manager."
+                    )
+                } catch {
+                    finishLiveTask(success: false, summary: "MDM request failed: \(error.localizedDescription)")
+                }
+            } else {
+                if let abm = URL(string: "https://business.apple.com") {
+                    NSWorkspace.shared.open(abm)
+                }
+                finishLiveTask(
+                    success: true,
+                    summary: "Copied Serial/IMEI (\(cleanSerial.isEmpty ? "none" : cleanSerial)) to clipboard and opened Apple Business Manager for authorized escrow release."
+                )
+            }
+            return
+        }
+
+        guard let cfgPath = resolveOwnerCli("cfgutil") else {
+            let appUrl = URL(fileURLWithPath: "/Applications/Apple Configurator.app")
+            if FileManager.default.fileExists(atPath: appUrl.path) {
+                NSWorkspace.shared.open(appUrl)
+            }
+            finishLiveTask(
+                success: false,
+                summary: "cfgutil CLI not found. Open Apple Configurator -> Install Automation Tools to enable cfgutil."
+            )
+            return
+        }
+
+        var args: [String] = []
+        var label = ""
+        switch workflow {
+        case .prepareSupervise(let identityPath, let profilePath):
+            label = "cfgutil prepare (Supervise)"
+            let cleanId = identityPath.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleanId.isEmpty, FileManager.default.fileExists(atPath: cleanId) else {
+                finishLiveTask(success: false, summary: "Select a valid organization .p12 or .der supervision identity file first.")
+                return
+            }
+            args = ["prepare", "-c", cleanId]
+            if let prof = profilePath?.trimmingCharacters(in: .whitespacesAndNewlines), !prof.isEmpty {
+                args.append(contentsOf: ["--profile", prof])
+            }
+        case .installProfile(let profilePath):
+            label = "cfgutil install-profile"
+            let cleanProf = profilePath.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleanProf.isEmpty, FileManager.default.fileExists(atPath: cleanProf) else {
+                finishLiveTask(success: false, summary: "Select a valid .mobileconfig profile file first.")
+                return
+            }
+            args = ["install-profile", cleanProf]
+        case .installApp(let ipaPath):
+            label = "cfgutil install-app"
+            let cleanIpa = ipaPath.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleanIpa.isEmpty, FileManager.default.fileExists(atPath: cleanIpa) else {
+                finishLiveTask(success: false, summary: "Select a valid .ipa package file first.")
+                return
+            }
+            args = ["install-app", cleanIpa]
+        case .clearActivationLockMdmEscrow:
+            return
+        }
+
+        isOwnerBenchRunning = true
+        defer { isOwnerBenchRunning = false }
+
+        beginLiveTask(
+            title: "Owner Pro: \(label)",
+            what: "Executing `cfgutil \(args.joined(separator: " "))` with live streaming output.",
+            wherePath: NSHomeDirectory() + "/Downloads",
+            initialStage: "Running \(label)..."
+        )
+
+        let res = await runProcessStreaming(executable: cfgPath, arguments: args) { [weak self] line in
+            DispatchQueue.main.async {
+                self?.log(.info, "[cfgutil] \(line)")
+                self?.updateLiveTaskProgress(stage: line)
+            }
+        }
+        let combined = res.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        finishLiveTask(
+            success: res.exitCode == 0,
+            summary: res.exitCode == 0
+                ? (combined.isEmpty ? "\(label) completed cleanly." : String(combined.prefix(240)))
+                : (combined.isEmpty ? "\(label) exited with code \(res.exitCode)." : String(combined.prefix(240)))
+        )
+    }
+
+    public func runOwnerCfgutilTechnicianAction(action: String) async {
+        guard let cfgPath = resolveOwnerCli("cfgutil") else {
+            log(.warning, "Apple Configurator CLI (cfgutil) not installed. Opening Apple Configurator...")
+            let appUrl = URL(fileURLWithPath: "/Applications/Apple Configurator.app")
+            if FileManager.default.fileExists(atPath: appUrl.path) {
+                NSWorkspace.shared.open(appUrl)
+            }
+            finishLiveTask(
+                success: false,
+                summary: "cfgutil CLI not found. Install Apple Configurator (Automation -> Install Automation Tools) or use Finder Restore."
+            )
+            return
+        }
+
+        beginLiveTask(
+            title: "Owner Pro: Apple Configurator CLI (cfgutil \(action))",
+            what: "Running official Apple Configurator `cfgutil \(action)` directly over USB.",
+            wherePath: NSHomeDirectory() + "/Downloads",
+            initialStage: "Executing cfgutil \(action)..."
+        )
+        let res = await runProcessStreaming(executable: cfgPath, arguments: [action]) { [weak self] line in
+            DispatchQueue.main.async {
+                self?.log(.info, "[cfgutil] \(line)")
+                self?.updateLiveTaskProgress(stage: line)
+            }
+        }
+        let combined = res.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        if res.exitCode == 0 {
+            log(.success, "✅ cfgutil \(action) finished: \(combined.isEmpty ? "OK" : combined)")
+            finishLiveTask(success: true, summary: combined.isEmpty ? "cfgutil \(action) completed cleanly." : String(combined.prefix(240)))
+        } else {
+            log(.warning, "cfgutil \(action) exited \(res.exitCode): \(combined)")
+            finishLiveTask(success: false, summary: combined.isEmpty ? "cfgutil \(action) exited with code \(res.exitCode)." : String(combined.prefix(240)))
+        }
+    }
+
+    // 4. Real-Time Device Console & NVRAM/Recovery Inspector
+    public func streamDeviceSyslog(start: Bool) {
+        if !start {
+            if let proc = ownerSyslogProcess, proc.isRunning { proc.terminate() }
+            ownerSyslogProcess = nil
+            isOwnerSyslogStreaming = false
+            return
+        }
+        streamDeviceSyslog(start: false)
+        guard let syslogBin = resolveOwnerCli("idevicesyslog") else {
+            finishLiveTask(success: false, summary: "idevicesyslog binary not found in /opt/homebrew/bin or /usr/local/bin.")
+            return
+        }
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: syslogBin)
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = pipe
+        ownerSyslogProcess = proc
+        isOwnerSyslogStreaming = true
+
+        let handle = pipe.fileHandleForReading
+        handle.readabilityHandler = { [weak self] fh in
+            let data = fh.availableData
+            if data.isEmpty {
+                fh.readabilityHandler = nil
+                DispatchQueue.main.async { self?.isOwnerSyslogStreaming = false }
+                return
+            }
+            guard let chunk = String(data: data, encoding: .utf8) else { return }
+            let lines = chunk.components(separatedBy: .newlines).filter { !$0.isEmpty }
+            guard !lines.isEmpty else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                let sev = self.ownerSyslogFilterSeverity
+                let procFilter = self.ownerSyslogProcessFilter.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                for line in lines {
+                    let lower = line.lowercased()
+                    let sevMatch: Bool
+                    switch sev {
+                    case "Error / Fault": sevMatch = lower.contains("<error>") || lower.contains("<fault>") || lower.contains("panic") || lower.contains("error")
+                    case "Warning": sevMatch = lower.contains("<warning>") || lower.contains("warn")
+                    case "Notice / Bootloop": sevMatch = lower.contains("purplebuddy") || lower.contains("springboard") || lower.contains("lockdownd") || lower.contains("thermalmonitord")
+                    default: sevMatch = true
+                    }
+                    let procMatch = procFilter.isEmpty || lower.contains(procFilter)
+                    if sevMatch && procMatch {
+                        self.ownerSyslogLines.append(line)
+                    }
+                }
+                if self.ownerSyslogLines.count > 350 {
+                    self.ownerSyslogLines.removeFirst(self.ownerSyslogLines.count - 350)
+                }
+            }
+        }
+        proc.terminationHandler = { [weak self] _ in
+            pipe.fileHandleForReading.readabilityHandler = nil
+            DispatchQueue.main.async {
+                self?.isOwnerSyslogStreaming = false
+                self?.ownerSyslogProcess = nil
+            }
+        }
+        do {
+            try proc.run()
+        } catch {
+            isOwnerSyslogStreaming = false
+            ownerSyslogProcess = nil
+            finishLiveTask(success: false, summary: "Failed to start idevicesyslog: \(error.localizedDescription)")
+        }
+    }
+
+    public func queryOwnerIrecoveryStatus() async {
+        guard let irecPath = resolveOwnerCli("irecovery") else {
+            finishLiveTask(success: false, summary: "irecovery binary not found in /opt/homebrew/bin or /usr/local/bin.")
+            return
+        }
+        beginLiveTask(
+            title: "Owner Pro: iRecovery Hardware Inspector",
+            what: "Querying irecovery -q for CPID, BDID, ECID, SRTG, MODE, PWND, and NONC flags.",
+            wherePath: NSHomeDirectory() + "/Downloads",
+            initialStage: "Running irecovery -q..."
+        )
+        if let res = try? await runOwnerCliWithTimeout(executable: irecPath, arguments: ["-q"], timeoutSeconds: 10),
+           res.exitCode == 0, !res.stdout.isEmpty {
+            let map = Self.parseKeyValueLines(res.stdout)
+            let filtered: [String: String] = [
+                "CPID": map["CPID"] ?? "—",
+                "BDID": map["BDID"] ?? "—",
+                "ECID": map["ECID"] ?? "—",
+                "SRTG": map["SRTG"] ?? "—",
+                "MODE": map["MODE"] ?? "—",
+                "PWND": map["PWND"] ?? "None",
+                "NONC": map["NONC"] ?? "—"
+            ]
+            self.ownerIrecoveryStatus = filtered
+            finishLiveTask(success: true, summary: "iRecovery detected MODE=\(filtered["MODE"] ?? "?") · CPID=\(filtered["CPID"] ?? "?") · ECID=\(filtered["ECID"] ?? "?")")
+        } else {
+            self.ownerIrecoveryStatus = [:]
+            finishLiveTask(success: false, summary: "No device in Recovery or DFU mode responded to irecovery -q.")
+        }
+    }
+
+    // 5. Automated Setup Assistant Skip Profiles via cfgutil prepare (Shop Inventory Auto-Prepare)
+    public func runSupervisedShopPrepare(
+        identityPath: String,
+        keyPath: String? = nil,
+        p12Passphrase: String? = nil,
+        orgName: String,
+        department: String,
+        wifiProfilePath: String? = nil,
+        skipAll: Bool = true,
+        skipKeys: [String] = []
+    ) async {
+        guard let cfgPath = resolveOwnerCli("cfgutil") else {
+            let appUrl = URL(fileURLWithPath: "/Applications/Apple Configurator.app")
+            if FileManager.default.fileExists(atPath: appUrl.path) {
+                NSWorkspace.shared.open(appUrl)
+            }
+            finishLiveTask(success: false, summary: "cfgutil CLI not found. Open Apple Configurator -> Install Automation Tools.")
+            return
+        }
+        let cleanId = identityPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanId.isEmpty, FileManager.default.fileExists(atPath: cleanId) else {
+            finishLiveTask(success: false, summary: "Select a valid organization supervision identity (.p12 or .der) file.")
+            return
+        }
+
+        let stamp = Int(Date().timeIntervalSince1970)
+        let docsDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents/BobFWTools_BenchReports/ShopPrepare_\(stamp)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: docsDir, withIntermediateDirectories: true)
+
+        isOwnerBenchRunning = true
+        defer { isOwnerBenchRunning = false }
+
+        beginLiveTask(
+            title: "Owner Pro: Supervised Shop Auto-Prepare",
+            what: "Running cfgutil prepare with supervision identity, organization metadata, Setup Assistant skip flags, and optional Wi-Fi profile.",
+            wherePath: docsDir.path,
+            initialStage: "Step 1/3: Running cfgutil prepare..."
+        )
+
+        var args: [String] = ["prepare", "--supervise", "-c", cleanId]
+        if let cleanKey = keyPath?.trimmingCharacters(in: .whitespacesAndNewlines), !cleanKey.isEmpty {
+            args.append(contentsOf: ["-k", cleanKey])
+        }
+        if let pass = p12Passphrase, !pass.isEmpty {
+            args.append(contentsOf: ["-p", pass])
+        }
+        let cleanOrg = orgName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cleanOrg.isEmpty {
+            args.append(contentsOf: ["--org-name", cleanOrg])
+        }
+        let cleanDept = department.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cleanDept.isEmpty {
+            args.append(contentsOf: ["--department", cleanDept])
+        }
+        if skipAll {
+            args.append("--skip-all")
+        } else {
+            args.append(contentsOf: ["--skip-language", "--skip-region"])
+            for k in skipKeys where !k.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                args.append("--skip-\(k.lowercased())")
+            }
+        }
+
+        let prepRes = await runProcessStreaming(executable: cfgPath, arguments: args) { [weak self] line in
+            DispatchQueue.main.async {
+                self?.log(.info, "[cfgutil prepare] \(line)")
+                self?.updateLiveTaskProgress(stage: "Preparing: \(line)", progress: 0.45, wherePath: docsDir.path)
+            }
+        }
+
+        var profileLog = ""
+        if prepRes.exitCode == 0,
+           let wifiPath = wifiProfilePath?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !wifiPath.isEmpty,
+           FileManager.default.fileExists(atPath: wifiPath) {
+            updateLiveTaskProgress(stage: "Step 2/3: Installing Wi-Fi / MDM .mobileconfig profile...", progress: 0.78, wherePath: docsDir.path)
+            let profRes = await runProcessStreaming(executable: cfgPath, arguments: ["install-profile", wifiPath]) { [weak self] line in
+                DispatchQueue.main.async {
+                    self?.log(.info, "[cfgutil profile] \(line)")
+                }
+            }
+            profileLog = "Profile Exit: \(profRes.exitCode)\n\(profRes.output)"
+        }
+
+        let receiptUrl = docsDir.appendingPathComponent("supervision_receipt_\(stamp).txt")
+        let receiptBody = """
+        BobFWTools Owner Pro — Supervised Shop Auto-Prepare Receipt
+        Timestamp: \(ISO8601DateFormatter().string(from: Date()))
+        Organization: \(cleanOrg.isEmpty ? "N/A" : cleanOrg) (\(cleanDept.isEmpty ? "N/A" : cleanDept))
+        Identity File: \(cleanId)
+        Skip Mode: \(skipAll ? "skip-all" : "skip-language, skip-region, " + skipKeys.joined(separator: ", "))
+        Prepare Exit Code: \(prepRes.exitCode)
+        Output:
+        \(prepRes.output)
+        \(profileLog)
+        """
+        try? receiptBody.write(to: receiptUrl, atomically: true, encoding: .utf8)
+        self.ownerLatestReportDir = docsDir.path
+        NSWorkspace.shared.activateFileViewerSelecting([receiptUrl])
+
+        let ok = prepRes.exitCode == 0
+        finishLiveTask(
+            success: ok,
+            summary: ok
+                ? "Shop Auto-Prepare succeeded and supervision receipt saved."
+                : "cfgutil prepare exited \(prepRes.exitCode) — review supervision_receipt_\(stamp).txt.",
+            wherePath: receiptUrl.path
+        )
+    }
+
+    // 6. Android ADB & Fastboot Bench Diagnostics
+    public func fetchAndroidBenchDiagnostics() async -> AndroidBenchTelemetry? {
+        let adbPath = resolveOwnerCli("adb")
+        let fbPath = resolveOwnerCli("fastboot")
+        guard adbPath != nil || fbPath != nil else {
+            finishLiveTask(success: false, summary: "Neither adb nor fastboot found in PATH, Homebrew, or Android SDK platform-tools.")
+            return nil
+        }
+
+        isOwnerBenchRunning = true
+        defer { isOwnerBenchRunning = false }
+
+        beginLiveTask(
+            title: "Owner Pro: Android ADB / Fastboot Bench Diagnostics",
+            what: "Inspecting live ADB properties, battery dumpsys, storage/RAM, or Fastboot bootloader variables.",
+            wherePath: NSHomeDirectory() + "/Documents/BobFWTools_BenchReports",
+            initialStage: "Checking ADB and Fastboot transports..."
+        )
+
+        do {
+            if let adb = adbPath,
+               let stateRes = try? await runOwnerCliWithTimeout(executable: adb, arguments: adbArgs(["get-state"]), timeoutSeconds: 8),
+               stateRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines) == "device" {
+                updateLiveTaskProgress(stage: "ADB device connected — reading getprop, dumpsys battery, df, meminfo...", progress: 0.4)
+
+                let propsRes = try await runOwnerCliWithTimeout(executable: adb, arguments: adbArgs(["shell", "getprop"]), timeoutSeconds: 12)
+                var propMap: [String: String] = [:]
+                for line in propsRes.stdout.components(separatedBy: .newlines) {
+                    let parts = line.components(separatedBy: "]: [")
+                    if parts.count == 2 {
+                        let k = parts[0].replacingOccurrences(of: "[", with: "").trimmingCharacters(in: .whitespaces)
+                        let v = parts[1].replacingOccurrences(of: "]", with: "").trimmingCharacters(in: .whitespaces)
+                        if !k.isEmpty { propMap[k] = v }
+                    }
+                }
+
+                let battRes = try await runOwnerCliWithTimeout(executable: adb, arguments: adbArgs(["shell", "dumpsys battery"]), timeoutSeconds: 12)
+                let battMap = Self.parseKeyValueLines(battRes.stdout)
+                let level = Int(battMap["level"] ?? "") ?? 0
+                let statusCode = battMap["status"] ?? ""
+                let chargingStr: String = {
+                    switch statusCode {
+                    case "2": return "Charging"
+                    case "3": return "Discharging"
+                    case "4": return "Not Charging"
+                    case "5": return "Full"
+                    default: return statusCode.isEmpty ? "Unknown" : "Code \(statusCode)"
+                    }
+                }()
+                let healthCode = battMap["health"] ?? ""
+                let healthStr: String = {
+                    switch healthCode {
+                    case "2": return "Good"
+                    case "3": return "Overheat"
+                    case "4": return "Dead"
+                    case "5": return "Over Voltage"
+                    default: return healthCode.isEmpty ? "Unknown" : "Code \(healthCode)"
+                    }
+                }()
+                let tempC = Double(battMap["temperature"] ?? "").map { $0 / 10.0 }
+                let voltMv = Int(battMap["voltage"] ?? "") ?? 0
+                let cycleCount = Int(battMap["mSavedBatteryAsoc"] ?? battMap["cycle_count"] ?? "")
+
+                let dfRes = try await runOwnerCliWithTimeout(executable: adb, arguments: adbArgs(["shell", "df -h /data | tail -n 1"]), timeoutSeconds: 10)
+                let dfCols = dfRes.stdout.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+                let dataTotal = dfCols.count >= 4 ? dfCols[1] : "—"
+                let dataAvail = dfCols.count >= 4 ? dfCols[3] : "—"
+
+                let memRes = try await runOwnerCliWithTimeout(executable: adb, arguments: adbArgs(["shell", "cat /proc/meminfo | head -n 3"]), timeoutSeconds: 10)
+                let memMap = Self.parseKeyValueLines(memRes.stdout)
+
+                let telemetry = AndroidBenchTelemetry(
+                    transportMode: "ADB",
+                    manufacturer: propMap["ro.product.manufacturer"] ?? "Unknown",
+                    model: propMap["ro.product.model"] ?? "Unknown",
+                    marketingName: propMap["ro.product.marketname"] ?? (propMap["ro.product.model"] ?? "Android Device"),
+                    codename: propMap["ro.product.device"] ?? "Unknown",
+                    serialNumber: propMap["ro.serialno"] ?? "Unknown",
+                    androidVersion: propMap["ro.build.version.release"] ?? "Unknown",
+                    securityPatch: propMap["ro.build.version.security_patch"] ?? "Unknown",
+                    buildId: propMap["ro.build.display.id"] ?? propMap["ro.build.id"] ?? "Unknown",
+                    baseband: propMap["gsm.version.baseband"] ?? "Wi-Fi / Unknown",
+                    bootloaderLocked: propMap["ro.boot.flash.locked"] ?? "?",
+                    verifiedBootState: propMap["ro.boot.verifiedbootstate"] ?? "?",
+                    frpNode: propMap["ro.frp.pst"] ?? "Standard",
+                    batteryLevelPct: level,
+                    chargingStatus: chargingStr,
+                    batteryHealth: healthStr,
+                    temperatureCelsius: tempC,
+                    voltageMv: voltMv,
+                    cycleCount: cycleCount,
+                    storageTotal: dataTotal,
+                    storageAvailable: dataAvail,
+                    ramTotal: memMap["MemTotal"] ?? "—",
+                    ramAvailable: memMap["MemAvailable"] ?? "—",
+                    fastbootVars: [:]
+                )
+                self.ownerAndroidBenchTelemetry = telemetry
+                let summary = "\(telemetry.manufacturer) \(telemetry.model) · Android \(telemetry.androidVersion) (SPL \(telemetry.securityPatch)) · Batt \(level)%"
+                finishLiveTask(success: true, summary: summary)
+                return telemetry
+            }
+
+            if let fb = fbPath,
+               let fbDevs = try? await runOwnerCliWithTimeout(executable: fb, arguments: ["devices"], timeoutSeconds: 8),
+               !fbDevs.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                updateLiveTaskProgress(stage: "Fastboot device detected — querying fastboot getvar all...", progress: 0.6)
+                let gvRes = try await runOwnerCliWithTimeout(executable: fb, arguments: ["getvar", "all"], timeoutSeconds: 15)
+                let rawAll = gvRes.stdout + "\n" + gvRes.stderr
+                var fbMap: [String: String] = [:]
+                for line in rawAll.components(separatedBy: .newlines) {
+                    let cleaned = line.replacingOccurrences(of: "(bootloader)", with: "").trimmingCharacters(in: .whitespaces)
+                    let parts = cleaned.components(separatedBy: ":")
+                    if parts.count >= 2 {
+                        let k = parts[0].trimmingCharacters(in: .whitespaces)
+                        let v = parts.dropFirst().joined(separator: ":").trimmingCharacters(in: .whitespaces)
+                        if !k.isEmpty && !v.isEmpty { fbMap[k] = v }
+                    }
+                }
+                let telemetry = AndroidBenchTelemetry(
+                    transportMode: "Fastboot",
+                    manufacturer: "Android Bootloader",
+                    model: fbMap["product"] ?? "Unknown",
+                    marketingName: "\(fbMap["product"] ?? "Device") (\(fbMap["variant"] ?? "Fastboot"))",
+                    codename: fbMap["product"] ?? "Unknown",
+                    serialNumber: fbMap["serialno"] ?? "Unknown",
+                    androidVersion: "Fastboot Mode",
+                    securityPatch: "N/A (Bootloader)",
+                    buildId: fbMap["version-bootloader"] ?? "Unknown",
+                    baseband: fbMap["version-baseband"] ?? "N/A",
+                    bootloaderLocked: fbMap["unlocked"] == "yes" ? "0 (Unlocked)" : (fbMap["secure"] ?? "?"),
+                    verifiedBootState: fbMap["secure"] ?? "?",
+                    frpNode: "Bootloader Mode",
+                    batteryLevelPct: 0,
+                    chargingStatus: "Bootloader",
+                    batteryHealth: "Check Voltage",
+                    temperatureCelsius: nil,
+                    voltageMv: Int(Double(fbMap["battery-voltage"] ?? "") ?? 0),
+                    cycleCount: nil,
+                    storageTotal: "Slot \(fbMap["current-slot"] ?? "?") / \(fbMap["slot-count"] ?? "1")",
+                    storageAvailable: "Bootloader Mode",
+                    ramTotal: "—",
+                    ramAvailable: "—",
+                    fastbootVars: fbMap
+                )
+                self.ownerAndroidBenchTelemetry = telemetry
+                finishLiveTask(success: true, summary: "Fastboot \(telemetry.codename) · SN \(telemetry.serialNumber) · Slot \(fbMap["current-slot"] ?? "?")")
+                return telemetry
+            }
+
+            finishLiveTask(success: false, summary: "No Android device found in ADB or Fastboot mode.")
+            return nil
+        } catch {
+            finishLiveTask(success: false, summary: "Android bench scan interrupted: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    public func captureAndroidBugreportSnapshot() async -> String? {
+        guard let adb = resolveOwnerCli("adb") else {
+            finishLiveTask(success: false, summary: "adb binary not found.")
+            return nil
+        }
+        let serial = ownerAndroidBenchTelemetry?.serialNumber.replacingOccurrences(of: "/", with: "_") ?? "Android"
+        let stamp = Int(Date().timeIntervalSince1970)
+        let outDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents/BobFWTools_BenchReports/Android_Snapshot_\(serial)_\(stamp)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+
+        beginLiveTask(
+            title: "Owner Pro: Android Logcat & Dropbox Crash Snapshot",
+            what: "Capturing last 500 logcat lines and dumpsys dropbox crash records to Documents/BobFWTools_BenchReports.",
+            wherePath: outDir.path,
+            initialStage: "Capturing adb logcat -d -t 500..."
+        )
+        let logRes = try? await runOwnerCliWithTimeout(executable: adb, arguments: adbArgs(["logcat", "-d", "-t", "500"]), timeoutSeconds: 15)
+        let dropRes = try? await runOwnerCliWithTimeout(executable: adb, arguments: adbArgs(["shell", "dumpsys dropbox --print"]), timeoutSeconds: 20)
+
+        let logUrl = outDir.appendingPathComponent("logcat_500.txt")
+        let dropUrl = outDir.appendingPathComponent("dropbox_crashes.txt")
+        try? (logRes?.stdout ?? "").write(to: logUrl, atomically: true, encoding: .utf8)
+        try? (dropRes?.stdout ?? "").write(to: dropUrl, atomically: true, encoding: .utf8)
+
+        self.ownerLatestReportDir = outDir.path
+        NSWorkspace.shared.activateFileViewerSelecting([outDir])
+        let ok = (logRes?.exitCode == 0) || (dropRes?.exitCode == 0)
+        finishLiveTask(
+            success: ok,
+            summary: ok ? "Captured logcat_500.txt & dropbox_crashes.txt." : "ADB device not authorized for logcat/dropbox capture.",
+            wherePath: outDir.path
+        )
+        return ok ? outDir.path : nil
+    }
+
+    // 7. Unified Cross-Platform PDF & CSV Bench Report Generator
+    public func generateDiagnosticBenchReport(platform: String) async -> URL? {
+        let isAndroid = platform.lowercased() == "android"
+        let record: BenchDiagnosticRecord
+
+        if isAndroid {
+            let a = ownerAndroidBenchTelemetry
+            record = BenchDiagnosticRecord(
+                platform: "Android (\(a?.transportMode ?? "Standby"))",
+                manufacturer: a?.manufacturer ?? "Android",
+                model: a?.model ?? "Unknown",
+                marketingName: a?.marketingName ?? "Unknown Android",
+                serialNumber: a?.serialNumber ?? "Unknown",
+                osVersion: a?.androidVersion ?? "Unknown",
+                securityOrBuild: "SPL \(a?.securityPatch ?? "—") · Build \(a?.buildId ?? "—")",
+                batteryHealthSummary: a != nil ? "\(a!.batteryLevelPct)% · \(a!.batteryHealth) · \(a!.chargingStatus)" : "Not Scanned",
+                batteryDetails: [
+                    "Level / Status": "\(a?.batteryLevelPct ?? 0)% (\(a?.chargingStatus ?? "—"))",
+                    "Health": a?.batteryHealth ?? "—",
+                    "Voltage / Temp": "\(a?.voltageMv ?? 0) mV · \(a?.temperatureCelsius.map { String(format: "%.1f°C", $0) } ?? "N/A")",
+                    "Cycle Count": a?.cycleCount.map(String.init) ?? "Not Disclosed by Kernel"
+                ],
+                storageAndMemory: [
+                    "User Storage (/data)": "\(a?.storageAvailable ?? "—") free / \(a?.storageTotal ?? "—")",
+                    "RAM": "\(a?.ramAvailable ?? "—") avail / \(a?.ramTotal ?? "—") total"
+                ],
+                securityAndSupervision: [
+                    "Bootloader Lock": a?.bootloaderLocked ?? "?",
+                    "Verified Boot (AVB)": a?.verifiedBootState ?? "?",
+                    "FRP Node": a?.frpNode ?? "—",
+                    "Baseband": a?.baseband ?? "—"
+                ],
+                notesAndSnapshotPath: ownerLatestReportDir
+            )
+        } else {
+            let t = ownerHardwareTelemetry
+            let act = appleActivationAndMdmAudit
+            let panicCount = ownerPanicAuditReport?.findings.count ?? 0
+            record = BenchDiagnosticRecord(
+                platform: "iOS / iPadOS",
+                manufacturer: "Apple",
+                model: t?.productType ?? (act["Device"] ?? "Apple iDevice"),
+                marketingName: act["Device"] ?? (t?.productType ?? "Apple iDevice"),
+                serialNumber: t?.serialNumber ?? (act["Serial Number"] ?? "Unknown"),
+                osVersion: act["iOS / Build"] ?? "iOS",
+                securityOrBuild: "HardwareModel \(t?.hardwareModel ?? "—") · ChipID \(t?.chipId ?? "—")",
+                batteryHealthSummary: t != nil ? "\(t!.batteryHealthPct)% (\(t!.cycleCount) cycles) · \(t!.nominalCapacityMah)/\(t!.designCapacityMah) mAh" : "Not Scanned",
+                batteryDetails: [
+                    "Health / Cycles": "\(t?.batteryHealthPct ?? 0)% (\(t?.cycleCount ?? 0) cycles)",
+                    "Capacity": "\(t?.nominalCapacityMah ?? 0) / \(t?.designCapacityMah ?? 0) mAh",
+                    "Charging / Temp": "\(t?.chargingState ?? "—") · \(t?.temperatureCelsius.map { String(format: "%.1f°C", $0) } ?? "N/A")"
+                ],
+                storageAndMemory: [
+                    "Total Disk": t.map { ByteCountFormatter.string(fromByteCount: $0.totalDiskBytes, countStyle: .file) } ?? "—",
+                    "Data Available": t.map { ByteCountFormatter.string(fromByteCount: $0.totalDataAvailableBytes, countStyle: .file) } ?? "—"
+                ],
+                securityAndSupervision: [
+                    "Activation State": act["Activation State"] ?? "—",
+                    "Supervision / MDM": act["Supervision Status"] ?? "—",
+                    "Panic Log Fault Matches": "\(panicCount) signature match(es)",
+                    "UDID": t?.udid ?? "—"
+                ],
+                notesAndSnapshotPath: ownerPanicAuditReport?.snapshotDirectory ?? ownerLatestReportDir
+            )
+        }
+
+        let cleanSerial = record.serialNumber.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: " ", with: "_")
+        let cleanPlat = isAndroid ? "Android" : "iOS"
+        let stamp = Int(Date().timeIntervalSince1970)
+        let outDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents/BobFWTools_BenchReports/\(cleanPlat)_\(cleanSerial)_\(stamp)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+
+        beginLiveTask(
+            title: "Owner Pro: Generating Branded PDF & CSV Bench Report",
+            what: "Writing Customer Intake & Diagnostic PDF + CSV into Documents/BobFWTools_BenchReports.",
+            wherePath: outDir.path,
+            initialStage: "Rendering diagnostic_report.pdf & diagnostic_record.csv..."
+        )
+
+        let csvUrl = outDir.appendingPathComponent("diagnostic_record.csv")
+        var csvRows: [String] = ["Section,Key,Value"]
+        func csvEsc(_ s: String) -> String { "\"\(s.replacingOccurrences(of: "\"", with: "\"\""))\"" }
+        csvRows.append("Identity,Platform,\(csvEsc(record.platform))")
+        csvRows.append("Identity,Device,\(csvEsc(record.marketingName))")
+        csvRows.append("Identity,SerialNumber,\(csvEsc(record.serialNumber))")
+        csvRows.append("Identity,OSVersion,\(csvEsc(record.osVersion))")
+        csvRows.append("Identity,BuildOrHardware,\(csvEsc(record.securityOrBuild))")
+        for (k, v) in record.batteryDetails.sorted(by: { $0.key < $1.key }) {
+            csvRows.append("Battery,\(csvEsc(k)),\(csvEsc(v))")
+        }
+        for (k, v) in record.storageAndMemory.sorted(by: { $0.key < $1.key }) {
+            csvRows.append("StorageMemory,\(csvEsc(k)),\(csvEsc(v))")
+        }
+        for (k, v) in record.securityAndSupervision.sorted(by: { $0.key < $1.key }) {
+            csvRows.append("SecuritySupervision,\(csvEsc(k)),\(csvEsc(v))")
+        }
+        try? csvRows.joined(separator: "\n").write(to: csvUrl, atomically: true, encoding: .utf8)
+
+        let pdfUrl = outDir.appendingPathComponent("diagnostic_report.pdf")
+        var mediaBox = CGRect(x: 0, y: 0, width: 612, height: 792)
+        if let pdfCtx = CGContext(pdfUrl as CFURL, mediaBox: &mediaBox, nil) {
+            pdfCtx.beginPDFPage(nil)
+            let nsCtx = NSGraphicsContext(cgContext: pdfCtx, flipped: false)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = nsCtx
+
+            let titleAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.boldSystemFont(ofSize: 18),
+                .foregroundColor: NSColor.systemBlue
+            ]
+            let subAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 10),
+                .foregroundColor: NSColor.darkGray
+            ]
+            let sectionAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.boldSystemFont(ofSize: 12),
+                .foregroundColor: NSColor.black
+            ]
+            let bodyAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .regular),
+                .foregroundColor: NSColor.black
+            ]
+
+            NSString(string: "BobFWTools Studio — Customer Intake & Bench Diagnostic Report").draw(at: NSPoint(x: 42, y: 742), withAttributes: titleAttrs)
+            NSString(string: "Generated: \(ISO8601DateFormatter().string(from: Date())) · Platform: \(record.platform)").draw(at: NSPoint(x: 42, y: 722), withAttributes: subAttrs)
+
+            var y: CGFloat = 688
+            func drawSection(_ heading: String, rows: [(String, String)]) {
+                NSString(string: heading).draw(at: NSPoint(x: 42, y: y), withAttributes: sectionAttrs)
+                y -= 18
+                for (k, v) in rows {
+                    NSString(string: "• \(k): \(v)").draw(at: NSPoint(x: 52, y: y), withAttributes: bodyAttrs)
+                    y -= 15
+                    if y < 60 { break }
+                }
+                y -= 10
+            }
+
+            drawSection("1. Device Identity", rows: [
+                ("Device", "\(record.manufacturer) \(record.marketingName) (\(record.model))"),
+                ("Serial Number", record.serialNumber),
+                ("OS / Firmware", record.osVersion),
+                ("Build / Silicon", record.securityOrBuild)
+            ])
+            drawSection("2. Battery & Power", rows: record.batteryDetails.sorted(by: { $0.key < $1.key }))
+            drawSection("3. Storage & Memory", rows: record.storageAndMemory.sorted(by: { $0.key < $1.key }))
+            drawSection("4. Security, Supervision & Diagnostics", rows: record.securityAndSupervision.sorted(by: { $0.key < $1.key }))
+            if !record.notesAndSnapshotPath.isEmpty {
+                drawSection("5. Snapshot Evidence Folder", rows: [("Path", record.notesAndSnapshotPath)])
+            }
+
+            NSGraphicsContext.restoreGraphicsState()
+            pdfCtx.endPDFPage()
+            pdfCtx.closePDF()
+        }
+
+        self.ownerLatestReportDir = outDir.path
+        NSWorkspace.shared.activateFileViewerSelecting([pdfUrl, csvUrl])
+        finishLiveTask(
+            success: FileManager.default.fileExists(atPath: pdfUrl.path),
+            summary: "Exported diagnostic_report.pdf & diagnostic_record.csv.",
+            wherePath: outDir.path
+        )
+        return pdfUrl
+    }
+    #endif
 }
+
+#if !STORE_EDITION
+public struct AndroidBenchTelemetry: Sendable {
+    public let transportMode: String
+    public let manufacturer: String
+    public let model: String
+    public let marketingName: String
+    public let codename: String
+    public let serialNumber: String
+    public let androidVersion: String
+    public let securityPatch: String
+    public let buildId: String
+    public let baseband: String
+    public let bootloaderLocked: String
+    public let verifiedBootState: String
+    public let frpNode: String
+    public let batteryLevelPct: Int
+    public let chargingStatus: String
+    public let batteryHealth: String
+    public let temperatureCelsius: Double?
+    public let voltageMv: Int
+    public let cycleCount: Int?
+    public let storageTotal: String
+    public let storageAvailable: String
+    public let ramTotal: String
+    public let ramAvailable: String
+    public let fastbootVars: [String: String]
+}
+
+public struct BenchDiagnosticRecord: Sendable {
+    public let platform: String
+    public let manufacturer: String
+    public let model: String
+    public let marketingName: String
+    public let serialNumber: String
+    public let osVersion: String
+    public let securityOrBuild: String
+    public let batteryHealthSummary: String
+    public let batteryDetails: [String: String]
+    public let storageAndMemory: [String: String]
+    public let securityAndSupervision: [String: String]
+    public let notesAndSnapshotPath: String
+}
+
+public struct OwnerHardwareTelemetry: Sendable {
+    public let cycleCount: Int
+    public let designCapacityMah: Int
+    public let nominalCapacityMah: Int
+    public let batteryHealthPct: Int
+    public let instantAmperageMa: Int
+    public let temperatureCelsius: Double?
+    public let chargingState: String
+    public let totalDiskBytes: Int64
+    public let totalDataAvailableBytes: Int64
+    public let totalSystemBytes: Int64
+    public let hardwareModel: String
+    public let productType: String
+    public let chipId: String
+    public let dieId: String
+    public let basebandVersion: String
+    public let serialNumber: String
+    public let udid: String
+    public let diagnosticsFlags: [String: String]
+}
+
+public struct PanicAuditFinding: Identifiable, Sendable {
+    public let id = UUID()
+    public let fileName: String
+    public let timestamp: String
+    public let matchedSignature: String
+    public let subsystemHint: String
+    public let snippet: String
+}
+
+public struct PanicAuditReport: Sendable {
+    public let snapshotDirectory: String
+    public let scannedFilesCount: Int
+    public let findings: [PanicAuditFinding]
+    public let scannedAt: Date
+}
+
+public enum CfgutilBenchWorkflow {
+    case prepareSupervise(identityPath: String, profilePath: String?)
+    case installProfile(profilePath: String)
+    case installApp(ipaPath: String)
+    case clearActivationLockMdmEscrow(bypassCode: String, serialOrImei: String, mdmServerUrl: String?)
+}
+#endif
 

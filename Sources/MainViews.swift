@@ -4932,6 +4932,9 @@ struct AppleServicingView: View {
             // ReiBoot-Style 3-Track System Rescue + Recovery-First DFU Staging
             UnifiedBootloopRescueCenterCard(engine: engine)
 
+            // Official Apple Passcode Restore, Setup Revive, Activation & Supervision Center
+            AppleAuthorizedRecoveryAndActivationCard(engine: engine)
+
             // Section 0: Autonomous 1-Click Apple Cloud Firmware Hub & IPSW Restorer
             AppleCloudFirmwareHubCard(engine: engine)
 
