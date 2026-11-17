@@ -248,7 +248,9 @@ swiftc \
     "${BUILD_ROOT}/Sources/DeviceMasterRegistry.swift" \
     "${BUILD_ROOT}/Sources/ServicingEngine.swift" \
     "${BUILD_ROOT}/Sources/RivalWorkflowsViews.swift" \
+    "${BUILD_ROOT}/Sources/OwnerProBenchModules.swift" \
     "${BUILD_ROOT}/Sources/MainViews.swift" \
+    "${BUILD_ROOT}/Sources/StoreComplianceLane.swift" \
     "${BUILD_ROOT}/Sources/AppMain.swift" \
     -o "${MACOS_DIR}/${EXEC_NAME}_x86_64" &
 PID_OWNER_X86=$!
@@ -262,7 +264,9 @@ swiftc \
     "${BUILD_ROOT}/Sources/DeviceMasterRegistry.swift" \
     "${BUILD_ROOT}/Sources/ServicingEngine.swift" \
     "${BUILD_ROOT}/Sources/RivalWorkflowsViews.swift" \
+    "${BUILD_ROOT}/Sources/OwnerProBenchModules.swift" \
     "${BUILD_ROOT}/Sources/MainViews.swift" \
+    "${BUILD_ROOT}/Sources/StoreComplianceLane.swift" \
     "${BUILD_ROOT}/Sources/AppMain.swift" \
     -o "${MACOS_DIR}/${EXEC_NAME}_arm64" &
 PID_OWNER_ARM=$!
@@ -333,10 +337,7 @@ swiftc \
     -DSTORE_EDITION \
     -target x86_64-apple-macos12.0 \
     -parse-as-library \
-    "${BUILD_ROOT}/Sources/DeviceMasterRegistry.swift" \
-    "${BUILD_ROOT}/Sources/ServicingEngine.swift" \
-    "${BUILD_ROOT}/Sources/RivalWorkflowsViews.swift" \
-    "${BUILD_ROOT}/Sources/MainViews.swift" \
+    "${BUILD_ROOT}/Sources/StoreComplianceLane.swift" \
     "${BUILD_ROOT}/Sources/AppMain.swift" \
     -o "${STORE_BUNDLE}/Contents/MacOS/${EXEC_NAME}_x86_64" &
 PID_STORE_X86=$!
@@ -348,10 +349,7 @@ swiftc \
     -DSTORE_EDITION \
     -target arm64-apple-macos12.0 \
     -parse-as-library \
-    "${BUILD_ROOT}/Sources/DeviceMasterRegistry.swift" \
-    "${BUILD_ROOT}/Sources/ServicingEngine.swift" \
-    "${BUILD_ROOT}/Sources/RivalWorkflowsViews.swift" \
-    "${BUILD_ROOT}/Sources/MainViews.swift" \
+    "${BUILD_ROOT}/Sources/StoreComplianceLane.swift" \
     "${BUILD_ROOT}/Sources/AppMain.swift" \
     -o "${STORE_BUNDLE}/Contents/MacOS/${EXEC_NAME}_arm64" &
 PID_STORE_ARM=$!
@@ -367,10 +365,9 @@ xattr -c "${STORE_BUNDLE}" 2>/dev/null || true
 xattr -cr "${STORE_BUNDLE}" 2>/dev/null || true
 xattr -d com.apple.FinderInfo "${STORE_BUNDLE}" 2>/dev/null || true
 xattr -d com.apple.fileprovider.fpfs#P "${STORE_BUNDLE}" 2>/dev/null || true
+rm -f "${STORE_BUNDLE}/Contents/Frameworks/libusb-1.0.0.dylib"
 for TOOL in bootforgeusb adb fastboot heimdall samloader; do
-    if [ -f "${STORE_BUNDLE}/Contents/MacOS/${TOOL}" ]; then
-        codesign --force --sign - --options runtime --entitlements "${ENTITLEMENTS_HELPER_PLIST}" "${STORE_BUNDLE}/Contents/MacOS/${TOOL}"
-    fi
+    rm -f "${STORE_BUNDLE}/Contents/MacOS/${TOOL}"
 done
 find "${STORE_BUNDLE}" -name "._*" -delete 2>/dev/null || true
 xattr -c "${STORE_BUNDLE}" 2>/dev/null || true

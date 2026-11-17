@@ -1,3 +1,4 @@
+#if !STORE_EDITION
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
@@ -1310,3 +1311,4 @@ struct RivalWorkflowsDirectoryCard: View {
         .buttonStyle(.plain)
     }
 }
+#endif

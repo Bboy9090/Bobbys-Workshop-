@@ -1,3 +1,4 @@
+#if !STORE_EDITION
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
@@ -4935,6 +4936,9 @@ struct AppleServicingView: View {
             // Official Apple Passcode Restore, Setup Revive, Activation & Supervision Center
             AppleAuthorizedRecoveryAndActivationCard(engine: engine)
 
+            // Owner Pro Unified 7-Tab Bench Dashboard (Firmware, Raw Disk Imager, Hotplug Watcher, Reports)
+            OwnerProDashboardHubView(engine: engine)
+
             // Section 0: Autonomous 1-Click Apple Cloud Firmware Hub & IPSW Restorer
             AppleCloudFirmwareHubCard(engine: engine)
 
@@ -7150,5 +7154,6 @@ struct UniversalDeviceControlHubCard: View {
         }
     }
 }
+#endif
 
 

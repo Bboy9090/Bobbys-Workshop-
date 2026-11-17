@@ -1,3 +1,4 @@
+#if !STORE_EDITION
 import Foundation
 
 // MARK: - Apple Device Master Model & Silicon Specifications
@@ -607,3 +608,4 @@ public struct AndroidBrandMasterRegistry {
         return nil
     }
 }
+#endif

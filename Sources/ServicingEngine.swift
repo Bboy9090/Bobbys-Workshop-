@@ -1,3 +1,4 @@
+#if !STORE_EDITION
 import Foundation
 import AppKit
 import CryptoKit
@@ -12799,5 +12800,6 @@ public enum CfgutilBenchWorkflow {
     case installApp(ipaPath: String)
     case clearActivationLockMdmEscrow(bypassCode: String, serialOrImei: String, mdmServerUrl: String?)
 }
+#endif
 #endif
 
