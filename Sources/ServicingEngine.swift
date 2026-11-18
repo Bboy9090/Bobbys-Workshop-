@@ -12276,7 +12276,7 @@ extension ServicingEngine {
         defer { isOwnerBenchRunning = false }
 
         beginLiveTask(
-            title: "Owner Pro: Supervised Shop Auto-Prepare",
+            title: "Owner Pro: Supervised Auto-Prepare",
             what: "Running cfgutil prepare with supervision identity, organization metadata, Setup Assistant skip flags, and optional Wi-Fi profile.",
             wherePath: docsDir.path,
             initialStage: "Step 1/3: Running cfgutil prepare..."
@@ -12347,7 +12347,7 @@ extension ServicingEngine {
         finishLiveTask(
             success: ok,
             summary: ok
-                ? "Shop Auto-Prepare succeeded and supervision receipt saved."
+                ? "Auto-Prepare succeeded and supervision receipt saved."
                 : "cfgutil prepare exited \(prepRes.exitCode) — review supervision_receipt_\(stamp).txt.",
             wherePath: receiptUrl.path
         )
@@ -12619,8 +12619,8 @@ extension ServicingEngine {
         try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
 
         beginLiveTask(
-            title: "Owner Pro: Generating Branded PDF & CSV Bench Report",
-            what: "Writing Customer Intake & Diagnostic PDF + CSV into Documents/BobFWTools_BenchReports.",
+            title: "Owner Pro: Generating Branded PDF & CSV Device Report",
+            what: "Writing Device Diagnostic PDF + CSV into Documents/BobFWTools_BenchReports.",
             wherePath: outDir.path,
             initialStage: "Rendering diagnostic_report.pdf & diagnostic_record.csv..."
         )
@@ -12669,7 +12669,7 @@ extension ServicingEngine {
                 .foregroundColor: NSColor.black
             ]
 
-            NSString(string: "BobFWTools Studio — Customer Intake & Bench Diagnostic Report").draw(at: NSPoint(x: 42, y: 742), withAttributes: titleAttrs)
+            NSString(string: "BobFWTools Studio — Device Diagnostic Report").draw(at: NSPoint(x: 42, y: 742), withAttributes: titleAttrs)
             NSString(string: "Generated: \(ISO8601DateFormatter().string(from: Date())) · Platform: \(record.platform)").draw(at: NSPoint(x: 42, y: 722), withAttributes: subAttrs)
 
             var y: CGFloat = 688

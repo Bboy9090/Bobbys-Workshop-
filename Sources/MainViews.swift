@@ -848,7 +848,7 @@ struct ConnectionMatrixAndDoctorView: View {
                         Button {
                             Task { await engine.runCustomerIntakeClearance() }
                         } label: {
-                            Label("4-Click: Customer Intake Clearance", systemImage: "checkmark.seal.text.page.fill")
+                            Label("4-Click: Device Security Clearance", systemImage: "checkmark.seal.text.page.fill")
                         }
                         .buttonStyle(.borderedProminent)
                         .disabled(engine.isBusy)
@@ -1207,7 +1207,7 @@ struct DeviceIntakeHubCard: View {
 
                     // Cryptographic Customer Intake Logger Bar (HardwareLogProtector AES-GCM + HKDF<SHA256>)
                     HStack(spacing: 10) {
-                        TextField("Customer / Ticket Label (e.g. Walk-In #104 — Galaxy Tab A7 EUX)...", text: $customerLabelInput)
+                        TextField("Session Label (e.g. Personal iPhone 15 or Galaxy S24)...", text: $customerLabelInput)
                             .textFieldStyle(.roundedBorder)
                             .font(.system(size: 11.5))
 
@@ -1264,7 +1264,7 @@ struct DeviceIntakeHubCard: View {
                 Divider()
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Label("Customer Intake History Database (HardwareLogProtector AES-GCM + HKDF-SHA256)", systemImage: "externaldrive.badge.checkmark")
+                        Label("Encrypted Device History (HardwareLogProtector AES-GCM + HKDF-SHA256)", systemImage: "externaldrive.badge.checkmark")
                             .font(.system(size: 11.5, weight: .bold))
                         Spacer()
                         if !engine.decryptedLogPreview.isEmpty {
@@ -1533,8 +1533,8 @@ struct OwnerProVaultView: View {
                             .foregroundColor(engine.isProUnlocked ? .green : .orange)
                         Spacer()
                         #if !STORE_EDITION
-                        Button("Mint & Sign Ed25519 Customer Token") {
-                            let token = CryptographicLicenseVerifier.generateSignedToken(holder: "Authorized Pro Shop")
+                        Button("Mint & Sign Ed25519 License Token") {
+                            let token = CryptographicLicenseVerifier.generateSignedToken(holder: "Authorized Owner")
                             licenseKeyInput = token
                             _ = engine.verifyAndActivateLicenseToken(token)
                         }

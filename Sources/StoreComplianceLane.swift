@@ -109,8 +109,8 @@ final class StoreComplianceEngine: ObservableObject {
 
     func exportIntakeChecklist() {
         let panel = NSSavePanel()
-        panel.title = "Export Sandboxed Intake Checklist"
-        panel.nameFieldStringValue = "BobFWTools_Intake_Checklist.md"
+        panel.title = "Export Device Summary"
+        panel.nameFieldStringValue = "BobFWTools_Device_Summary.md"
         panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
         guard panel.runModal() == .OK, let destUrl = panel.url else { return }
 
@@ -119,7 +119,7 @@ final class StoreComplianceEngine: ObservableObject {
             : usbDevices.map { "- **\($0.name)** (\($0.vendorName)) · VID `\($0.vendorIdHex)` PID `\($0.productIdHex)` · Mode: \($0.modeLabel)" }.joined(separator: "\n")
 
         let content = """
-        # BobFWTools Studio — Sandboxed Intake Checklist
+        # BobFWTools Studio — Device Summary
 
         - **Generated:** \(ISO8601DateFormatter().string(from: Date()))
         - **Selected Recovery / DFU Guide:** \(selectedDeviceFamily)
@@ -127,20 +127,20 @@ final class StoreComplianceEngine: ObservableObject {
         ## Detected USB Devices (Public IOKit)
         \(usbLines)
 
-        ## Authorized Operator Steps
-        1. Verify customer proof of ownership / MDM organization authorization.
-        2. Confirm USB data cable integrity (prefer USB-A to Lightning on A9/A9X iPads).
+        ## Recommended Recovery Steps
+        1. Confirm device ownership or organization authorization.
+        2. Verify USB data cable integrity (prefer USB-A to Lightning on A9/A9X iPads).
         3. Use **Finder** or **Apple Configurator** for official signed Update (Revive) or clean Restore.
-        4. For Activation Lock removal, direct the owner to `https://www.icloud.com/find` or `https://al-support.apple.com`.
+        4. For Activation Lock removal, use `https://www.icloud.com/find` or `https://al-support.apple.com`.
 
-        ## Technician Notes
+        ## Notes
         \(checklistNotes.isEmpty ? "_None entered._" : checklistNotes)
         """
         do {
             try content.write(to: destUrl, atomically: true, encoding: .utf8)
-            lastStatusMessage = "Exported sandboxed intake checklist to \(destUrl.lastPathComponent)."
+            lastStatusMessage = "Exported device summary to \(destUrl.lastPathComponent)."
         } catch {
-            lastStatusMessage = "Failed to export checklist: \(error.localizedDescription)"
+            lastStatusMessage = "Failed to export summary: \(error.localizedDescription)"
         }
     }
 }
@@ -323,16 +323,16 @@ struct MainStudioView: View {
                     .padding(8)
                 }
 
-                // 4. Sandboxed Intake Checklist Export (NSSavePanel)
-                GroupBox(label: Label("Sandboxed Intake Checklist Export", systemImage: "doc.text.fill")) {
+                // 4. Sandboxed Device Summary Export (NSSavePanel)
+                GroupBox(label: Label("Device Summary Export", systemImage: "doc.text.fill")) {
                     VStack(alignment: .leading, spacing: 8) {
-                        TextField("Technician notes for intake checklist...", text: $store.checklistNotes)
+                        TextField("Session notes (optional)...", text: $store.checklistNotes)
                             .textFieldStyle(.roundedBorder)
                         HStack {
                             Button {
                                 store.exportIntakeChecklist()
                             } label: {
-                                Label("Save Intake Checklist (.md)...", systemImage: "square.and.arrow.down")
+                                Label("Save Device Summary (.md)...", systemImage: "square.and.arrow.down")
                             }
                             .buttonStyle(.borderedProminent)
                             Spacer()

@@ -451,8 +451,8 @@ struct OwnerProBenchSuiteDrawer: View {
     @State private var identityPath: String = ""
     @State private var keyPath: String = ""
     @State private var p12Passphrase: String = ""
-    @State private var shopOrgName: String = "Bobby's Workshop"
-    @State private var shopDepartment: String = "Refurb Bench"
+    @State private var shopOrgName: String = "BobFWTools"
+    @State private var shopDepartment: String = "Device Prep"
     @State private var skipAllSetup: Bool = true
     @State private var profilePath: String = ""
     @State private var ipaPath: String = ""
@@ -672,7 +672,7 @@ struct OwnerProBenchSuiteDrawer: View {
                                     )
                                 }
                             } label: {
-                                Label("Shop Inventory Auto-Prepare (cfgutil prepare)", systemImage: "wand.and.stars")
+                                Label("Auto-Prepare & Skip Setup (cfgutil)", systemImage: "wand.and.stars")
                             }
                             .buttonStyle(.borderedProminent)
                             .tint(.green)
