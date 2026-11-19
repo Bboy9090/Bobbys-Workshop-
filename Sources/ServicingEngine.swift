@@ -12615,7 +12615,41 @@ extension ServicingEngine {
         let cleanSerial = record.serialNumber.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: " ", with: "_")
         let cleanPlat = isAndroid ? "Android" : "iOS"
         let stamp = Int(Date().timeIntervalSince1970)
-        let outDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents/BobFWTools_BenchReports/\(cleanPlat)_\(cleanSerial)_\(stamp)", isDirectory: true)
+        let reportsRoot = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents/BobFWTools_BenchReports", isDirectory: true)
+        let outDir = reportsRoot.appendingPathComponent("\(cleanPlat)_\(cleanSerial)_\(stamp)", isDirectory: true)
+
+        // Check for most recent prior report for the same device (Before vs. After Delta)
+        var deltaRows: [(String, String)] = []
+        if let existingDirs = try? FileManager.default.contentsOfDirectory(at: reportsRoot, includingPropertiesForKeys: [.creationDateKey], options: [.skipsHiddenFiles]) {
+            let matching = existingDirs
+                .filter { $0.lastPathComponent.hasPrefix("\(cleanPlat)_\(cleanSerial)_") && $0.lastPathComponent != outDir.lastPathComponent }
+                .sorted { $0.lastPathComponent > $1.lastPathComponent }
+            if let prevDir = matching.first {
+                let prevCsv = prevDir.appendingPathComponent("diagnostic_record.csv")
+                if let prevText = try? String(contentsOf: prevCsv, encoding: .utf8) {
+                    var prevMap: [String: String] = [:]
+                    for line in prevText.components(separatedBy: .newlines).dropFirst() {
+                        let cols = line.split(separator: ",", maxSplits: 2).map { String($0).trimmingCharacters(in: CharacterSet(charactersIn: "\"")) }
+                        if cols.count == 3 {
+                            prevMap[cols[1]] = cols[2]
+                        }
+                    }
+                    if let prevOs = prevMap["OSVersion"] {
+                        deltaRows.append(("OS Version", "\(prevOs)  ->  \(record.osVersion)"))
+                    }
+                    for (k, v) in record.batteryDetails.sorted(by: { $0.key < $1.key }) {
+                        if let prevV = prevMap[k] {
+                            deltaRows.append((k, "\(prevV)  ->  \(v)"))
+                        }
+                    }
+                    if let prevPanic = prevMap["Panic Log Fault Matches"], let curPanic = record.securityAndSupervision["Panic Log Fault Matches"] {
+                        deltaRows.append(("Panic Matches", "\(prevPanic)  ->  \(curPanic)"))
+                    }
+                    deltaRows.append(("Baseline Report", prevDir.lastPathComponent))
+                }
+            }
+        }
+
         try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
 
         beginLiveTask(
@@ -12641,6 +12675,9 @@ extension ServicingEngine {
         }
         for (k, v) in record.securityAndSupervision.sorted(by: { $0.key < $1.key }) {
             csvRows.append("SecuritySupervision,\(csvEsc(k)),\(csvEsc(v))")
+        }
+        for (k, v) in deltaRows {
+            csvRows.append("BeforeAfterDelta,\(csvEsc(k)),\(csvEsc(v))")
         }
         try? csvRows.joined(separator: "\n").write(to: csvUrl, atomically: true, encoding: .utf8)
 
@@ -12693,8 +12730,11 @@ extension ServicingEngine {
             drawSection("2. Battery & Power", rows: record.batteryDetails.sorted(by: { $0.key < $1.key }))
             drawSection("3. Storage & Memory", rows: record.storageAndMemory.sorted(by: { $0.key < $1.key }))
             drawSection("4. Security, Supervision & Diagnostics", rows: record.securityAndSupervision.sorted(by: { $0.key < $1.key }))
+            if !deltaRows.isEmpty {
+                drawSection("5. Before vs. After Diagnostic Delta", rows: deltaRows)
+            }
             if !record.notesAndSnapshotPath.isEmpty {
-                drawSection("5. Snapshot Evidence Folder", rows: [("Path", record.notesAndSnapshotPath)])
+                drawSection(deltaRows.isEmpty ? "5. Snapshot Evidence Folder" : "6. Snapshot Evidence Folder", rows: [("Path", record.notesAndSnapshotPath)])
             }
 
             NSGraphicsContext.restoreGraphicsState()

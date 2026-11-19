@@ -768,17 +768,248 @@ final class UsbHotplugBenchWatcher: ObservableObject {
     }
 }
 
-// MARK: - 4. Unified 7-Tab Owner Pro Dashboard
+// MARK: - 4. Storage Cleaner, Multi-Device Queue & GitHub Update Checker
+
+struct CacheFolderUsage: Identifiable, Hashable {
+    var id: String { path }
+    let label: String
+    let path: String
+    let bytes: Int64
+    let itemCount: Int
+}
+
+@MainActor
+final class OwnerStorageCleanerEngine: ObservableObject {
+    @Published var folders: [CacheFolderUsage] = []
+    @Published var totalBytes: Int64 = 0
+    @Published var statusText: String = "Click Scan Storage to check IPSW, backup, and log cache sizes."
+
+    func scanStorage() async {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let dl = home.appendingPathComponent("Downloads", isDirectory: true)
+        let docs = home.appendingPathComponent("Documents", isDirectory: true)
+
+        let scanned: [CacheFolderUsage] = await Task.detached(priority: .userInitiated) {
+            let fm = FileManager.default
+            func dirStats(_ url: URL) -> (Int64, Int) {
+                guard fm.fileExists(atPath: url.path) else { return (0, 0) }
+                guard let enumerator = fm.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey]) else {
+                    return (0, 0)
+                }
+                var bytes: Int64 = 0
+                var count = 0
+                while let fileUrl = enumerator.nextObject() as? URL {
+                    if let vals = try? fileUrl.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]), vals.isRegularFile == true {
+                        bytes += Int64(vals.fileSize ?? 0)
+                        count += 1
+                    }
+                }
+                return (bytes, count)
+            }
+
+            var results: [CacheFolderUsage] = []
+            let fixedTargets: [(String, URL)] = [
+                ("IPSW Firmware Cache", dl.appendingPathComponent("BobFWTools_IPSW")),
+                ("Local iOS Backups", dl.appendingPathComponent("BobFWTools_Backups")),
+                ("Diagnostic Reports (PDF/CSV)", docs.appendingPathComponent("BobFWTools_BenchReports"))
+            ]
+            for (label, url) in fixedTargets {
+                let (b, c) = dirStats(url)
+                results.append(CacheFolderUsage(label: label, path: url.path, bytes: b, itemCount: c))
+            }
+
+            // Aggregate BobFWTools_CrashReports_* and BobFWTools_Snapshot_*
+            if let dlItems = try? fm.contentsOfDirectory(at: dl, includingPropertiesForKeys: nil) {
+                for item in dlItems where item.lastPathComponent.hasPrefix("BobFWTools_CrashReports_") || item.lastPathComponent.hasPrefix("BobFWTools_Snapshot_") {
+                    let (b, c) = dirStats(item)
+                    results.append(CacheFolderUsage(label: item.lastPathComponent, path: item.path, bytes: b, itemCount: c))
+                }
+            }
+            return results
+        }.value
+
+        self.folders = scanned
+        self.totalBytes = scanned.reduce(0) { $0 + $1.bytes }
+        let totalStr = ByteCountFormatter.string(fromByteCount: self.totalBytes, countStyle: .file)
+        self.statusText = "Scanned \(scanned.count) location(s) · Total: \(totalStr)"
+    }
+
+    func cleanFolder(_ item: CacheFolderUsage) async {
+        let fm = FileManager.default
+        let url = URL(fileURLWithPath: item.path)
+        guard fm.fileExists(atPath: url.path) else { return }
+        if item.label == "IPSW Firmware Cache" || item.label == "Local iOS Backups" || item.label == "Diagnostic Reports (PDF/CSV)" {
+            if let children = try? fm.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) {
+                for child in children { try? fm.removeItem(at: child) }
+            }
+        } else {
+            try? fm.removeItem(at: url)
+        }
+        await scanStorage()
+        statusText = "Cleaned \(item.label)."
+    }
+}
+
+struct QueuedUsbDeviceSummary: Identifiable, Hashable {
+    let id: String
+    let platform: String
+    let modelOrName: String
+    let osVersion: String
+    let stateLabel: String
+}
+
+@MainActor
+final class MultiDeviceQueueEngine: ObservableObject {
+    @Published var devices: [QueuedUsbDeviceSummary] = []
+    @Published var isScanning: Bool = false
+    @Published var statusText: String = "Standby — connect one or more iOS/Android devices via USB."
+
+    func scanAllConnectedDevices(engine: ServicingEngine) async {
+        isScanning = true
+        defer { isScanning = false }
+        statusText = "Enumerating all connected iOS (idevice_id) and Android (adb/fastboot) devices..."
+
+        let ideviceIdPath = engine.resolveOwnerCli("idevice_id")
+        let ideviceInfoPath = engine.resolveOwnerCli("ideviceinfo")
+        let adbPath = engine.resolveOwnerCli("adb")
+        let fbPath = engine.resolveOwnerCli("fastboot")
+
+        let found: [QueuedUsbDeviceSummary] = await Task.detached(priority: .userInitiated) {
+            func exec(_ path: String, _ args: [String]) -> String {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: path)
+                p.arguments = args
+                let pipe = Pipe()
+                p.standardOutput = pipe
+                p.standardError = pipe
+                try? p.run()
+                p.waitUntilExit()
+                return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            }
+
+            var iosUdids: [String] = []
+            if let idBin = ideviceIdPath {
+                iosUdids = exec(idBin, ["-l"]).components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            }
+
+            var adbSerials: [String] = []
+            if let adbBin = adbPath {
+                for line in exec(adbBin, ["devices"]).components(separatedBy: .newlines).dropFirst() {
+                    let cols = line.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+                    if cols.count >= 2 && cols[1] == "device" { adbSerials.append(cols[0]) }
+                }
+            }
+
+            var fbSerials: [String] = []
+            if let fbBin = fbPath {
+                for line in exec(fbBin, ["devices"]).components(separatedBy: .newlines) {
+                    let cols = line.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+                    if cols.count >= 2 && cols[1] == "fastboot" { fbSerials.append(cols[0]) }
+                }
+            }
+
+            return await withTaskGroup(of: QueuedUsbDeviceSummary.self) { group in
+                for udid in iosUdids {
+                    group.addTask {
+                        if let infoBin = ideviceInfoPath {
+                            let prod = exec(infoBin, ["-u", udid, "-k", "ProductType"]).trimmingCharacters(in: .whitespacesAndNewlines)
+                            let ver = exec(infoBin, ["-u", udid, "-k", "ProductVersion"]).trimmingCharacters(in: .whitespacesAndNewlines)
+                            return QueuedUsbDeviceSummary(
+                                id: udid,
+                                platform: "iOS / iPadOS",
+                                modelOrName: prod.isEmpty ? "iDevice (\(udid.prefix(8)))" : prod,
+                                osVersion: ver.isEmpty ? "Paired/Locked" : "iOS \(ver)",
+                                stateLabel: "USB Normal"
+                            )
+                        }
+                        return QueuedUsbDeviceSummary(id: udid, platform: "iOS / iPadOS", modelOrName: String(udid.prefix(12)), osVersion: "—", stateLabel: "USB")
+                    }
+                }
+                for ser in adbSerials {
+                    group.addTask {
+                        if let adbBin = adbPath {
+                            let model = exec(adbBin, ["-s", ser, "shell", "getprop", "ro.product.model"]).trimmingCharacters(in: .whitespacesAndNewlines)
+                            let rel = exec(adbBin, ["-s", ser, "shell", "getprop", "ro.build.version.release"]).trimmingCharacters(in: .whitespacesAndNewlines)
+                            return QueuedUsbDeviceSummary(
+                                id: ser,
+                                platform: "Android",
+                                modelOrName: model.isEmpty ? ser : model,
+                                osVersion: rel.isEmpty ? "Android" : "Android \(rel)",
+                                stateLabel: "ADB Ready"
+                            )
+                        }
+                        return QueuedUsbDeviceSummary(id: ser, platform: "Android", modelOrName: ser, osVersion: "—", stateLabel: "ADB")
+                    }
+                }
+                for ser in fbSerials {
+                    group.addTask {
+                        QueuedUsbDeviceSummary(id: ser, platform: "Android", modelOrName: ser, osVersion: "Bootloader", stateLabel: "Fastboot")
+                    }
+                }
+                var out: [QueuedUsbDeviceSummary] = []
+                for await item in group { out.append(item) }
+                return out
+            }
+        }.value
+
+        self.devices = found
+        self.statusText = "Detected \(found.count) simultaneous device(s) across iOS & Android."
+    }
+}
+
+@MainActor
+final class GitHubUpdateChecker: ObservableObject {
+    @Published var latestTag: String = "—"
+    @Published var releaseUrl: String = "https://github.com/Bboy9090/Bobbys-Workshop-/releases"
+    @Published var summaryText: String = "Click Check for Updates to query GitHub Releases."
+    @Published var isChecking: Bool = false
+
+    func checkLatestRelease() async {
+        isChecking = true
+        defer { isChecking = false }
+        let relApi = URL(string: "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/releases/latest")!
+        do {
+            let (data, resp) = try await URLSession.shared.data(from: relApi)
+            if (resp as? HTTPURLResponse)?.statusCode == 200,
+               let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let tag = json["tag_name"] as? String {
+                self.latestTag = tag
+                self.releaseUrl = (json["html_url"] as? String) ?? self.releaseUrl
+                let published = (json["published_at"] as? String) ?? ""
+                self.summaryText = "Latest GitHub Release: \(tag) (\(published.prefix(10)))"
+                return
+            }
+            // Fallback to tags
+            let tagsApi = URL(string: "https://api.github.com/repos/Bboy9090/Bobbys-Workshop-/tags")!
+            let (tData, tResp) = try await URLSession.shared.data(from: tagsApi)
+            if (tResp as? HTTPURLResponse)?.statusCode == 200,
+               let arr = try JSONSerialization.jsonObject(with: tData) as? [[String: Any]],
+               let firstTag = arr.first?["name"] as? String {
+                self.latestTag = firstTag
+                self.summaryText = "Latest GitHub Tag: \(firstTag)"
+            } else {
+                self.summaryText = "No published releases or tags found yet on GitHub."
+            }
+        } catch {
+            self.summaryText = "Update check failed: \(error.localizedDescription)"
+        }
+    }
+}
+
+// MARK: - 5. Unified 8-Tab Owner Pro Dashboard
 
 struct OwnerProDashboardHubView: View {
     @ObservedObject var engine: ServicingEngine
     @StateObject private var fwEngine = FirmwareCatalogAndRestoreEngine()
     @StateObject private var diskEngine = RawDiskImagingEngine()
     @StateObject private var watcher = UsbHotplugBenchWatcher()
+    @StateObject private var storageCleaner = OwnerStorageCleanerEngine()
+    @StateObject private var multiQueue = MultiDeviceQueueEngine()
+    @StateObject private var updater = GitHubUpdateChecker()
     @State private var selectedTab: Int = 0
 
     var body: some View {
-        GroupBox(label: Label("Owner Pro Unified Bench Dashboard (7 Unsandboxed Modules)", systemImage: "crown.fill")) {
+        GroupBox(label: Label("Owner Pro Unified Dashboard (8 Unsandboxed Modules)", systemImage: "crown.fill")) {
             VStack(alignment: .leading, spacing: 10) {
                 Picker("Owner Pro Module", selection: $selectedTab) {
                     Text("Telemetry & Power").tag(0)
@@ -786,8 +1017,9 @@ struct OwnerProDashboardHubView: View {
                     Text("Panic & Logs").tag(2)
                     Text("Provisioning & Debloat").tag(3)
                     Text("Raw Disk Imager").tag(4)
-                    Text("Hotplug Watcher").tag(5)
-                    Text("Bench Reports").tag(6)
+                    Text("Hotplug & Queue").tag(5)
+                    Text("Reports").tag(6)
+                    Text("Storage & Updates").tag(7)
                 }
                 .pickerStyle(.segmented)
 
@@ -1009,8 +1241,38 @@ struct OwnerProDashboardHubView: View {
                                 .controlSize(.mini)
                             }
                         }
+
+                        Divider()
+                        HStack(spacing: 10) {
+                            Text("Multi-Device Simultaneous USB Queue:")
+                                .font(.system(size: 11, weight: .bold))
+                            Button("Scan All Connected Devices") {
+                                Task { await multiQueue.scanAllConnectedDevices(engine: engine) }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(multiQueue.isScanning)
+                            Spacer()
+                        }
+                        Text(multiQueue.statusText)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.secondary)
+                        ForEach(multiQueue.devices) { dev in
+                            HStack {
+                                Text("[\(dev.platform)] \(dev.modelOrName)")
+                                    .font(.system(size: 10.5, weight: .semibold))
+                                Text("· \(dev.osVersion) · \(dev.stateLabel)")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text(dev.id)
+                                    .font(.system(size: 9.5, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(4)
+                            .background(RoundedRectangle(cornerRadius: 4).fill(Color(NSColor.controlBackgroundColor)))
+                        }
                     }
-                default:
+                case 6:
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 10) {
                             Button("Export iOS PDF & CSV Report") {
@@ -1028,6 +1290,54 @@ struct OwnerProDashboardHubView: View {
                                 NSWorkspace.shared.open(dir)
                             }
                             .buttonStyle(.bordered)
+                        }
+                        Text("Reports automatically compare against the most recent prior CSV for the same Serial Number to include a Before vs. After Delta section.")
+                            .font(.system(size: 10.5))
+                            .foregroundColor(.secondary)
+                    }
+                default:
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 10) {
+                            Button("Scan Cache & Firmware Storage") {
+                                Task { await storageCleaner.scanStorage() }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            Button("Check GitHub Releases") {
+                                Task { await updater.checkLatestRelease() }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(updater.isChecking)
+                            if let u = URL(string: updater.releaseUrl) {
+                                Link("Open Releases", destination: u)
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            Spacer()
+                        }
+                        Text("\(storageCleaner.statusText) | \(updater.summaryText)")
+                            .font(.system(size: 10.5, design: .monospaced))
+                            .foregroundColor(.secondary)
+                        ForEach(storageCleaner.folders) { folder in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(folder.label).font(.system(size: 10.5, weight: .bold))
+                                    Text("\(folder.itemCount) file(s) · \(ByteCountFormatter.string(fromByteCount: folder.bytes, countStyle: .file))")
+                                        .font(.system(size: 9.5, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Button("Open") {
+                                    NSWorkspace.shared.open(URL(fileURLWithPath: folder.path))
+                                }
+                                .controlSize(.mini)
+                                Button("Clean") {
+                                    Task { await storageCleaner.cleanFolder(folder) }
+                                }
+                                .controlSize(.mini)
+                                .tint(.red)
+                                .disabled(folder.bytes == 0 && folder.itemCount == 0)
+                            }
+                            .padding(4)
+                            .background(RoundedRectangle(cornerRadius: 4).fill(Color(NSColor.controlBackgroundColor)))
                         }
                     }
                 }
