@@ -10,8 +10,10 @@ This backend provides REST API and WebSocket endpoints for:
 Supported: Samsung, Google, Xiaomi, OnePlus, Motorola, and 15+ more brands
 """
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+
+from trapdoor import check_passcode, verify_auth
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from enum import Enum
@@ -23,9 +25,16 @@ import json
 
 app = FastAPI(title="BootForge USB API", version="1.0.0")
 
+# SECURITY: every endpoint below can run real adb/fastboot commands
+# against connected phones. Gated by the Secret Room passcode (see
+# trapdoor.py) -- set SECRET_ROOM_PASSCODE before starting this server.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:1420", "http://127.0.0.1:1420",
+        "http://localhost:5173", "http://127.0.0.1:5173",
+        "tauri://localhost",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -212,7 +221,7 @@ def detect_device_brand(model: Optional[str], serial: str) -> DeviceBrand:
 
 
 @app.post("/api/bootforge/devices/scan")
-async def scan_devices():
+async def scan_devices(_auth: bool = Depends(verify_auth)):
     """Scan for all connected USB devices"""
     adb_devices = scan_adb_devices()
     fastboot_devices = scan_fastboot_devices()
@@ -248,13 +257,13 @@ async def scan_devices():
 
 
 @app.get("/api/bootforge/devices")
-async def get_devices():
+async def get_devices(_auth: bool = Depends(verify_auth)):
     """Get all connected devices"""
     return await scan_devices()
 
 
 @app.get("/api/bootforge/devices/{serial}")
-async def get_device_details(serial: str):
+async def get_device_details(serial: str, _auth: bool = Depends(verify_auth)):
     """Get detailed information about a specific device"""
     scan_result = await scan_devices()
     
@@ -266,7 +275,7 @@ async def get_device_details(serial: str):
 
 
 @app.get("/api/bootforge/devices/{serial}/bootloader-status")
-async def get_bootloader_status(serial: str):
+async def get_bootloader_status(serial: str, _auth: bool = Depends(verify_auth)):
     """Check bootloader unlock status"""
     try:
         result = subprocess.run(
@@ -290,7 +299,7 @@ async def get_bootloader_status(serial: str):
 
 
 @app.post("/api/bootforge/devices/{serial}/reboot")
-async def reboot_device(serial: str, mode: DeviceMode):
+async def reboot_device(serial: str, mode: DeviceMode, _auth: bool = Depends(verify_auth)):
     """Reboot device to different mode"""
     try:
         if mode == DeviceMode.BOOTLOADER:
@@ -306,7 +315,7 @@ async def reboot_device(serial: str, mode: DeviceMode):
 
 
 @app.post("/api/bootforge/flash/start")
-async def start_flash_operation(config: FlashJobConfig):
+async def start_flash_operation(config: FlashJobConfig, _auth: bool = Depends(verify_auth)):
     """Start a flash operation"""
     job_id = str(uuid.uuid4())
     
@@ -426,7 +435,7 @@ async def broadcast_flash_update(job_id: str, update_type: str, data: Any):
 
 
 @app.post("/api/bootforge/flash/{job_id}/pause")
-async def pause_flash_operation(job_id: str):
+async def pause_flash_operation(job_id: str, _auth: bool = Depends(verify_auth)):
     """Pause a flash operation"""
     if job_id not in flash_jobs:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -443,7 +452,7 @@ async def pause_flash_operation(job_id: str):
 
 
 @app.post("/api/bootforge/flash/{job_id}/resume")
-async def resume_flash_operation(job_id: str):
+async def resume_flash_operation(job_id: str, _auth: bool = Depends(verify_auth)):
     """Resume a paused flash operation"""
     if job_id not in flash_jobs:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -460,7 +469,7 @@ async def resume_flash_operation(job_id: str):
 
 
 @app.post("/api/bootforge/flash/{job_id}/cancel")
-async def cancel_flash_operation(job_id: str):
+async def cancel_flash_operation(job_id: str, _auth: bool = Depends(verify_auth)):
     """Cancel a flash operation"""
     if job_id not in flash_jobs:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -476,7 +485,7 @@ async def cancel_flash_operation(job_id: str):
 
 
 @app.get("/api/bootforge/flash/{job_id}/status")
-async def get_flash_status(job_id: str):
+async def get_flash_status(job_id: str, _auth: bool = Depends(verify_auth)):
     """Get current status of a flash operation"""
     if job_id not in flash_jobs:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -485,7 +494,7 @@ async def get_flash_status(job_id: str):
 
 
 @app.get("/api/bootforge/flash/active")
-async def get_active_operations():
+async def get_active_operations(_auth: bool = Depends(verify_auth)):
     """Get all active flash operations"""
     active = [
         job for job in flash_jobs.values()
@@ -500,7 +509,7 @@ async def get_active_operations():
 
 
 @app.get("/api/bootforge/flash/history")
-async def get_flash_history(limit: int = 50):
+async def get_flash_history(limit: int = 50, _auth: bool = Depends(verify_auth)):
     """Get flash operation history"""
     completed = [
         job for job in flash_jobs.values()
@@ -563,4 +572,4 @@ async def device_monitor_websocket(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=__import__("os").environ.get("BOOTFORGE_HOST", "127.0.0.1"), port=8000)
