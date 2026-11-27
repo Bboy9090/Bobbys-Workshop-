@@ -1,0 +1,24 @@
+{
+  "title": "Bobby's Workshop (BobFWTools Studio)",
+  "slug": "bobbys-workshop",
+  "exe_name": "BobbysWorkshop",
+  "version": "5.1.0",
+  "width": 1380,
+  "height": 860,
+  "theme": {
+    "bg": "#0F140B",
+    "surface": "#1A2115",
+    "surface2": "#273020",
+    "primary": "#72F407",
+    "accent": "#0652EC",
+    "secondary": "#60A5FA",
+    "text": "#F4F7FC",
+    "muted": "#9CAEC8"
+  },
+  "extra_datas": [
+    {
+      "src": "dist",
+      "dst": "real_app"
+    }
+  ]
+}
